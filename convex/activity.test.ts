@@ -90,10 +90,43 @@ describe("dashboard financial lists", () => {
     await expect(f.t.query(payouts, { ...input(f), cursor: first.continueCursor })).rejects.toThrow("invalid_cursor");
     await expect(f.t.query(feed, { ...input(f), limit: 101 })).rejects.toThrow("invalid_page_size");
   });
-  it("rejects nonfinance identities and foreign tenants across every endpoint", async () => {
+  it("keeps unscoped buyer aggregates limited to owned non-scenario orders", async () => {
+    const f = await setup(), own = await sample(f);
+    await paidIntent(f, own.payableId);
+    const buyer = {demoIdentity: "buyer"};
+    const before = await Promise.all([overview, contributors, payouts, feed].map(endpoint => f.t.query(endpoint, buyer)));
+    const extraOrders = await f.t.run(async ctx => {
+      const order = await ctx.db.get(f.orderId);
+      if (!order) throw new Error("fixture_order_missing");
+      const {_id, _creationTime, ...fields} = order;
+      const foreignBuyer = await ctx.db.insert("orders", {...fields, publicId: "fixture:another-buyers-order", buyerTokenIdentifier: "fixture:other-buyer"});
+      const scenario = await ctx.db.insert("orders", {...fields, publicId: "scenario:simulated-order"});
+      await ctx.db.insert("memberships", {organizationId: f.organizationId, issuer: "fixture", subject: "unrelated-contributor",
+        tokenIdentifier: "fixture:unrelated-contributor", roles: ["contributor"], grantedByTokenIdentifier: "fixture", status: "active"});
+      for (const orderId of [foreignBuyer, scenario]) {
+        await recordJournal(ctx, f.organizationId, createFundingJournal({eventId: `extra:${orderId}`, orderId, amountMicroUsdc: 111n}));
+        await audit(ctx, {organizationId: f.organizationId, eventKey: `extra-refused:${orderId}`, actor: {kind: "service", identity: "fixture"},
+          action: "acceptance_refused", entityType: "orders", entityId: orderId, reason: "duplicate_submission"});
+      }
+      return [foreignBuyer, scenario];
+    });
+    for (const orderId of extraOrders) {
+      const extra = {...f, orderId}, accepted = await sample(extra);
+      await paidIntent(extra, accepted.payableId);
+    }
+    const after = await Promise.all([overview, contributors, payouts, feed].map(endpoint => f.t.query(endpoint, buyer)));
+    expect(after).toEqual(before);
+    expect(after[1].page.map((row: {tokenIdentifier: string}) => row.tokenIdentifier)).toEqual([CONTRIBUTOR]);
+  });
+  it("permits the owning buyer and refuses contributors, other buyers and foreign tenants", async () => {
     const f = await setup();
-    for (const endpoint of [overview, contributors, payouts, feed]) for (const demoIdentity of ["contributor", "buyer"])
+    await sample(f);
+    for (const endpoint of [overview, contributors, payouts, feed]) for (const demoIdentity of ["contributor"])
       await expect(f.t.query(endpoint, { ...input(f), demoIdentity })).rejects.toThrow("forbidden");
+    for (const endpoint of [overview, contributors, payouts, feed]) expect(await f.t.query(endpoint, {...input(f), demoIdentity: "buyer"})).toEqual(await f.t.query(endpoint, input(f)));
+    await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
+    for (const endpoint of [overview, contributors, payouts, feed]) await expect(f.t.query(endpoint, {...input(f), demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
+    await expect(f.t.query(timeSeries, {...input(f), demoIdentity: "buyer", from: 0, to: 300000})).rejects.toThrow("order_not_owned");
     const foreign = await f.t.run(ctx => ctx.db.insert("organizations", { name: "foreign", status: "active", createdByTokenIdentifier: "foreign" }));
     await f.t.run(ctx => ctx.db.patch(f.orderId, { organizationId: foreign }));
     for (const endpoint of [overview, contributors, payouts, feed]) await expect(f.t.query(endpoint, input(f))).rejects.toThrow("cross_organization_access");

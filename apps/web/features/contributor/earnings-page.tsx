@@ -109,9 +109,9 @@ function ConsentRequest({ submissionId }: { submissionId: string }) {
       <p className="mt-2 whitespace-pre-wrap type-body text-text-2">{provenance.licenseScope ?? "Scope not recorded."}</p>
       <p className="mt-2 type-caption text-text-3">Stored acknowledgement · {date(provenance.consentTimestamp)}. This records the terms acknowledged at submission; it does not attest to downstream use.</p>
     </div> : null}
-    <p className="mt-2 type-body text-text-2">You can ask a controller to review revocation of this sample. A request is not a completed revocation or a promise to recall copies already delivered. Financial journals stay intact to preserve what was owed and paid.</p>
+    <p className="mt-2 type-body text-text-2">You can ask the buyer to review revocation of this sample. A request is not a completed revocation or a promise to recall copies already delivered. Financial journals stay intact to preserve what was owed and paid.</p>
     {status === "requested" || status === "revoked" ? <p className="mt-3 type-label" role="status">{status === "revoked" ? `Revoked · ${date(provenance?.revocation.revokedAt ?? undefined)}` : `Revocation requested · ${date(provenance?.revocation.requestedAt ?? undefined)}`}</p> : null}
-    {status === "consent_missing" ? <p className="mt-3 type-caption text-text-2">No consent record is available. Ask the controller to investigate this sample.</p> : null}
+    {status === "consent_missing" ? <p className="mt-3 type-caption text-text-2">No consent record is available. Ask the buyer to investigate this sample.</p> : null}
     {status === "not_requested" ? <form onSubmit={event => void submit(event)} className="mt-4 space-y-3">
       <label className="block type-label" htmlFor={`reason-${submissionId}`}>Reason for requesting revocation</label>
       <textarea id={`reason-${submissionId}`} value={reason} onChange={event => setReason(event.target.value)} required maxLength={1000} rows={3}
@@ -131,11 +131,11 @@ function SubmissionEvidence({ submissionId, fallback }: { submissionId: string; 
       <div><dt className="text-text-3">Analysis completed</dt><dd className="mt-1">{date(record.analysisCompletedAt ?? fallback?.analysis?.completedAt)}</dd></div>
       <div><dt className="text-text-3">Decision recorded</dt><dd className="mt-1">{date(decision?.decidedAt)}</dd></div></dl>
     <section className="mt-5" aria-label="Recorded decision"><h3 className="type-heading-sm">Recorded verdict</h3>
-      <p className="mt-2 type-body">{decision ? `${label(decision.decision)}: ${decision.reason}` : "No controller decision recorded yet."}</p>
+      <p className="mt-2 type-body">{decision ? `${label(decision.decision)}: ${decision.reason}` : "No review decision recorded yet."}</p>
       {report ? <p className="mt-2 type-caption text-text-3">AI recommendation: {label(report.recommendation)} · {report.pipeline.implementation} · {label(report.pipeline.status)}. This is evidence, not payment authority.</p> : null}
     </section>
     <section className="mt-5" aria-label="Criterion evidence"><h3 className="type-heading-sm">Criterion findings</h3>
-      <p className="mt-1 type-caption text-text-3">Contradicted or unobservable findings explain the evidence gap; the recorded controller reason above explains a rejection.</p>
+      <p className="mt-1 type-caption text-text-3">Contradicted or unobservable findings explain the evidence gap; the recorded review reason above explains a rejection.</p>
       {report?.criteria.length ? <div className="mt-3 space-y-3">{report.criteria.map(criterion => <div key={criterion.criterionId} className="rounded-lg bg-page p-4">
         <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="type-label">{criterion.criterionId}</h4><span className="type-caption text-text-2">{label(criterion.status)}</span></div>
         <p className="mt-2 type-body text-text-2">{criterion.reason}</p>

@@ -8,10 +8,11 @@ import { trialBalance } from "./lib/financeAgentLoop";
 export const forOrder = query({
   args: { demoIdentity: v.string(), orderId: v.id("orders") },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
     requireTenant(principal, order);
+    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
     const entries = await ctx.db.query("journalEntries").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
     const contributorBalances = new Map<string, bigint>();
     const journals = [];

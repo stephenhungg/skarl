@@ -1,6 +1,6 @@
 # Skarl — Every claim has a witness
 
-**Skarl is the autonomous settlement desk for human-data companies. Independent witnesses must agree before anything moves: agents argue the case, deterministic code decides, and humans approve exceptions.** Every payout currently requires independent human approval, not just exceptions.
+**Skarl is the autonomous settlement desk for human-data companies. Independent witnesses must agree before anything moves.** Agents propose, a rule the buyer signed approves, the AI never approves itself. The buyer reviews exceptions.
 
 [Live testnet demo](https://skarl.vercel.app) · [Repository](https://github.com/stephenhungg/skarl) · [One-page thesis and witness table](thesis.md) · [Coinbase submission](coinbase-submission.md) · [Demo script](demo-script.md) · [Setup](setup.md)
 
@@ -16,11 +16,11 @@ Our first task is deliberately narrow: pick up a red cup, put it on a marked coa
 
 ## What it does
 
-Skarl fills the **settlement accountant + AP clerk** seats. The work witnesses are silent visual observations, separately transcribed audio and server-derived copy evidence. The money witnesses are frozen Convex order terms, exact double-entry journals and independently observed chain transfers. A deterministic judge checks the evidence and stored authority. Finance agents explain discrepancies and propose bounded payments; they cannot approve them. The human controller signs approved Base Sepolia payouts in Coinbase Wallet.
+Skarl fills the **settlement accountant + AP clerk** seats through the finance agent and buyer-signed policy. The work witnesses are silent visual observations, separately transcribed audio and server-derived copy evidence. The money witnesses are frozen Convex order terms, exact double-entry journals and independently observed chain transfers. A deterministic judge checks the evidence and stored authority. Finance agents explain discrepancies and propose bounded payments; they cannot approve them. The buyer sets an auto-pay rule when funding. A separate internal `policy-engine` applies it deterministically; the CDP executor enforces an independent wallet cap.
 
-Acceptance atomically creates a licensed delivery, one payable and balanced journals. An incomplete, unavailable or scaffold report cannot recommend acceptance. Unknown transfers become exceptions; an uncertain attempt remains pending while the original transaction is reconciled. Neither a persuasive agent nor an HTTP success is proof of settlement.
+The rule is on by default with a cap equal to the order’s per-clip price; buyers can change or disable it. Completed accept evidence, a clear copy check, liveness when required, no injection flag, and consent/license are required. Failed checks go to the buyer’s Review queue with their reasons. Acceptance atomically creates a licensed delivery, one payable and balanced journals. An incomplete, unavailable or scaffold report cannot recommend acceptance. Unknown transfers become exceptions; an uncertain attempt remains pending while the original transaction is reconciled. Neither a persuasive agent nor an HTTP success is proof of settlement.
 
-**The moment:** duplicate caught → second payable blocked → agent self-approval refused → controller approves in Coinbase Wallet → chain + ledger agree. The complete sequence is **pending live proof**. The demo labels isolated control tests as **SIMULATED — NO TRANSFER** and recorded provider operations as **RECORDED LIVE TESTNET**. The bank comparison is a dated live Nessie API observation (October 25, 2026, 04:11 PDT: four funding deposits observed; order, ledger, chain and bank all `match` for the 10 USDC order), still labeled a **mock bank**.
+**The moment:** duplicate caught → second payable blocked → agent self-approval refused → buyer-signed policy approves eligible work → independent CDP cap → chain + ledger agree. The complete sequence is **pending live proof**. The demo labels isolated control tests as **SIMULATED — NO TRANSFER** and recorded provider operations as **RECORDED LIVE TESTNET**. The bank comparison is a dated live Nessie API observation (October 25, 2026, 04:11 PDT: four funding deposits observed; order, ledger, chain and bank all `match` for the 10 USDC order), still labeled a **mock bank**.
 
 ## How we're different
 
@@ -30,7 +30,7 @@ Existing human-data marketplaces such as [Kled AI](https://www.kled.ai/) proved 
 - **The verdict is attested, not just the consent:** each verification result and its evidence hash go to EAS on Base Sepolia.
 - **Built for robot learning:** task rubrics and narration, with implemented phone motion capture whose physical-device behavior remains unverified.
 - **Agents can buy:** an AI buyer funds an order over x402 without a sales form.
-- **Payments a controller can defend:** agents propose but never approve, CDP policy caps reject over-limit payouts, and order, ledger, chain and bank reconcile.
+- **Payments a buyer can defend:** agents propose but never approve, the signed rule approves only eligible payments within the buyer’s cap, the independent CDP cap guards execution, and order, ledger, chain and bank reconcile.
 - **Contributors get reasons:** the implemented Claude coach cites stored evidence and cannot change the verdict; contributor-facing quality remains unmeasured.
 
 The opportunity is useful episodes with a defensible receipt. Flikforge reports that buyers discard approximately **90% of bulk pretraining footage for a specific robot-training task**. This is a **vendor claim**, not Skarl's measured result or an independent industry statistic; Forbes links Flikforge for price estimates, not independent validation of that discard rate. Our response is explained criteria, consent provenance and visible payment state. It is not a claim that short task clips replace sensor-rich robot demonstrations. [Flikforge, vendor](https://flikforge.com/robot-data-glut-egocentric-video-physical-ai/), [Forbes](https://www.forbes.com/sites/johnkoetsier/2026/08/26/figure-launches-gig-platform-to-get-humans-to-do-work-to-train-robots-will-spend-1-billion/). The [market summary](market.md) records prices, source limits and the hand-pose, depth, ARKit camera-pose, head-mount and fiat-payout roadmap.
@@ -73,9 +73,9 @@ Criterion labels below follow the [official prize list](https://cal-hacks-13-0.d
 | Rubric, verbatim | Skarl's evidence |
 | --- | --- |
 | **Is it real enough?** | Frozen contracts, a double-entry ledger, real testnet funding, real provider failures and a reconciliation queue. Payout and complete live operation remain pending. |
-| **Would you hire it?** | Seats: **settlement accountant + AP clerk**. Limited access: scoped typed tools, capped proposals, no agent approval/signing authority. Clean record: persisted calls, refusal audits, version-bound intents and journals. Knows when to ask: missing witnesses, exceptions and all payouts require human intervention/approval. Demo identity impersonation blocks production hiring today. |
+| **Would you hire it?** | Seats: **settlement accountant + AP clerk**. Limited access: scoped typed tools, capped proposals, no agent approval/signing authority. Clean record: persisted calls, refusal audits, version-bound intents and journals. Knows when to ask: missing witnesses, over-cap amounts and other exceptions go to buyer review. Separation of duties is agent proposer vs. buyer-signed policy approver vs. independent CDP cap. Demo identity impersonation blocks production hiring today. |
 | **Did we see something new?** | Work-quality evidence and financial settlement share one obligation lifecycle: a copied clip is stopped before it becomes a second debt. Multiple model opinions remain evidence under deterministic authority. |
-| **The moment** | Duplicate caught → second payable blocked → agent self-approval refused → controller approves in Coinbase Wallet → chain + ledger agree. Full live sequence pending; control tests and funding evidence are labeled separately. |
+| **The moment** | Duplicate caught → second payable blocked → agent self-approval refused → buyer-signed policy approves eligible work → independent CDP cap → chain + ledger agree. Full live sequence pending; control tests and funding evidence are labeled separately. |
 
 The real/simulated inventory above accompanies the video. For judge-selected variations, use the [eight-scenario playbook](hyphenate-scenarios.md); duplicate re-upload and trimmed-copy variants share one scenario.
 
@@ -100,11 +100,11 @@ Convex is the system of record and agent memory. Its transactions keep acceptanc
 | Rubric, verbatim | Skarl's evidence |
 | --- | --- |
 | **Usefulness** | **PAY:** agent-funded human-data orders, live through CLI/CDP. **EARN:** a 0.25-USDC eligible-sample evidence endpoint paying a separate revenue wallet; live sale pending. |
-| **Technical design** | Exact money, durable intents, CDP facilitator + signed webhooks + RPC, bounded Gemini tools, Convex memory/Workflow, independent human approval. Actual CDP policy `403`s constrain the optional executor; successful payout pending. |
+| **Technical design** | Exact money, durable intents, CDP facilitator + signed webhooks + RPC, bounded Gemini tools, Convex memory/Workflow, buyer-signed deterministic approval. Actual CDP policy `403`s constrain the optional executor; successful payout pending. |
 | **Ease of reuse** | Public app, [README setup](../README.md), [Wallet MCP plugin](wallet-mcp-plugin/skarl.md), explicit caps and same-request recovery. Completed Wallet MCP payment remains pending; CLI settlement is not MCP evidence. |
 | **Product feedback** | Observed SQL 500 blocker; RPC/webhook workaround. Requested capability: policy-bound Wallet MCP execution of already authorized transactions with stable request IDs. Full incident provenance in [builder feedback](coinbase-submission.md#4-builder-feedback). |
 
-Wallet MCP uses `initiate_x402_request`, human approval and `complete_x402_request`; the finance agent cannot approve itself. Account-level CDP policy and Wallet MCP human approval are different controls. Eligibility and the four required submission artifacts remain in the [sponsor checklist](sponsor-tracks.md#team-eligibility-checklist).
+Wallet MCP uses `initiate_x402_request`, human approval and `complete_x402_request`; the finance agent cannot approve itself. The application’s buyer-signed policy and the CDP wallet cap are separate controls. Wallet MCP approval-mode signing remains a compatibility path. Eligibility and the four required submission artifacts remain in the [sponsor checklist](sponsor-tracks.md#team-eligibility-checklist).
 
 ### Anthropic — Claude for Public Benefit
 
@@ -132,8 +132,8 @@ Gemini produces timestamped observations instead of final payment authority. Arg
 | --- | --- |
 | **Customer understanding** | One defined operator job: acquire licensed demonstrations and pay each valid obligation once. Customer discovery remains a hypothesis to validate, not completed research. |
 | **Measurable usefulness** | Observable checks: one payable per accepted original, unchanged books after refused approval, exact reconciliation and no resend under uncertainty. Live funding has matching journals/zero exceptions. No hours saved, ROI or production fraud reduction measured. |
-| **Path from prototype to production** | Replace demo identities; validate consent/access handling and controller roles; complete live payout/recovery; measure a consented corpus; run a narrow operator pilot before real funds. |
-| **responsible design** | Private originals, independent approval, scoped tools, exact money, retained uncertainty, review on missing evidence and visible simulated/live labels. No model can change a destination or confer authority. |
+| **Path from prototype to production** | Replace demo identities; validate consent/access handling and buyer ownership checks; complete live payout/recovery; measure a consented corpus; run a narrow operator pilot before real funds. |
+| **responsible design** | Private originals, buyer-signed policy approval, independent CDP cap, scoped tools, exact money, retained uncertainty, review on missing evidence and visible simulated/live labels. No model can change a destination or confer authority. |
 | **end to end functionality** | Fund → upload → independent evidence → acceptance/payable → approval → wallet → reconciliation is implemented in parts. Funding and negative verification ran live; accepted-work-to-payout and the complete integrated demo remain pending. |
 
 ### Cal Hacks Most Technically Complex Hack

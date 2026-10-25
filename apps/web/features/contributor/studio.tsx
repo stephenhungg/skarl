@@ -62,7 +62,7 @@ export function clipStatus(submission: Submission, payable?: Payable): { status:
     case "rejected": return { status: "fail", label: "Not accepted", note: reason ?? "This clip was not accepted for the order." };
     case "accepted":
       if (payable?.status === "paid") return { status: "ok", label: "Paid", note: `${formatUsdc(payable.amountAtomic)} test USDC arrived in your wallet.` };
-      return { status: "ok", label: "Accepted", note: payable ? `You earned ${formatUsdc(payable.amountAtomic)} test USDC. It is sent after a controller approves it.` : "Accepted. Your earnings appear here shortly." };
+      return { status: "ok", label: "Accepted", note: payable ? `You earned ${formatUsdc(payable.amountAtomic)} test USDC. Your buyer’s rule approves eligible payouts automatically; exceptions need buyer review.` : "Accepted. Your earnings appear here shortly." };
     default: return { status: "idle", label: String(submission.status), note: "" };
   }
 }

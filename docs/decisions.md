@@ -6,8 +6,8 @@ Status as of October 25, 2026 (post-audit). These are design decisions, not clai
 | --- | --- | --- |
 | Build one live demo path in 8 hours | Required | The deadline is Oct 25, 9:00 AM PDT. Everything not on the [workstreams](workstreams.md) path is deferred design. |
 | Base Sepolia USDC only (`eip155:84532`) | Chosen (pivot from Solana) | Targets Coinbase Best Use of x402 ($500 USDC + recruiter call per member) over MLH Solana (swag). Mainnet needs a separate launch decision. |
-| No custom smart contract | Chosen | Controller-approved USDC transfers plus durable application accounting satisfy the demo. Revisit only for a real enforceable escrow requirement. |
-| Coinbase Wallet MCP for agent payments | Chosen | Supports Base Sepolia x402 and `send`; every write needs approval in Coinbase Wallet, which matches the independent-controller rule. The Coinbase retail MCP (Base mainnet, 5 USDC cap) is optional. |
+| No custom smart contract | Chosen | Buyer-policy-approved USDC transfers plus durable application accounting satisfy the demo. Revisit only for a real enforceable escrow requirement. |
+| Coinbase Wallet MCP for agent payments | Chosen | Supports Base Sepolia x402 and `send`; Wallet MCP approval mode requires a human for each write. Automatic payouts instead use the existing CDP executor after buyer-policy approval and under an independent wallet cap. The Coinbase retail MCP (Base mainnet, 5 USDC cap) is optional. |
 | Platform-held refundable prepayment | Demo assumption | Do not call it noncustodial escrow. Real custody and customer terms need review before launch. |
 | Skarl acts as principal for dataset sales | Explicit accounting assumption | Recognize gross revenue on actual licensed delivery, contributor acquisition cost separately. A pure brokerage business needs a different net model. |
 | Convex is authoritative | Chosen | Transactions, storage, reactive views and Workflow for the approval wait; avoid dual writes into a second database. |

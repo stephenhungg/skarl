@@ -16,6 +16,14 @@ HTTP origin, and the auth HTTP routes are appended without replacing `/jira/feed
 providers and an auth proxy; the existing `demoIdentity` API arguments remain
 unchanged.
 
+## Buyer and policy authority
+
+The user flow has two humans: buyer and contributor. The buyer sets an auto-pay rule on their order at creation/funding and can update or disable it. Its default is enabled, with `maxPerClipAtomic` equal to the per-clip price and `requireAllChecks: true`. Money is Convex Int64 internally and a decimal integer string at JSON boundaries. `setBy` and `setAt`, plus audit events, record the authorization. Old orders without a policy stay manual until their buyer sets one.
+
+The internal `policy-engine` service membership (`service:skarl:policy-engine`) is distinct from the finance agent and every human. No public selector or model argument can choose it. Internal `policy.evaluateSubmission` checks completed accept evidence, duplicate status, liveness when required, prompt injection and consent/license before reusing acceptance. `policy.policyApproval` checks the buyer cap, distinct proposer, accepted-submission/payable binding, verified wallet and funded remaining capacity before reusing approval and its Workflow. The agent’s self-approval refusal still applies even when policy checks would pass. The CDP wallet cap independently guards execution.
+
+A buyer may review and approve exceptions for their own order; no separate controller is required. `controller` roles, demo selectors and allowlisted onboarding remain for backward compatibility. They do not grant agents approval authority.
+
 ## Operator setup
 
 Run from the repository root. These are operator commands; the implementation
@@ -58,13 +66,14 @@ work does not set Convex environment variables or run Convex dev/deploy.
    pnpm exec convex env set AUTH_GOOGLE_SECRET 'YOUR-GOOGLE-CLIENT-SECRET'
    ```
 
-4. Set the web origin and controller allowlist on that same Convex deployment:
+4. Set the web origin on that same Convex deployment. The controller allowlist is optional, for legacy operator access only; buyers do not need it:
 
    ```sh
    pnpm exec convex env set SITE_URL 'https://YOUR-WEB-HOST'
-   pnpm exec convex env set SKARL_CONTROLLER_EMAILS 'controller@example.com,second-controller@example.com'
    pnpm exec convex env set SKARL_DEMO_IDENTITIES 'on'
    ```
+
+   For legacy controller onboarding only, optionally set `SKARL_CONTROLLER_EMAILS` to verified operator emails. For auto-pay execution set `PAYOUT_EXECUTOR=cdp_agent`; preserve the existing CDP account policy and cap.
 
    For local development use `http://localhost:3000` for `SITE_URL`. Comma-separated
    allowlist entries are trimmed and compared case-insensitively. Demo identities
@@ -144,7 +153,7 @@ be active.
   email ownership record (`users.emailVerificationTime`). The Google profile
   marks email verified only when `email_verified` is exactly `true`; a returned
   email string or allowlist match alone is insufficient.
-- `finance-agent` is never self-assignable to a human. Contributor and controller
+- `finance-agent` and `policy-engine` are never self-assignable to a human. Contributor and controller
   roles cannot coexist on one membership. Existing independent-approval and
   self-approval refusals still apply.
 
@@ -169,7 +178,7 @@ service membership for proposals and refusal audits. A model-selected approval
 tool always refuses, even when a signed-in controller started the run. The
 approval Workflow and stored-intent executor resolve this internal service
 without depending on anonymous demo mode; they still validate the independent
-human approval and exact stored payment bindings.
+buyer-policy or buyer-review approval and exact stored payment bindings.
 The scenario console's agent self-approval test uses the same service-only
 refusal path, so starting it as a real controller never approves the source intent.
 
@@ -185,8 +194,7 @@ An unsigned call can continue to use the four labeled selectors `buyer`,
 not `off`. Existing scripts, MCP requests, scenario console and iOS calls retain
 their argument shapes. These anonymous selectors remain impersonable and must
 be labeled as demo identities. `/dashboard` shows a visible “Demo identity” banner
-for an unsigned demo session. Signed-in users without controller membership see
-“controller access required”; they do not inherit the anonymous demo controller.
+for an unsigned demo session. Buyer Review uses the signed-in buyer’s own order access; passing a legacy controller selector cannot elevate it.
 
 Set `SKARL_DEMO_IDENTITIES=off` when anonymous role selectors must be refused:
 
@@ -207,7 +215,7 @@ for the live demo. Turning it off is not a claim of production hardening.
 Authentication does not authorize payments by itself. Membership roles,
 organization boundaries, independent approvals, exact stored intent bindings and
 chain reconciliation remain server checks. A contributor cannot approve; an agent
-cannot approve; a proposer cannot approve its own intent. Model output, narration,
+cannot approve; a proposer cannot approve its own intent. The internal policy is a separate deterministic principal, not a model-selected role. Model output, narration,
 uploads and client-provided role hints cannot grant membership.
 
 Demo mode remains a deliberate anonymous access path, including the seeded demo

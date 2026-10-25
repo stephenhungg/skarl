@@ -30,10 +30,11 @@ function service(secret: string) {
 }
 
 async function orderScope(ctx: QueryCtx, args: Scope) {
-  const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
+  const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
   const order = await ctx.db.get(args.orderId);
   if (!order) throw new Error("order_not_found");
   requireTenant(principal, order);
+    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
   const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
   const observations: Doc<"chainObservations">[] = [];
   for (const intent of intents) {

@@ -5,12 +5,17 @@ import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import { SCENARIOS, type ScenarioRun } from "./scenarios";
+import { runScheduledUntil } from "../test/workflow";
 import * as payments from "./payments";
 import * as chainWitness from "./chainWitness";
 import * as finance from "./finance";
 import * as spokenLiveness from "./lib/spokenLiveness";
 import * as nessie from "./lib/nessie";
-import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
+import * as policy from "./policy";
+import { audioFromTranscriptSegments, buildVerificationReport, PIPELINE_VERSION } from "./lib/verificationReport";
+import { canonical, digest, recordJournal } from "./lib/finance";
+import { createFundingJournal } from "../packages/ledger/src/index";
+import { PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 
 // In-memory synthetic fixtures only. No model, provider, wallet, chain, or deployment calls.
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
@@ -34,6 +39,59 @@ async function setup() {
   return { t, organizationId: seeded.organizationId, orderId: seeded.defaultOrderId, taskVersionId: seeded.defaultTaskVersionId };
 }
 type Fixture = Awaited<ReturnType<typeof setup>>;
+/** Synthetic stored evidence for tests only, never used by hosted scenario preparation. */
+async function licensedInference(f: Fixture, accept = false) {
+  const submissionId = await f.t.run(async ctx => {
+    const now = Date.now(), sourceHash = digest(`synthetic-test-ready:${accept}`);
+    const contributor = (await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", CONTRIBUTOR)).unique())!;
+    await ctx.db.patch(contributor._id, { walletAddress: RECIPIENT, walletVerification: {
+      siweMessageHash: "e".repeat(64), nonce: "synthetic-test-only", signature: `0x${"1".repeat(130)}`, chainId: PAYMENT_CHAIN_ID, verifiedAt: now,
+    } });
+    const liveness = { words: ["apple", "river", "cloud"], issuedAt: now, consumedAt: now };
+    const submissionId = await ctx.db.insert("submissions", { organizationId: f.organizationId, orderId: f.orderId,
+      taskVersionId: f.taskVersionId, contributorTokenIdentifier: CONTRIBUTOR, sourceHash, status: "needs_review",
+      clientRequestId: `synthetic-licensed-policy-test:${accept}`, liveness, updatedAt: now });
+    const storageId = await ctx.storage.store(new Blob(["synthetic test media, no recording"], { type: "video/mp4" }));
+    const originalAssetId = await ctx.db.insert("mediaAssets", { organizationId: f.organizationId, submissionId, storageId,
+      purpose: "original", status: "verified", contentHash: sourceHash, mimeType: "video/mp4", sizeBytes: 40, durationMs: 12_000 });
+    const consentRecordId = await ctx.db.insert("consentRecords", { organizationId: f.organizationId, submissionId,
+      contributorTokenIdentifier: CONTRIBUTOR, licenseVersion: "synthetic-test-license", licenseHash: "f".repeat(64),
+      scope: "Synthetic isolated policy fixture only", acknowledgedAt: now, receiptHash: "d".repeat(64) });
+    const jobId = await ctx.db.insert("jobs", { organizationId: f.organizationId, submissionId, taskVersionId: f.taskVersionId,
+      sourceHash, pipelineVersion: PIPELINE_VERSION, status: "completed", availableAt: now, attempt: 1, maxAttempts: 1,
+      leaseGeneration: 1, completedAt: now });
+    const audio = audioFromTranscriptSegments([
+      { startMs: 0, endMs: 800, text: "Apple river cloud." },
+      { startMs: 1_000, endMs: 3_000, text: "I pick up the red cup." },
+      { startMs: 5_000, endMs: 7_000, text: "I place it on the coaster." },
+    ], 12_000);
+    const rubric = (await ctx.db.get(f.taskVersionId))!;
+    const report = buildVerificationReport({ submissionId, taskVersionId: f.taskVersionId, sourceHash, durationMs: 12_000,
+      criteria: rubric.criteria, liveness, audio, video: { visibility: "clear", observations: [
+        { action: "pickup", object: "red_cup", target: "unknown", startMs: 1_000, endMs: 3_000, description: "A hand picks up the red cup." },
+        { action: "place", object: "red_cup", target: "coaster", startMs: 5_000, endMs: 7_000, description: "The hand places the red cup on the coaster." },
+      ] }, duplicate: { status: "clear", matches: [] }, modelRuns: [{ provider: "simulated", model: "synthetic-test-only", promptVersion: "fixture" }] });
+    expect(report.recommendation).toBe("accept");
+    const reportStorageId = await ctx.storage.store(new Blob([canonical(report)], { type: "application/json" }));
+    const analysisId = await ctx.db.insert("analysisResults", { organizationId: f.organizationId, jobId, submissionId,
+      taskVersionId: f.taskVersionId, sourceHash, pipelineVersion: PIPELINE_VERSION, leaseGeneration: 1,
+      implementation: "inference", pipelineStatus: "completed", recommendation: "accept", summary: "Synthetic stored inference fixture; no model run",
+      reportStorageId, reportHash: digest(report), reportJson: canonical(report), observationsJson: canonical({ audio,
+        jury: { advisoryOnly: true, agreementFraction: 1, disagreedCriteria: [], judges: [
+          { model: "synthetic-judge-a", report }, { model: "synthetic-judge-b", report },
+        ] } }), evidenceAssetIds: [originalAssetId], completedAt: now });
+    await ctx.db.patch(submissionId, { originalAssetId, consentRecordId, currentAnalysisId: analysisId });
+    if (accept) {
+      await ctx.db.patch(f.orderId, { status: "funded" });
+      const order = (await ctx.db.get(f.orderId))!;
+      await recordJournal(ctx, f.organizationId, createFundingJournal({ eventId: `fixture:funding:${f.orderId}`,
+        orderId: f.orderId, amountMicroUsdc: order.budgetAtomic }));
+    }
+    return submissionId;
+  });
+  if (accept) expect((await f.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "controller", submissionId })).ok).toBe(true);
+  return submissionId;
+}
 async function acceptedOriginal(f: Fixture) {
   return f.t.run(ctx => ctx.db.insert("submissions", {
     organizationId: f.organizationId, orderId: f.orderId, taskVersionId: f.taskVersionId,
@@ -175,6 +233,119 @@ describe("scenario lab invokes real controls and reads persisted evidence", () =
   });
 });
 
+describe("buyer-signed policy scenarios retain separation of duties", () => {
+  it("replays licensed evidence through acceptance and approves the agent proposal as policy-engine, never paid", async () => {
+    const f = await setup();
+    const sourceId = await licensedInference(f);
+    const result = await run(f, "policy_auto_pay"), state = await lab(f, result);
+    expect(result.passed, result.observedOutcome).toBe(true);
+    expect(result.simulated).toBe(true);
+    expect(result.evidenceIds).toContain(sourceId);
+    expect(state.submissions[0]?.status).toBe("accepted");
+    const reportMatchesStorage = await f.t.run(async ctx => {
+      const analysis = (await ctx.db.get(state.submissions[0]!.currentAnalysisId!))!;
+      const blob = await ctx.storage.get(analysis.reportStorageId);
+      return blob !== null && digest(JSON.parse(await blob.text())) === analysis.reportHash;
+    });
+    expect(reportMatchesStorage).toBe(true);
+    expect(state.payables[0]?.status).toBe("payout_in_progress");
+    const intent = state.intents.find(row => row.kind === "contributor_payout")!;
+    expect(intent.status).toBe("approved");
+    const approvals = await f.t.run(ctx => ctx.db.query("approvals").collect());
+    expect(approvals).toHaveLength(1);
+    expect(approvals[0]?.approverTokenIdentifier).toBe("service:skarl:policy-engine");
+    expect(approvals[0]?.requestedBy.identity).toBe(AGENT);
+    expect(state.audits).toEqual(expect.arrayContaining([
+      expect.objectContaining({ entityId: state.submissions[0]?._id, action: "submission_accepted_and_published", actor: { kind: "service", identity: "service:skarl:policy-engine" } }),
+      expect.objectContaining({ entityId: intent._id, action: "payment_approved", actor: { kind: "service", identity: "service:skarl:policy-engine" } }),
+    ]));
+    expect(await f.t.run(ctx => ctx.db.query("paymentAttempts").collect())).toEqual([]);
+    expect(await f.t.run(ctx => ctx.db.query("chainObservations").collect())).toEqual([]);
+    expect((await f.t.run(ctx => ctx.db.get(sourceId)))?.status).toBe("needs_review");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("can replay the same pending source twice without blocking its real acceptance", async () => {
+    const f = await setup(), sourceId = await licensedInference(f);
+    const first = await run(f, "policy_auto_pay"), second = await run(f, "policy_auto_pay");
+    expect(first.passed, first.observedOutcome).toBe(true);
+    expect(second.passed, second.observedOutcome).toBe(true);
+    await f.t.run(async ctx => {
+      const order = (await ctx.db.get(f.orderId))!;
+      await ctx.db.patch(order._id, { status: "funded" });
+      await recordJournal(ctx, f.organizationId, createFundingJournal({ eventId: `fixture:real-source-funding:${order._id}`,
+        orderId: order._id, amountMicroUsdc: order.budgetAtomic }));
+    });
+    expect((await f.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "buyer", submissionId: sourceId })).ok).toBe(true);
+    expect((await f.t.run(ctx => ctx.db.get(sourceId)))?.status).toBe("accepted");
+  });
+
+  it("keeps approved replay scenarios non-executable with the CDP executor enabled", async () => {
+    const f = await setup(); await licensedInference(f);
+    vi.stubEnv("PAYOUT_EXECUTOR", "cdp_agent");
+    const result = await run(f, "policy_auto_pay");
+    expect(result.passed, result.observedOutcome).toBe(true);
+    await runScheduledUntil(async () => (await f.t.run(ctx => ctx.db.query("outboxEvents").collect())).some(row => row.orderId === result.labOrderId));
+    const functions = await f.t.run(ctx => ctx.db.system.query("_scheduled_functions").collect());
+    expect(functions.some(row => row.name === "agentWallet:execute")).toBe(false);
+    expect(await f.t.run(ctx => ctx.db.query("paymentAttempts").collect())).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("never approves an intent above the buyer cap and routes the exact refusal to review", async () => {
+    const f = await setup();
+    await licensedInference(f, true);
+    const result = await run(f, "over_cap_payout"), state = await lab(f, result);
+    expect(result.passed, result.observedOutcome).toBe(true);
+    const intent = state.intents.find(row => row.kind === "contributor_payout")!;
+    expect(intent.amountAtomic).toBe(state.order!.autoPay!.maxPerClipAtomic + 1n);
+    expect(intent.status).toBe("proposed");
+    expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
+    expect(state.audits.some(row => row.entityId === intent._id && row.actor.identity === "service:skarl:policy-engine" && /cap/.test(row.reason))).toBe(true);
+    const exceptions = await f.t.query(api.exceptions.list, { demoIdentity: "controller", orderId: result.labOrderId });
+    expect(exceptions.some(row => row.exception.code === "policy_review" && /cap/.test(JSON.stringify(row.exception)))).toBe(true);
+    expect(await f.t.run(ctx => ctx.db.query("paymentAttempts").collect())).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("the agent cannot approve itself even after every policy check passes", async () => {
+    const f = await setup();
+    await licensedInference(f);
+    const result = await run(f, "policy_auto_pay"), state = await lab(f, result);
+    expect(result.passed, result.observedOutcome).toBe(true);
+    const intent = state.intents.find(row => row.kind === "contributor_payout")!;
+    const refused = await f.t.run(ctx => finance.refuseAgentApprovalFor(ctx, intent._id));
+    expect(refused).toMatchObject({ ok: false, code: "self_approval_refused" });
+    const approvals = await f.t.run(ctx => ctx.db.query("approvals").collect());
+    expect(approvals).toHaveLength(1);
+    expect(approvals[0]?.approverTokenIdentifier).toBe("service:skarl:policy-engine");
+  });
+
+  it("does not claim a passing happy path when deterministic approval is bypassed", async () => {
+    const f = await setup(); await licensedInference(f);
+    const spy = vi.spyOn(policy, "policyApprovalFor").mockResolvedValue({ ok: false, code: "bypassed" });
+    const result = await run(f, "policy_auto_pay");
+    expect(result.passed).toBe(false);
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it("does not accept a returned over-cap refusal without persisted buyer-review evidence", async () => {
+    const f = await setup(); await licensedInference(f, true);
+    vi.spyOn(policy, "policyApprovalFor").mockResolvedValue({ ok: false, code: "over_cap_payout" });
+    expect((await run(f, "over_cap_payout")).passed).toBe(false);
+  });
+
+  for (const scenario of ["over_cap_payout", "policy_auto_pay"] as const) {
+    it(`records the missing licensed evidence prerequisite for ${scenario} honestly`, async () => {
+      const f = await setup(), result = await run(f, scenario), state = await lab(f, result);
+      expect(result.passed).toBe(false);
+      expect(result.observedOutcome).toContain("requires an existing");
+      expect(state.submissions).toEqual([]); expect(state.payables).toEqual([]); expect(state.journals).toEqual([]);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+  }
+});
+
 describe("scenario passes require actual control records", () => {
   it("fails wrong_amount_transfer when the funding reconciliation helper is bypassed", async () => {
     const f = await setup();
@@ -253,7 +424,7 @@ describe("scenario passes require actual control records", () => {
 });
 
 describe("controller authorization and honest prerequisites", () => {
-  for (const demoIdentity of ["buyer", "contributor", "finance-agent"]) {
+  for (const demoIdentity of ["contributor", "finance-agent"]) {
     it(`refuses ${demoIdentity} on both run and history`, async () => {
       const f = await setup();
       await expect(f.t.action(api.scenarios.run, { demoIdentity, scenario: "unknown_transfer", orderId: f.orderId })).rejects.toThrow();
@@ -262,6 +433,35 @@ describe("controller authorization and honest prerequisites", () => {
       expect(await f.t.run(ctx => ctx.db.query("cdpWebhookReceipts").collect())).toEqual([]);
     });
   }
+  it("allows a buyer to run and read scenarios only on owned source orders", async () => {
+    const f = await setup();
+    const result = await f.t.action(api.scenarios.run, { demoIdentity: "buyer", orderId: f.orderId, scenario: "unknown_transfer" });
+    expect(result.passed, result.observedOutcome).toBe(true);
+    expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer", orderId: f.orderId })).toContainEqual(result);
+    expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer" })).toContainEqual(result);
+    await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerTokenIdentifier: "other-buyer" }));
+    await expect(f.t.action(api.scenarios.run, { demoIdentity: "buyer", orderId: f.orderId, scenario: "unknown_transfer" })).rejects.toThrow("order_not_owned");
+    await expect(f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer", orderId: f.orderId })).rejects.toThrow("order_not_owned");
+    expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer" })).toEqual([]);
+  });
+  it("propagates a signed buyer through the internal scenario operator without requiring a controller session", async () => {
+    const f = await setup();
+    const userId = await f.t.run(async ctx => {
+      const userId = await ctx.db.insert("users", { email: "scenario-buyer@example.test" });
+      const tokenIdentifier = `auth:${userId}`;
+      await ctx.db.insert("memberships", { organizationId: f.organizationId, issuer: "auth", subject: userId,
+        tokenIdentifier, roles: ["buyer"], grantedByTokenIdentifier: tokenIdentifier, status: "active" });
+      await ctx.db.patch(f.orderId, { buyerTokenIdentifier: tokenIdentifier });
+      return userId;
+    });
+    await licensedInference(f);
+    const signed = f.t.withIdentity({ subject: `${userId}|synthetic`, issuer: "https://auth.example.test" });
+    for (const scenario of ["unknown_transfer", "bank_mismatch", "prompt_injection_narration", "policy_auto_pay"] as const) {
+      const result = await signed.action(api.scenarios.run, { demoIdentity: "controller", orderId: f.orderId, scenario });
+      expect(result.passed, `${scenario}: ${result.observedOutcome}`).toBe(true);
+      expect(await signed.query(api.scenarios.listRuns, { demoIdentity: "controller", orderId: f.orderId })).toContainEqual(result);
+    }
+  });
   for (const scenario of ["duplicate_submission", "agent_self_approval"] as const) {
     it(`records failed prerequisite for ${scenario}, without inventing paid work`, async () => {
       const f = await setup(), result = await run(f, scenario), state = await lab(f, result);

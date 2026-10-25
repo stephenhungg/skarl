@@ -46,7 +46,21 @@ describe("contributor wallet registration with real local signatures (no chain t
     await expect(t.mutation(verify, { ...args, nonce: "different" })).rejects.toThrow("wallet_already_verified");
   });
 
-  it.each(["buyer", "contributor", "finance-agent"])("refuses %s for issuing and verifying", async demoIdentity => {
+  it("lets a contributor verify their own wallet without a separate operator", async () => {
+    const t = await setup(), own = { ...common, demoIdentity: "contributor" };
+    const issued = await t.mutation(challenge, { ...own, walletAddress: account.address });
+    expect(await t.mutation(verify, { ...own, nonce: issued.nonce, signature: await account.signMessage({ message: issued.message }) }))
+      .toMatchObject({ verified: true, walletAddress: account.address.toLowerCase() });
+    const otherToken = "demo:skarl:other-contributor";
+    await t.run(async ctx => {
+      const member = (await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", common.contributorTokenIdentifier)).unique())!;
+      await ctx.db.insert("memberships", { organizationId: member.organizationId, issuer: "demo:skarl", subject: "other-contributor",
+        tokenIdentifier: otherToken, roles: ["contributor"], grantedByTokenIdentifier: member.tokenIdentifier, status: "active" });
+    });
+    await expect(t.mutation(challenge, { ...own, contributorTokenIdentifier: otherToken, walletAddress: wrongAccount.address })).rejects.toThrow("contributor_not_owned");
+  });
+
+  it.each(["buyer", "finance-agent"])("refuses %s for issuing and verifying", async demoIdentity => {
     const t = await setup();
     await expect(t.mutation(challenge, { ...common, demoIdentity, walletAddress: account.address })).rejects.toThrow();
     const issued = await t.mutation(challenge, { ...common, walletAddress: account.address });

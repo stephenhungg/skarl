@@ -13,7 +13,7 @@ import { MAX_ATOMIC_USDC } from "@skarl/contracts";
 import { PAYMENT_NETWORK, PAYMENT_CHAIN_ID, USDC_ADDRESS } from "@skarl/contracts/chain";
 
 class BuyerError extends Error {}
-const treasuryConfigurationMessage = "Set SKARL_TREASURY_ADDRESS in the web server environment to the human controller's Coinbase Wallet receiving address before funding.";
+const treasuryConfigurationMessage = "Set SKARL_TREASURY_ADDRESS in the web server environment to the treasury wallet receiving address before funding.";
 const configurationDirectory = join(homedir(), ".config", "skarl");
 const keyPath = join(configurationDirectory, "buyer.env");
 const hashPattern = /^0x[0-9a-fA-F]{64}$/;
@@ -63,6 +63,31 @@ async function jsonResponse(response: Response): Promise<Record<string, unknown>
 }
 
 export async function fundOrder(args = process.argv.slice(2)) {
+  // Choosing a rule happens before funding; the order is the durable business intent.
+  if (args.includes("--create")) {
+    const capIndex = args.indexOf("--auto-pay-cap");
+    const maxPerClipAtomic = capIndex === -1 ? "1000000" : args[capIndex + 1];
+    if (!maxPerClipAtomic || !/^[1-9][0-9]*$/.test(maxPerClipAtomic) || BigInt(maxPerClipAtomic) > MAX_ATOMIC_USDC) {
+      throw new BuyerError("--auto-pay-cap requires positive integer micro-USDC within Int64.");
+    }
+    const enabled = !args.includes("--no-auto-pay");
+    args = args.filter((arg, index) => arg !== "--create" && arg !== "--no-auto-pay" && (capIndex === -1 || (index !== capIndex && index !== capIndex + 1)));
+    if (args.some(arg => arg !== "--cdp" && arg !== "--rail" && arg !== "base" && arg !== "solana")) {
+      throw new BuyerError("Usage: pnpm agent:fund --create [--no-auto-pay] [--auto-pay-cap micro-USDC] [--cdp] [--rail base|solana]");
+    }
+    const app = new URL(process.env.SKARL_APP_URL || "http://localhost:3000");
+    if (app.username || app.password || (app.protocol !== "https:" && !(app.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(app.hostname)))) {
+      throw new BuyerError("SKARL_APP_URL must use HTTPS, or HTTP on localhost.");
+    }
+    const created = await jsonResponse(await fetch(new URL("/api/orders", app), { method: "POST",
+      headers: { "Content-Type": "application/json" }, redirect: "error", signal: AbortSignal.timeout(20_000),
+      body: JSON.stringify({ autoPay: { enabled, maxPerClipAtomic, requireAllChecks: true } }) }));
+    if (typeof created.orderId !== "string" || !/^[a-zA-Z0-9_-]+$/.test(created.orderId)) throw new BuyerError("Order creation returned an invalid order ID.");
+    console.log(`Created ${created.orderId}; auto-pay ${enabled ? "on" : "off"}; cap ${maxPerClipAtomic} micro-USDC; all checks required.`);
+    args.push(created.orderId);
+  } else if (args.includes("--auto-pay-cap") || args.includes("--no-auto-pay")) {
+    throw new BuyerError("Choose the auto-pay rule with --create, or edit the existing order in buyer Review.");
+  }
   const railIndex = args.indexOf("--rail");
   if (railIndex !== -1) {
     const rail = args[railIndex + 1];

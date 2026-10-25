@@ -1,4 +1,4 @@
-# Controller dashboard API
+# Buyer Review API
 
 > **Sponsor surfaces:** what the dashboard must show for each sponsor track is in [dashboard-sponsor-surfaces.md](dashboard-sponsor-surfaces.md).
 
@@ -9,13 +9,30 @@
 
 Handoff for MatthewKim323. Snapshot queried with `pnpm exec convex run` on October 25, 2026 against **https://keen-marmot-986.convex.cloud**; no deployment performed. Examples below omit metadata and long evidence strings. Mutation success shapes are **source-derived, not live executions** unless stated otherwise.
 
+## Buyer-signed policy and Review
+
+Current source changes require operator deployment; dated live examples below do not establish that auto-pay has run. The product has a buyer and contributor. The buyer’s **Review** queue contains exceptions only: failed clip checks, duplicates, over-cap payouts and bank/chain mismatches. Keep the exact reason and supporting evidence visible. Legacy `controller` selectors and routes remain compatibility APIs.
+
+Orders store optional `autoPay: {enabled, maxPerClipAtomic, requireAllChecks: true, setBy, setAt}`. Amounts are Int64 internally and decimal integer strings over JSON. New buyer orders default to enabled with the cap equal to the per-clip price. An old order without `autoPay` stays manual; its buyer must explicitly enable it. Every set/change is audited.
+
+| Function | Arguments / behavior |
+| --- | --- |
+| `orders:createOrder` | Existing args plus optional `autoPay: {enabled:boolean,maxPerClipAtomic:string,requireAllChecks:true}`; buyer creates their own policy. |
+| `orders:setAutoPay` | `{demoIdentity,orderId,enabled,maxPerClipAtomic:string}`; order’s buyer updates/disables the rule. |
+| `exceptions:list` | `{demoIdentity,orderId}`; includes policy failure snapshots using the existing exception/disposition storage. Buyer access is scoped to their order. |
+| `review:reviewSubmission` | `{demoIdentity,submissionId,decision,reasonCode,note}`; buyer accepts/rejects/requests correction for an exception on their order. |
+| `finance:approve` | `{demoIdentity,intentId,reason?}`; buyer can approve their order’s payout exception. The agent and proposer remain forbidden. |
+| `finance:reject` | `{demoIdentity,intentId,reason}`; buyer rejects their order’s payout exception. |
+
+Internal `policy.evaluateSubmission` reuses `acceptAndPublishFor`; internal `policy.policyApproval` reuses the existing approval/Workflow path. No public argument selects `policy-engine` (`service:skarl:policy-engine`). The finance agent still proposes. Policy approval requires amount within cap, a distinct proposer, exact accepted-submission/payable binding, funded remaining capacity and verified contributor wallet. Failures go to Review with reasons. Set `PAYOUT_EXECUTOR=cdp_agent` through the operator workflow for automatic execution; the independent CDP wallet cap stays enforced. Only a reconciled transfer marks paid.
+
 ## Live state and identities
 
 - Default order: `kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg` (`skarl-red-cup-demo-v2`), funded **10 USDC**, accepted `0/4`; contributor rate **1.875 USDC**.
 - Funding is reconciled at [BaseScan](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757), Transfer log `18`. One funding journal, no reconciliation exceptions.
 - One stored submission, `mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j`, is a **synthetic verification-only upload**, not a licensed contributor sample. Real inference ran; all three criteria are `unobservable`, recommendation/pipeline `needs_review`. No accept-eligible submission exists. Never turn its evaluation projection into payment authority.
 - Payables, deliveries and payment approvals are empty. Four finance-agent runs exist: one completed read-only trial-balance call, two `gemini_timeout`, one `gemini_incomplete`; no money proposed. No live payout or approval-refusal example exists yet.
-- Pass `demoIdentity: "controller"` for dashboard reads, acceptance and approval; `"finance-agent"` for proposal and refusal demo. For unsigned calls with demo mode enabled, these remain impersonable demo selectors. Signed-in calls use their own membership and ignore this argument; see [authentication](#authentication). Exceptions below: funding service uses `"buyer"`; evaluation-run lookup uses `"contributor"`.
+- Use `demoIdentity: "buyer"` for the buyer’s own order Review. Legacy examples below use `demoIdentity: "controller"` for compatibility dashboard reads, acceptance and approval; `"finance-agent"` for proposal and refusal demo. For unsigned calls with demo mode enabled, these remain impersonable demo selectors. Signed-in calls use their own membership and ignore this argument; see [authentication](#authentication). Exceptions below: funding service uses `"buyer"`; evaluation-run lookup uses `"contributor"`.
 
 Source: [dashboard](../convex/dashboard.ts), [finance](../convex/finance.ts), [payments](../convex/payments.ts), [agent](../convex/financeAgent.ts), [agent runs](../convex/financeAgentData.ts), [statements](../convex/statements.ts), [submissions](../convex/submissions.ts).
 
@@ -40,8 +57,7 @@ review and refuse self-approval.
 Unsigned callers retain labeled demo identities by default. Setting
 `SKARL_DEMO_IDENTITIES=off` rejects anonymous role-gated calls, including existing
 unsigned scripts/mobile/MCP demo calls. With demo mode on, `/dashboard` visibly
-labels anonymous access “Demo identity”. Signed-in users without controller
-membership see “controller access required”. Real sign-in does not remove the
+labels anonymous access “Demo identity”. Buyer Review requires ownership of the selected order. Real sign-in does not remove the
 impersonable anonymous demo path while demo mode remains enabled.
 
 ## Exact arguments
@@ -76,22 +92,19 @@ The four service-secret functions have public Convex visibility but are **server
 
 Additional runtime constraints: `requestId` matches `[a-zA-Z0-9_-]{1,100}`, prompt is nonblank and at most 2,000 characters; replay requires the same order/prompt/requester. `evalRunId` matches `[A-Za-z0-9._:-]{1,64}`. `claimId` matches `[a-zA-Z0-9-]{16,80}` and is generated by the payout HTTP route.
 
-**Deployment/source drift:** `submissions:evaluationRun` and the extra `getReport` fields `verificationOnly`/`evalRunId` are deployed but absent from this worktree's current `submissions.ts`. Validators were read from the main checkout's `convex/submissions.ts:245` and verified live. Coordinate the backend merge; do not deploy this older worktree to restore them. Controller dashboards should use `dashboard:submissions`/`getReport`; `evaluationRun` is a contributor evaluation-harness lookup.
+**Deployment/source drift:** `submissions:evaluationRun` and the extra `getReport` fields `verificationOnly`/`evalRunId` are deployed but absent from this worktree's current `submissions.ts`. Validators were read from the main checkout's `convex/submissions.ts:245` and verified live. Coordinate the backend merge; do not deploy this older worktree to restore them. Review should use `dashboard:submissions`/`getReport`; `evaluationRun` is a contributor evaluation-harness lookup.
 
 ## Scenario lab — judge injections
 
-**Source handoff; deployment required.** Both endpoints require the persisted
-controller role and the selected order's organization. The existing
+**Source handoff; deployment required.** Both endpoints require the buyer’s ownership of the selected order or the legacy controller role and organization. The existing
 `demoIdentity` selector remains impersonable for unsigned callers while demo
-mode is enabled; signed-in callers use their own membership. Buyer, contributor
-and finance-agent principals cannot run scenarios or read the controller's lab
-history. Scenario artifacts are **SIMULATED CONTROL TEST — NO TRANSFER**; never
+mode is enabled; signed-in callers use their own membership. Contributor and finance-agent principals cannot run scenarios or read buyer lab history. Scenario artifacts are **SIMULATED CONTROL TEST — NO TRANSFER**; never
 render their synthetic chain hashes as evidence of a real transfer.
 
 | Function | Kind | Arguments and result |
 | --- | --- | --- |
-| `scenarios:run` | A | `{demoIdentity:"controller",scenario:ScenarioName,orderId?:Id<"orders">}` → one recorded `ScenarioRun` below. Call only from an explicit controller action. |
-| `scenarios:listRuns` | Q | `{demoIdentity:"controller",orderId?:Id<"orders">,limit?:number}` → newest-first `ScenarioRun[]`. `orderId` filters by source order. |
+| `scenarios:run` | A | `{demoIdentity:"buyer",scenario:ScenarioName,orderId?:Id<"orders">}` → one recorded `ScenarioRun` below. Call only from an explicit buyer action. |
+| `scenarios:listRuns` | Q | `{demoIdentity:"buyer",orderId?:Id<"orders">,limit?:number}` → newest-first `ScenarioRun[]`. `orderId` filters by source order. |
 
 ```ts
 type ScenarioName =
@@ -100,7 +113,9 @@ type ScenarioName =
   | "duplicate_submission"
   | "agent_self_approval"
   | "prompt_injection_narration"
-  | "bank_mismatch";
+  | "bank_mismatch"
+  | "over_cap_payout"
+  | "policy_auto_pay";
 
 type ScenarioRun = {
   scenario: ScenarioName;
@@ -129,18 +144,17 @@ accepted original for the duplicate scenario is a failed prerequisite; do not
 display it as a caught duplicate. Self-approval requires an existing
 finance-agent-authored payout proposal; the lab never fabricates an obligation
 or creates a real payout proposal.
-The lab does not grant a synthetic submission
-license, create an unlicensed payable, approve an intent, sign, or send funds.
+The six existing cases retain their controls. `over_cap_payout` uses an isolated above-cap intent and must leave it unapproved in buyer review. `policy_auto_pay` uses an isolated, labeled replay of an all-checks-pass licensed clip to exercise acceptance and approval as `policy-engine`, with audit evidence. `over_cap_payout` requires an existing accepted licensed inference clip/payable; `policy_auto_pay` requires a separate unaccepted licensed completed-inference clip with an all-agree jury. Missing prerequisites fail the run. These simulated policy cases do not establish live inference or payment. The lab never signs or sends funds.
 History defaults to 20 rows; `limit` must be an integer from 1 through 100.
 Omitting `orderId` from `run` selects `skarl-red-cup-demo-v2`; omitting it from
-`listRuns` returns controller-visible runs across the organization.
+`listRuns` returns authorized runs across the organization.
 
 ```tsx
 const runs = useQuery(api.scenarios.listRuns, {
   demoIdentity: "controller", orderId, limit: 20,
 });
 const runScenario = useAction(api.scenarios.run);
-// In an explicit controller click handler:
+// In an explicit buyer click handler:
 await runScenario({ demoIdentity: "controller", orderId,
   scenario: "wrong_amount_transfer" });
 ```
@@ -209,8 +223,7 @@ otherwise contradictory work. It never causes automatic rejection or acceptance.
 Already-stored historical reports keep their original validation contract.
 
 This is evidence of speaking fresh words, not a guarantee against real-time
-synthesis, edited audio or screen recapture. Human review remains the decision
-boundary. Local tests use synthetic transcripts and uploads; a Convex deployment
+synthesis, edited audio or screen recapture. The buyer-signed deterministic policy is the automatic decision boundary; failed checks require buyer review. Local tests use synthetic transcripts and uploads; a Convex deployment
 and physical-phone capture/transcription smoke test are still required.
 
 ## Return shapes and trimmed live examples
@@ -334,7 +347,7 @@ analysis cannot project an `accept` recommendation. Each witness has exactly
 is not a paid claim. These rows do not grant acceptance or payment authority.
 
 `agree` is specific to each witness's claim: audio means a stored transcription
-exists, a human decision means the controller recorded acceptance, and a bank
+exists, a human decision means the buyer or legacy controller recorded acceptance, and a bank
 row means simulated activity matches the payout bindings. Those are different
 claims; they do not all corroborate the filmed action. Keep the detail visible
 so a checked row cannot imply more than its source establishes.
@@ -354,7 +367,7 @@ witnesses into a single green fraud score. The list includes:
   show agreement with segment bounds; missing transcript stays missing, and
   invalid challenges, mismatched words or instruction-like narration disagree.
   This performs no new inference and does not establish speaker identity.
-- Judgment: deterministic recommendation, human controller decision, and related
+- Judgment: deterministic recommendation, buyer review decision, and related
   finance-agent proposals/refusals. A proposal is not approval or payment.
 - Money: payable, related ledger journals, observed payout transfers and the
   **simulated bank (Capital One Nessie mock)** witness.
@@ -386,7 +399,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
-export function useControllerData(submissionId?: Id<"submissions">) {
+export function useReviewData(submissionId?: Id<"submissions">) {
   const context = useQuery(api.dashboard.demoContext, { demoIdentity: "controller" });
   const args = context ? { demoIdentity: "controller", orderId: context.orderId } : "skip";
   const summary = useQuery(api.dashboard.orderSummary, args);
@@ -414,7 +427,7 @@ export function useControllerData(submissionId?: Id<"submissions">) {
 //   prompt: "Inspect this order and propose eligible payables; request independent approval." });
 ```
 
-Do not invoke the agent action during render. Keep one `requestId` per deliberate user request and reuse it on uncertain retries. Query errors throw to the nearest React error boundary; show a recoverable error state. Mutation refusals return successfully with `ok:false`; a `catch` alone misses them. The proposal requester must remain finance-agent if the same controller will approve.
+Do not invoke the agent action during render. Keep one `requestId` per deliberate user request and reuse it on uncertain retries. Query errors throw to the nearest React error boundary; show a recoverable error state. Mutation refusals return successfully with `ok:false`; a `catch` alone misses them. The proposal requester remains finance-agent; approval comes from the separate policy principal or an authorized buyer reviewing an exception.
 
 For the separate contributor evaluation view, until the backend merge regenerates `api.submissions.evaluationRun`:
 
@@ -433,8 +446,10 @@ export function useEvaluationRun(orderId: Id<"orders">, evalRunId: string) {
 
 ## Approval and browser signing
 
-1. Controller accepts eligible, licensed evidence; finance-agent proposes the payable.
-2. Controller calls `finance.approve` with the **paymentIntents document `_id`**, not the business `intentId: "payout:…"` string or command ID.
+The happy path uses the buyer-signed rule and CDP executor without a per-payout human click. The browser-wallet flow below remains a compatibility path; it is not required to demonstrate auto-pay.
+
+1. Deterministic policy accepts eligible, licensed evidence; finance-agent proposes the payable.
+2. Policy approves automatically within cap, or the buyer reviews the exception and calls `finance.approve` with the **paymentIntents document `_id`**, not the business `intentId: "payout:…"` string or command ID.
 3. Wait reactively for that payable's **`dispatchReady === true`**. Workflow queuing is asynchronous after approval.
 4. Pass the connected Coinbase Wallet/Smart Wallet EIP-1193 provider to `usePayout`. The wallet must be the configured treasury and on Base Sepolia. The hook switches/checks chain, claims stored terms, saves recovery and asks the wallet to sign the USDC ERC-20 transfer. No signing key enters the app/agent.
 5. Render `submitted` as submitted/reconciling; only reactive payable `status === "paid"` / confirmed reconciliation means paid. A timeout or closed wallet is not proof of failure.
@@ -530,8 +545,7 @@ selectors remain impersonable while demo mode is enabled.
 `{demoIdentity, submissionId, decision, reasonCode, note}`. `decision` is
 `accept | reject | request_correction`; `reasonCode` is a lowercase identifier
 matching `[a-z][a-z0-9_]{0,79}`, and `note` is nonblank, at most 4,000 characters.
-Only an independent human controller may review. The contributor, finance
-agent, conflicting memberships and other tenants are refused.
+The order’s buyer or a legacy independent human controller may review. The contributor, finance agent, conflicting memberships and other tenants are refused.
 
 A decision binds the current source, rubric and analysis evidence and is stored
 with an audit event. `accept` calls the same transactional acceptance helper as
@@ -582,6 +596,8 @@ controller approval, dispatch, signature or transfer. Continue with the refund-s
 
 ### Execute an approved buyer refund
 
+This is an optional legacy compatibility path, separate from contributor auto-pay; its retained controller approval API is not a step in the buyer/contributor happy path.
+
 Base-funded orders only; Solana funding does not yet support cancellation/refund.
 The original funding intent stays `confirmed`; refunds use its linked standalone
 `paymentCommands.kind="buyer_refund"` command. No new funding intent is created.
@@ -619,13 +635,12 @@ No live refund or wallet signature is claimed by the implementation tests.
 
 ### Reconciliation exceptions
 
-`exceptions.list({demoIdentity,orderId})` is a controller/finance-agent query.
+`exceptions.list({demoIdentity,orderId})` is available to the owning buyer and legacy controller/finance-agent principals. It includes policy-failure snapshots alongside reconciliation exceptions.
 It reuses `payments.reconciliation` and returns
 `[{exceptionKey,exception,stillDetected,disposition}]`. `exception` retains the
-existing `code`, `detail` and optional event/order/chain identities;
-`disposition` is null or the durable handling record.
+existing `code`, `detail` and optional event/order/chain identities. A policy item has `code: "policy_review"`, `failures: string[]`, and either `submissionId` or `intentId`; render each failure separately. Policy snapshots persist in the existing `reconciliationDispositions` table. `disposition` is null or the durable handling record.
 
-Controller-only mutations `exceptions.acknowledge` and `exceptions.resolve`
+Owning-buyer/legacy-controller mutations `exceptions.acknowledge` and `exceptions.resolve`
 take `{demoIdentity,orderId,exceptionKey,reason}` and return
 `{dispositionId,replayed}`. Obtain the key from `list`; a caller cannot invent an
 exception. Reasons must be nonblank and at most 2,000 characters. Exact retries
@@ -794,11 +809,9 @@ Primary references: [webhook signatures](https://docs.cdp.coinbase.com/webhooks/
 [subscription API](https://docs.cdp.coinbase.com/api-reference/v2/rest-api/webhooks/create-webhook-subscription),
 [SQL client authentication](https://docs.cdp.coinbase.com/data/sql-api/quickstart),
 and [SQL schema](https://docs.cdp.coinbase.com/data/sql-api/schema).
-### Optional CDP finance executor
+### CDP finance executor
 
-`PAYOUT_EXECUTOR=controller_wallet` remains the default. In the optional
-`cdp_agent` mode, independent controller approval and the existing durable
-workflow queue an internal `agentWallet.execute({intentId})` action. It claims
+Set `PAYOUT_EXECUTOR=cdp_agent` for the auto-pay happy path. The buyer-signed policy (or buyer exception approval) and existing durable Workflow queue an internal `agentWallet.execute({intentId})` action. It claims
 the stored payout once and submits the exact USDC transfer from the configured
 CDP account. The dashboard should not prompt for browser signing in this mode;
 deployment configuration must select the matching UI flow. The existing claim
@@ -834,7 +847,7 @@ existing chain observations, not invented settlement evidence.
 `scheduledJobs.finance` runs internally every **10 minutes** over changed accrued
 payables and current exceptions. It calls the existing bounded Gemini tool loop
 as finance-agent: reads evidence, proposes stored obligations and requests
-independent controller approval. It cannot approve or sign. The ordinary
+policy or buyer-review approval. It cannot approve or sign. The ordinary
 `financeAgentData` transcript/history queries expose these runs to the dashboard.
 Stable fingerprints and durable request IDs suppress unchanged repeat runs;
 interrupted pre-action reservations reuse the same request ID. A proposal may
@@ -994,7 +1007,7 @@ The transcript stays `[{call:{id,name,arguments},result}]`. Statuses remain
 `{ok:false,code:"tool_not_allowed"}` or `invalid_tool_arguments`; the Claude
 conversation receives those as error tool results. Approval tools are not
 advertised. Existing exact amount limits, proposal idempotency and independent
-controller approval are unchanged.
+separation of proposer from the policy/buyer approver remain enforced.
 
 New sanitized failure codes include `anthropic_key_missing`, `claude_refusal`,
 `claude_timeout`, `claude_http_<status>`, `claude_request_failed`,
@@ -1339,7 +1352,7 @@ checks the canonical receipt; `reconciliation.witnesses` retains the separate
 CDP SQL witness results. `reconciliation.matches[].amountAtomic` is serialized
 as a decimal integer string. A bank snapshot expires after five minutes.
 `bank_mismatch` items also appear in `exceptions.list` and use the existing
-controller acknowledgment/resolution APIs. Unmatched Treasury activity is
+buyer/legacy-controller acknowledgment/resolution APIs. Unmatched Treasury activity is
 explicitly Treasury-wide and is not assigned to an arbitrary order.
 
 A confirmed x402 funding intent produces a simulated Treasury deposit; an

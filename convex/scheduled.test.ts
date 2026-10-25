@@ -342,6 +342,9 @@ describe("changed-state scheduled finance agent", () => {
   it("checks current role and tenant before reserving or exposing snapshots", async () => {
     const f = await setup(); await payable(f);
     await expect(f.t.query(snapshots, { demoIdentity: "contributor", orderId: f.orderId })).rejects.toThrow("forbidden");
+    expect(await f.t.query(snapshots, {demoIdentity: "buyer", orderId: f.orderId})).toEqual(await f.t.query(snapshots, {demoIdentity: "controller", orderId: f.orderId}));
+    await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
+    await expect(f.t.query(snapshots, {demoIdentity: "buyer", orderId: f.orderId})).rejects.toThrow("order_not_owned");
     await f.t.run(async ctx => { const member = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", "demo:skarl:finance-agent")).unique(); await ctx.db.patch(member!._id, { status: "revoked" }); });
     await expect(f.t.action(finance, {})).rejects.toThrow("inactive_demo_identity");
     await expect(f.t.action(reconcile, {})).rejects.toThrow("inactive_demo_identity");

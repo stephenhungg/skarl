@@ -1,6 +1,6 @@
 # Sponsor track strategy and evidence
 
-Pitch: **Every claim has a witness. Skarl is the autonomous settlement desk for human-data companies.** Agents argue the case, deterministic code decides, and humans approve exceptions and every payout. See the [thesis and witness table](thesis.md) and [per-prize rubric mapping](devpost.md#prize-specific-evidence). The prize list on [Devpost](https://cal-hacks-13-0.devpost.com/) is authoritative. The deadline is October 25, 2026, 12:00 PM EDT (9:00 AM PDT).
+Pitch: **Every claim has a witness. Skarl is the autonomous settlement desk for human-data companies.** Agents propose, a rule the buyer signed approves, the AI never approves itself. Buyers review exceptions. See the [thesis and witness table](thesis.md) and [per-prize rubric mapping](devpost.md#prize-specific-evidence). The prize list on [Devpost](https://cal-hacks-13-0.devpost.com/) is authoritative. The deadline is October 25, 2026, 12:00 PM EDT (9:00 AM PDT).
 
 Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devnet test USDC** (confirmed at 03:29 PDT). Base remains primary and the only payout target; a live contributor payout is still pending. Repository docs and fixture tests are not evidence of a working sponsor integration.
 
@@ -19,7 +19,7 @@ Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devne
 
 ## Hyphenate
 
-Seats filled: **settlement accountant + AP clerk**. A human controller approves money movement.
+Seats filled: **settlement accountant + AP clerk**, performed by the agent and buyer-signed policy. Separation of duties is **agent proposer vs. buyer-signed policy approver vs. independent CDP cap**. The buyer is the only human reviewer; a separate controller is not required.
 
 The [official brief](https://docs.google.com/document/d/1u4iN8R97ILY3kfHTPKC82zdutHrGx4ze5eCAP-J92w4/edit) judges realism, whether the system could be hired, novelty, and a memorable catch, recovery or defended decision. It requires:
 
@@ -35,8 +35,9 @@ Our moment is the [demo](demo.md) opening:
 
 1. A re-encoded duplicate clip arrives.
 2. Its second payable is blocked.
-3. The controller sees the hash evidence.
+3. The buyer sees the hash evidence in Review.
 4. The finance agent proposes the payout but cannot approve its own proposal.
+5. The buyer-signed rule approves eligible, within-cap work; over-cap or failed checks go to buyer review. The CDP wallet cap independently guards execution.
 
 ## Coinbase: Best Use of x402
 
@@ -50,7 +51,7 @@ $500 USDC plus a recruiter call per eligible team member, per track. There are t
 **What we build:** see [payments](payments.md#where-coinbase-for-agents-fits).
 
 - **x402 funding:** production uses the authenticated CDP facilitator. A 0.01-test-USDC payment settled through CDP and its real signed webhook was processed and reconciled; see [the trace](status.md#confirmed-webhook-delivery-and-cdp-settlement--0254-pdt). The earlier 10-USDC v2 funding used x402.org. These CLI payments are not evidence of Wallet MCP execution. The reusable [plugin](wallet-mcp-plugin/skarl.md) prepares `initiate_x402_request` / `complete_x402_request` with a `maxPayment` cap and human approval.
-- **Payouts and policy:** the default controller-wallet / Wallet MCP `send` adapter executes only a stored independently approved intent. The optional CDP executor has a live 2-USDC cap and recipient allowlist, with real over-cap/non-allowlisted `403 policy_violation` results. A licensed submission and payable are still missing, so **no contributor payout is claimed**. [Policy evidence](status.md#live-retry-after-recovery-deployment--october-25-2026-0305-pdt).
+- **Payouts and policy:** the buyer-signed policy approves only a stored, bound intent within the buyer’s cap. With `PAYOUT_EXECUTOR=cdp_agent`, the existing CDP executor sends that approved intent and has a live 2-USDC cap and recipient allowlist, with real over-cap/non-allowlisted `403 policy_violation` results. A licensed submission and payable are still missing, so **no contributor payout is claimed**. [Policy evidence](status.md#live-retry-after-recovery-deployment--october-25-2026-0305-pdt).
 - **Coinbase MCP (retail):** separate from Wallet MCP and outside this demo path. The previously cited 5 USDC limit is unverified in the current documentation; do not present it as a guaranteed product limit.
 
 **Evidence mapped to Payment Agents judging:**
@@ -87,7 +88,7 @@ Record each member's answer before submitting. An ineligible member does not cha
 
 ## Convex
 
-All orders, reports, decisions, payables, approvals and journals live in Convex. Show live propagation between the contributor and controller views, a duplicate event rejected inside a mutation, and an atomic acceptance + payable + journal write.
+All orders, reports, decisions, payables, approvals and journals live in Convex. Show live propagation between the contributor and buyer Review views, a duplicate event rejected inside a mutation, and an atomic acceptance + payable + journal write.
 
 Convex judges ask for real features ("live queries and components"), so the approval wait uses Convex Workflow. [Mutations](https://docs.convex.dev/functions/mutation-functions), [Workflow](https://www.convex.dev/components/workflow)
 

@@ -44,8 +44,8 @@ Task 1 implements `finance.acceptAndPublish`, `finance.proposePayment`, `finance
 | Analysis action (Convex) | System | Two Gemini calls; validate the canonical report; reject a mismatched source hash; duplicate hash routes to review. (Worker claim/heartbeat/completion routes are deferred.) |
 | `reviews.decide` | Authorized reviewer | Evidence and immutable rubric; atomic remaining-budget check. |
 | Delivery publication | Buyer-authorized backend | Publish actual licensed manifest; attach recognition event. |
-| `payments.propose/approve` | Agent / independent controller | Known payables, recipient, amount, policy version, approval expiry. The proposer can never approve. |
-| Payment execute/reconcile | Controller wallet or Wallet MCP `send`; payment route | Approved intent only; immutable attempts; unique `(network, txHash, logIndex)` observations. |
+| `payments.propose/approve` | Agent proposer / buyer-signed policy or buyer exception reviewer | Known payables, recipient, amount, policy version, approval expiry. The proposer can never approve. |
+| Payment execute/reconcile | CDP executor under independent wallet cap; legacy Wallet/MCP signing and payment route | Approved intent only; immutable attempts; unique `(network, txHash, logIndex)` observations. |
 
 Demo auth uses seeded identities whose memberships are checked by the backend. The deferred worker/payment HMAC gateway specification is in [security](security.md); it is not implemented.
 

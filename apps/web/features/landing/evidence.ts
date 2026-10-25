@@ -67,7 +67,7 @@ export const PROOF_NEXT: ProofRow[] = [
   },
   {
     date: "next",
-    title: "Controller-approved payout reconciled by transaction hash",
+    title: "Policy-approved payout reconciled by transaction hash",
     summary: "One contributor payout on Base Sepolia, matched against our ledger before it shows as paid.",
     status: "PLANNED",
     href: "https://github.com/stephenhungg/skarl/blob/main/docs/payments.md",
@@ -85,7 +85,7 @@ export const ROLES: RoleTile[] = [
   { role: "Contributor", icon: "camera", can: "Records clips and sees feedback on each one", cannot: "Isn't shown pay as cash until a transfer confirms", href: `${DOC}product.md` },
   { role: "Verifier", icon: "eye", can: "Points to evidence inside each clip", cannot: "Can't approve or pay anything", href: `${DOC}ai-verification.md` },
   { role: "Finance agent", icon: "ledger", can: "Drafts payouts and refunds", cannot: "Can't approve its own drafts", href: `${DOC}finance-agent.md` },
-  { role: "Controller", icon: "stamp", can: "Approves every payout", cannot: "Can't approve a request they made", href: `${DOC}security.md` },
+  { role: "Buyer-signed policy", icon: "stamp", can: "Approves within the buyer’s cap", cannot: "Can’t approve failed checks or over-cap payouts", href: `${DOC}security.md` },
 ];
 
 export const ROLE_INVARIANTS: string[] = [
@@ -168,12 +168,12 @@ export const MONEY_STEPS: MoneyStep[] = [
   },
   {
     id: "approve",
-    title: "Agent proposes, controller approves",
+    title: "Agent proposes, buyer-signed rule approves",
     detail: "A finance agent drafts each payout and a person on our team approves it, since agents have no way to approve their own requests.",
     journals: [],
     note: "Approving does not move money, so a payment stays open until its transfer confirms.",
     journalStatus: "SIMULATED",
-    transfer: { label: "Contributor payout", amountMicro: RATE, status: "PLANNED", detail: "Proposed by an agent and approved by a controller, waiting on transfer", txHref: null },
+    transfer: { label: "Contributor payout", amountMicro: RATE, status: "PLANNED", detail: "Proposed by an agent and approved by the buyer-signed policy, waiting on transfer", txHref: null },
   },
   {
     id: "payout",

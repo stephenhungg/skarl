@@ -71,7 +71,7 @@ function PayableCard({ payable, audit, matches }: { payable: PayableRow; audit: 
           ))}
         </ol>
         {payable.approval && (
-          <p className="type-body-sm text-text-2">Approval {humanize(payable.approval.status).toLowerCase()} by an independent controller. Expires {formatTime(payable.approval.expiresAt)}. The amount and recipient are bound to it; any change voids it.</p>
+          <p className="type-body-sm text-text-2">Approval {humanize(payable.approval.status).toLowerCase()} under the buyer’s rule or by buyer review. Expires {formatTime(payable.approval.expiresAt)}. The amount and recipient are bound to it; any change voids it.</p>
         )}
         {refusals.map(event => (
           <div key={event._id} className="flex items-start gap-3 rounded-panel border border-fail bg-fail-tint px-3 py-2">
@@ -110,6 +110,7 @@ function useInjectedWallet(): EIP1193Provider | null {
 function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   const propose = useMutation(api.finance.proposePayment);
   const approve = useMutation(api.finance.approve);
+  const reject = useMutation(api.finance.reject);
   const provider = useInjectedWallet();
   const payout = usePayout({ demoIdentity: CONTROLLER, provider });
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -140,12 +141,12 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   </>;
   else if (step === 1 && intentId) buttons = <>
     <Button variant="secondary" size="sm" className="me-auto" disabled={busy}
-      onClick={() => act(() => approve({ demoIdentity: FINANCE_AGENT, intentId }), "Unexpected: the agent approval went through.", "Agent approval refused")}>Let the agent approve</Button>
+      onClick={() => act(() => reject({ demoIdentity: CONTROLLER, intentId, reason: "Buyer rejected the payout exception." }), "Payout rejected.")}>Reject payout</Button>
     <Button size="sm" disabled={busy} onClick={() => setConfirming(true)}>Approve payout</Button>
     <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Approve this payout?" actionLabel="Approve payout"
-      description="Your approval binds this exact amount, recipient and network. Any change voids it. Signing in the wallet is a separate step."
+      description="Your approval binds this exact amount, recipient and network. Any change voids it. The configured executor sends it after workflow validation."
       onConfirm={async () => {
-        const result = await act(() => approve({ demoIdentity: CONTROLLER, intentId }), "Approved. Waiting for the workflow to release it for signing.", "Approval refused");
+        const result = await act(() => approve({ demoIdentity: CONTROLLER, intentId }), "Approved. Waiting for the workflow and executor.", "Approval refused");
         if (!result.ok) throw new Error(`Refused: ${humanize(result.code ?? "refused")}.`);
       }}>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 type-body-sm">
@@ -156,9 +157,9 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
     </ConfirmDialog>
   </>;
   else if (step === 2 && payable.intent) buttons = <>
-    <span className="me-auto type-label-sm text-text-3">{payable.dispatchReady ? (provider ? "Ready. Your wallet will show the same amount and recipient." : "Connect Coinbase Wallet in this browser to sign.") : "Approved. Waiting for the workflow to release it."}</span>
+    <span className="me-auto type-label-sm text-text-3">{payable.dispatchReady ? (provider ? "Approved for the configured executor; manual wallet recovery is also available." : "Approved for the configured executor.") : "Approved. Waiting for the workflow to release it."}</span>
     <Button size="sm" disabled={!payable.dispatchReady || !provider || payout.busy}
-      onClick={() => payout.execute(payable.intent!.intentId).catch(() => undefined)}>{payout.busy ? humanize(payout.status) : "Sign payout"}</Button>
+      onClick={() => payout.execute(payable.intent!.intentId).catch(() => undefined)}>{payout.busy ? humanize(payout.status) : "Manual wallet recovery"}</Button>
   </>;
   else if (step === 3 && payable.intent) buttons = <>
     <span className="me-auto type-label-sm text-text-3">Submitted. Waiting for confirmations. A timeout is not a failure, so nothing is resent.</span>

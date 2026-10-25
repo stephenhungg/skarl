@@ -3,7 +3,7 @@ import { internalMutation, internalQuery, query, type MutationCtx, type QueryCtx
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
-import { audit, canonical, digest, requireTenant } from "./lib/finance";
+import { audit, canonical, digest, requireBuyerOrder, requireTenant } from "./lib/finance";
 
 export const RECONCILIATION_INTERVAL_MS = 120_000;
 export const FINANCE_INTERVAL_MS = 600_000;
@@ -196,13 +196,13 @@ export const finishFinance = internalMutation({
       lastErrorCode: args.errorCode, updatedAt: Date.now() });
   },
 });
-/** Operational snapshots for controller/agent dashboards, never settlement authority. */
+/** Operational snapshots for buyer Review and legacy dashboards, never settlement authority. */
 export const snapshots = query({
   args: { demoIdentity: v.string(), orderId: v.id("orders") },
   handler: async (ctx, args): Promise<ScheduledSnapshot[]> => {
-    const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]), order = await ctx.db.get(args.orderId);
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]), order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
-    requireTenant(principal, order);
+    requireBuyerOrder(principal, order);
     const rows = await ctx.db.query("scheduledCheckpoints").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
     return rows.map(({ payloadJson, ...row }) => ({ ...row, snapshot: payloadJson ? JSON.parse(payloadJson) : null }));
   },

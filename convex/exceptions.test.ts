@@ -16,7 +16,7 @@ async function setup() {
 
 describe("reconciliation queue annotations", () => {
   it("acknowledges and resolves idempotently without changing evidence or concealing a live exception", async () => {
-    const f = await setup(), scope = { demoIdentity: "controller", orderId: f.orderId };
+    const f = await setup(), scope = { demoIdentity: "buyer", orderId: f.orderId };
     const list = await f.t.query(api.exceptions.list, scope);
     expect(list).toHaveLength(1); expect(list[0].exception.code).toBe("missing_transfer");
     const before = await f.t.run(async ctx => ({ journals: await ctx.db.query("journalEntries").collect(),
@@ -40,9 +40,12 @@ describe("reconciliation queue annotations", () => {
     const f = await setup(), scope = { demoIdentity: "controller", orderId: f.orderId };
     const exceptionKey = (await f.t.query(api.exceptions.list, scope))[0].exceptionKey;
     const args = { ...scope, exceptionKey, reason: "Investigated" };
-    for (const demoIdentity of ["buyer", "contributor", "finance-agent"]) {
+    for (const demoIdentity of ["contributor", "finance-agent"]) {
       await expect(f.t.mutation(api.exceptions[name], { ...args, demoIdentity })).rejects.toThrow();
     }
+    await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
+    await expect(f.t.query(api.exceptions.list, {...scope, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
+    await expect(f.t.mutation(api.exceptions[name], {...args, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
     await expect(f.t.mutation(api.exceptions[name], { ...args, reason: "  " })).rejects.toThrow("invalid_exception_disposition");
     await expect(f.t.mutation(api.exceptions[name], { ...args, exceptionKey: "0".repeat(64) })).rejects.toThrow("exception_not_found");
     await f.t.run(async ctx => {

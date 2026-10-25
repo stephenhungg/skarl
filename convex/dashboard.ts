@@ -8,7 +8,7 @@ import { accountBalance, ACCOUNTS, type Account } from "../packages/ledger/src/i
 
 const args = { demoIdentity: v.string(), orderId: v.id("orders") };
 async function access(ctx: QueryCtx, identity: string, orderId: Id<"orders">, financeOnly = false) {
-  const principal = await requireRole(ctx, identity, financeOnly ? ["controller", "finance-agent"] : ["buyer", "contributor", "controller", "finance-agent"]);
+  const principal = await requireRole(ctx, identity, financeOnly ? ["buyer", "controller", "finance-agent"] : ["buyer", "contributor", "controller", "finance-agent"]);
   const order = await ctx.db.get(orderId);
   if (!order) throw new Error("order_not_found");
   requireTenant(principal, order);
@@ -28,6 +28,7 @@ export const orderSummary = query({
     const rubric = order.taskVersionId ? await ctx.db.get(order.taskVersionId) : null;
     if (rubric && (rubric.organizationId !== order.organizationId || rubric.orderId !== order._id)) throw new Error("cross_organization_reference");
     return { order: { ...order, quantityRequested: order.quantityRequested.toString(), acceptedCount: order.acceptedCount.toString(),
+      autoPay: order.autoPay ? { ...order.autoPay, maxPerClipAtomic: order.autoPay.maxPerClipAtomic.toString() } : undefined,
       pricePerSampleAtomic: order.pricePerSampleAtomic.toString(), contributorRateAtomic: order.contributorRateAtomic.toString(), budgetAtomic: order.budgetAtomic.toString() },
       rubric, balances, demoOnly: true, realFundingRequired: order.status === "awaiting_funding" };
   },
@@ -38,7 +39,7 @@ export const submissions = query({
   handler: async (ctx, input) => {
     const { principal, order } = await access(ctx, input.demoIdentity, input.orderId);
     const all = await ctx.db.query("submissions").withIndex("by_order_status", q => q.eq("orderId", order._id)).collect();
-    const controllerView = principal.roles.includes("controller") || principal.roles.includes("finance-agent");
+    const controllerView = principal.roles.includes("controller") || principal.roles.includes("finance-agent") || principal.roles.includes("buyer");
     const visible = all.filter(submission => controllerView || submission.contributorTokenIdentifier === principal.tokenIdentifier ||
       (principal.roles.includes("buyer") && submission.status === "accepted"));
     return Promise.all(visible.map(async submission => {
@@ -59,7 +60,7 @@ export const payables = query({
   handler: async (ctx, input) => {
     const { principal, order } = await access(ctx, input.demoIdentity, input.orderId);
     const all = await ctx.db.query("payables").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
-    const controllerView = principal.roles.includes("controller") || principal.roles.includes("finance-agent");
+    const controllerView = principal.roles.includes("controller") || principal.roles.includes("finance-agent") || principal.roles.includes("buyer");
     const visible = all.filter(payable => controllerView || payable.contributorTokenIdentifier === principal.tokenIdentifier);
     return Promise.all(visible.map(async payable => {
       const intent = await ctx.db.query("paymentIntents").withIndex("by_payable", q => q.eq("payableId", payable._id)).unique();
@@ -112,8 +113,13 @@ export const demoContext = query({
   args: { demoIdentity: v.string() },
   handler: async (ctx, input) => {
     const principal = await requireRole(ctx, input.demoIdentity, ["buyer", "contributor", "controller", "finance-agent"]);
-    const order = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique()
+    let order = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique()
       ?? await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v1")).unique();
+    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && !principal.roles.includes("finance-agent") &&
+      order?.buyerTokenIdentifier !== principal.tokenIdentifier) {
+      order = await ctx.db.query("orders").withIndex("by_org_buyer", q =>
+        q.eq("organizationId", principal.organizationId).eq("buyerTokenIdentifier", principal.tokenIdentifier)).order("desc").first();
+    }
     if (!order) return null;
     requireTenant(principal, order);
     return { organizationId: order.organizationId, orderId: order._id, taskVersionId: order.taskVersionId,

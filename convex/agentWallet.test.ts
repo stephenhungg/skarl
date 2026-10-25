@@ -7,6 +7,7 @@ import { PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/con
 import { createFundingJournal, createFulfillmentJournal } from "../packages/ledger/src/index";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { requirePolicyService } from "./lib/serviceAuth";
 import { recordJournal } from "./lib/finance";
 import schema from "./schema";
 
@@ -104,6 +105,21 @@ function receipt(amount = AMOUNT) {
 }
 
 describe("policy-bound CDP executor (simulated CDP and chain)", () => {
+  it("consumes a policy-service approval with demo selectors disabled and still requires chain observation to mark paid", async () => {
+    const f = await fixture();
+    // Synthetic downstream approval fixture. policy.test.ts separately tests the buyer cap and evidence gates.
+    await f.t.run(async ctx => {
+      const policy = await requirePolicyService(ctx, f.organizationId);
+      const command = (await ctx.db.get(f.paymentCommandId))!;
+      await ctx.db.patch(command.approvalId!, { approverTokenIdentifier: policy.tokenIdentifier });
+    });
+    vi.stubEnv("SKARL_DEMO_IDENTITIES", "off");
+    expect(await f.t.action(execute, f.args)).toMatchObject({ status: "submitted", txHash: TX_HASH });
+    expect(mocks.sendTransaction).toHaveBeenCalledOnce();
+    expect((await f.snapshot()).payable?.status).toBe("payout_in_progress");
+    expect((await f.snapshot()).observations).toHaveLength(0);
+  });
+
   it.each([undefined, "controller_wallet"])("stays disabled with flag %s and never claims", async flag => {
     const f = await fixture();
     vi.stubEnv("PAYOUT_EXECUTOR", flag);

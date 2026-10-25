@@ -362,3 +362,12 @@ describe("action authentication propagation", () => {
     expect(state.approvals).toEqual([]);
   });
 });
+
+it("never exposes the internal policy-engine role through self-service onboarding", async () => {
+  const f = await setup(), buyer = await user(f.t, "buyer-policy@example.test");
+  await buyer.signedIn.mutation(memberships.claimRole, { role: "buyer" });
+  await expect(buyer.signedIn.mutation(memberships.claimRole, { role: "policy-engine" as never })).rejects.toThrow();
+  expect((await buyer.signedIn.query(memberships.me, {})).roles).toEqual(["buyer"]);
+  expect(await f.t.run(ctx => ctx.db.query("memberships").withIndex("by_token_identifier", q =>
+    q.eq("tokenIdentifier", "service:skarl:policy-engine")).unique())).toBeNull();
+});

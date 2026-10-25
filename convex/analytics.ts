@@ -30,7 +30,7 @@ async function dataset(ctx: QueryCtx, input: { demoIdentity: string; orderId?: I
   const entities = new Set<string>([...scope.orderIds, ...data.submissions.map(row => row._id), ...data.payables.map(row => row._id),
     ...data.intents.map(row => row._id), ...data.runs.map(row => row._id)]);
   const audits = (await ctx.db.query("auditEvents").withIndex("by_org_time", q => q.eq("organizationId", scope.principal.organizationId)).collect())
-    .filter(row => !input.orderId || entities.has(row.entityId));
+    .filter(row => (!input.orderId && !scope.principal.roles.includes("buyer")) || entities.has(row.entityId));
   const analyses = (await Promise.all(data.submissions.map(async submission => {
     const rows = await ctx.db.query("analysisResults").withIndex("by_submission", q => q.eq("submissionId", submission._id)).collect();
     if (rows.some(row => row.organizationId !== scope.principal.organizationId)) throw new Error("cross_organization_reference");

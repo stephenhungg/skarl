@@ -44,9 +44,9 @@ async function setup() {
 }
 
 describe("private evidence queries (synthetic storage only)", () => {
-  it("returns bound clip/frame URLs and timestamped transcript to controller and owner", async () => {
+  it("returns bound clip/frame URLs and timestamped transcript to the owning buyer, contributor and legacy controller", async () => {
     const f = await setup();
-    for (const demoIdentity of ["controller", "contributor"]) {
+    for (const demoIdentity of ["buyer", "controller", "contributor"]) {
       const result = await f.t.query(submissionEvidence, { demoIdentity, submissionId: f.submissionId });
       expect(result.clip.url).toMatch(/^https?:/);
       expect(result.frames).toHaveLength(1);
@@ -54,10 +54,13 @@ describe("private evidence queries (synthetic storage only)", () => {
       expect(result.frames[0].url).toMatch(/^https?:/);
       expect(result.transcriptSegments).toEqual([{ startMs: 1000, endMs: 2000, text: "Synthetic narration." }]);
     }
-    for (const demoIdentity of ["buyer", "finance-agent", "unknown"]) {
+    for (const demoIdentity of ["finance-agent", "unknown"]) {
       await expect(f.t.query(submissionEvidence, { demoIdentity, submissionId: f.submissionId })).rejects.toThrow();
     }
     await expect(f.t.query(submissionEvidence, { demoIdentity: "contributor", submissionId: f.matchingSubmissionId })).rejects.toThrow("submission_not_owned");
+    await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
+    await expect(f.t.query(submissionEvidence, {demoIdentity: "buyer", submissionId: f.submissionId})).rejects.toThrow("submission_not_owned");
+    await expect(f.t.query(duplicatePair, {demoIdentity: "buyer", submissionId: f.submissionId, matchingSubmissionId: f.matchingSubmissionId})).rejects.toThrow("submission_not_owned");
   });
 
   it("checks both duplicate submissions before returning either side", async () => {

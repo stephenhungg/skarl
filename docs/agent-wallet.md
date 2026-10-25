@@ -1,9 +1,8 @@
 # Policy-bound finance agent wallet
 
-This optional executor uses `@coinbase/cdp-sdk` **1.60.0** and `viem`
-**2.57.11**. Base Sepolia test USDC is the only payment asset. The default
-`PAYOUT_EXECUTOR=controller_wallet` retains controller browser signing.
-`PAYOUT_EXECUTOR=cdp_agent` lets a Convex Node action submit an already approved
+The auto-pay executor uses `@coinbase/cdp-sdk` **1.60.0** and `viem`
+**2.57.11**. Base Sepolia test USDC is the only payment asset. Set `PAYOUT_EXECUTOR=cdp_agent` for the buyer-signed auto-pay path. The legacy
+`controller_wallet` mode retains browser signing for compatibility. `cdp_agent` lets a Convex Node action submit an already approved
 intent through the CDP Server Wallet v2 account named `skarl-finance-agent`.
 The agent cannot propose its own approval or supply new payment terms.
 
@@ -14,8 +13,7 @@ captured. Keep the default until the deployment operator verifies this path.
 ## Approval, execution and recovery
 
 1. Existing `finance.proposePayment` binds the payable, exact micro-USDC amount,
-   recipient, source version and expiry. An independent controller approves
-   through `finance.approve`.
+   recipient, source version and expiry. The internal `policy-engine` approves through the shared `finance.approve` logic only when the buyer’s signed rule passes. Failed checks go to buyer Review; the agent cannot approve even when the rule would pass.
 2. The approval workflow validates the stored approval and creates its existing
    dispatch outbox row. With `cdp_agent` enabled, it schedules
    `agentWallet.execute({intentId})`; the argument contains no destination or
@@ -78,7 +76,7 @@ addresses or accept a command-line allowlist. This is a snapshot: rerun policy
 setup after approved contributor changes. The executor also checks the current
 Convex allowlist before claiming each payout.
 
-Contributor registration uses the controller-gated `contributorWallet:challenge`
+Contributors can register their own wallet with `contributorWallet:challenge` and `contributorWallet:verify` using `demoIdentity:"contributor"` (or their signed-in contributor membership). They cannot register another contributor’s wallet. The legacy operator registration path also uses `contributorWallet:challenge`
 mutation with `{demoIdentity:"controller",contributorTokenIdentifier:"demo:skarl:contributor",walletAddress}`.
 Sign its returned `message` with that contributor's wallet using EIP-191
 `signMessage`, then call `contributorWallet:verify` with the same identity fields,
@@ -151,12 +149,12 @@ await cdp.evm.requestFaucet({ address: account.address, network: "base-sepolia",
 await cdp.evm.requestFaucet({ address: account.address, network: "base-sepolia", token: "usdc" });
 ```
 
-Alternatively, the controller can approve a small testnet float from their own
+Alternatively, an operator can approve a small testnet float from their own
 Coinbase Wallet via Wallet MCP `send`, with `recipient` equal to the printed
 agent address, `asset` equal to canonical `USDC_ADDRESS`, `decimals: 6`,
-`chain: "base-sepolia"` and the controller-chosen exact decimal `amount`.
+`chain: "base-sepolia"` and the operator-chosen exact decimal `amount`.
 Show the MCP approval link and wait for the human's approval; do not move the
-controller's funds automatically. Record the float separately from payout
+operator’s funds automatically. Record the float separately from payout
 settlement evidence. The executor does not reconcile treasury-float funding.
 Never fund `skarl-policy-probe`.
 
@@ -183,7 +181,7 @@ unfunded, unsponsored probe prevents an unexpectedly accepted request from
 moving funds. These are live policy rejection checks on the probe, not rejected
 payments from the finance account.
 
-Finally, with an existing controller-approved intent ID, it invokes the Convex
+Finally, with an existing policy- or buyer-approved intent ID, it invokes the Convex
 executor and reconciliation. It prints the actual returned status and hash.
 It never sends a valid transfer directly from the CLI and never creates an
 approval. Omitting the ID runs only negative checks and exits 2. Exit 0 requires

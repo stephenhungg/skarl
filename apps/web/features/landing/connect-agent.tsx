@@ -15,7 +15,7 @@ const UNIVERSAL_PROMPT = `Connect yourself to Skarl, a marketplace for verified 
 2. Read https://keen-marmot-986.convex.site/llms.txt and call the skarl_about tool.
 3. Show me the open tasks and what each one pays.
 
-Rules: ask me before creating an order or paying anything; payments use x402 (test USDC on Base Sepolia). You can propose and pay, but only humans approve payouts.`;
+Rules: ask me before creating an order or paying anything; payments use x402 (test USDC on Base Sepolia). Agents propose; a rule the buyer signed approves eligible payouts, and the buyer reviews exceptions. The AI never approves itself.`;
 const CLIENTS = [
   {
     id: "claude-code", label: "Claude Code", heading: "Run once in your terminal.",

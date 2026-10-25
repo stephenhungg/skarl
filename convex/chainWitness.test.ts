@@ -155,9 +155,14 @@ describe("CDP witness projections", () => {
     expect(await f.t.run(ctx => ctx.db.query("journalEntries").collect())).toHaveLength(1);
   });
 
-  it("requires controller/finance-agent access and refuses foreign-tenant orders", async () => {
+  it("lets the owning buyer inspect chain witnesses while refusing contributors, other buyers and tenants", async () => {
     const f = await setup();
-    for (const demoIdentity of ["buyer", "contributor"]) {
+    expect(await f.t.query(ref("reconciliationWithWitness"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("reconciliationWithWitness"), f.scope));
+    expect(await f.t.query(ref("webhookExceptions"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("webhookExceptions"), f.scope));
+    await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
+    await expect(f.t.query(ref("reconciliationWithWitness"), {...f.scope, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
+    await expect(f.t.query(ref("webhookExceptions"), {...f.scope, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
+    for (const demoIdentity of ["contributor"]) {
       await expect(f.t.query(ref("reconciliationWithWitness"), { ...f.scope, demoIdentity })).rejects.toThrow("forbidden");
       await expect(f.t.query(ref("webhookExceptions"), { ...f.scope, demoIdentity })).rejects.toThrow("forbidden");
     }

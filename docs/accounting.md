@@ -46,7 +46,7 @@ Core invariants:
 7. Cancellations reserve only unfulfilled value. They cannot erase already earned contributor compensation.
 8. A payable is discharged only by its approved, confirmed transfer or an authorized accounting correction.
 9. Approval binds the exact recipient, token address, amount, chain ID, obligation reference, and proposal version.
-10. The agent requesting a payment cannot approve it or hold the controller's signing authority.
+10. The agent requesting a payment cannot approve it or hold settlement signing authority.
 
 Store money in `bigint` micro-units with `v.int64()` validators. Convert to decimal strings at ordinary JSON boundaries. Do not round input or calculate monetary totals using JavaScript floating-point dollars. [Convex data types](https://docs.convex.dev/database/types)
 
@@ -112,7 +112,7 @@ query. No statement query posts, adjusts or reverses a journal.
 
 ## Standalone evidence sales to the operator revenue wallet
 
-Evidence purchases use `SKARL_EVIDENCE_PAYTO`, separate from the controller treasury
+Evidence purchases use `SKARL_EVIDENCE_PAYTO`, separate from the funding/payout treasury
 used for collection-order funding. A receipt does not increase the original
 order's funded quota, customer prepayment balance, or contributor payable.
 The sale retains its source order/sample for traceability, and the journal stores

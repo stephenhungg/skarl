@@ -432,7 +432,7 @@ describe("demo finance mutations against isolated Convex state", () => {
   it.each(["wrong-role", "inactive", "finance-agent"] as const)("does not accept a recorded %s reviewer as human approval", async (kind) => {
     const fixture = await setup();
     const submissionId = await submission(fixture, { unavailableAnalysis: true });
-    let reviewerTokenIdentifier = "demo:skarl:buyer";
+    let reviewerTokenIdentifier = "demo:skarl:contributor";
     if (kind === "inactive") {
       reviewerTokenIdentifier = "demo:skarl:inactive-reviewer";
       await fixture.t.run((ctx) => ctx.db.insert("memberships", {
@@ -687,9 +687,9 @@ describe("demo finance mutations against isolated Convex state", () => {
     expect(state.entries).toHaveLength(2);
   });
 
-  it("serves dashboard financial projections as exact decimal strings and limits buyer visibility", async () => {
+  it("serves exact financial projections and lets the owning buyer review pending exceptions", async () => {
     const fixture = await acceptedFixture();
-    await submission(fixture); // Pending input must not appear in the buyer's licensed dataset.
+    await submission(fixture); // Review exposes pending work; licensed delivery APIs still gate dataset access.
     const args = { demoIdentity: "controller", orderId: fixture.orderId };
     const summary = await fixture.t.query(api.dashboard.orderSummary, args);
     expect(summary.order).toMatchObject({ acceptedCount: "1", quantityRequested: "10", budgetAtomic: "100000000" });
@@ -703,9 +703,9 @@ describe("demo finance mutations against isolated Convex state", () => {
     ]);
     for (const result of [summary, ...results]) expect(() => JSON.stringify(result)).not.toThrow();
     const buyerClips = await fixture.t.query(api.dashboard.submissions, { demoIdentity: "buyer", orderId: fixture.orderId });
-    expect(buyerClips).toHaveLength(1);
-    expect(buyerClips[0]?._id).toBe(fixture.submissionId);
+    expect(buyerClips).toHaveLength(2);
+    expect(buyerClips.some(row => row._id === fixture.submissionId)).toBe(true);
     const buyerPayables = await fixture.t.query(api.dashboard.payables, { demoIdentity: "buyer", orderId: fixture.orderId });
-    expect(buyerPayables).toHaveLength(0);
+    expect(buyerPayables).toHaveLength(1);
   });
 });

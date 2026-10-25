@@ -180,19 +180,21 @@ describe("private sensor attachment", () => {
     const evidence = await f.t.query(api.media.submissionEvidence, { demoIdentity: "controller", submissionId: f.submissionId });
     expect(evidence.sensorTrace?.motionSummary).toEqual(legacySummary);
   });
-  it("reads stored JSON, attaches once, exposes bounded evidence to owner/controller, and never accepts or pays", async () => {
+  it("reads stored JSON, attaches once, exposes bounded evidence to the owning buyer/contributor and legacy controller, and never accepts or pays", async () => {
     const f = await setup();
     expect(await f.t.action(api.sensorTraces.attachSensorTrace, f.args)).toEqual({ submissionId: f.submissionId, replayed: false });
     expect(await f.t.action(api.sensorTraces.attachSensorTrace, f.args)).toEqual({ submissionId: f.submissionId, replayed: true });
-    for (const demoIdentity of ["contributor", "controller"]) {
+    for (const demoIdentity of ["buyer", "contributor", "controller"]) {
       const evidence = await f.t.query(api.media.submissionEvidence, { demoIdentity, submissionId: f.submissionId });
       expect(evidence.sensorTrace).toMatchObject({ storageId: f.storageId, sampleCount: 6, sampleRateHz: 50, durationMs: 1000,
         motionSummary: { source: "clientReported", activeMotionIntervals: [{ startMs: 250, endMs: 750 }] } });
       expect(evidence.sensorTrace?.url).toMatch(/^https?:/);
     }
-    for (const demoIdentity of ["buyer", "finance-agent"]) {
+    for (const demoIdentity of ["finance-agent"]) {
       await expect(f.t.query(api.media.submissionEvidence, { demoIdentity, submissionId: f.submissionId })).rejects.toThrow("forbidden");
     }
+    await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
+    await expect(f.t.query(api.media.submissionEvidence, {demoIdentity: "buyer", submissionId: f.submissionId})).rejects.toThrow("submission_not_owned");
     const state = await f.t.run(async ctx => ({ submission: await ctx.db.get(f.submissionId), payables: await ctx.db.query("payables").collect(),
       audits: await ctx.db.query("auditEvents").collect(), decisions: await ctx.db.query("reviewDecisions").collect() }));
     expect(state.submission?.status).toBe("queued");

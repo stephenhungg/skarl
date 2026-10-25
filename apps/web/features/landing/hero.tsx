@@ -47,12 +47,12 @@ export function Hero() {
         </Rise>
         <Rise delay={0.35} duration={0.5} className="mt-4 max-w-[600px]">
           <p className="text-[14px] leading-[1.2] tracking-[0.01em] text-fog md:text-[18px]">
-            On Skarl, AI teams post tasks they need recorded, you film yourself doing one while you talk through it, and once a reviewer signs off you get paid in test USDC on Base Sepolia.
+            On Skarl, AI teams post tasks they need recorded, you film yourself doing one while you talk through it, and when every check passes the buyer’s rule approves your test USDC payout on Base Sepolia. Exceptions go to buyer review.
           </p>
         </Rise>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-[18px]">
           <Rise delay={0.5} duration={0.5}><Button href="/contribute" onDark>Record a demonstration</Button></Rise>
-          <Rise delay={0.6} duration={0.5}><Button href="/dashboard" variant="secondary" onDark>Fund a request</Button></Rise>
+          <Rise delay={0.6} duration={0.5}><Button href="/orders/new" variant="secondary" onDark>Fund a request</Button></Rise>
         </div>
         {DEMO_VIDEO_URL && (
           <Rise delay={0.65} duration={0.5} className="mt-4">

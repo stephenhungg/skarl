@@ -41,7 +41,7 @@ function ConnectedAccountMenu({ onDark }: { onDark: boolean }) {
         <p className="mono mb-3 px-3 pt-1 text-[11px] text-slate-700">{me.roles.length ? me.roles.join(" · ") : "No role claimed"}</p>
         <RoleClaims />
         <div className="mt-2 border-t border-haze pt-2">
-          <Link href="/dashboard" className={actionClass}>Controller console</Link>
+          <Link href="/dashboard" className={actionClass}>Review</Link>
           <Link href="/contribute" className={actionClass}>Contributor view</Link>
           <button type="button" className={actionClass} disabled={busy} onClick={() => void logOut()}>{busy ? "Signing out…" : "Sign out"}</button>
         </div>
@@ -59,14 +59,14 @@ export function RoleClaims() {
   if (!me?.userId) return null;
   const roles: HumanRole[] = ["buyer"];
   if (!me.roles.includes("controller")) roles.push("contributor");
-  if (me.canClaimController && !me.roles.includes("contributor")) roles.push("controller");
+  // Legacy controller memberships remain supported; buyers need no separate role.
   const available = roles.filter(role => !me.roles.includes(role));
 
   async function claim(role: HumanRole) {
     setBusy(role);
     setError("");
     try { await claimRole({ role }); }
-    catch { setError("Role claim refused. Controller access needs an allowlisted, verified email; contributor and controller roles must stay separate."); }
+    catch { setError("Role claim refused. Try signing in again."); }
     finally { setBusy(null); }
   }
 
@@ -76,7 +76,6 @@ export function RoleClaims() {
       {available.map(role => <button key={role} type="button" disabled={busy !== null} className={actionClass} onClick={() => void claim(role)}>
         {busy === role ? "Claiming…" : `Claim ${role} role`}
       </button>)}
-      {!me.roles.includes("controller") && !me.canClaimController && <p className="px-3 pt-2 text-[12px] leading-relaxed text-slate-700">Controller access requires a verified email on the operator’s allowlist.</p>}
       {error && <p role="alert" className="px-3 pt-2 text-[13px]">{error}</p>}
     </div>
   );

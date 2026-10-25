@@ -19,8 +19,8 @@ import { needsYou, useOrderData, useOrderId } from "./data";
 type NavItem = { href: string; label: string; icon: LordiconName; count?: "needs" | "review" | "approve" };
 const NAV: { group?: string; items: NavItem[] }[] = [
   { items: [
-    { href: "/dashboard", label: "Overview", icon: "bar-chart-vertical-grow" },
-    { href: "/dashboard/inbox", label: "Needs you", icon: "badge-ribbon", count: "needs" },
+    { href: "/dashboard", label: "Review", icon: "bar-chart-vertical-grow" },
+    { href: "/dashboard/inbox", label: "Exceptions", icon: "badge-ribbon", count: "needs" },
   ] },
   { group: "Work", items: [
     { href: "/dashboard/submissions", label: "Submissions", icon: "file-pencil", count: "review" },
@@ -33,7 +33,7 @@ const NAV: { group?: string; items: NavItem[] }[] = [
   ] },
 ];
 const MOBILE: NavItem[] = [NAV[0]!.items[0]!, NAV[0]!.items[1]!, NAV[1]!.items[0]!, NAV[1]!.items[1]!];
-const TITLES: Record<string, string> = { receipt: "Receipt", inbox: "Needs you", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log" };
+const TITLES: Record<string, string> = { receipt: "Receipt", inbox: "Exceptions", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log" };
 const STORE = "skarl:dashboard:sidebar";
 
 const isActive = (pathname: string, href: string) => href === "/dashboard" ? pathname === href : pathname.startsWith(href);
@@ -84,8 +84,8 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
   }, [toggle]);
 
   const segments = pathname.split("/").filter(Boolean).slice(1);
-  const crumbs = [{ label: "Controller", href: "/dashboard" },
-    ...(segments.length === 0 ? [{ label: "Overview" }] : segments.map((segment, index) => ({
+  const crumbs = [{ label: "Buyer", href: "/dashboard" },
+    ...(segments.length === 0 ? [{ label: "Review" }] : segments.map((segment, index) => ({
       label: TITLES[segment] ?? segment, id: !TITLES[segment],
       href: index < segments.length - 1 ? `/dashboard/${segments.slice(0, index + 1).join("/")}` : undefined,
     })))];
@@ -104,7 +104,7 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
                     {!collapsed && <>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate type-label">Skarl</span>
-                        <span className="block truncate type-label-sm text-text-3">Evidence & settlement</span>
+                        <span className="block truncate type-label-sm text-text-3">Buyer Review</span>
                       </span>
                       <Icon icon={ChevronSort} size={14} className="text-text-3" />
                     </>}

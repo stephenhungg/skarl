@@ -13,11 +13,12 @@ const URI = `https://${DOMAIN}`;
 const CHALLENGE_TTL_MS = 5 * 60_000;
 
 async function contributorFor(ctx: MutationCtx, demoIdentity: string, tokenIdentifier: string) {
-  const controller = await requireRole(ctx, demoIdentity, "controller");
+  const controller = await requireRole(ctx, demoIdentity, ["controller", "contributor"]);
   const contributor = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
     q.eq("tokenIdentifier", tokenIdentifier)).unique();
   if (!contributor) throw new Error("contributor_not_found");
   requireTenant(controller, contributor);
+  if (!controller.roles.includes("controller") && controller.tokenIdentifier !== contributor.tokenIdentifier) throw new Error("contributor_not_owned");
   if (contributor.status !== "active" || !contributor.roles.includes("contributor") ||
     contributor.roles.includes("controller") || contributor.roles.includes("finance-agent")) {
     throw new Error("active_contributor_required");
@@ -25,7 +26,7 @@ async function contributorFor(ctx: MutationCtx, demoIdentity: string, tokenIdent
   return { controller, contributor };
 }
 
-/** Demo controller role is persisted but impersonable; this is not production authentication. */
+/** Contributors verify their own wallet; the legacy operator selector remains compatible. */
 export const challenge = mutation({
   args: { demoIdentity: v.string(), contributorTokenIdentifier: v.string(), walletAddress: v.string() },
   handler: async (ctx, args) => {
@@ -83,7 +84,7 @@ export const verify = mutation({
     });
     await audit(ctx, { organizationId: contributor.organizationId, eventKey: `wallet-verified:${contributor._id}:${challenge.nonce}`,
       actor: actorFor(controller), action: "contributor_wallet_verified", entityType: "memberships", entityId: contributor._id,
-      reason: "Controller registered a Base Sepolia contributor payout wallet after EIP-191 verification of a one-use SIWE challenge.",
+      reason: "Contributor or legacy operator registered a Base Sepolia contributor payout wallet after EIP-191 verification of a one-use SIWE challenge.",
       evidenceReferences: [hashMessage(challenge.message)] });
     return { verified: true as const, replayed: false, walletAddress: challenge.walletAddress, chainId: PAYMENT_CHAIN_ID, verifiedAt };
   },

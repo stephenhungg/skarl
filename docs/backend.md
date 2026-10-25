@@ -49,7 +49,7 @@ For unsigned callers while demo mode is enabled, these selectors remain
 intentionally impersonable demo credentials, **not auth**. Signed-in callers use
 only their own `auth:<userId>` membership; `demoIdentity` is ignored and cannot
 escalate their role. `SKARL_DEMO_IDENTITIES=off` disables the unsigned fallback.
-See [authentication](auth.md) for sign-in, role claims and controller onboarding.
+See [authentication](auth.md) for sign-in, role claims and legacy controller onboarding.
 `requireRole` checks active memberships and organization status; finance-agent
 cannot act as controller even if misprovisioned with that role. The internal
 seed bootstrap is CLI/operator-only and provisions the initial roles before its
@@ -59,13 +59,13 @@ controller check. Do not use real funds or private user data on this demo API.
 | --- | --- | --- |
 | `dashboard.demoContext` | None | Organization/order/rubric IDs and `demoOnly`; any seeded member |
 | `dashboard.orderSummary` | `orderId` | `order`, frozen `rubric`, exact account `balances`; any seeded member in that org |
-| `dashboard.submissions` | `orderId` | Submissions with analysis projection, decision and inline delivery manifest; controller/agent see order, contributor sees own, buyer sees accepted work |
-| `dashboard.payables` | `orderId` | Obligations with outgoing intent, command and approval; controller/agent see order, contributor sees own; buyer sees none |
-| `dashboard.journal` | `orderId` | Entries and ordered journal lines; controller/finance-agent only |
-| `dashboard.auditEvents` | `orderId` | Order-linked decision/refusal events, newest first; controller/finance-agent only |
-| `finance.acceptAndPublish` | `submissionId` | Controller only; `{ok:true,payableId,deliveryId,journalEntryId,replayed}` or refusal |
+| `dashboard.submissions` | `orderId` | Submissions with analysis projection, decision and inline delivery manifest; controller/agent see order, contributor sees own, buyer sees their own order’s work |
+| `dashboard.payables` | `orderId` | Obligations with outgoing intent, command and approval; controller/agent see order, contributor sees own; buyer sees their own order |
+| `dashboard.journal` | `orderId` | Entries and ordered journal lines; owning buyer or controller/finance-agent |
+| `dashboard.auditEvents` | `orderId` | Order-linked decision/refusal events, newest first; owning buyer or controller/finance-agent |
+| `finance.acceptAndPublish` | `submissionId` | Order’s buyer or legacy controller; `{ok:true,payableId,deliveryId,journalEntryId,replayed}` or refusal |
 | `finance.proposePayment` | `payableId` | Finance-agent/controller; `{ok:true,intentId,paymentCommandId,replayed}`; requester comes from membership |
-| `finance.approve` | `intentId` (a `paymentIntents` document ID) | Independent controller only; `{ok:true,approvalId,paymentCommandId,replayed}` or refusal |
+| `finance.approve` | `intentId` (a `paymentIntents` document ID) | Buyer of this order or legacy independent controller; `{ok:true,approvalId,paymentCommandId,replayed}` or refusal |
 
 Dashboard monetary fields and counters are decimal integer strings, for example
 `amountAtomic: "7500000"`, not floating dollars. Mutations store/compute `bigint`
@@ -77,7 +77,7 @@ legacy v1 order remains unchanged at budget 100,000,000, quota 10, sample price
 Acceptance requires an open funded order, remaining quota, verified original
 asset and contributor wallet record, consent, frozen matching rubric and a
 matching stored completed-inference `accept` projection. Alternatively it honors
-a recorded, evidence-bound decision by an active independent human controller.
+a recorded, evidence-bound decision by the order’s buyer or a legacy independent human controller.
 No public manual-decision recording endpoint is supplied in Task 1. Full model report validation/rubric membership now runs in Task 2 before
 analysis persistence. The finance mutation consumes its trusted stored projection;
 it does not itself call a model.
@@ -103,7 +103,7 @@ Outgoing `paymentIntents.kind === "contributor_payout"` rows contain
 recipient, source-version/binding hash and one-hour expiry. Existing funding
 intents retain their original shape (`kind` absent or `funding`); payment owners
 must narrow this discriminant. Proposal replay returns the original intent and
-requester. The intended demo flow is finance-agent proposal followed by controller approval. A controller-created proposal cannot be self-approved; expired or blocked proposals require a separate explicit recovery path (not implemented in Task 1), rather than silently rewriting the requester. Approval checks the exact payable/command/intent bindings, refuses
+requester. The current flow is finance-agent proposal followed by buyer-signed deterministic policy approval; failed checks go to the order’s buyer. Legacy controller approval remains compatible. A controller-created proposal cannot be self-approved; expired or blocked proposals require a separate explicit recovery path (not implemented in Task 1), rather than silently rewriting the requester. Approval checks the exact payable/command/intent bindings, refuses
 changed or expired proposals, updates intent/command and atomically signals the
 Convex approval Workflow. The Workflow revalidates and queues one dispatch
 outbox event asynchronously. The payable becomes `payout_in_progress`, **not paid**. Replaying
@@ -120,29 +120,26 @@ mutation is included. The seed does not invent funds or a wallet proof.
 
 ```mermaid
 flowchart LR
-  Browser[Buyer / Contributor / Controller] --> Web[Next.js UI and Node x402 routes]
+  Browser[Buyer / Contributor] --> Web[Next.js UI and Node x402 routes]
   Browser --> Convex[Convex mutations and reactive queries]
   Browser --> Files[Convex file storage]
   Web -->|Observed funding facts| Convex
   Convex -->|Action| Gemini[Gemini: silent video, then audio]
   Convex --> Files
   Web --> Chain[Base Sepolia USDC]
-  Wallet[Controller Coinbase Wallet / Wallet MCP] --> Chain
+  Wallet[CDP executor with independent cap; legacy Wallet MCP] --> Chain
 ```
 
 - **Convex:** authoritative order terms, submissions, analysis metadata, human
   decisions, approvals, journals, payment commands, recovery state, and audit
-  history. Its live queries power the three personas' views.
+  history. Its live queries power the buyer and contributor views.
 - **Next.js Node routes:** the x402 HTTP boundary and future payment/RPC adapters.
   They report payment observations to Convex rather than maintaining another
   ledger. They do not publish an order from an unverified client receipt.
 - **Gemini analysis action (Convex):** validates and analyzes media, produces evidence, and
   stores a schema-validated report. It has no acceptance, accounting, approval, or
   signing authority. (The Python worker is deferred.)
-- **Human controller wallet (Coinbase Wallet):** the independent signing boundary
-  for contributor payouts. The finance system prepares an exact proposal; the agent
-  may submit it via Wallet MCP `send`; the human approves in Coinbase Wallet;
-  reconciliation verifies the resulting `Transfer` log.
+- **Buyer-signed policy and independent CDP cap:** the finance agent prepares an exact proposal; internal `policy-engine` applies the buyer’s rule, and `PAYOUT_EXECUTOR=cdp_agent` hands the approved intent to the existing executor. Exceptions go to buyer Review. Legacy Coinbase Wallet/MCP signing remains compatible. Reconciliation verifies the resulting `Transfer` log.
 - **Storage:** private originals, normalized media, evidence frames, reports,
   and licensed manifests. A published manifest changes the buyer's application
   access; it does not require making originals globally public.
@@ -203,7 +200,7 @@ key and perform all dependent writes within the same serializable transaction.
 | `completeAnalysis` | Validate source hash/versions and the report (fencing deferred with the worker); check the duplicate hash; attach evidence and move submission to review |
 | `acceptAndPublish` | Check human authority and open capacity; record decision and buyer-accessible delivery; accrue payable and balanced journals; insert outbox event |
 | `proposePayment` | Agent or operator creates a proposal from current payable versions; server computes recipient/amount; never approves |
-| `approve` | Check an independent controller (not the requester, never the agent identity); bind the exact proposal hash and expiry; record approval and dispatch event |
+| `approve` | Check the buyer-signed policy or owning buyer/legacy controller (not the requester, never the agent identity); bind the exact proposal hash and expiry; record approval and dispatch event |
 | `recordConfirmedSettlement` | Check independently inspected transfer identity; consume financial event key; post balanced journal and close the obligation |
 | `cancelRemainder` (deferred) | Close remaining collection capacity; reserve the refundable obligation; create refund proposal and audit history |
 
@@ -253,7 +250,7 @@ The exact proposed service-authentication protocol is in [security.md](security.
 
 Buyer funding uses x402 v2 on Base Sepolia. It is a short purchase of a defined
 collection order; it must not keep an HTTP request open while a person films or
-the model analyzes a clip. Contributor payouts are separate controller-approved
+the model analyzes a clip. Contributor payouts are separate buyer-policy-approved
 USDC transfers, not x402 refund primitives.
 
 By default, the x402 Next route adapter invokes its handler before settlement
@@ -345,7 +342,7 @@ transactions, even when one action awaits all of them.
 
 ## Approval dispatch readiness
 
-Payout proposals now carry `approvalWorkflowId`. The controller's successful
+Payout proposals now carry `approvalWorkflowId`. A successful policy or buyer exception
 `finance.approve` response means approval was recorded and signaled, not that
 the execution outbox is already ready. Observe `dashboard.payables[].dispatchReady`
 before calling the payment executor. `payments.claimPayout` refuses with
