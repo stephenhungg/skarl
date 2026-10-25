@@ -12,6 +12,49 @@ The demo moment: an accepted original earns a payable; a copied submission canno
 
 The [public web demo](https://skarl.devshardat.work) and payment origins may serve different deployed versions; verify them separately against `main`. **Testnet and test USDC only.** Base Sepolia supports funding and payouts; Solana Devnet supports funding and carries one Token-2022 license token per published delivery (no Solana payouts). Optional Google/Convex Auth is implemented, but anonymous demo identities remain impersonable while demo mode is enabled. Deployment and provider configuration must be checked separately.
 
+## Sponsor tracks at a glance
+
+Every row links to source, an isolated test command and recorded live evidence. Full criteria, commands and remaining gaps are in the [track-to-evidence review guide](docs/review-guide.md). 128 test files; `pnpm check` runs types, tests, a no-hardcode scan and a docs link check.
+
+| Track | What Skarl does | Key source | Live evidence |
+| --- | --- | --- | --- |
+| **Hyphenate** (finance) | Two accountable finance seats: exact USDC obligations from verified work, duplicate/copy blocking, agent proposes and buyer-signed policy approves, balanced double-entry journals, statements, advisory tax ledger, eight exception scenarios | [finance.ts](convex/finance.ts), [policy.ts](convex/policy.ts), [ledger](packages/ledger/src/index.ts), [approvalWorkflow.ts](convex/approvalWorkflow.ts), [tax.ts](convex/tax.ts) | [Funding journals and trial balance](docs/status.md) |
+| **Coinbase** (payment agents) | x402 funding on Base Sepolia, CDP agent-wallet payouts under policy + wallet caps, Wallet MCP plugin, one-call personal-agent onboarding (MCP tools + [`/skill.md`](convex/lib/onboardingSteps.ts)) with a rate-limited testnet USDC faucet, concrete [builder feedback](docs/coinbase-submission.md) | [payments.ts](convex/payments.ts), [agentWallet.ts](convex/agentWallet.ts), [mcp.ts](convex/mcp.ts), [onboarding.ts](convex/onboarding.ts) | [CDP x402 funding + webhook, real policy refusals, faucet tx](docs/coinbase-submission.md) |
+| **Convex** | System of record: reactive dashboard queries, durable Workflow approvals, scheduler, crons, private storage, Node + HTTP actions, MCP server, Convex Auth | [convex.config.ts](convex/convex.config.ts), [crons.ts](convex/crons.ts), [dashboard.ts](convex/dashboard.ts), [http.ts](convex/http.ts) | [Automatic EAS cron backfill, scheduled inference](docs/status.md) |
+| **Anthropic** | Claude finance agent and analyst over a shared, schema-validated 24-tool registry; strict tool schemas on every mutating tool; tool output treated as untrusted data; can never approve or sign | [financeAgent.ts](convex/financeAgent.ts), [financeToolRegistry.ts](convex/lib/financeToolRegistry.ts), [financeAnalyst.ts](convex/financeAnalyst.ts) | [Stored Claude run with cited tool calls](docs/anthropic.md) |
+| **Gemini** | Two-model silent-video jury plus separate audio, prompts and object/target sets generated from each task's rubric, deterministic report comparison | [visualJury.ts](convex/lib/visualJury.ts), [taskSpec.ts](convex/lib/taskSpec.ts), [verificationReport.ts](convex/lib/verificationReport.ts) | [Live jury latencies and review-only verdict](docs/status.md) |
+| **Capital One Nessie** | Bank witness: four-way order / ledger / chain / bank match with exact-cent mapping (mock bank, labeled) | [bankWitness.ts](convex/bankWitness.ts), [nessie.ts](convex/lib/nessie.ts) | [Hosted mock-API four-way funding match](docs/status.md) |
+| **Atlassian** | Skarl Guard Forge app: constrained Jira triage of finance exceptions, batch policy, audit and selective rollback | [jira-forge](integrations/jira-forge/README.md) | [Synced issues and refused oversized batch](docs/sponsor-tracks.md#atlassian-security-track) |
+| **Solana** | Optional x402 funding rail plus one Token-2022 license token per published delivery (on-chain metadata digest of license, consent and manifest; supply 1; mint authority revoked atomically) | [solana-license.ts](packages/payments/src/solana-license.ts), [solanaLicense.ts](convex/solanaLicense.ts), [solana.ts](packages/payments/src/solana.ts) | [Finalized devnet USDC funding](docs/status.md); license mints on the first accepted clip |
+
+## How it works
+
+```mermaid
+flowchart LR
+  subgraph Buyer
+    BA["Buyer or buyer's agent<br/>(Wallet MCP, /skill.md)"]
+  end
+  subgraph Contributor
+    APP["Mobile capture<br/>video, audio, IMU"]
+  end
+  BA -- "x402 USDC funding<br/>Base Sepolia or Solana devnet" --> ORD[("Convex<br/>orders + ledger")]
+  APP -- "consented clip" --> VER["Gemini jury<br/>rubric-generated task spec"]
+  VER -- "evidence report" --> ACC{"All required checks<br/>+ no duplicate?"}
+  ACC -- "no" --> REV["Buyer review"]
+  ACC -- "yes" --> PAY["Payable + delivery<br/>double-entry journal"]
+  REV -- "accept" --> PAY
+  PAY --> FA["Finance agent<br/>Claude or Gemini, 24 tools"]
+  FA -- "proposes only" --> POL{"Buyer-signed<br/>auto-pay policy"}
+  POL -- "approved within cap" --> CDP["CDP agent wallet<br/>independent wallet cap"]
+  CDP -- "USDC payout" --> CW["Contributor wallet"]
+  PAY -- "license" --> SOL["Token-2022 license<br/>Solana devnet"]
+  PAY -- "attestation" --> EAS["EAS on Base Sepolia"]
+  CDP --> REC["Reconciliation<br/>order, ledger, chain, Nessie mock bank"]
+  FA -. "exceptions" .-> JIRA["Skarl Guard<br/>Jira Forge"]
+```
+
+The agent can read, explain and propose; it can never approve, sign or move funds. Testnet and test USDC only.
+
 ## Review the controls
 
 | Surface | What to inspect |
