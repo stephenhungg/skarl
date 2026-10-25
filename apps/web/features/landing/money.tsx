@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useInView, useReducedMotion } from "motion/react";
+import { useInView } from "motion/react";
 import { SectionHeader } from "@/components/section-header";
 import { Stepper } from "@/components/ui/stepper";
 import { PaymentReceiptPrinter } from "@/components/ui/payment-receipt-printer";
@@ -8,6 +8,7 @@ import { PaymentStatus } from "@/components/ui/payment-status";
 import { MONEY_CASH_LEFT, MONEY_SEATS, MONEY_STEPS } from "./evidence";
 import { JournalSheet } from "./money/journal-sheet";
 import { usdc } from "./money/amount";
+import { useReducedMotionSafe } from "@/lib/use-reduced-motion";
 
 const LIGHT_STAGGER_MS = 120; // M8: steps light in order
 const DWELL_MS = 3600; // time on each step while the walkthrough plays itself
@@ -18,7 +19,7 @@ export function Money() {
   const ref = useRef<HTMLDivElement>(null);
   const seen = useInView(ref, { once: true, amount: 0.35 });
   const visible = useInView(ref, { amount: 0.2 });
-  const reduce = useReducedMotion();
+  const reduce = useReducedMotionSafe();
   const [lit, setLit] = useState(0);
   const [current, setCurrent] = useState(0);
   const [touched, setTouched] = useState(false);

@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { cn } from '../../lib/utils';
+import { useReducedMotionSafe } from "@/lib/use-reduced-motion";
 
 // Adapted from the EasyUI receipt printer: same feed jitter, extrusion and serrated paper,
 // restyled to the Skarl ramp (tone only, no borders or shadows) and turned into a slot so the
@@ -46,7 +47,7 @@ export const PaymentReceiptPrinter: React.FC<PaymentReceiptPrinterProps> = ({
   printerClassName,
   receiptClassName,
 }) => {
-  const reduce = useReducedMotion();
+  const reduce = useReducedMotionSafe();
   const [state, setState] = useState<PrinterState>(reduce ? 'completed' : 'idle');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRef = useRef(onPrintStart);

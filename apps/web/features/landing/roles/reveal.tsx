@@ -1,13 +1,14 @@
 "use client";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import type { ReactNode } from "react";
+import { useReducedMotionSafe } from "@/lib/use-reduced-motion";
 
 const SETTLE = [0.43, 0.42, 0.37, 0.97] as const;
 
 // M2 section reveal: fades up 12px once, when the top crosses 85% of the viewport.
 // Pass an index to stagger items in a grid by 0.08s.
 export function Reveal({ children, index = 0, className }: { children: ReactNode; index?: number; className?: string }) {
-  const reduce = useReducedMotion();
+  const reduce = useReducedMotionSafe();
   return (
     <motion.div
       className={className}

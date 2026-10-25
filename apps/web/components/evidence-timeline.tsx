@@ -1,7 +1,8 @@
 "use client";
-import { motion, useReducedMotion, type Variants } from "motion/react";
+import { motion, type Variants } from "motion/react";
 import type { CSSProperties } from "react";
 import { StatusPill, type EvidenceStatus } from "./status-pill";
+import { useReducedMotionSafe } from "@/lib/use-reduced-motion";
 
 // Mirrors packages/contracts/schemas/verification-report.schema.json (schemaVersion 1.0).
 export type EvidenceModality = "video" | "audio" | "text";
@@ -134,7 +135,7 @@ const MARK_START = 0.38;
 const MARK_STAGGER = 0.06;
 
 export function EvidenceTimeline({ report, active, onSeek, tone = "light", result, provenance, className = "" }: Props) {
-  const reduced = useReducedMotion();
+  const reduced = useReducedMotionSafe();
   const play = active === true && !reduced;
   const dur = Math.max(report.source.durationMs, 1);
   const pct = (ms: number) => `${Math.min(100, Math.max(0, (ms / dur) * 100))}%`;

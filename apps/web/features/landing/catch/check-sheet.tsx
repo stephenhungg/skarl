@@ -1,10 +1,11 @@
 "use client";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import type { VerificationReport } from "@/components/evidence-timeline";
 
 type Evidence = VerificationReport["criteria"][number]["evidence"][number];
 import { formatMs } from "@/components/evidence-timeline";
 import { StatusPill, type EvidenceStatus } from "@/components/status-pill";
+import { useReducedMotionSafe } from "@/lib/use-reduced-motion";
 
 type Verdict = "pass" | "fail" | "unclear";
 type Row = { check: string; video: string; videoAt?: number; said: string; saidAt?: number; verdict: Verdict; note: string };
@@ -77,7 +78,7 @@ function Time({ ms }: { ms?: number }) {
 type Props = { report: VerificationReport; active: boolean; result: string; provenance: EvidenceStatus };
 
 export function CheckSheet({ report, active, result, provenance }: Props) {
-  const reduce = useReducedMotion();
+  const reduce = useReducedMotionSafe();
   const animate = active && !reduce;
   const model = report.pipeline.modelRuns[0]?.model;
   return (

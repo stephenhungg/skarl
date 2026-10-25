@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { animate, useReducedMotion } from "motion/react";
+import { animate } from "motion/react";
 import { ACCOUNTS, accountBalance, type Account } from "@skarl/ledger";
 import { StatusPill } from "@/components/status-pill";
 import { ReceiptRule } from "@/components/ui/payment-receipt-printer";
 import { MONEY_ACCOUNT_LABEL, MONEY_LEDGER, type MoneyStep } from "../evidence";
 import { centsAt, usdc } from "./amount";
+import { useReducedMotionSafe } from "@/lib/use-reduced-motion";
 
 type Row = { account: Account; side: "debit" | "credit"; amount: bigint };
 
@@ -23,7 +24,7 @@ function rowsFor(step: MoneyStep): Row[] {
 
 /** One frame counter drives every figure, so the two totals are equal on every frame, not only the last. */
 function useTick(key: string | number, run: boolean, delay: number) {
-  const reduce = useReducedMotion();
+  const reduce = useReducedMotionSafe();
   const [frame, setFrame] = useState(reduce ? FRAMES : 0);
   useEffect(() => {
     if (reduce) {

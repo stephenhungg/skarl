@@ -1,10 +1,11 @@
 'use client';
 
 import React from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { StatusPill, type EvidenceStatus } from '../status-pill';
 import { cn } from '../../lib/utils';
 import { motionTransitions } from '../../lib/motion-tokens';
+import { useReducedMotionSafe } from "@/lib/use-reduced-motion";
 
 // Adapted from the EasyUI payment status card: same badge pop, check draw and staggered detail
 // rows, restyled to the Skarl ramp. It only ever claims what the status says. A transaction
@@ -35,7 +36,7 @@ export interface PaymentStatusProps {
 }
 
 function Badge({ status }: { status: EvidenceStatus | null }) {
-  const reduce = useReducedMotion();
+  const reduce = useReducedMotionSafe();
   const live = status === 'LIVE' || status === 'ACCEPTED';
   return (
     <motion.div
@@ -71,7 +72,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   animationKey,
   className,
 }) => {
-  const reduce = useReducedMotion();
+  const reduce = useReducedMotionSafe();
   const live = status === 'LIVE';
   const showTx = live && !!txHash;
 
