@@ -106,6 +106,8 @@ const numericDefaults = {
   SKARL_MEDIA_MAX_AUDIO_BYTES: { value: 2 * 1024 * 1024, minimum: 1 },
   SKARL_MEDIA_MAX_BINARY_BYTES: { value: 100 * 1024 * 1024, minimum: 1 },
   SKARL_MEDIA_MAX_DURATION_MS: { value: 30_000, minimum: 1 },
+  // Each ffmpeg pass decodes the full clip on one thread; phone 720p at 4 Mbps needs well over 20 s.
+  SKARL_MEDIA_FFMPEG_TIMEOUT_MS: { value: 120_000, minimum: 1_000 },
   SKARL_MEDIA_MAX_INPUT_BYTES: { value: 25 * 1024 * 1024, minimum: 1 },
   SKARL_MEDIA_MAX_JPEG_BYTES: { value: 100 * 1024, minimum: 1 },
   SKARL_MEDIA_MAX_VIDEO_BYTES: { value: 12 * 1024 * 1024, minimum: 1 },

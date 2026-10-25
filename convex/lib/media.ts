@@ -19,6 +19,7 @@ const FRAME_BYTES = 9 * 8;
 const FRAME_SAMPLES = configNumber("SKARL_MEDIA_FRAME_SAMPLES");
 const VISUAL_SAMPLES = configNumber("SKARL_MEDIA_VISUAL_SAMPLES");
 const MAX_JPEG_BYTES = configNumber("SKARL_MEDIA_MAX_JPEG_BYTES");
+const FFMPEG_TIMEOUT_MS = configNumber("SKARL_MEDIA_FFMPEG_TIMEOUT_MS");
 
 export interface PreparedMedia {
   silentVideo: Uint8Array;
@@ -45,7 +46,7 @@ export class MediaPreparationError extends Error {
 function createFfmpegRunner(executable: string) {
   return async (args: string[], options: { probe?: boolean; maxBuffer?: number } = {}) => await new Promise<{ stdout: Buffer; stderr: string }>((resolve, reject) => {
     execFile(executable, ["-hide_banner", "-nostdin", "-filter_threads", "1", "-filter_complex_threads", "1", ...args], {
-      encoding: "buffer", timeout: 20_000, killSignal: "SIGKILL",
+      encoding: "buffer", timeout: FFMPEG_TIMEOUT_MS, killSignal: "SIGKILL",
       maxBuffer: options.maxBuffer ?? 256 * 1024,
       windowsHide: true,
     }, (error, stdout, stderr) => {
