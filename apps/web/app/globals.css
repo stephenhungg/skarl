@@ -1,2 +1,58 @@
-:root { color-scheme: dark; background:#111410; color:#ecf0e8; font-family:Arial,Helvetica,sans-serif; }
-* { box-sizing:border-box; } body { margin:0; } a { color:inherit; text-underline-offset:4px; } a:focus-visible { outline:3px solid #ccf58b; outline-offset:5px; } main { max-width:1200px; padding:0 40px; margin:auto; } nav { display:flex; justify-content:space-between; align-items:center; padding:32px 0; border-bottom:1px solid #343b31; } .brand { font-size:30px; font-weight:700; letter-spacing:-1.5px; text-decoration:none; } .badge { border:1px solid #526348; border-radius:20px; padding:8px 13px; font-size:12px; color:#c4d9b6; } header { padding:75px 0 66px; max-width:860px; } .eyebrow { color:#b6cf9d; font-size:12px; text-transform:uppercase; letter-spacing:1.4px; } h1 { font-size:clamp(48px,7vw,86px); line-height:1.03; letter-spacing:-4px; margin:24px 0; } .intro { font-size:20px; line-height:1.6; max-width:730px; color:#b9c2b1; } .links { display:flex; flex-wrap:wrap; align-items:center; gap:24px; margin-top:32px; } .primary { background:#c7f18e; color:#16200c; padding:15px 22px; border-radius:8px; text-decoration:none; font-weight:700; } .roles { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; } article { padding:27px; background:#1c2218; border:1px solid #343e2d; border-radius:12px; } h2 { font-size:24px; } article p { line-height:1.6; } small { color:#adb8a3; line-height:1.6; display:block; } aside { margin-top:28px; padding:28px; border:1px dashed #526348; border-radius:12px; } aside p { max-width:900px; line-height:1.7; color:#b9c2b1; } code { overflow-wrap:anywhere; color:#c7f18e; font-size:12px; } footer { padding:32px 0; font-size:13px; line-height:1.8; color:#9ba591; } @media(max-width:760px) { main { padding:0 22px; } .roles { grid-template-columns:1fr; } h1 { letter-spacing:-2px; } header { padding:50px 0; } }
+@import "tailwindcss";
+
+/* Skarl tokens. Space-separated RGB so rgb(var(--x) / .5) works. */
+:root {
+  --paper: 253 253 250;
+  --mist: 239 241 237;
+  --haze: 220 224 217;
+  --fog: 185 191 180;
+  --slate-300: 150 158 143;
+  --slate-500: 115 124 110;
+  --slate-700: 80 90 76;
+  --deep: 24 36 20;
+  --ink: 16 18 14;
+  --accent: 199 241 142;
+  --accent-ink: 22 32 12;
+
+  --ease-settle: cubic-bezier(.43, .42, .37, .97);
+  --ease-hover: cubic-bezier(.46, .37, .14, .93);
+  --ease-slide: cubic-bezier(.54, .6, .14, .93);
+}
+
+@theme {
+  --font-sans: var(--font-montreal-book), system-ui, sans-serif;
+  --font-mono: var(--font-fono), ui-monospace, monospace;
+  --color-paper: rgb(var(--paper));
+  --color-mist: rgb(var(--mist));
+  --color-haze: rgb(var(--haze));
+  --color-fog: rgb(var(--fog));
+  --color-slate-300: rgb(var(--slate-300));
+  --color-slate-500: rgb(var(--slate-500));
+  --color-slate-700: rgb(var(--slate-700));
+  --color-deep: rgb(var(--deep));
+  --color-ink: rgb(var(--ink));
+  --color-accent: rgb(var(--accent));
+  --color-accent-ink: rgb(var(--accent-ink));
+}
+
+html { background: rgb(var(--paper)); color: rgb(var(--ink)); }
+body { font-family: var(--font-montreal-book), system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100dvh; }
+::selection { background: rgb(var(--accent)); color: rgb(var(--accent-ink)); }
+:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; }
+
+/* Type cuts: Book reads as 400, Regular as the 500 role, Medium as the 600 role. */
+.cut-book { font-family: var(--font-montreal-book), system-ui, sans-serif; }
+.cut-regular { font-family: var(--font-montreal-regular), system-ui, sans-serif; }
+.cut-medium { font-family: var(--font-montreal-medium), system-ui, sans-serif; }
+.mono { font-family: var(--font-fono), ui-monospace, monospace; }
+
+/* Content frame: 1200 max, gutters 36 tablet / 18 mobile. */
+.frame { width: 100%; max-width: 1200px; margin: 0 auto; }
+@media (max-width: 1199.98px) { .frame { padding: 0 36px; } }
+@media (max-width: 809.98px) { .frame { padding: 0 18px; } }
+
+@view-transition { navigation: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
