@@ -209,10 +209,14 @@ export type BuiltOnItem = { name: string; role: string; status: EvidenceStatus; 
 
 export const BUILT_ON: BuiltOnItem[] = [
   { name: "Convex", role: "ledger and live state", status: "LIVE", logo: { src: "/logos/convex.svg", ratio: 128 / 24, scale: 0.85 } },
-  { name: "Gemini", role: "evidence", status: "PLANNED", logo: { src: "/logos/gemini.svg", ratio: 344 / 127, scale: 1.35 } },
-  { name: "x402", role: "funding", status: "PLANNED", logo: { src: "/logos/x402.svg", ratio: 486.3 / 187.4 } },
+  { name: "Gemini", role: "evidence", status: "LIVE", logo: { src: "/logos/gemini.svg", ratio: 344 / 127, scale: 1.35 } },
+  { name: "Claude", role: "finance agent", status: "LIVE", logo: { src: "/logos/claude.svg", ratio: 110 / 24, scale: 0.8 } },
+  { name: "x402", role: "funding", status: "LIVE", logo: { src: "/logos/x402.svg", ratio: 486.3 / 187.4 } },
   { name: "Coinbase Wallet MCP", label: "Wallet MCP", role: "agent payments", status: "PLANNED", logo: { src: "/logos/coinbase.svg", ratio: 1101.64 / 230 } },
-  { name: "Base Sepolia", role: "settlement in test USDC", status: "PLANNED", logo: { src: "/logos/base.svg", ratio: 1280 / 323.84 } },
+  { name: "Base Sepolia", role: "settlement in test USDC", status: "LIVE", logo: { src: "/logos/base.svg", ratio: 1280 / 323.84 } },
+  { name: "Solana", role: "Token-2022 licenses and devnet funding", status: "LIVE", logo: { src: "/logos/solana.svg", ratio: 110 / 24, scale: 0.8 } },
+  { name: "Capital One Nessie", label: "Capital One", role: "mock bank witness", status: "SIMULATED", logo: { src: "/logos/capitalone.svg", ratio: 130 / 24, scale: 0.8 } },
+  { name: "Atlassian", role: "Jira exception queue", status: "LIVE", logo: { src: "/logos/atlassian.svg", ratio: 140 / 24, scale: 0.8 } },
 ];
 
 // The catch. Every report below is illustrative, not model output, so every card is SIMULATED.
