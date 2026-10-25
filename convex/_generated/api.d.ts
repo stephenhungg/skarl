@@ -13,6 +13,8 @@ import type * as exceptions from "../exceptions.js";
 import type * as media from "../media.js";
 import type * as agentChat from "../agentChat.js";
 import type * as agentChatData from "../agentChatData.js";
+import type * as analytics from "../analytics.js";
+import type * as lib_dashboardRead from "../lib/dashboardRead.js";
 import type * as approvalWorkflow from "../approvalWorkflow.js";
 import type * as dashboard from "../dashboard.js";
 import type * as finance from "../finance.js";
@@ -41,6 +43,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "lib/dashboardRead": typeof lib_dashboardRead;
+  analytics: typeof analytics;
   agentChatData: typeof agentChatData;
   agentChat: typeof agentChat;
   media: typeof media;
