@@ -2,7 +2,7 @@ import { demoOrderPublicId, fixtureOrderPrefixes, legacyDemoOrderPublicId, publi
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { hasOrderAuthority, isFinanceAgent, requireRole } from "./lib/demoAuth";
 import { loadLedger, requireBuyerOrder, requireTenant } from "./lib/finance";
 import { accountBalance, ACCOUNTS, type Account } from "../packages/ledger/src/index";
@@ -116,14 +116,16 @@ export const auditEvents = query({
 /** Discovery for the shared synthetic demo; no hard-coded Convex document IDs needed in the UI. */
 const FIXTURE_PREFIXES = fixtureOrderPrefixes();
 /** Tasks a contributor can record for, newest first. Test fixtures, payment checks and the retired v1 order stay hidden. */
+/** Real recordable orders: fixtures, webhook probes and finished orders are not contributor work. */
+export const isContributorTask = (order: Doc<"orders">) => !!order.taskVersionId && !FIXTURE_PREFIXES.some(prefix => order.publicId.startsWith(prefix)) &&
+  !/webhook verification/i.test(order.title) && !["closed", "cancelled", "cancelling", "fulfilled", "refunded"].includes(order.status);
+
 export const openTasks = query({
   args: { demoIdentity: v.string() },
   handler: async (ctx, input) => {
     const principal = await requireRole(ctx, input.demoIdentity, ["contributor", "controller"]);
     const orders = await ctx.db.query("orders").withIndex("by_org_buyer", q => q.eq("organizationId", principal.organizationId)).collect();
-    return orders.filter(order => order.taskVersionId && !FIXTURE_PREFIXES.some(prefix => order.publicId.startsWith(prefix)) &&
-      !/webhook verification/i.test(order.title) &&
-      !["closed", "cancelled", "cancelling", "fulfilled", "refunded"].includes(order.status))
+    return orders.filter(isContributorTask)
       .sort((a, b) => b._creationTime - a._creationTime).slice(0, 20).map(order => order._id);
   },
 });

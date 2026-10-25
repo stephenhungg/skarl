@@ -342,7 +342,7 @@ describe("MCP transport and bearer boundary", () => {
 describe("MCP role-scoped tools and human authority", () => {
   const expected = {
     buyer: ["skarl_list_tasks", "skarl_create_order", "skarl_order_status", "skarl_get_dataset", "skarl_witness_receipt", "skarl_reconciliation", "skarl_exceptions"],
-    contributor: ["skarl_open_tasks", "skarl_liveness_challenge", "skarl_my_submissions_and_earnings", "skarl_explain_outcome"],
+    contributor: ["skarl_contributor_onboard", "skarl_find_tasks", "skarl_recording_plan", "skarl_earnings_wallet_challenge", "skarl_earnings_wallet_verify", "skarl_tax_profile", "skarl_open_tasks", "skarl_liveness_challenge", "skarl_my_submissions_and_earnings", "skarl_explain_outcome"],
     controller: ["skarl_list_tasks", "skarl_create_order", "skarl_order_status", "skarl_get_dataset", "skarl_witness_receipt", "skarl_reconciliation", "skarl_exceptions"],
   };
 

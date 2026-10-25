@@ -7,7 +7,7 @@ import { DEMO_ORDER_GLOBAL_LIMIT, DEMO_ORDER_IP_LIMIT } from "../packages/paymen
 import { makeFunctionReference, type ApiFromModules, type FunctionArgs, type FunctionReturnType } from "convex/server";
 import type * as publicQueries from "./mcpPublic";
 import { serializeUntrustedToolData } from "./lib/untrustedToolData";
-import { onboardingSteps } from "./lib/onboardingSteps";
+import { contributorOnboardingSteps, onboardingSteps } from "./lib/onboardingSteps";
 import { checkPublicRateLimit } from "./lib/publicRateLimit";
 
 type PublicApi = ApiFromModules<{ mcpPublic: typeof publicQueries }>;
@@ -80,6 +80,18 @@ const tools = [
     description: "Fetch your licensed dataset manifest with evidence and scoped media links.", inputSchema: scope },
   { name: "skarl_witness_receipt", role: "buyer", readOnly: true,
     description: "Read the evidence witnesses behind one submission in your order.", inputSchema: submission },
+  { name: "skarl_contributor_onboard", role: "contributor", readOnly: true,
+    description: "Start here as a contributor agent: the onboarding steps plus what still blocks you from getting paid (earnings wallet, tax attestation).", inputSchema: object() },
+  { name: "skarl_find_tasks", role: "contributor", readOnly: true,
+    description: "Open recording tasks in your organization, best-paying first: pay per accepted clip (micro-USDC), clips remaining, deadline, rubric criteria and task spec.", inputSchema: object() },
+  { name: "skarl_recording_plan", role: "contributor", readOnly: true,
+    description: "Before recording: turn a task's frozen rubric into a shot list, narration lines and rejection risks, each shot citing the criteria it satisfies. Advisory; never affects acceptance or pay.", inputSchema: scope },
+  { name: "skarl_earnings_wallet_challenge", role: "contributor", readOnly: false,
+    description: "Step 1 of linking the wallet your earnings go to: returns a one-use SIWE message for your Base Sepolia address. Have your own wallet produce a signature over it (your human confirms there), then call skarl_earnings_wallet_verify.", inputSchema: object({ walletAddress: string(42, "^0x[0-9a-fA-F]{40}$") }) },
+  { name: "skarl_earnings_wallet_verify", role: "contributor", readOnly: false,
+    description: "Step 2 of linking your earnings wallet: submit the challenge nonce and your wallet's 65-byte hex signature. Earnings are then sent to that address.", inputSchema: object({ nonce: string(128), signature: string(132, "^0x[0-9a-fA-F]{130}$") }) },
+  { name: "skarl_tax_profile", role: "contributor", readOnly: false,
+    description: "Attest your tax country (ISO 3166-1 alpha-2) and which form is on file. No form contents or tax IDs are collected. Not tax advice.", inputSchema: object({ country: string(2, "^[A-Za-z]{2}$"), taxForm: { type: "string", enum: ["none", "w9_on_file", "w8ben_on_file"] } }) },
   { name: "skarl_open_tasks", role: "contributor", readOnly: true,
     description: "Read the seeded demo task when funded, within deadline and with remaining capacity. This is a demo catalogue, scoped to the seeded order.", inputSchema: object() },
   { name: "skarl_liveness_challenge", role: "contributor", readOnly: false,
@@ -217,7 +229,8 @@ const refusalCodes = new Set(["unknown_demo_identity", "inactive_demo_identity",
   "agent_approval_refused", "human_buyer_required", "order_not_found", "order_not_owned", "submission_not_found", "submission_not_owned",
   "cross_organization_access", "cross_organization_reference", "invalid_order_terms", "invalid_order_amounts", "invalid_buyer_wallet",
   "invalid_evm_address", "invalid_auto_pay_policy", "order_request_conflict", "order_deadline_expired", "coach_report_unavailable", "analysis_reference_mismatch",
-  "analysis_source_mismatch", "task_version_mismatch", "invalid_cursor", "payment_service_unauthorized", "demo_seed_required", "invalid_demo_request", "invalid_idempotency_key", "idempotency_key_conflict"]);
+  "analysis_source_mismatch", "task_version_mismatch", "invalid_cursor", "payment_service_unauthorized", "demo_seed_required", "invalid_demo_request", "invalid_idempotency_key", "idempotency_key_conflict",
+  "task_not_open", "wallet_already_verified", "wallet_challenge_not_found", "wallet_challenge_expired", "invalid_wallet_signature", "invalid_iso_country", "agent_tax_status_refused"]);
 export function mcpToolErrorCode(error: unknown): string {
   if (!(error instanceof Error)) return "tool_failed";
   // Match an entire error-code line, including Convex's "Uncaught Error:" wrapper.
@@ -275,6 +288,20 @@ async function execute(ctx: ActionCtx, identity: Identity, name: string, args: O
         BigInt(order.acceptedCount) < BigInt(order.quantityRequested);
       return { tasks: open ? [summary] : [], scope: "seeded_demo_order", demoOnly: true };
     }
+    case "skarl_contributor_onboard": return { steps: contributorOnboardingSteps(), ...await ctx.runQuery(api.contributorKit.readiness, { demoIdentity }),
+      skill: `${agentOrigin()}/contributor-skill.md`, contribute: `${appOrigin()}/contribute` };
+    case "skarl_find_tasks": return ctx.runQuery(api.contributorKit.tasks, { demoIdentity });
+    case "skarl_recording_plan": return ctx.runAction(api.contributorPlan.recordingPlan, { demoIdentity, orderId: args.orderId as Id<"orders"> });
+    case "skarl_earnings_wallet_challenge": {
+      const { tokenIdentifier } = await ctx.runQuery(api.contributorWallet.mine, { demoIdentity });
+      return ctx.runMutation(api.contributorWallet.challenge, { demoIdentity, contributorTokenIdentifier: tokenIdentifier, walletAddress: args.walletAddress as string });
+    }
+    case "skarl_earnings_wallet_verify": {
+      const { tokenIdentifier } = await ctx.runQuery(api.contributorWallet.mine, { demoIdentity });
+      return ctx.runMutation(api.contributorWallet.verify, { demoIdentity, contributorTokenIdentifier: tokenIdentifier, nonce: args.nonce as string, signature: args.signature as string });
+    }
+    case "skarl_tax_profile": return ctx.runMutation(api.tax.setProfile, { demoIdentity, country: args.country as string,
+      taxForm: args.taxForm as "none" | "w9_on_file" | "w8ben_on_file" });
     case "skarl_liveness_challenge": return ctx.runMutation(api.liveness.issueChallenge, { demoIdentity });
     case "skarl_my_submissions_and_earnings": return ctx.runQuery(api.datasets.contributorEarnings, { demoIdentity });
     case "skarl_explain_outcome": {
