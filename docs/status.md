@@ -786,3 +786,45 @@ returned **HTTP 200** with **`valid:false`**, endpoint **404 `sample_unavailable
 | Independent RPC | At 03:15:14 PDT, finalized reads showed buyer USDC `2000000`, buyer SOL `0`, treasury USDC `1000000` from its earlier setup faucet, and no later treasury ATA transaction. The signed message's recent blockhash was no longer valid. No setup faucet is counted as order funding. |
 
 Private authorization, spend reservation, response and RPC records are retained. The original replay did not settle and no replacement authorization was signed. The next implementation must preserve a facilitator-authorized fee payer across the challenge/payment round trip without weakening mint, amount, payee, memo or signature validation. A successful live funding attempt remains required before claiming MLH Best Use of Solana with live funding evidence.
+## Outsider reuse check (October 25, 2026, 03:15 PDT)
+
+Implementation `68148a6` adds public `GET /api/orders` documentation and
+`POST /api/orders` creation: fixed red-cup task, one sample, exactly `1000000`
+micro-USDC (1 USDC) on Base Sepolia, labeled demo/testnet. No identity header or
+server credentials are needed by the caller. Convex stores atomic hourly caps of
+3 creations per IP and 30 globally; caller-supplied terms are rejected. Wallet
+MCP instructions cap this flow at `1.000000` USDC. The CLI also funds without an
+identity header. The dashboard navigation link remains in place.
+
+Local verification passed: `pnpm check` (122 package tests, 285 Convex tests,
+141 payment-route tests, TypeScript, documentation links and production build).
+Rate-limit, fixed-term, configuration and funding tests use synthetic services;
+they are not evidence of live settlement.
+
+A fresh temporary clone of `68148a6` passed `pnpm install --frozen-lockfile`,
+`cp apps/web/.env.example apps/web/.env.local` and web typecheck under the pinned
+Node 22.21.1 / pnpm 10.19.0. The system Node 26 was correctly rejected before
+switching with `nvm use`. The local homepage and API documentation returned
+HTTP 200 without private keys. Local funding returned HTTP 503 with explicit
+hosted-demo/operator configuration guidance. Next regenerated its ignored
+declaration file; the optional-build-script warning did not block startup.
+
+Live requests from that clone to `https://skarl.vercel.app`, after Vercel served
+the new route, observed:
+
+- `GET /api/orders`: **200**, exact 1 USDC demo terms and creation instructions.
+- `GET /api/health`: **503 degraded**, Convex reachable, treasury configured,
+  facilitator `cdp`; the old backend did not expose the new service/inference
+  readiness fields yet. This is configuration evidence, not an inference probe.
+- `POST /api/orders` with `{}` and **no identity header**: **503
+  `demo_orders_unavailable`**. The public creation mutation and `demoOrderLimits`
+  table still need the designated deployment owner's Convex deployment from
+  `origin/main` at `68148a6` or newer. This task did not deploy Convex.
+
+The live outsider create → 402 → funding check is therefore **blocked on the
+Convex deployment**, not complete. No order or payment was claimed from this
+failed request, and no new payment was attempted. After deployment, repeat
+creation once, retain its returned order ID, verify the 1 USDC x402 challenge,
+and only then perform the authorized single testnet funding and read back its
+reconciled transaction. Record that result here; do not substitute the already
+funded seeded order as proof of outsider creation.
