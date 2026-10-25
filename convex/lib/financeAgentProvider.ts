@@ -13,10 +13,17 @@ export function financeProviderConfig(): { provider: FinanceProvider; model: str
   return { provider, model };
 }
 
+// Claude strict tool schemas reject array `maxItems`; validateToolCall still enforces it before dispatch.
+function claudeStrictSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(claudeStrictSchema);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== "maxItems").map(([key, item]) => [key, claudeStrictSchema(item)]));
+}
+
 // Both providers advertise the exact same allowlist; never advertise approve/sign/send.
 export const claudeFinanceTools: Tool[] = financeTools.map(tool => ({
   name: tool.name, description: tool.description, strict: true,
-  input_schema: { ...tool.parameters, type: "object" },
+  input_schema: { ...(claudeStrictSchema(tool.parameters) as object), type: "object" },
 }));
 const serialize = (value: unknown) => JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item);
 

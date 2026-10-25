@@ -6,7 +6,8 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { financeTools } from "./lib/financeAgentLoop";
-import { financeProviderConfig } from "./lib/financeAgentProvider";
+import { claudeFinanceTools, financeProviderConfig } from "./lib/financeAgentProvider";
+import { validateToolCall } from "./lib/financeAgentLoop";
 
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
 const call = (id: string, name: string, input: unknown = {}) => ({ type: "tool_use", id, name, input });
@@ -228,5 +229,17 @@ describe("Claude finance provider with synthetic SDK HTTP responses", () => {
     await pending;
     expect(await stored(f)).toMatchObject({ status: "failed", failureCode: "claude_timeout", transcript: [] });
     await noAuthority(f);
+  });
+});
+
+describe("Claude strict tool schemas", () => {
+  // Anthropic strict mode returns HTTP 400 for array maxItems; a live run failed on it before this guard.
+  it("advertises no keyword that strict tool use rejects, while the runtime still caps batch size", () => {
+    expect(JSON.stringify(claudeFinanceTools)).not.toContain("maxItems");
+    const batch = financeTools.find(tool => tool.name === "proposePaymentBatch")!;
+    const call = (count: number) => ({ id: "call_1", name: batch.name, arguments: Object.fromEntries(batch.parameters.required.map(key =>
+      [key, key === "payableIds" ? Array.from({ length: count }, (_, index) => `payable_${index}`) : "value"])) });
+    expect(() => validateToolCall(call(20))).not.toThrow();
+    expect(() => validateToolCall(call(21))).toThrow("invalid_tool_arguments");
   });
 });
