@@ -144,7 +144,9 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
               <main className="mx-auto w-full max-w-[1200px] flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
             </div>
           </div>
-          <nav className="fixed inset-x-0 bottom-0 z-(--z-sticky) grid grid-cols-4 border-t border-line-faint bg-page md:hidden" aria-label="Dashboard">
+          {/* Glaze ships its own utility sheet, so the breakpoint lives on a wrapper with no competing display class. */}
+          <div className="md:hidden">
+          <nav className="fixed inset-x-0 bottom-0 z-(--z-sticky) grid grid-cols-4 border-t border-line-faint bg-page" aria-label="Dashboard">
             {MOBILE.map(item => {
               const active = isActive(pathname, item.href);
               const value = item.count ? counts[item.count] ?? 0 : 0;
@@ -158,6 +160,7 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
               );
             })}
           </nav>
+          </div>
         </TooltipProvider>
       </GlazePortalProvider>
     </div>

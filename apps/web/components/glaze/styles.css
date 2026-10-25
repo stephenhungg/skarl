@@ -41,6 +41,7 @@
 @source "../../src";
 @source "../../components";
 @source "../../lib/glaze";
+@source "../../features/dashboard";
 @source not "../../lib/glaze/lint";
 
 /* dark: matches inside the dark theme. Components never use it (tokens flip instead); it is here for one-off cases

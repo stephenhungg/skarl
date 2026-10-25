@@ -46,7 +46,7 @@ export function NeedsYouList({ orderId, submissions, payables, standalone }: { o
   const n = needsYou(submissions, payables);
   const open = (exceptions ?? []).filter(item => item.stillDetected && item.disposition?.status !== "resolved");
   const rows = [
-    ...n.review.map(s => ({ key: s._id, href: `/dashboard/submissions/${s._id}`, title: `Review clip ${shortHash(s._id, 6, 0).replace("…", "")}`,
+    ...n.review.map(s => ({ key: s._id, href: `/dashboard/submissions/${s._id}`, title: `Review clip ${s._id.slice(0, 8)}`,
       detail: s.analysis ? `AI recommends ${humanize(s.analysis.recommendation)}` : "Analysis pending", action: "Review" })),
     ...n.approve.map(p => ({ key: p._id, href: "/dashboard/payables", title: <>Approve payout of <Amount value={p.amountAtomic} /></>,
       detail: `Proposed by the finance agent to ${shortHash(p.recipientAddress)}`, action: "Approve" })),
