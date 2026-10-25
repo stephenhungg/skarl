@@ -124,7 +124,7 @@ The Convex deployment holds `GEMINI_API_KEY` as a server-side secret. It is neve
 read by the local sample script or browser. Configure model IDs on the deployment:
 
 ```sh
-pnpm exec convex env set GEMINI_VIDEO_MODEL gemini-3.8-flash
+pnpm exec convex env set GEMINI_VIDEO_MODEL gemini-4-argon
 pnpm exec convex env set GEMINI_AUDIO_MODEL gemini-3.5-transcribe
 pnpm exec convex env set GEMINI_FINANCE_MODEL gemini-3.8-flash
 pnpm verify:sample /absolute/path/to/clip.mp4
@@ -148,7 +148,8 @@ functions use committed generated API types.
 
 Billing is now enabled. The latest Interactions probes returned HTTP 200 with
 correct visual output for 3.8 Flash (about 2.1 seconds), 4 Argon (3.0 seconds)
-and 3.6 Flash (1.4 seconds). The video and finance defaults remain 3.8 Flash.
+and 3.6 Flash (1.4 seconds). The video default is now 4 Argon; finance and
+read-only `askAgent` stay on 3.8 Flash for interactive latency.
 Earlier free-tier stalls, Flash 503 responses and Argon zero-quota errors are
 historical, not current blockers. These are provider probes, not a human-task
 accuracy benchmark. No automatic model fallback is configured. New capacity,

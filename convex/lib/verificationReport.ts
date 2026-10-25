@@ -1,5 +1,8 @@
 /** Pure, advisory evidence comparison. No model, storage, or payment authority. */
 export const PIPELINE_VERSION = "red-cup-evidence-1.1";
+/** Evaluation overrides are deliberately bounded and never change payment authority. */
+export const EVALUATION_VIDEO_MODELS = ["gemini-4-argon", "gemini-3.8-flash"] as const;
+export type EvaluationVideoModel = typeof EVALUATION_VIDEO_MODELS[number];
 export type Action = "pickup" | "place";
 export type ObservedObject = "red_cup" | "blue_cup" | "unknown";
 export type Target = "coaster" | "other" | "unknown";

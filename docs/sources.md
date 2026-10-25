@@ -21,7 +21,7 @@ Checked October 24, 2026; payment and sponsor sources rechecked October 25 after
 - [Convex Workpool](https://github.com/get-convex/workpool)
 - [Convex Workflow](https://github.com/get-convex/workflow)
 - [Gemini models](https://ai.google.dev/gemini-api/docs/models): model listings and capabilities do not establish usable quota for the team's key.
-- [Gemini 3.8 Flash specifications](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash): current configurable video/finance default and model used in the recorded generated-media smoke and finance-loop runs.
+- [Gemini 3.8 Flash specifications](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash): current configurable finance/`askAgent` default and model used in the historical generated-media smoke, real-video negative smoke and finance-loop runs. The current video default is `gemini-4-argon`; see the Gemini model catalog and the session observations below.
 - [Gemini video understanding](https://ai.google.dev/gemini-api/docs/video-understanding)
 - [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output)
 - [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing)
@@ -65,8 +65,8 @@ Install the x402 packages together at one pinned version and typecheck in hour 0
 
 ## Research limits
 
-Current configurable defaults remain `gemini-3.8-flash` for video/finance and
-`gemini-3.5-transcribe` for audio. Billing is enabled. The team's latest
+Current configurable defaults are `gemini-4-argon` for video, `gemini-3.8-flash`
+for finance and read-only `askAgent`, and `gemini-3.5-transcribe` for audio. Billing is enabled. The team's latest
 Interactions probes returned correct HTTP 200 responses for 3.8 Flash in about
 2.1 seconds, 4 Argon in 3.0 seconds and 3.6 Flash in 1.4 seconds. Earlier
 free-tier stalls, Flash 503 responses and Argon zero-quota errors are historical
@@ -74,5 +74,14 @@ and no longer current blockers. These are session observations, not claims made
 by the model documentation or a human-demonstration benchmark. Historical 3.8
 measurements retain their original model attribution. See
 [model configuration](ai-verification.md#models-and-configuration).
+
+The team subsequently reported a real-frame A/B probe with zero hallucinated
+events from either video model. Argon labeled visibility `clear` where Flash
+labeled it `uncertain`; measured latency was about 4.4–5.0 seconds for Argon and
+3.1–4.1 seconds for Flash. This directional probe motivated the Argon video
+default because uncertainty can route otherwise valid work to review. It is
+not a labeled accuracy comparison, a false-acceptance estimate or a general
+claim of model superiority. The same frozen clip corpus must be evaluated per
+model before making those claims.
 
 Sponsor briefs are requirements, not a prediction of winning. A model capability page is not a benchmark of Skarl. The project has no measured user demand, inference accuracy, robot improvement or production economics yet. Only claim measured results after the evaluation protocol has actually run. Kled is product inspiration from the team discussion; no unsourced traction claims are included.

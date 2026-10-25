@@ -75,7 +75,10 @@ refused. Natural-language requests do not guarantee a model will attempt the
 forbidden call; the mocked policy test exercises that exact attempted call.
 
 Convex environment configuration: `GEMINI_FINANCE_MODEL` defaults to
-`gemini-3.8-flash`; `FINANCE_AGENT_MAX_TOOL_CALLS` defaults to 12 (range 1–24);
+`gemini-3.8-flash`; the read-only `askAgent` action shares this default. Video
+verification defaults separately to `gemini-4-argon`; the finance model stays
+Flash for interactive latency. `FINANCE_AGENT_MAX_TOOL_CALLS` defaults to 12
+(range 1–24);
 `FINANCE_AGENT_MAX_BATCH_ATOMIC` defaults to `10000000` micro-USDC. The existing
 server-only `GEMINI_API_KEY` is reused. No key reaches model input or transcript.
 The run has a two-minute overall budget, at most 30 seconds per provider round,

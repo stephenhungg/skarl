@@ -99,7 +99,7 @@ See [current status](status.md#task-2-verification-and-actual-provider-state).
 Set these **on the Convex deployment**, never in browser code:
 
 ```dotenv
-GEMINI_VIDEO_MODEL=gemini-3.8-flash
+GEMINI_VIDEO_MODEL=gemini-4-argon
 GEMINI_AUDIO_MODEL=gemini-3.5-transcribe
 GEMINI_FINANCE_MODEL=gemini-3.8-flash
 ```
@@ -118,8 +118,9 @@ semantic acceptance decision. No third model call performs comparison.
 Billing is now enabled. The team's latest Interactions API probes all returned
 HTTP 200 with correct visual responses: 3.8 Flash in approximately **2.1 seconds**,
 4 Argon in **3.0 seconds**, and 3.6 Flash in **1.4 seconds**. The current video
-and finance default stays 3.8 Flash. Model IDs remain configurable; no automatic
-fallback is configured. These are provider availability/latency probes, not a
+default is 4 Argon; finance and read-only `askAgent` retain 3.8 Flash for
+interactive latency. Model IDs remain configurable; no automatic fallback is
+configured. These are provider availability/latency probes, not a
 Skarl human-task benchmark or a guarantee of future availability.
 
 The earlier free-tier 3.8/3.7 stalls, Flash 503 responses and Argon zero-quota
@@ -129,6 +130,25 @@ results. New provider failures and timeouts still remain distinct from validatio
 failures and cannot become successful reports. A valid JSON schema does not prove an observation is true or its
 timestamps are accurate. The finance agent uses the same transport: at most 30
 seconds per provider round, including retries, within its two-minute overall budget.
+
+## Video model decision
+
+The team’s subsequent A/B probe used real sampled frames. Both `gemini-4-argon`
+and `gemini-3.8-flash` returned zero hallucinated events in that probe. Argon
+reported visibility `clear` where Flash returned `uncertain`; the latter can
+force otherwise valid clips into review. Argon took approximately **4.4–5.0 s**,
+compared with **3.1–4.1 s** for Flash. The video default therefore changes to
+Argon, while finance and read-only `askAgent` keep Flash for interactive latency.
+These are team-reported directional observations, not a measured accuracy or
+false-acceptance result on a labeled corpus. Historical Flash runs above retain
+their original model IDs and timings.
+
+Use the [mini-evaluation runner](../evals/README.md#run-actual-local-clips) to
+compare both models on the same frozen clip bytes and expected labels. Keep
+model-specific duplicate scopes and report coverage, decision accuracy,
+false accepts, review rate and latency separately for each model. Evaluation
+overrides must never change the deployment-wide model or make an evaluation
+submission payable.
 
 ## Copy detection and provenance
 
@@ -232,7 +252,7 @@ Grounding DINO can supply text-conditioned object proposals if necessary. Ultral
 ## Primary sources
 
 - [Gemini models and model IDs](https://ai.google.dev/gemini-api/docs/models) (capabilities and listings do not establish this key's quota)
-- [Gemini 3.8 Flash specifications](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash) (current configurable video/finance default and model used in the recorded smoke test)
+- [Gemini 3.8 Flash specifications](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash) (current finance/`askAgent` default and model used in the historical Flash smoke tests; video now defaults to 4 Argon)
 - [Gemini video input, FPS, clipping, and processing](https://ai.google.dev/gemini-api/docs/video-understanding)
 - [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output)
 - [Gemini model update and introductory pricing](https://ai.google.dev/gemini-api/docs/latest-model)

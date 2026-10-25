@@ -106,6 +106,32 @@ The supplied examples are synthetic metadata with no media. The output labels th
 - [Audio–visual evidence conflict research](https://arxiv.org/abs/2604.02605)
 - [Video citation verification study](https://arxiv.org/abs/2608.15574)
 
+## Video model comparison
+
+Compare `gemini-4-argon` and `gemini-3.8-flash` on identical frozen source hashes,
+labels, rubric, media sampling and audio configuration. Hold the non-video
+pipeline fixed and keep a separate duplicate scope for each model so the
+second model’s upload is not scored as a copy of the first model’s input.
+Run both models, or select one explicitly:
+
+```sh
+pnpm eval:clips <manifest.json> --compare-video-models
+pnpm eval:clips <manifest.json> --compare-video-models --resume <comparison.json>
+pnpm eval:clips <manifest.json> --video-model gemini-4-argon
+```
+
+The runner’s [usage instructions](../evals/README.md#run-actual-local-clips)
+cover the model-specific artifacts and resume rules. Expected labels stay out
+of model input; a model-specific verification-only override must not change
+the shared deployment setting.
+
+Report decision accuracy, false-acceptance count/rate, review rate, inference
+coverage and latency per model over the same sample inventory. Retain provider
+failures in failure-adjusted accuracy and show conditional accuracy separately.
+A faster model or a clearer visibility response in a small frame probe does
+not establish better labeled task accuracy. The current Argon video default
+comes from the team’s directional frame probe, not a completed corpus evaluation.
+
 ## Implemented cloud clip runner
 
 Use `pnpm eval:clips <manifest.json>` for the mini evaluation. See the

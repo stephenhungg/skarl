@@ -8,11 +8,13 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { setTimeout as sleep } from "node:timers/promises";
 import { validateVerificationReportForRubric } from "@skarl/contracts/verification";
+import { EVALUATION_VIDEO_MODELS } from "../convex/lib/verificationReport.ts";
 
 const execute = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCORER = join(ROOT, "evals/evaluate.py");
-export const RUNNER_VERSION = "real-clips-v1";
+export const RUNNER_VERSION = "real-clips-v2";
+export const COMPARISON_VIDEO_MODELS = EVALUATION_VIDEO_MODELS;
 export const CRITERIA = ["red-cup-pickup", "coaster-placement", "narration-alignment"];
 export const LICENSING_WARNING = "Verification-only development upload; no training license, dataset sale, or payable may be created.";
 const MIME = { ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime" };
@@ -58,7 +60,7 @@ export async function preflightManifest(manifestPath, split = "test") {
 }
 
 export function validateStoredReport(response, item, run, rubricIds = CRITERIA) {
-  if (response.verificationOnly !== true || response.evalRunId !== run.evalRunId) throw new Error("report evaluation scope mismatch");
+  if (response.verificationOnly !== true || response.evalRunId !== run.evalRunId || response.evalVideoModel !== run.videoModel) throw new Error("report evaluation scope mismatch");
   const evaluation = response.observations?.evaluation;
   if (evaluation?.evaluationOnly !== true || evaluation.projectionVersion !== "prelicensing-advisory-v1") throw new Error("missing advisory evaluation projection");
   const quality = evaluation.qualityReport;
@@ -86,6 +88,10 @@ export function validateStoredReport(response, item, run, rubricIds = CRITERIA) 
     && typeof audio?.transcript === "string" && Array.isArray(audio?.segments) && Array.isArray(audio?.claims);
   const successfulAnalysis = !failureCode && twoObservations &&
     quality.pipeline.implementation === "inference" && ["completed", "needs_review"].includes(quality.pipeline.status);
+  const visualRuns = quality.pipeline.modelRuns.filter(model => model.promptVersion === "timestamped-frames-visible-events-v1");
+  if (run.videoModel && (visualRuns.some(model => model.model !== run.videoModel) || (successfulAnalysis && visualRuns.length !== 1))) {
+    throw new Error("stored video model differs from requested evaluation model");
+  }
   return { qualityReport: quality, qualityReportHash: evaluation.qualityReportHash, successfulAnalysis,
     ...(failureCode ? { failureCode } : !successfulAnalysis ? { failureCode: "inference_incomplete" } : {}) };
 }
@@ -102,6 +108,8 @@ export function computeMetrics(cases) {
   const reviews = successful.filter(item => item.qualityReport.recommendation === "needs_review").length;
   const client = cases.filter(item => item.qualityReport).map(item => item.clientTerminalReportMs);
   const backend = cases.filter(item => item.qualityReport).map(item => item.processingElapsedMs);
+  const visual = cases.flatMap(item => item.qualityReport?.pipeline?.modelRuns ?? [])
+    .filter(model => model.promptVersion === "timestamped-frames-visible-events-v1").map(model => model.elapsedMs);
   return { caseCount: cases.length, successfulAnalysisCount: successful.length, failedOrIncompleteCount: cases.length - successful.length,
     correctSuccessfulDecisions: correct, failureAdjustedDecisionAccuracy: cases.length ? correct / cases.length : null,
     conditionalDecisionAccuracy: successful.length ? correct / successful.length : null,
@@ -113,6 +121,7 @@ export function computeMetrics(cases) {
     latency: { method: "nearest-rank; terminal reports only, including provider failures", clientTerminalReportMs: { count: client.filter(Number.isFinite).length,
       p50: nearestRank(client, .5), p95: nearestRank(client, .95) }, backendProcessingMs: { count: backend.filter(Number.isFinite).length,
       p50: nearestRank(backend, .5), p95: nearestRank(backend, .95) },
+      videoRequestMs: { count: visual.filter(Number.isFinite).length, p50: nearestRank(visual, .5), p95: nearestRank(visual, .95) },
       rightCensored: cases.filter(item => item.state === "timed_out").map(item => ({ sampleId: item.sampleId, observedWaitMs: item.clientObservedWaitMs })) } };
 }
 
@@ -157,10 +166,11 @@ function markdown(run) {
   const m = run.metrics;
   const percent = value => value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
   return `# Clip evaluation ${run.evalRunId}\n\nPrivate verification-only evaluation; advisory quality before licensing. No acceptance, dataset sale or payment requested.\n\n` +
-    `Status: ${run.status}. Manifest SHA-256: \`${run.manifestSha256}\`. Split: ${run.split}.\n\n` +
+    `Requested video model: ${run.videoModel ?? "deployment default (see stored modelRuns)"}. Status: ${run.status}. Manifest SHA-256: \`${run.manifestSha256}\`. Split: ${run.split}.\n\n` +
     `Successful analyses: ${m.successfulAnalysisCount}/${m.caseCount}. Failure-adjusted decision accuracy: ${percent(m.failureAdjustedDecisionAccuracy)}. Conditional accuracy: ${percent(m.conditionalDecisionAccuracy)}. Coverage: ${percent(m.successfulAnalysisCoverage)}.\n\n` +
     `False accepts: ${m.falseAcceptance.count}/${m.falseAcceptance.negativeCaseCount} negative cases (${percent(m.falseAcceptance.rate)}). Stored-report review rate over all cases: ${percent(m.reviewRate)}. Review rate among successful analyses: ${percent(m.conditionalReviewRate)}. Provider fallback reviews do not earn correct decisions.\n\n` +
     `Client terminal report p50/p95: ${m.latency.clientTerminalReportMs.p50 ?? "n/a"}/${m.latency.clientTerminalReportMs.p95 ?? "n/a"} ms. Backend processing p50/p95: ${m.latency.backendProcessingMs.p50 ?? "n/a"}/${m.latency.backendProcessingMs.p95 ?? "n/a"} ms. Right-censored client timeouts: ${m.latency.rightCensored.length}.\n\n` +
+    `Video request p50/p95: ${m.latency.videoRequestMs.p50 ?? "n/a"}/${m.latency.videoRequestMs.p95 ?? "n/a"} ms (${m.latency.videoRequestMs.count} timed visual responses).\n\n` +
     `Client latency is wall time from the first create attempt, including downtime before resume. Percentiles use nearest rank on terminal reports; timeout censoring is listed separately.\n\n` +
     `The offline scorer's inferenceRan remains false. Cloud attempts and validated raw reports are recorded separately in the JSON. Raw label agreement may count provider fallback reviews; use failure-adjusted metrics above.\n\n` +
     `| Case | State | Successful inference | Expected | Quality projection | Failure |\n| --- | --- | --- | --- | --- | --- |\n` +
@@ -169,7 +179,9 @@ function markdown(run) {
 
 export async function runEvaluation(options, injected = {}) {
   const now = injected.now ?? Date.now, wait = injected.sleep ?? sleep;
+  if (options.videoModel !== undefined && !COMPARISON_VIDEO_MODELS.includes(options.videoModel)) throw new Error("unsupported evaluation video model");
   const preflight = await preflightManifest(options.manifestPath, options.split ?? "test");
+  if (options.frozenManifestSha256 && preflight.manifestSha256 !== options.frozenManifestSha256) throw new Error("comparison frozen manifest differs");
   const runnerSha256 = sha(await readFile(fileURLToPath(import.meta.url)));
   const outputDir = resolve(options.outputDir ?? join(ROOT, "evals/results"));
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
@@ -177,8 +189,8 @@ export async function runEvaluation(options, injected = {}) {
   if (options.resume) {
     resultPath = resolve(options.resume);
     run = JSON.parse(await readFile(resultPath, "utf8"));
-    if (run.runnerVersion !== RUNNER_VERSION || run.manifestSha256 !== preflight.manifestSha256 || run.frozenManifestRaw !== preflight.raw || run.split !== preflight.split) {
-      throw new Error("resume rejected: frozen manifest/version/split differs");
+    if (run.runnerVersion !== RUNNER_VERSION || run.manifestSha256 !== preflight.manifestSha256 || run.frozenManifestRaw !== preflight.raw || run.split !== preflight.split || run.videoModel !== options.videoModel) {
+      throw new Error("resume rejected: frozen manifest/version/split/model differs");
     }
     if (run.provenance?.runnerSha256 !== runnerSha256) throw new Error("resume rejected: runner source differs");
     if (!/^eval-[0-9a-f-]{36}$/.test(run.evalRunId) || run.cases.length !== preflight.cases.length || run.cases.some((item, index) => item.sampleId !== preflight.cases[index].sampleId ||
@@ -189,13 +201,13 @@ export async function runEvaluation(options, injected = {}) {
     run.cases.forEach((item, index) => { item.mediaPath = preflight.cases[index].mediaPath; });
   } else {
     const id = randomUUID(), startedAt = new Date(now()).toISOString();
-    resultPath = join(outputDir, `${startedAt.replaceAll(/[:.]/g, "-")}-${id}.json`);
+    resultPath = options.resultPath ?? join(outputDir, `${startedAt.replaceAll(/[:.]/g, "-")}-${id}.json`);
     let gitHead = null, gitDirty = null;
     try {
       gitHead = (await execute("git", ["rev-parse", "HEAD"], { cwd: ROOT, timeout: 5000 })).stdout.trim();
       gitDirty = !!(await execute("git", ["status", "--porcelain"], { cwd: ROOT, timeout: 5000, maxBuffer: 1024 * 1024 })).stdout.trim();
     } catch {}
-    run = { runnerVersion: RUNNER_VERSION, evalRunId: `eval-${id}`, startedAt, split: preflight.split,
+    run = { runnerVersion: RUNNER_VERSION, ...(options.videoModel ? { videoModel: options.videoModel } : {}), evalRunId: `eval-${id}`, startedAt, split: preflight.split,
       manifestSha256: preflight.manifestSha256, frozenManifestRaw: preflight.raw, frozenManifest: preflight.manifest,
       provenance: { gitHead, gitDirty, runnerSha256, nodeVersion: process.version, scorerSha256: sha(await readFile(SCORER)), labelsFrozenAt: startedAt },
       cloud: { backend: "Convex", attempted: false, licensing: "verification-only; no training license or payment", resumeCount: 0 },
@@ -226,7 +238,9 @@ export async function runEvaluation(options, injected = {}) {
     const rubric = summary?.rubric;
     if (!rubric || !Number.isFinite(rubric.frozenAt) || !/^[a-f0-9]{64}$/.test(rubric.contentHash ?? "") || !sameIds(rubric.criteria?.map(item => item.criterionId)) ||
       rubric._id !== context.taskVersionId || rubric.orderId !== context.orderId) throw new Error("frozen red-cup rubric mismatch");
-    if (preflight.manifest.expectedRubricContentHash !== undefined && preflight.manifest.expectedRubricContentHash !== rubric.contentHash) throw new Error("expected rubric content hash mismatch");
+    if ((preflight.manifest.expectedRubricContentHash !== undefined && preflight.manifest.expectedRubricContentHash !== rubric.contentHash) ||
+      (options.frozenRubricContentHash && options.frozenRubricContentHash !== rubric.contentHash) ||
+      (options.frozenTaskVersionId && options.frozenTaskVersionId !== rubric._id) || (options.frozenOrderId && options.frozenOrderId !== context.orderId)) throw new Error("expected rubric content hash mismatch");
     if ((run.orderId && run.orderId !== context.orderId) || (run.taskVersionId && run.taskVersionId !== rubric._id)) throw new Error("resume order/rubric differs");
     if (run.provenance.frozenRubric && run.provenance.frozenRubric.contentHash !== rubric.contentHash) throw new Error("resume rubric content hash differs");
     run.orderId = context.orderId; run.taskVersionId = rubric._id; run.rubric = rubric;
@@ -238,7 +252,7 @@ export async function runEvaluation(options, injected = {}) {
       for (const row of inventory.submissions) {
         const item = run.cases.find(item => item.clientRequestId === row.clientRequestId);
         if (!item || seen.has(row.clientRequestId) || typeof row._id !== "string" || (item.submissionId && item.submissionId !== row._id) ||
-          (row.sourceHash !== undefined && row.sourceHash !== item.contentSha256)) throw new Error("evaluation scope contaminated");
+          (row.sourceHash !== undefined && row.sourceHash !== item.contentSha256) || row.evalVideoModel !== run.videoModel) throw new Error("evaluation scope contaminated");
         item.submissionId = row._id; seen.add(row.clientRequestId);
       }
       if (run.cases.some(item => item.submissionId && !seen.has(item.clientRequestId))) throw new Error("evaluation scope missing existing submission");
@@ -259,7 +273,7 @@ export async function runEvaluation(options, injected = {}) {
           }
           item.firstCreateAt ??= now(); await save();
           const created = await client.mutation("submissions:create", { ...identity, orderId: run.orderId, storageId: item.storageId,
-            clientRequestId: item.clientRequestId, consentAcknowledged: true, verificationOnly: true, evalRunId: run.evalRunId });
+            clientRequestId: item.clientRequestId, consentAcknowledged: true, verificationOnly: true, evalRunId: run.evalRunId, ...(run.videoModel ? { evalVideoModel: run.videoModel } : {}) });
           if (typeof created.submissionId !== "string") throw new Error("create omitted submissionId");
           item.submissionId = created.submissionId; item.state = "submitted"; await save();
         }
@@ -272,7 +286,8 @@ export async function runEvaluation(options, injected = {}) {
           if (response.report) {
             item.rawResponse = response;
             Object.assign(item, validateStoredReport(response, item, run));
-            if (preflight.manifest.expectedPipelineVersion !== undefined && item.qualityReport.pipeline.version !== preflight.manifest.expectedPipelineVersion) {
+            if ((preflight.manifest.expectedPipelineVersion !== undefined && item.qualityReport.pipeline.version !== preflight.manifest.expectedPipelineVersion) ||
+              (options.frozenPipelineVersion && item.qualityReport.pipeline.version !== options.frozenPipelineVersion)) {
               delete item.qualityReport; item.successfulAnalysis = false; throw new Error("expected pipeline version mismatch");
             }
             run.provenance.pipelineVersion ??= item.qualityReport.pipeline.version;
@@ -302,20 +317,88 @@ export async function runEvaluation(options, injected = {}) {
   return { run, resultPath, exitCode: run.status === "completed" ? 0 : 1 };
 }
 
+/** Paired, frozen-source evaluation; independent duplicate scope for each model. */
+export async function runModelComparison(options, injected = {}) {
+  if (options.videoModel !== undefined) throw new Error("choose --video-model or --compare-video-models");
+  const preflight = await preflightManifest(options.manifestPath, options.split ?? "test");
+  const now = injected.now ?? Date.now;
+  const outputDir = resolve(options.outputDir ?? join(ROOT, "evals/results"));
+  await mkdir(outputDir, { recursive: true, mode: 0o700 });
+  const runnerSha256 = sha(await readFile(fileURLToPath(import.meta.url)));
+  let run, resultPath;
+  if (options.resume) {
+    resultPath = resolve(options.resume);
+    run = JSON.parse(await readFile(resultPath, "utf8"));
+    if (run.comparisonVersion !== RUNNER_VERSION || run.manifestSha256 !== preflight.manifestSha256 ||
+      run.frozenManifestRaw !== preflight.raw || run.split !== preflight.split || run.runnerSha256 !== runnerSha256 ||
+      canonical(run.models?.map(item => item.videoModel)) !== canonical(COMPARISON_VIDEO_MODELS)) {
+      throw new Error("comparison resume rejected: frozen manifest/version/split/models differs");
+    }
+  } else {
+    const id = randomUUID(), startedAt = new Date(now()).toISOString();
+    resultPath = join(outputDir, `${startedAt.replaceAll(/[:.]/g, "-")}-comparison-${id}.json`);
+    run = { comparisonVersion: RUNNER_VERSION, comparisonId: `comparison-${id}`, startedAt, split: preflight.split,
+      manifestSha256: preflight.manifestSha256, frozenManifestRaw: preflight.raw, runnerSha256,
+      models: COMPARISON_VIDEO_MODELS.map(videoModel => ({ videoModel, status: "pending" })) };
+  }
+  const save = async () => {
+    run.updatedAt = new Date(now()).toISOString();
+    await atomicJson(resultPath, run);
+    const percent = value => value == null ? "n/a" : `${(value * 100).toFixed(1)}%`;
+    const latency = value => `${value?.p50 ?? "n/a"}/${value?.p95 ?? "n/a"}`;
+    const rows = run.models.map(item => {
+      const m = item.metrics;
+      return `| ${item.videoModel} | ${item.status} | ${m?.caseCount ?? "—"} | ${percent(m?.successfulAnalysisCoverage)} | ${percent(m?.failureAdjustedDecisionAccuracy)} | ${m ? `${m.falseAcceptance.count}/${m.falseAcceptance.negativeCaseCount}` : "—"} | ${percent(m?.falseAcceptance.rate)} | ${percent(m?.reviewRate)} | ${latency(m?.latency.videoRequestMs)} | ${latency(m?.latency.backendProcessingMs)} | ${latency(m?.latency.clientTerminalReportMs)} |`;
+    });
+    await writeFile(resultPath.replace(/\.json$/, ".md"),
+      `# Paired video-model evaluation\n\nStatus: ${run.status}. Frozen manifest SHA-256: \`${run.manifestSha256}\`. Split: ${run.split}.\n\n` +
+      "Same frozen source bytes and labels in both arms; distinct evaluation scopes prevent cross-model copies from contaminating results. Labels are never sent to models. Both arms are verification-only. No global model environment is changed.\n\n" +
+      "| Video model | Status | Cases | Inference coverage | Decision accuracy (failures incorrect) | False accepts / negatives | False-accept rate | Review rate | Video p50/p95 ms | Backend p50/p95 ms | Client p50/p95 ms |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+      rows.join("\n") + "\n\nPercentiles use nearest rank. Failed or incomplete analysis earns no correct-decision credit. Provider fallback reviews remain in review rate; timeouts are censored in child results. Video latency counts timed visual responses, including responses that later fail another stage. Models run sequentially (Argon, then Flash); this is a paired clip comparison, not a randomized latency experiment. Child JSON preserves actual modelRuns, reports, scorer output and provenance.\n",
+      { mode: 0o600 });
+  };
+  run.status = "running";
+  await save(); // Both model choices and exact labels are frozen before any network.
+  for (const item of run.models) {
+    try {
+      item.resultPath ??= resultPath.replace(/\.json$/, `.${item.videoModel}.json`);
+      await save(); // Persist the child checkpoint path before it can submit anything.
+      const existing = await stat(item.resultPath).then(() => true, error => {
+        if (error.code === "ENOENT") return false;
+        throw error;
+      });
+      const result = await runEvaluation({ ...options, outputDir, videoModel: item.videoModel,
+        resultPath: item.resultPath, frozenManifestSha256: run.manifestSha256,
+        frozenRubricContentHash: run.frozenRubric?.contentHash, frozenTaskVersionId: run.frozenRubric?.taskVersionId,
+        frozenOrderId: run.orderId, frozenPipelineVersion: run.pipelineVersion, resume: existing ? item.resultPath : undefined }, injected);
+      item.resultPath = result.resultPath; item.evalRunId = result.run.evalRunId;
+      if (result.run.provenance.frozenRubric) { run.frozenRubric ??= result.run.provenance.frozenRubric; run.orderId ??= result.run.orderId; }
+      run.pipelineVersion ??= result.run.provenance.pipelineVersion;
+      item.status = result.run.status; item.metrics = result.run.metrics;
+      if (result.run.error) item.error = result.run.error; else delete item.error;
+    } catch (error) { item.status = "partial"; item.error = message(error); }
+    await save();
+  }
+  run.status = run.models.every(item => item.status === "completed") ? "completed" : "partial";
+  await save();
+  return { run, resultPath, exitCode: run.status === "completed" ? 0 : 1 };
+}
+
 async function main(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
-    if (["--resume", "--split", "--timeout-ms"].includes(arg)) {
+    if (["--resume", "--split", "--timeout-ms", "--video-model"].includes(arg)) {
       const value = argv[++index];
       if (!value) throw new Error(`missing ${arg} value`);
-      options[arg === "--timeout-ms" ? "timeoutMs" : arg.slice(2)] = arg === "--timeout-ms" ? Number(value) : value;
-    } else if (!arg.startsWith("-") && !options.manifestPath) options.manifestPath = arg;
+      options[arg === "--timeout-ms" ? "timeoutMs" : arg === "--video-model" ? "videoModel" : arg.slice(2)] = arg === "--timeout-ms" ? Number(value) : value;
+    } else if (arg === "--compare-video-models") options.compareVideoModels = true;
+    else if (!arg.startsWith("-") && !options.manifestPath) options.manifestPath = arg;
     else throw new Error(`unknown argument: ${arg}`);
   }
-  if (!options.manifestPath) throw new Error("usage: pnpm eval:clips <manifest.json> [--split test] [--resume results.json] [--timeout-ms 360000]");
-  const result = await runEvaluation(options);
-  console.log(`${result.run.status}: ${result.resultPath}\n${JSON.stringify(result.run.metrics, null, 2)}`);
+  if (!options.manifestPath) throw new Error("usage: pnpm eval:clips <manifest.json> [--split test] [--resume results.json] [--timeout-ms 360000] [--video-model MODEL | --compare-video-models]");
+  const result = await (options.compareVideoModels ? runModelComparison : runEvaluation)(options);
+  console.log(`${result.run.status}: ${result.resultPath}\n${JSON.stringify(result.run.metrics ?? result.run.models, null, 2)}`);
   return result.exitCode;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

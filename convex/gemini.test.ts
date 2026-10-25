@@ -33,7 +33,7 @@ describe("Gemini transport and independent inputs (mocked provider only)",()=>{
     const result=await observeVideo(Array.from({length:12},(_,i)=>({timestampMs:(i+1)*500,bytes:new Uint8Array([255,216,255]),mimeType:"image/jpeg" as const})),10_000);
     expect(result.observation.observations).toEqual([]);
     const body=JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
-    expect(body.model).toBe("gemini-3.8-flash");
+    expect(body.model).toBe("gemini-4-argon");
     expect(body.input.filter((p:{type:string})=>p.type === "image")).toHaveLength(12);
     expect(body.input.some((p:{type:string})=>p.type === "video")).toBe(false);
     expect(body.input.some((p:{type:string})=>p.type === "audio")).toBe(false);
@@ -95,9 +95,9 @@ it("accepts requires_action only for explicitly enabled function calling, never 
   await expect(requestInteraction({},async()=>response({status:"requires_action",steps:[]}),1000,1,true)).rejects.toThrow("gemini_incomplete");
 });
 
-it("defaults both model routes to 3.8 Flash and preserves explicit environment overrides",()=>{
+it("defaults video to Argon and finance to Flash while preserving environment overrides",()=>{
   vi.stubEnv("GEMINI_VIDEO_MODEL",""); vi.stubEnv("GEMINI_FINANCE_MODEL","");
-  expect(videoModel()).toBe("gemini-3.8-flash");
+  expect(videoModel()).toBe("gemini-4-argon");
   expect(financeModel()).toBe("gemini-3.8-flash");
   vi.stubEnv("GEMINI_VIDEO_MODEL","custom-vision"); vi.stubEnv("GEMINI_FINANCE_MODEL","custom-finance");
   expect(videoModel()).toBe("custom-vision"); expect(financeModel()).toBe("custom-finance");
@@ -129,4 +129,20 @@ it("keeps transient retries inside the original 30-second deadline",async()=>{
   await vi.advanceTimersByTimeAsync(remaining-1); expect(aborted).toBe(false);
   await vi.advanceTimersByTimeAsync(1); await assertion;
   expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+
+it("pins allowlisted evaluation video requests without changing the environment default",async()=>{
+  vi.stubEnv("GEMINI_API_KEY","unit-test-placeholder");
+  vi.stubEnv("GEMINI_VIDEO_MODEL","gemini-4-argon");
+  vi.stubGlobal("fetch",vi.fn(async()=>response({status:"completed",output_text:JSON.stringify({visibility:"clear",observations:[]})})));
+  const frames=Array.from({length:12},(_,i)=>({timestampMs:(i+1)*500,bytes:new Uint8Array([255,216,255]),mimeType:"image/jpeg" as const}));
+  for (const model of ["gemini-3.8-flash","gemini-4-argon"] as const) {
+    const result=await observeVideo(frames,10_000,model);
+    expect(result.run.model).toBe(model);
+    expect(JSON.parse(vi.mocked(fetch).mock.calls.at(-1)![1]!.body as string).model).toBe(model);
+  }
+  expect(videoModel()).toBe("gemini-4-argon");
+  await expect(observeVideo(frames,10_000,"unlisted-model" as never)).rejects.toThrow("invalid_evaluation_model");
+  expect(fetch).toHaveBeenCalledTimes(2);
 });

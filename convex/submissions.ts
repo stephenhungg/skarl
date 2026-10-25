@@ -5,6 +5,7 @@ import { requireRole } from "./lib/demoAuth";
 import { audit, actorFor, digest, requireTenant } from "./lib/finance";
 import { validateFrameHashes, compareFrameHashes } from "./lib/copyDetection";
 import { PIPELINE_VERSION, validateEvaluationScope, applyVerificationOnlyGuard, EVALUATION_PROJECTION_VERSION } from "./lib/verificationReport";
+import { evaluationVideoModel } from "./validators";
 
 const frame = v.object({ timestampMs: v.number(), hash: v.string() });
 export const generateUploadUrl = mutation({
@@ -14,7 +15,8 @@ export const generateUploadUrl = mutation({
 
 export const create = mutation({
   args: { demoIdentity: v.string(), orderId: v.id("orders"), storageId: v.id("_storage"), clientRequestId: v.string(),
-    consentAcknowledged: v.boolean(), clientFrameDHashes: v.optional(v.array(frame)), verificationOnly: v.optional(v.boolean()), evalRunId: v.optional(v.string()) },
+    consentAcknowledged: v.boolean(), clientFrameDHashes: v.optional(v.array(frame)), verificationOnly: v.optional(v.boolean()), evalRunId: v.optional(v.string()),
+    evalVideoModel: v.optional(evaluationVideoModel) },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, "contributor");
     const order = await ctx.db.get(args.orderId);
@@ -23,15 +25,21 @@ export const create = mutation({
     if (!args.consentAcknowledged) throw new Error("consent_required");
     if (!/^[a-zA-Z0-9._:-]{1,120}$/.test(args.clientRequestId)) throw new Error("invalid_request_id");
     validateEvaluationScope(args.verificationOnly, args.evalRunId);
+    if (args.evalVideoModel !== undefined && (!args.verificationOnly || args.evalRunId === undefined)) throw new Error("model_override_requires_scoped_evaluation");
     const existing = await ctx.db.query("submissions").withIndex("by_request", q => q.eq("organizationId", principal.organizationId)
       .eq("contributorTokenIdentifier", principal.tokenIdentifier).eq("clientRequestId", args.clientRequestId)).unique();
     if (existing) {
       const asset = existing.originalAssetId ? await ctx.db.get(existing.originalAssetId) : null;
       if (existing.orderId !== args.orderId || asset?.storageId !== args.storageId ||
-        !!existing.verificationOnly !== !!args.verificationOnly || existing.evalRunId !== args.evalRunId || digest(existing.clientFrameDHashes ?? []) !== digest(args.clientFrameDHashes ?? [])) throw new Error("submission_request_conflict");
+        !!existing.verificationOnly !== !!args.verificationOnly || existing.evalRunId !== args.evalRunId || existing.evalVideoModel !== args.evalVideoModel || digest(existing.clientFrameDHashes ?? []) !== digest(args.clientFrameDHashes ?? [])) throw new Error("submission_request_conflict");
       return { submissionId: existing._id, replayed: true };
     }
     if (["closed", "cancelled", "cancelling", "fulfilled", "refunded"].includes(order.status)) throw new Error("order_closed");
+    if (args.evalRunId !== undefined) {
+      const scope = await ctx.db.query("submissions").withIndex("by_eval_run", q =>
+        q.eq("organizationId", principal.organizationId).eq("evalRunId", args.evalRunId)).take(201);
+      if (scope.some(submission => submission.evalVideoModel !== args.evalVideoModel)) throw new Error("evaluation_model_scope_mismatch");
+    }
     if (!order.taskVersionId) throw new Error("rubric_required");
     const rubric = await ctx.db.get(order.taskVersionId);
     if (!rubric || rubric.frozenAt === undefined || rubric.orderId !== order._id || rubric.organizationId !== order.organizationId) throw new Error("frozen_rubric_required");
@@ -48,7 +56,8 @@ export const create = mutation({
     const submissionId = await ctx.db.insert("submissions", { organizationId: order.organizationId, orderId: order._id,
       taskVersionId: rubric._id, contributorTokenIdentifier: principal.tokenIdentifier, status: "queued",
       clientRequestId: args.clientRequestId, expectedSourceHash: uploadedHash, ...(args.clientFrameDHashes ? { clientFrameDHashes: args.clientFrameDHashes } : {}),
-      verificationOnly: args.verificationOnly ?? false, ...(args.evalRunId !== undefined ? { evalRunId: args.evalRunId } : {}), updatedAt: now });
+      verificationOnly: args.verificationOnly ?? false, ...(args.evalRunId !== undefined ? { evalRunId: args.evalRunId } : {}),
+      ...(args.evalVideoModel !== undefined ? { evalVideoModel: args.evalVideoModel } : {}), updatedAt: now });
     const originalAssetId = await ctx.db.insert("mediaAssets", { organizationId: order.organizationId, submissionId,
       storageId: args.storageId, purpose: "original", status: "uploaded", contentHash: uploadedHash,
       mimeType: uploadMime, sizeBytes: metadata.size });
@@ -121,7 +130,8 @@ export const copies = internalQuery({
     const candidates = await ctx.db.query("submissions").withIndex("by_eval_run", q =>
       q.eq("organizationId", submission.organizationId).eq("evalRunId", submission.evalRunId)).take(201);
     if (submission.evalRunId !== undefined && candidates.some(candidate => !candidate.verificationOnly ||
-      candidate.orderId !== submission.orderId || candidate.contributorTokenIdentifier !== submission.contributorTokenIdentifier)) throw new Error("evaluation_scope_contaminated");
+      candidate.orderId !== submission.orderId || candidate.contributorTokenIdentifier !== submission.contributorTokenIdentifier ||
+      candidate.evalVideoModel !== submission.evalVideoModel)) throw new Error("evaluation_scope_contaminated");
     if (candidates.length > 200) return { status: "not_checked" as const, matches: [] };
     const matches = [];
     for (const candidate of candidates) {
@@ -222,7 +232,7 @@ export const getReport = query({
     const analysis = submission.currentAnalysisId ? await ctx.db.get(submission.currentAnalysisId) : null;
     if (analysis && (analysis.organizationId !== submission.organizationId || analysis.submissionId !== submission._id)) throw new Error("analysis_reference_mismatch");
     return { status: submission.status, sourceHash: submission.sourceHash, perceptualHashSource: submission.perceptualHashSource,
-      verificationOnly: submission.verificationOnly ?? false, evalRunId: submission.evalRunId,
+      verificationOnly: submission.verificationOnly ?? false, evalRunId: submission.evalRunId, evalVideoModel: submission.evalVideoModel,
       report: analysis?.reportJson ? JSON.parse(analysis.reportJson) : null,
       observations: analysis?.observationsJson ? JSON.parse(analysis.observationsJson) : null,
       processingElapsedMs: analysis?.processingElapsedMs };
@@ -253,9 +263,11 @@ export const evaluationRun = query({
     const submissions = await ctx.db.query("submissions").withIndex("by_eval_run", q =>
       q.eq("organizationId", principal.organizationId).eq("evalRunId", args.evalRunId)).take(201);
     if (submissions.some(submission => !submission.verificationOnly || submission.orderId !== args.orderId ||
-      submission.contributorTokenIdentifier !== principal.tokenIdentifier)) throw new Error("evaluation_scope_contaminated");
+      submission.contributorTokenIdentifier !== principal.tokenIdentifier ||
+      submission.evalVideoModel !== submissions[0]?.evalVideoModel)) throw new Error("evaluation_scope_contaminated");
     return { submissions: submissions.slice(0, 200).map(submission => ({ _id: submission._id,
-      clientRequestId: submission.clientRequestId, ...(submission.sourceHash ? { sourceHash: submission.sourceHash } : {}) })),
+      clientRequestId: submission.clientRequestId, ...(submission.sourceHash ? { sourceHash: submission.sourceHash } : {}),
+      ...(submission.evalVideoModel ? { evalVideoModel: submission.evalVideoModel } : {}) })),
       truncated: submissions.length > 200 };
   },
 });

@@ -33,11 +33,11 @@ export const run = internalAction({
         frameDHashes:media.frameDHashes,perceptualHash:media.perceptualHash,perceptualHashSource:"serverComputed"});
       duplicate=await ctx.runQuery(internal.submissions.copies,{submissionId:submission._id});
 
-      const outcomes=await Promise.allSettled([observeVideo(media.videoFrames,durationMs),
+      const outcomes=await Promise.allSettled([observeVideo(media.videoFrames,durationMs,submission.evalVideoModel),
         media.audio ? observeAudio(media.audio,durationMs) : Promise.reject(new GeminiFailure("audio_stream_missing"))]);
       const visual=outcomes[0], speech=outcomes[1];
       if (visual.status === "fulfilled") {video=visual.value.observation;runs.push(visual.value.run);}
-      else {runs.push({provider:"google",model:videoModel(),promptVersion:"timestamped-frames-visible-events-v1"});failure=visual.reason instanceof GeminiFailure ? visual.reason.code : "video_unavailable";}
+      else {runs.push({provider:"google",model:submission.evalVideoModel ?? videoModel(),promptVersion:"timestamped-frames-visible-events-v1"});failure=visual.reason instanceof GeminiFailure ? visual.reason.code : "video_unavailable";}
       if (speech.status === "fulfilled") {audio=speech.value.observation;runs.push(speech.value.run);}
       else {if(media.audio) runs.push({provider:"google",model:audioModel(),promptVersion:"audio-only-events-v1"});failure=speech.reason instanceof GeminiFailure ? speech.reason.code : "audio_unavailable";}
     } catch(error) {

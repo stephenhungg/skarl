@@ -8,7 +8,7 @@ Truthful state as of October 25, 2026, after the adversarial audit and the move 
 | Shared contracts | Base Sepolia chain constants (`chain.ts`), funding/payout status lists, JSON Schema, TS report validation, `parseAtomicUsdc` | Rubric-membership check wired into acceptance |
 | Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads and verified contributor wallets; production auth is out of demo scope |
 | Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; both stages completed on a real YouTube-origin negative (Flash 4,893 ms, audio 1,322 ms) | Human red-cup acceptance, model accuracy and copy calibration remain unmeasured; provider failures route to review |
-| Evaluation | Cloud clip runner; pre-labeled/source-hashed manifest; isolated copy scope; advisory quality projection; dated JSON/Markdown metrics and resume checkpoints | No consented labeled human corpus or measured accuracy run yet; earlier provider quota blockers resolved after billing was enabled |
+| Evaluation | Cloud clip runner; pre-labeled/source-hashed manifest; isolated copy scope; advisory quality projection; resumable paired Argon/Flash comparison with per-model accuracy, false accepts and latency | No consented labeled human corpus or measured accuracy run yet; earlier provider quota blockers resolved after billing was enabled |
 | Ledger | Atomic journal persistence; journal-derived trial balance, cash, deferred revenue, revenue/expense and payables by contributor; exact replay protection | Live payout settlement and end-to-end reconciliation evidence |
 | Payments | Live Base Sepolia x402 funding succeeded: **10 USDC** to treasury `0x8408a922ea400af33d7c2080a9edd5d3495b695f` ([transaction](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757)); funding journal/reconciliation and payout adapters implemented | Independent controller approval, wallet payout and payout reconciliation remain to demonstrate |
 | Finance agent | Gemini function-calling action; six typed tools; persisted transcript/explanation; cumulative exact batch and call caps; existing proposal and refused approval audits | Live model measurement below; durable Workflow approval wait implemented; wallet execution remains separate |
@@ -340,7 +340,7 @@ Root `package.json` alias ownership approval is pending; the node command is rea
 
 ## Gemini request deadline and billing correction
 
-Current video and finance defaults remain `gemini-3.8-flash`, with explicit
+At this earlier correction, video and finance defaults remained `gemini-3.8-flash`, with explicit
 `GEMINI_VIDEO_MODEL` / `GEMINI_FINANCE_MODEL` overrides preserved. Audio remains
 `gemini-3.5-transcribe`. Billing is now enabled on the key. The team's latest
 Interactions probes returned correct HTTP 200 responses for 3.8 Flash (~2.1 s),
@@ -386,7 +386,7 @@ The upload, submission scheduler, server SHA-256, FFmpeg modality isolation, twe
 
 Submission: `mn7100dqspzfrdt5f3h8bwbzqx8gyb1w`. Original SHA-256: `f080a995943f2b4641d74a94dfc2d336d494fa6e25026e55b5def94f07ea522b`. This was a successful inference/report integration run, not a provider failure. It stayed verification-only: no training license was granted and no acceptance, payable or payment was requested. Media, transcript and raw provider/report artifacts remain private and ignored.
 
-Immediately before the run, the cloud video override was observed as `gemini-4-argon`; it was restored to the requested `gemini-3.8-flash`. The stored model-run metadata above confirms Flash actually served this measurement. Code defaults for video and finance remain 3.8 Flash; the shared 30-second provider deadline is deployed.
+Immediately before the run, the cloud video override was observed as `gemini-4-argon`; it was restored to the requested `gemini-3.8-flash`. The stored model-run metadata above confirms Flash actually served this measurement. At the time of this measurement, code defaults for video and finance remained 3.8 Flash; the shared 30-second provider deadline was deployed. The later model decision below supersedes the video default.
 
 Final validation for this run: `pnpm check` passed **385 tests** (100 Node, 257 Convex, 28 payment-route), root/Convex/web typechecks, all 32 Markdown files’ local links/anchors and the production build. Cloud deploy/typecheck passed before the live run. Committed generated API types now include the already-deployed chain-witness modules.
 
@@ -395,3 +395,33 @@ Final validation for this run: `pnpm check` passed **385 tests** (100 Node, 257 
 The cleanup regression now supplies its own real per-test `mkdtemp` directory to the failing preprocessing invocation and checks only that directory was removed. Two separate Vitest processes ran the media suite concurrently: **11 tests passed in each process**. The complete `pnpm check` then passed **385 tests** (100 Node, 257 Convex, 28 payment-route), typechecks, docs and the production build.
 
 The reported evaluation deployment drift was already resolved in `3c7ca29`: `submissions:evaluationRun` and the resumable evaluation harness are both committed on `origin/main`. No missing query or harness changes remained in the checkout. The [deployment rule](../convex/README.md#shared-deployment-coordination) now requires checking, committing and pushing first, followed by a clean working tree and HEAD equal to freshly fetched `origin/main`. No cloud deployment was performed for this test/documentation follow-up; the orchestrator redeploys merged batches.
+
+## Video model decision and paired evaluation
+
+The current code default for video verification is **`gemini-4-argon`**;
+`GEMINI_VIDEO_MODEL` remains configurable, and the orchestrator reports that the
+shared deployment environment is already Argon. Finance-agent and read-only
+`askAgent` defaults remain **`gemini-3.8-flash`** for interactive latency. Audio
+stays `gemini-3.5-transcribe`; the shared 30-second provider deadline remains.
+Earlier Flash smoke-test measurements above retain their original model IDs.
+
+The team's real-frame directional A/B probe reported zero hallucinated events
+for either video model, with Argon returning visibility `clear` and Flash
+`uncertain`. Reported latencies were Argon **4.4–5.0 s** and Flash **3.1–4.1 s**.
+This motivates the choice but does not measure valid-clip acceptance accuracy
+or establish a calibrated false-acceptance rate.
+
+`pnpm eval:clips <manifest.json> --compare-video-models` now runs both models
+against identical frozen clip bytes/labels and the same rubric/pipeline. Each
+arm uses a separate duplicate corpus and a persisted, allowlisted evaluation-only
+model override; it never switches global deployment configuration. Parent and
+child checkpoints support resumption. The Markdown/JSON comparison reports
+accuracy, false accepts, coverage, review rate and visual/backend/client p50/p95
+latency separately per model. Actual provider model metadata is validated before
+scoring. Evaluation uploads remain ineligible for acceptance or payment.
+
+No new labeled human-corpus A/B benchmark or cloud deployment is claimed by this
+source change. The orchestrator must deploy merged `origin/main` from a clean,
+matching checkout before the new `evalVideoModel` argument is available live.
+
+Validation: `pnpm check` passed **396 tests** (107 Node, 261 Convex, 28 payment-route), all typechecks, documentation checks and the production build. This includes 18 runner tests plus model-default/override/scope/replay regressions; transport and provider responses are mocked in these tests. A separate read-only review found no actionable paired-evaluation correctness issue. No new live inference measurement is claimed.

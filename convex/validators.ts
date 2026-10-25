@@ -6,6 +6,7 @@ import {
   submissionStatuses,
 } from "../packages/contracts/src/index";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
+import { EVALUATION_VIDEO_MODELS } from "./lib/verificationReport";
 
 // Storage validators constrain types. Business invariants still require mutations.
 
@@ -21,6 +22,7 @@ export const usdcToken = v.literal(USDC_ADDRESS);
 /** EVM 0x address. Mutations must validate and lowercase before writing so equality checks hold. */
 export const evmAddress = v.string();
 export const amountAtomic = v.int64();
+export const evaluationVideoModel = literalUnion(EVALUATION_VIDEO_MODELS);
 /** Whole-number counters that feed bigint budget and capacity arithmetic. */
 export const count = v.int64();
 

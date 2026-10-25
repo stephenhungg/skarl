@@ -5,7 +5,7 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { canonical, digest } from "./lib/finance";
 import { audioFromTranscriptSegments, buildVerificationReports, EVALUATION_PROJECTION_VERSION,
-  VERIFICATION_ONLY_WARNING, type BuildVerificationReportInput, type VideoObservation } from "./lib/verificationReport";
+  VERIFICATION_ONLY_WARNING, type BuildVerificationReportInput, type EvaluationVideoModel, type VideoObservation } from "./lib/verificationReport";
 import { validateVerificationReportForRubric } from "../packages/contracts/src/verification";
 
 // Synthetic bytes and mocked provider observations only. No decoding, credentials or inference.
@@ -34,16 +34,17 @@ beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-25T08:00:00Z"));
   mocked.prepare.mockReset().mockResolvedValue({ silentVideo: new Uint8Array([1]), audio: new Uint8Array([2]),
     durationMs: 12_000, videoFrames: [], frameDHashes: frames, perceptualHash: frames.map(f => f.hash).join(""), warnings: [] });
-  mocked.video.mockReset().mockResolvedValue({ observation: video, run });
+  mocked.video.mockReset().mockImplementation(async (_frames, _duration, evalModel) => ({ observation: video, run: { ...run, model: evalModel ?? run.model } }));
   mocked.audio.mockReset().mockResolvedValue({ observation: audio, run });
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 async function setup() { const t = convexTest(schema, modules); return { t, ...await t.mutation(internal.seed.demo, {}) }; }
 type Fixture = Awaited<ReturnType<typeof setup>>;
-async function create(f: Fixture, request: string, evalRunId?: string) {
+async function create(f: Fixture, request: string, evalRunId?: string, evalVideoModel?: EvaluationVideoModel) {
   const storageId = await f.t.run(ctx => ctx.storage.store(new Blob([`synthetic:${request}`], { type: "video/mp4" })));
   const args = { demoIdentity: "contributor", orderId: f.orderId, storageId, clientRequestId: request,
-    consentAcknowledged: true, ...(evalRunId !== undefined ? { verificationOnly: true, evalRunId } : {}) };
+    consentAcknowledged: true, ...(evalRunId !== undefined ? { verificationOnly: true, evalRunId } : {}),
+    ...(evalVideoModel !== undefined ? { evalVideoModel } : {}) };
   const { submissionId } = await f.t.mutation(api.submissions.create, args);
   const job = await f.t.run(async ctx => (await ctx.db.query("jobs").withIndex("by_logical_job", q => q.eq("submissionId", submissionId)).unique())!);
   return { submissionId, args, job };
@@ -65,6 +66,51 @@ async function setFacts(f: Fixture, item: Awaited<ReturnType<typeof create>>) {
 }
 
 describe("evaluation corpus isolation and advisory projection", () => {
+  it("allows model overrides only for scoped verification-only runs and binds them on replay", async () => {
+    const f = await setup(), item = await create(f, "model-bound", "model-run", "gemini-4-argon");
+    expect(await f.t.mutation(api.submissions.create, item.args)).toMatchObject({ replayed: true });
+    for (const evalVideoModel of [undefined, "gemini-3.8-flash"] as const) {
+      await expect(f.t.mutation(api.submissions.create, { ...item.args, evalVideoModel })).rejects.toThrow("submission_request_conflict");
+    }
+    for (const verificationOnly of [true, false, undefined]) {
+      await expect(f.t.mutation(api.submissions.create, { ...item.args, evalRunId: undefined, verificationOnly }))
+        .rejects.toThrow("model_override_requires_scoped_evaluation");
+    }
+    await expect(f.t.mutation(api.submissions.create, { ...item.args, evalVideoModel: "unlisted-model" as never })).rejects.toThrow();
+    const inventory = await f.t.query(api.submissions.evaluationRun, { demoIdentity: "contributor", orderId: f.orderId, evalRunId: "model-run" });
+    expect(inventory.submissions[0]).toMatchObject({ evalVideoModel: "gemini-4-argon" });
+    expect(await f.t.query(api.submissions.getReport, { demoIdentity: "contributor", submissionId: item.submissionId }))
+      .toMatchObject({ evalVideoModel: "gemini-4-argon", verificationOnly: true });
+  });
+
+  it("refuses mixing model bindings in one duplicate scope and isolates independent model runs", async () => {
+    const f = await setup();
+    const argon = await create(f, "model-argon", "argon-run", "gemini-4-argon");
+    await expect(create(f, "mixed-flash", "argon-run", "gemini-3.8-flash")).rejects.toThrow("evaluation_model_scope_mismatch");
+    await expect(create(f, "mixed-unpinned", "argon-run")).rejects.toThrow("evaluation_model_scope_mismatch");
+    await finish(f, argon);
+    const flash = await create(f, "model-flash", "flash-run", "gemini-3.8-flash");
+    await setFacts(f, flash);
+    expect(await f.t.query(internal.submissions.copies, { submissionId: flash.submissionId })).toEqual({ status: "clear", matches: [] });
+    await f.t.run(ctx => ctx.db.patch(flash.submissionId, { evalRunId: "argon-run" }));
+    await expect(f.t.query(internal.submissions.copies, { submissionId: flash.submissionId })).rejects.toThrow("evaluation_scope_contaminated");
+    await expect(f.t.query(api.submissions.evaluationRun, { demoIdentity: "contributor", orderId: f.orderId, evalRunId: "argon-run" }))
+      .rejects.toThrow("evaluation_scope_contaminated");
+  });
+
+  it("routes selected models into the action and records the same model for success or failure", async () => {
+    const f = await setup(), item = await create(f, "selected-model", "selected-run", "gemini-3.8-flash");
+    const stored = await finish(f, item);
+    expect(mocked.video).toHaveBeenCalledWith([], 12_000, "gemini-3.8-flash");
+    expect(stored.report.pipeline.modelRuns[0].model).toBe("gemini-3.8-flash");
+    const failed = await create(f, "failed-model", "failed-run", "gemini-4-argon");
+    mocked.video.mockRejectedValueOnce(new Error("synthetic provider failure"));
+    const failedReport = await finish(f, failed);
+    expect(failedReport.report.pipeline.modelRuns[0].model).toBe("gemini-4-argon");
+    expect(failedReport.observations.failureCode).toBe("video_unavailable");
+    expect(failedReport.report.recommendation).toBe("needs_review");
+  });
+
   it("binds scope on replay and rejects invalid or non-verification scopes", async () => {
     const f = await setup(), item = await create(f, "immutable", "run-a");
     expect(await f.t.mutation(api.submissions.create, item.args)).toEqual({ submissionId: item.submissionId, replayed: true });

@@ -28,7 +28,8 @@ This is **tonight's target architecture** (see [workstreams](workstreams.md)). T
 | Source of truth | Convex | Atomic mutations, reactive queries, scheduler, file storage and the Workflow component for the approval wait. |
 | Identity | Seeded demo identities with server-checked roles in Convex | Labeled as demo. Auth0 is not used: Cal Hacks 13.0 has no Auth0 prize and it costs setup time. |
 | AI runtime | Convex action calling Gemini | No second service to deploy. Two separate calls keep the visual and audio evidence independent. |
-| Visual and finance reasoning | `gemini-3.8-flash`, model IDs configurable | Billing-enabled probes now succeed; earlier free-tier failures remain historical. No automatic model fallback. |
+| Visual evidence | `gemini-4-argon`, model ID configurable | The team’s real-frame probe reported clearer visibility than Flash, at higher latency; labeled clip accuracy remains unmeasured. No automatic model fallback. |
+| Finance reasoning and read-only `askAgent` | `gemini-3.8-flash`, model ID configurable | Keeps interactive latency lower. Billing-enabled probes succeed; earlier free-tier failures remain historical. |
 | Speech evidence | `gemini-3.5-transcribe`, model ID configurable | Separate verbatim audio observations; narration is withheld from the visual call. |
 | Duplicate detection | SHA-256 + sampled-frame perceptual hash | Catches exact and re-encoded copies. SSCD is deferred (an image model; calibrating it needs labeled data). |
 | Money | Base Sepolia USDC; x402 V2 `exact` via the CDP facilitator; Coinbase Wallet MCP | Machine-payable order funding and agent-initiated payouts, with a human approving every write. |

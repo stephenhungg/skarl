@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { canonical, computeMetrics, CRITERIA, LICENSING_WARNING, preflightManifest, runEvaluation, validateStoredReport } from "./eval-clips.mjs";
+import { canonical, computeMetrics, CRITERIA, LICENSING_WARNING, preflightManifest, runEvaluation, runModelComparison, COMPARISON_VIDEO_MODELS, validateStoredReport } from "./eval-clips.mjs";
 
 const sha = value => createHash("sha256").update(value).digest("hex");
 const expected = recommendation => ({ recommendation, duplicateStatus: "clear",
@@ -29,19 +29,19 @@ async function fixture(t, count = 1) {
 }
 
 function storedResponse(row, options = {}) {
-  const failed = options.failed ?? false;
+  const failed = options.failed ?? false, review = options.review ?? false;
   const quality = { schemaVersion: "1.0", reportId: `fixture:${row._id}`, submissionId: row._id, taskVersionId: "frozen-rubric",
     source: { sha256: row.sourceHash, durationMs: 1000 },
-    pipeline: { version: "fixture-pipeline-not-live", status: failed ? "failed" : "completed", implementation: "inference",
-      modelRuns: [{ provider: "fixture-not-live", model: "fixture-not-live", promptVersion: "fixture-not-live" }] },
-    criteria: CRITERIA.map((criterionId, index) => ({ criterionId, status: failed ? "unobservable" : "supported",
-      evidence: failed ? [] : [{ modality: index === 2 ? "audio" : "video", startMs: 0, endMs: 500, claim: "synthetic test evidence" }], reason: "Synthetic test result only" })),
-    duplicate: { status: "clear", matches: [] }, recommendation: failed ? "needs_review" : "accept",
+    pipeline: { version: "fixture-pipeline-not-live", status: failed ? "failed" : review ? "needs_review" : "completed", implementation: "inference",
+      modelRuns: [{ provider: "fixture-not-live", model: options.actualVideoModel ?? row.evalVideoModel ?? "fixture-not-live", promptVersion: row.evalVideoModel ? "timestamped-frames-visible-events-v1" : "fixture-not-live", elapsedMs: options.videoLatency ?? 25 }] },
+    criteria: CRITERIA.map((criterionId, index) => ({ criterionId, status: failed || review ? "unobservable" : "supported",
+      evidence: failed || review ? [] : [{ modality: index === 2 ? "audio" : "video", startMs: 0, endMs: 500, claim: "synthetic test evidence" }], reason: "Synthetic test result only" })),
+    duplicate: { status: "clear", matches: [] }, recommendation: failed || review ? "needs_review" : "accept",
     warnings: failed ? ["Analysis did not complete; inspect the job error code before review."] : [] };
   const observations = { ...(failed ? { failureCode: "provider_unavailable" } : {
     video: { visibility: "clear", observations: [] }, audio: { transcript: "synthetic narration", segments: [], claims: [] } }),
     evaluation: { evaluationOnly: true, projectionVersion: "prelicensing-advisory-v1", qualityReport: quality, qualityReportHash: sha(canonical(quality)) } };
-  return { verificationOnly: true, evalRunId: row.evalRunId, sourceHash: row.sourceHash, processingElapsedMs: 80,
+  return { verificationOnly: true, evalRunId: row.evalRunId, ...(row.evalVideoModel ? { evalVideoModel: row.evalVideoModel } : {}), sourceHash: row.sourceHash, processingElapsedMs: 80,
     observations, report: { ...quality, pipeline: { ...quality.pipeline, status: failed ? "failed" : "needs_review" },
       recommendation: "needs_review", warnings: [...quality.warnings, LICENSING_WARNING] } };
 }
@@ -54,18 +54,21 @@ function transport(f, options = {}) {
       if (name === "dashboard:demoContext") return { orderId: "demo-order", taskVersionId: "frozen-rubric" };
       if (name === "dashboard:orderSummary") return { rubric: { _id: "frozen-rubric", orderId: "demo-order", frozenAt: 1,
         contentHash: "b".repeat(64), criteria: CRITERIA.map(criterionId => ({ criterionId })) } };
-      if (name === "submissions:evaluationRun") return { submissions: options.contaminated ? [{ _id: "unknown", clientRequestId: "unknown" }] : rows,
+      if (name === "submissions:evaluationRun") return { submissions: options.contaminated ? [{ _id: "unknown", clientRequestId: "unknown" }] : rows.filter(row => row.evalRunId === args.evalRunId),
         truncated: options.truncated ?? false };
-      if (name === "submissions:getReport") return options.pending ? { report: null } : storedResponse(rows.find(row => row._id === args.submissionId), options);
+      if (name === "submissions:getReport") {
+        const row = rows.find(row => row._id === args.submissionId);
+        return options.pending || (options.pendingModel && options.pendingModel === row.evalVideoModel) ? { report: null } : storedResponse(row, { ...options, ...options.byModel?.[row.evalVideoModel] });
+      }
       throw new Error(`unexpected query ${name}`);
     },
     async mutation(name, args) {
       calls.push({ name, args });
       if (name === "submissions:generateUploadUrl") return "https://upload.invalid/private-url";
       if (name === "submissions:create") {
-        const source = f.manifest.samples[rows.length];
+        const source = f.manifest.samples[rows.length % f.manifest.samples.length];
         const row = { _id: `submission-${rows.length}`, clientRequestId: args.clientRequestId,
-          sourceHash: source.contentSha256, evalRunId: args.evalRunId };
+          sourceHash: source.contentSha256, evalRunId: args.evalRunId, ...(args.evalVideoModel ? { evalVideoModel: args.evalVideoModel } : {}) };
         rows.push(row);
         return { submissionId: row._id };
       }
@@ -231,4 +234,102 @@ test("failure-adjusted metrics preserve negative denominators and nearest-rank p
   assert.equal(result.falseAcceptance.rate, .5);
   assert.equal(result.latency.clientTerminalReportMs.p50, 200);
   assert.equal(result.latency.clientTerminalReportMs.p95, 900);
+});
+
+
+test("paired models use identical frozen clips and labels with independent scopes and per-model metrics", async t => {
+  const f = await fixture(t, 2);
+  f.manifest.samples[1].expected = expected("needs_review"); await f.save();
+  const mock = transport(f, { byModel: {
+    "gemini-4-argon": { videoLatency: 5000 }, "gemini-3.8-flash": { review: true, videoLatency: 3000 },
+  } });
+  const result = await runModelComparison(f.options, { createClient: mock.createClient });
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(result.run.models.map(item => item.videoModel), COMPARISON_VIDEO_MODELS);
+  const [argon, flash] = result.run.models;
+  assert.notEqual(argon.evalRunId, flash.evalRunId);
+  assert.equal(argon.metrics.caseCount, 2); assert.equal(flash.metrics.caseCount, 2);
+  assert.equal(argon.metrics.failureAdjustedDecisionAccuracy, .5); assert.equal(flash.metrics.failureAdjustedDecisionAccuracy, .5);
+  assert.equal(argon.metrics.falseAcceptance.rate, 1); assert.equal(flash.metrics.falseAcceptance.rate, 0);
+  assert.equal(argon.metrics.latency.videoRequestMs.p50, 5000); assert.equal(flash.metrics.latency.videoRequestMs.p95, 3000);
+  const children = await Promise.all(result.run.models.map(item => readFile(item.resultPath, "utf8").then(JSON.parse)));
+  assert.equal(children[0].manifestSha256, children[1].manifestSha256);
+  assert.deepEqual(children[0].cases.map(item => [item.contentSha256, item.expected]), children[1].cases.map(item => [item.contentSha256, item.expected]));
+  assert.equal(mock.uploads.length, 4);
+  for (const call of mock.calls.filter(item => item.name === "submissions:create")) {
+    assert.equal(call.args.verificationOnly, true); assert.ok(COMPARISON_VIDEO_MODELS.includes(call.args.evalVideoModel));
+    assert.equal(JSON.stringify(call.args).includes("expected"), false);
+  }
+  const table = await readFile(result.resultPath.replace(/\.json$/, ".md"), "utf8");
+  assert.match(table, /False-accept rate/); assert.match(table, /gemini-4-argon/); assert.match(table, /5000\/5000/);
+});
+
+test("paired resume polls each original submission and does not upload completed arms again", async t => {
+  const f = await fixture(t), flags = { pendingModel: "gemini-3.8-flash" }, mock = transport(f, flags);
+  let clock = Date.UTC(2026, 9, 25);
+  const injected = { createClient: mock.createClient, now: () => clock, sleep: async ms => { clock += ms; } };
+  const first = await runModelComparison(f.options, injected);
+  assert.equal(first.exitCode, 1); assert.equal(first.run.models[0].status, "completed");
+  flags.pendingModel = undefined;
+  const resumed = await runModelComparison({ ...f.options, resume: first.resultPath }, injected);
+  assert.equal(resumed.exitCode, 0); assert.equal(mock.uploads.length, 2);
+  assert.equal(mock.calls.filter(item => item.name === "submissions:create").length, 2);
+  assert.deepEqual(resumed.run.models.map(item => item.evalRunId), first.run.models.map(item => item.evalRunId));
+});
+
+test("explicit model evaluation refuses a stored response produced by the other video model", async t => {
+  const f = await fixture(t), mock = transport(f, { actualVideoModel: "gemini-3.8-flash" });
+  const result = await runEvaluation({ ...f.options, videoModel: "gemini-4-argon" }, { createClient: mock.createClient });
+  assert.equal(result.exitCode, 1); assert.match(result.run.cases[0].error, /stored video model differs/);
+  assert.equal(result.run.metrics.successfulAnalysisCoverage, 0);
+});
+
+test("paired model list and manifest remain frozen before another network connection", async t => {
+  const f = await fixture(t), mock = transport(f);
+  const first = await runModelComparison(f.options, { createClient: mock.createClient });
+  const checkpoint = JSON.parse(await readFile(first.resultPath, "utf8"));
+  checkpoint.models.reverse(); await writeFile(first.resultPath, JSON.stringify(checkpoint));
+  let connected = false;
+  await assert.rejects(runModelComparison({ ...f.options, resume: first.resultPath }, { createClient: async () => { connected = true; } }), /models differs/);
+  assert.equal(connected, false);
+  await writeFile(first.resultPath, JSON.stringify(first.run));
+  await writeFile(f.manifestPath, `${await readFile(f.manifestPath, "utf8")}\n`);
+  await assert.rejects(runModelComparison({ ...f.options, resume: first.resultPath }, { createClient: async () => { connected = true; } }), /manifest/);
+  assert.equal(connected, false);
+});
+
+test("invalid model selection fails before constructing a network client", async t => {
+  const f = await fixture(t);
+  let connected = false;
+  const injected = { createClient: async () => { connected = true; } };
+  await assert.rejects(runEvaluation({ ...f.options, videoModel: "arbitrary-unapproved-model" }, injected), /unsupported evaluation video model/);
+  await assert.rejects(runModelComparison({ ...f.options, videoModel: "gemini-4-argon" }, injected), /choose/);
+  assert.equal(connected, false);
+});
+
+test("paired evaluation refuses rubric drift before uploading the second arm", async t => {
+  const f = await fixture(t), mock = transport(f), originalQuery = mock.client.query;
+  let summaries = 0;
+  mock.client.query = async (name, args) => {
+    const result = await originalQuery(name, args);
+    if (name === "dashboard:orderSummary" && ++summaries === 2) result.rubric.contentHash = "c".repeat(64);
+    return result;
+  };
+  const result = await runModelComparison(f.options, { createClient: mock.createClient });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.run.models[0].status, "completed");
+  assert.match(result.run.models[1].error, /rubric content hash/);
+  assert.equal(mock.uploads.length, 1);
+});
+
+test("a failed model arm earns no accuracy credit while the other arm still runs", async t => {
+  const f = await fixture(t);
+  f.manifest.samples[0].expected = expected("needs_review"); await f.save();
+  const mock = transport(f, { byModel: { "gemini-4-argon": { failed: true }, "gemini-3.8-flash": { review: true } } });
+  const result = await runModelComparison(f.options, { createClient: mock.createClient });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.run.models[0].metrics.failureAdjustedDecisionAccuracy, 0);
+  assert.equal(result.run.models[0].metrics.successfulAnalysisCoverage, 0);
+  assert.equal(result.run.models[1].metrics.failureAdjustedDecisionAccuracy, 1);
+  assert.equal(mock.uploads.length, 2);
 });

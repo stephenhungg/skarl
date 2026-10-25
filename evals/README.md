@@ -59,3 +59,46 @@ incomplete, raw scoring is explicitly unavailable rather than fabricated.
 A staged 15–20 case run can demonstrate observed failure modes and latency; it
 is not a held-out generalization claim. The existing synthetic examples still
 exercise only scoring plumbing and remain unchanged.
+
+## Compare Argon and Flash on the same clips
+
+Video verification defaults to `gemini-4-argon`. Finance and `askAgent` keep
+`gemini-3.8-flash`. To compare video models, use the same private, pre-labeled
+manifest in both arms:
+
+```sh
+pnpm eval:clips /absolute/path/to/labeled-manifest.json --compare-video-models
+# Resume the parent comparison, including incomplete child submissions:
+pnpm eval:clips /absolute/path/to/labeled-manifest.json --compare-video-models --resume /absolute/path/to/comparison.json
+# Or request one specific video model:
+pnpm eval:clips /absolute/path/to/labeled-manifest.json --video-model gemini-4-argon
+```
+
+The parent freezes the model list, exact manifest bytes and source hashes before
+network access. Both arms must use the same frozen order/rubric and pipeline
+version. Argon runs first, then Flash, each with a distinct `evalRunId` duplicate
+corpus; reference/copy relationships remain within that arm. This avoids counting
+the second model's first clip as a duplicate of the first model's upload. Audio
+inference runs independently in each arm and its actual model metadata remains
+in the child reports. Sequential timing is not a randomized latency experiment.
+
+An allowlisted `evalVideoModel` is stored with each scoped verification-only
+submission, bound on replay, and passed to the actual visual request. Ordinary
+contributions cannot select an evaluation override. The runner never changes a
+global Convex environment variable and rejects reports whose requested/actual
+video model differs. Finance and payment authority remain unchanged.
+
+The parent JSON and Markdown table compare **per model**: inference coverage,
+failure-adjusted decision accuracy, false-acceptance count/rate, review rate,
+and nearest-rank p50/p95 visual-request, backend and client latency. Individual
+child artifacts retain conditional accuracy, raw scorer output, timeout censoring,
+source hashes, actual model runs and all validated reports. Failed inference
+receives no correct-decision credit. A partial arm remains partial and resumable;
+completed submissions are not uploaded again. Parent checkpoint paths are saved
+before child network work so interruption can resume the existing submissions.
+
+Runner version `real-clips-v2` refuses older checkpoints or changed runner sources,
+labels, splits or model selections. To resume an explicit single-model run, pass
+its original `--video-model` again. All artifacts and recordings remain ignored
+and private. No labeled multi-clip A/B accuracy benchmark has been measured by
+this implementation; mocked tests validate orchestration and metric computation.
