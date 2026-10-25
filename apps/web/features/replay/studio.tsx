@@ -11,6 +11,7 @@ import { api, BUYER, type Id } from "@/features/dashboard/data";
 import { QueryBoundary } from "@/features/dashboard/ui";
 import { formatMs } from "@/features/dashboard/format";
 import { ReplayEvidencePanels } from "./evidence-panels";
+import { ArmViewer } from "./arm-viewer";
 import { objectInHand, frameAt, readAnnotationFile, summarize, type AnnotationFile, type AnnotationFrame, type AnnotationModel, type AnnotationSummary, type LayerKind } from "./annotations";
 import { replayProxyUrl } from "./media-url";
 import { detectorClassForObject } from "../../../../convex/lib/taskSpec";
@@ -54,6 +55,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
   const [runs, setRuns] = useState<SavedRun[]>([]);
   const [apiStatus, setApiStatus] = useState<"checking" | "ready" | "unavailable">("checking");
   const [reloadedFrames, setReloadedFrames] = useState<AnnotationFrame[]>([]);
+  const [handsFile, setHandsFile] = useState<AnnotationFile | null>(null);
   const reloaded = useRef<AnnotationFrame[]>([]);
   const latest = useRef<{ hands: Hand[]; objects: ObjectDetection[]; mask?: { tMs: number; mask: Mask; surface: HTMLCanvasElement } }>({ hands: [], objects: [] });
   const [counts, setCounts] = useState({ hands: 0, objects: 0, objectOverlap: false });
@@ -299,7 +301,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
       const json = await response.text();
       if (json.length > webConfig.replayMaxBytes) throw new Error("Saved annotations exceed the browser replay limit.");
       const file = readAnnotationFile(JSON.parse(json), submissionId, report?.sourceHash);
-      reloaded.current = file.frames; setReloadedFrames(file.frames);
+      reloaded.current = file.frames; setReloadedFrames(file.frames); setHandsFile(file.kind === "hands" ? file : null);
       for (const kind of ["hands", "objects", "masks"] as const) patchLayer(kind, { enabled: file.frames.some(frame => frame[kind] !== undefined) });
       seek(file.frames[0]?.tMs ?? 0);
       setNotice(`Showing saved ${run.kind} · ${run.model.name} ${run.model.version}. Sampled frames only.`);
@@ -331,7 +333,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
             <Button size="sm" variant="secondary" disabled={!src || saving} onClick={() => { if (video.current?.paused) void video.current.play().catch(() => setNotice("Playback could not start.")); else video.current?.pause(); }}>Play or pause clip</Button>
             <span className="type-label-sm text-text-3 tabular-nums">{formatMs(now)}</span>
             {reloadedFrames.length > 0 && <Button size="sm" variant="secondary" onClick={() => {
-              reloaded.current = []; setReloadedFrames([]); setNotice("Showing live browser overlays.");
+              reloaded.current = []; setReloadedFrames([]); setHandsFile(null); setNotice("Showing live browser overlays.");
               void (async () => { for (const kind of ["hands", "objects", "masks"] as const) if (layersRef.current[kind].enabled) { try { await ensureLayer(kind); } catch { /* Layer reports its own failure. */ } } })();
             }}>Use live overlays</Button>}
           </div>
@@ -354,6 +356,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
         <div className="mt-6"><div className="flex items-center justify-between gap-2"><h3 className="type-label">Saved annotation runs</h3><Button variant="secondary" size="sm" onClick={() => void refreshRuns()}>Refresh runs</Button></div>
           {runs.length ? <ol className="mt-2 divide-y divide-line-faint">{runs.map(run => <li key={run._id} className="flex flex-wrap items-start gap-2 py-3"><div className="min-w-0 flex-1"><p className="type-label">{run.model.name} · {run.kind}</p><p className="mt-1 break-words type-caption text-text-3">{run.model.version} · {run.model.runtime} · {run.summary.frames} frames · {new Date(run.createdAt).toLocaleString()} · {run.createdBy}</p></div><Button variant="secondary" size="sm" disabled={!run.url || saving} onClick={() => void showRun(run)}>View run</Button></li>)}</ol> : <p className="mt-2 type-body-sm text-text-3">{apiStatus === "ready" ? "No saved runs for this submission." : "Saved runs are unavailable until the annotations API can be read."}</p>}
         </div>
+        <ArmViewer file={handsFile} currentTimeMs={now} />
       </div>
       <QueryBoundary><ReplayEvidencePanels submissionId={submissionId} currentTimeMs={now} onSeek={seek} refreshKey={runs[0]?.createdAt ?? 0} /></QueryBoundary>
     </div>
