@@ -44,7 +44,7 @@ export function AuditCard({ entry, busy = false, onRevert = null, onRevertRun = 
           {onRevert && canRevert && (
             <Button isDisabled={busy} onClick={() => onRevert(entry.id)}>Revert action</Button>
           )}
-          {onReconcile && allowed && ['pending', 'uncertain'].includes(entry.state) && ['add_comment', 'request_human_review'].includes(action) && (
+          {onReconcile && allowed && ['pending', 'uncertain'].includes(entry.state) && ['add_comment', 'request_human_review', 'sync_source'].includes(action) && (
             <Button isDisabled={busy} onClick={() => onReconcile(entry.id)}>Reconcile write</Button>
           )}
           {onRevertRun && entry.runId && reversibleType && allowed && (

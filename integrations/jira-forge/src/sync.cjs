@@ -30,6 +30,7 @@ function createSync({ store, jira, config, fetcher }) {
         const entry = store.newAudit({ runId, issueKey: source?.issueKey || 'pending', action: { type: 'sync_source', sourceId: item.id }, before: source || null,
           after: { sourceId: item.id, fingerprint }, inputsHash: fingerprint, guardFindings: [], modelReasoning: 'Deterministic authenticated feed sync; no model or finance authority.', allowed: true, decision: 'allowed', state: 'pending' });
         await store.saveAudit(entry);
+        let wrote = false;
         try {
           await store.rateContext(rateIssueKey, Date.now(), true);
           let issueKey = source?.issueKey;
@@ -43,6 +44,7 @@ function createSync({ store, jira, config, fetcher }) {
               ...(item.orderId ? [`Order: ${item.orderId}`] : []), clean(item.description, 2000),
               ...(item.witnessReceiptUrl ? [`Witness receipt: ${item.witnessReceiptUrl} (requires authorized Skarl access)`] : []),
               'This issue is operational evidence. Financial decisions require independent controller authorization.'].join('\n');
+            wrote = true;
             const issue = await jira.createIssue({ project: { key: config.projectKey }, issuetype: { name: config.issueType }, summary: clean(`[Skarl${item.simulated ? ' simulated' : ''}] ${item.kind}: ${item.status} — ${item.id}`, 250), description: jira.adf(description), labels }, { id: item.id, fingerprint });
             issueKey = issue.key;
             // Persist the returned Jira identity immediately. A lost create
@@ -56,6 +58,7 @@ function createSync({ store, jira, config, fetcher }) {
             if (property?.id !== item.id) throw new Error('Linked Jira source property no longer matches.');
             // Keep the original issue content and human edits. Fresh source
             // snapshots live in the app-owned property and receipt panel.
+            wrote = true;
             await jira.setProperty(issueKey, { id: item.id, fingerprint });
             if (!(issue.fields.labels || []).includes('skarl-exception')) await jira.addLabel(issueKey, 'skarl-exception');
             if (item.simulated && !(issue.fields.labels || []).includes('simulated')) await jira.addLabel(issueKey, 'simulated');
@@ -67,7 +70,8 @@ function createSync({ store, jira, config, fetcher }) {
           entry.issueKey = issueKey; entry.state = 'applied'; entry.after = { sourceId: item.id, fingerprint, issueKey };
           await store.saveAudit(entry);
         } catch (error) {
-          entry.state = 'uncertain'; entry.reason = clean(error.message, 500); await store.saveAudit(entry);
+          // Only a Jira write can leave an unknown outcome; a failed read or precondition changed nothing.
+          entry.state = wrote ? 'uncertain' : 'failed'; entry.reason = clean(error.message, 500); await store.saveAudit(entry);
           result.errors.push({ id: item.id, reason: entry.reason });
         }
       }

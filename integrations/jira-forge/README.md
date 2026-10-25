@@ -112,6 +112,18 @@ appear in issue properties or the frontend.
   Terminal comment reconciliation adds one idempotent audit event.
   The original event remains deduped even after failure, so no recovery click can
   duplicate a comment. Edited comment text is preserved by selective rollback.
+- **Source-sync reconciliation:** feed syncs are idempotent by source ID, and the
+  issue's `skarl.source` property is their provenance. A failure before any Jira
+  write records `failed`, not `uncertain`. An uncertain sync resolves by read-back
+  only: `superseded` when a later sync applied the same source; `requeued` for an
+  update to an already-linked issue (the next sync re-applies the full snapshot);
+  `applied` when the property search finds the created issue (the stuck pending
+  source is linked to it); or `failed` after a complete settled search finds
+  nothing, which releases the source so the next sync may create it once.
+  Ambiguous or unavailable searches stay `uncertain`.
+- **Scheduled reconcile pass:** each scheduled sync first reconciles up to 10
+  settled comment/source entries with the same read-only resolver and logs only
+  counts by result. Field writes and rollbacks are never auto-resolved.
 
 The historical team-recorded `uncertain` comment cannot be diagnosed conclusively
 from the repository: the old catch discarded HTTP status and also covered the

@@ -72,7 +72,13 @@ resolver.define('testBulkRefusal', async ({ context }) => {
   return { status: 'refused', reason: decision.reason, runId };
 });
 exports.handler = resolver.getDefinitions();
-exports.scheduledSync = async () => services().sync.sync();
+exports.scheduledSync = async () => {
+  const deps = services();
+  // Read-only reconciliation first, so the sync's health publish reflects it. Never blocks the sync.
+  try { console.log('Guard reconcile pass', JSON.stringify(await deps.reconciler.reconcileOpen())); }
+  catch (error) { console.error('Guard reconcile pass skipped', error.code || 'error'); }
+  return deps.sync.sync();
+};
 exports.issueEvent = async event => {
   try { return await services().agent.triage(event); }
   catch (error) {
