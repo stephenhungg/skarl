@@ -61,7 +61,7 @@ permissions:
         - address: '*.convex.site'
         - address: api.anthropic.com
 app:
-  id: ari:cloud:ecosystem::app/REPLACE_ME
+  id: ari:cloud:ecosystem::app/734bc816-fc91-488d-b2f7-c8af3642fd13
   runtime:
     name: nodejs22.x
     memoryMB: 256
