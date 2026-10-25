@@ -1,0 +1,43 @@
+import { httpRouter, makeFunctionReference } from "convex/server";
+import { httpAction } from "./_generated/server";
+import type { ApiFromModules, FunctionReturnType } from "convex/server";
+import type * as jiraFeed from "./jiraFeed";
+import type * as exceptions from "./exceptions";
+import { exceptionFeedItem, feedSecretMatches } from "./lib/jiraFeed";
+
+type FeedApi = ApiFromModules<{ jiraFeed: typeof jiraFeed; exceptions: typeof exceptions }>;
+const snapshotRef = makeFunctionReference<"query", {}, FunctionReturnType<FeedApi["jiraFeed"]["snapshot"]>>("jiraFeed:snapshot");
+const exceptionsRef = makeFunctionReference("exceptions:list") as FeedApi["exceptions"]["list"];
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status, headers: { "Content-Type": "application/json", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" },
+});
+
+const http = httpRouter();
+http.route({ path: "/jira/feed", method: "GET", handler: httpAction(async (ctx, request) => {
+  const expected = process.env.SKARL_JIRA_FEED_SECRET ?? "";
+  if (expected.length < 32 || expected.length > 512) return json({ error: "jira_feed_not_configured" }, 503);
+  if (!await feedSecretMatches(expected, request.headers.get("x-skarl-feed-secret"))) return json({ error: "unauthorized" }, 401);
+  // No client-selected organization, order, principal, callback URL, or mutation.
+  if (new URL(request.url).search) return json({ error: "query_parameters_not_supported" }, 400);
+  try {
+    const { items, scopes } = await ctx.runQuery(snapshotRef, {});
+    for (const scope of scopes) {
+      const result = await ctx.runQuery(exceptionsRef, { demoIdentity: "finance-agent", orderId: scope.orderId });
+      for (const row of result.filter(row => row.stillDetected).slice(0, 200)) {
+        // A resolved annotation cannot hide a discrepancy that is still detected.
+        const exception = row.exception;
+        const linked = scope.linked.find(row => row.eventKey === exception.eventKey);
+        const item = exceptionFeedItem(exception, scope.orderId, scope.createdAt, linked?.amountMicroUsdc, linked?.witnessReceiptUrl);
+        item.simulated ||= scope.simulated;
+        items.push(item);
+      }
+    }
+    items.sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
+    return json({ version: 1, generatedAt: Date.now(), items: items.slice(0, 200),
+      truncated: items.length > 200 || scopes.length === 20 });
+  } catch {
+    // Do not leak internal errors, database identifiers, credentials or raw input.
+    return json({ error: "jira_feed_unavailable" }, 503);
+  }
+}) });
+export default http;

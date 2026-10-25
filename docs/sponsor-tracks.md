@@ -15,6 +15,7 @@ Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devne
 | [MLH] Best Use of Gemini API | Two independent Gemini calls (silent video, audio) producing schema-validated, timestamped evidence |
 | Capital One (Nessie) | Live Nessie bank as the fourth reconciliation witness: on October 25 at 04:11 PDT, order, ledger, chain and bank all `match` for a 10 USDC order (mock bank, no fiat moved) |
 | Anthropic (Claude) | Live Claude finance agent (`claude-sonnet-5-5`, 3 read-only tool calls, about 7 s, cannot approve) and a Claude contributor coach whose output is validated server-side and cannot change verdicts |
+| [Atlassian] Best Security Solution for Agents | [Skarl Guard for Jira](../integrations/jira-forge/README.md), Agentic Workforce Challenge Track 2: deterministic injection guard, constrained Claude triage, audited refusals and selective rollback; **deployment and live Jira/Claude evidence pending** |
 
 ## Hyphenate
 

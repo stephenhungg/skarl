@@ -1,0 +1,67 @@
+modules:
+  jira:entityProperty:
+    - key: skarl-source-index
+      entityType: issue
+      propertyKey: skarl.guard.source
+      values:
+        - path: id
+          type: string
+          searchAlias: skarlSourceId
+  jira:adminPage:
+    - key: skarl-guard-admin
+      resource: admin-ui
+      render: native
+      resolver:
+        function: resolver
+      title: Skarl Guard
+  jira:issuePanel:
+    - key: skarl-guard-panel
+      resource: issue-ui
+      render: native
+      resolver:
+        function: resolver
+      title: Skarl Guard
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+  scheduledTrigger:
+    - key: skarl-feed-sync
+      function: sync
+      interval: fiveMinute
+  trigger:
+    - key: skarl-guard-triage
+      function: triage
+      events:
+        - avi:jira:created:issue
+    - key: skarl-guard-comment-triage
+      function: triage
+      events:
+        - avi:jira:commented:issue
+      filter:
+        ignoreSelf: true
+  function:
+    - key: resolver
+      handler: index.handler
+    - key: sync
+      handler: index.scheduledSync
+    - key: triage
+      handler: index.issueEvent
+resources:
+  - key: admin-ui
+    path: src/frontend/admin.jsx
+  - key: issue-ui
+    path: src/frontend/issue.jsx
+permissions:
+  scopes:
+    - read:jira-work
+    - write:jira-work
+    - manage:jira-configuration
+    - storage:app
+  external:
+    fetch:
+      backend:
+        - address: '*.convex.site'
+        - address: api.anthropic.com
+app:
+  id: ari:cloud:ecosystem::app/REPLACE_ME
+  runtime:
+    name: nodejs22.x
+    memoryMB: 256
