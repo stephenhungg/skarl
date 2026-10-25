@@ -26,6 +26,7 @@ import type * as coachSchema from "../coachSchema.js";
 import type * as contributorWallet from "../contributorWallet.js";
 import type * as crons from "../crons.js";
 import type * as dashboard from "../dashboard.js";
+import type * as datasets from "../datasets.js";
 import type * as evidenceSales from "../evidenceSales.js";
 import type * as exceptions from "../exceptions.js";
 import type * as finance from "../finance.js";
@@ -92,6 +93,7 @@ declare const fullApi: ApiFromModules<{
   contributorWallet: typeof contributorWallet;
   crons: typeof crons;
   dashboard: typeof dashboard;
+  datasets: typeof datasets;
   evidenceSales: typeof evidenceSales;
   exceptions: typeof exceptions;
   finance: typeof finance;

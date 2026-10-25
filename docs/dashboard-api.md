@@ -949,6 +949,82 @@ coach failures include `coach_invalid_output`, `coach_source_changed`,
 codes above. Do not display a mock fallback as a live Claude response or describe
 an unavailable coach as successful inference.
 
+## Buyer dataset export
+
+**Source implementation; deployment required.** `datasets.forOrder({demoIdentity,
+orderId})` returns the buyer's versioned dataset, rather than the review queue.
+The order's buyer and an active controller in its organization may export it.
+Other buyers, contributors, and finance agents are refused. Demo identities
+remain impersonable selectors, not production authentication.
+
+```sh
+curl -H 'x-skarl-demo-identity: buyer' \
+  'https://skarl.vercel.app/api/orders/ORDER_ID/dataset' > dataset.json
+curl -H 'x-skarl-demo-identity: buyer' \
+  'https://skarl.vercel.app/api/orders/ORDER_ID/dataset?format=jsonl' > samples.jsonl
+```
+
+The JSON response has `schema: "skarl.dataset.v1"`, `orderId`, `generatedAt`
+(Unix milliseconds), `task: {id, version, criterionIds}`, and `samples`.
+An order with no deliveries returns `samples: []`; a draft without a rubric has
+`task: null`. JSONL streams one complete sample per line, repeating task and
+license metadata so each line can be loaded independently. Empty JSONL is an
+empty response body. Example sample (illustrative, not live evidence):
+
+```json
+{
+  "submissionId": "SUBMISSION_ID",
+  "sourceSha256": "64-lowercase-hex-characters",
+  "durationMs": 12000,
+  "task": {"id": "RUBRIC_ID", "version": 1, "criterionIds": ["red-cup-pickup"]},
+  "acceptedAt": 1792926000000,
+  "acceptance": {"basis": "machine", "decisionId": "DECISION_ID"},
+  "license": {"version": "demo-consent-v1", "scope": "Stored contributor consent scope"},
+  "criteria": [{"criterionId": "red-cup-pickup", "status": "supported", "evidence": [{"modality": "video", "startMs": 1000, "endMs": 2000}]}],
+  "transcriptSegments": [{"startMs": 1000, "endMs": 2000, "text": "I pick up the red cup."}],
+  "sensorTrace": null,
+  "liveness": null,
+  "duplicate": {"status": "clear"},
+  "attestation": null,
+  "payout": {"status": "pending", "amountAtomic": "1875000", "txHash": null, "explorerUrl": null},
+  "media": {"mimeType": "video/mp4", "url": "https://storage.example/private-original"}
+}
+```
+
+Only accepted, licensed submissions with a valid published delivery are included.
+Verification-only and evaluation recordings, review/correction/rejected rows,
+quarantined or swapped originals, and invalid consent/delivery bindings are
+excluded. A report alone never grants delivery. `acceptance.basis` distinguishes
+`machine` (controller acceptance of completed machine evidence) from
+`human_controller` (explicit human review). Evidence comes from the analysis
+bound to that delivery, preserving the accepted snapshot after a later rerun.
+Missing findings remain `unobservable` with empty evidence; they are never
+invented. A human decision can accept a report whose machine recommendation
+remained `needs_review`.
+
+When attached, `sensorTrace` includes `rawTraceExists`, sample counts/rate,
+duration, channels, and the stored `motionSummary`, including optional
+`meanTiltDegrees` and `steadinessRatio`. It exposes no raw trace storage ID or
+URL. The summary remains `clientReported`. Spoken `liveness` is the deterministic
+comparison of stored challenge and transcript, or null when no challenge exists;
+it does not prove identity. `duplicate.status` is the stored report check status
+or `not_checked`, not a claim of exhaustive uniqueness. Confirmed EAS records
+bound to the delivered analysis include `uid`, `easscanUrl`, and `basescanUrl`.
+
+All monetary amounts are decimal integer micro-USDC strings. A payout becomes
+`paid` with a `txHash` and BaseScan `explorerUrl` only when the payable, payment
+command, attempt and confirmed Base Sepolia USDC observation agree. Approval,
+broadcast and unresolved transactions remain `pending`.
+
+Export responses use `Cache-Control: private, no-store`. Media URLs are issued
+via `ctx.storage.getUrl` only after buyer/controller and licensed original checks.
+Convex storage bearer URLs have no application-configurable expiry; do not
+describe these URLs as expiring or publish/cache the export. A strictly
+short-lived download requires a separate expiring proxy grant, as used by the
+paid sample media endpoint. Neither that endpoint's x402 grant nor its access
+rights are reused for buyer exports. No deployment or live download was performed
+as part of this implementation.
+
 ## Bank witness — Capital One Nessie
 
 **Deployment required.** The additive bank witness exposes
