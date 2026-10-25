@@ -17,9 +17,8 @@ import { cn } from "@/lib/glaze/utils";
 const SUGGESTIONS = [
   { label: "What do we owe?", prompt: "Summarize what we owe contributors and what has been paid." },
   { label: "Propose payouts", prompt: "Propose payouts for every eligible payable and request approval." },
-  { label: "Explain the books", prompt: "Explain the trial balance and any reconciliation exceptions." },
-  { label: "Year-end summary", prompt: "Use the Tax-ready ledger to draft a plain-language year-end payout summary. Read-only; do not propose payments. Not tax advice — demo data." },
-  { label: "Forms needed", prompt: "Draft a forms-needed note from contributor attestations. Read-only; do not change tax status or propose payments. Not tax advice — demo data." },
+  { label: "Year-end summary", prompt: "Use the Tax-ready ledger to draft a plain-language year-end payout summary. Read-only; do not propose payments. Not tax advice. Demo data." },
+  { label: "Forms needed", prompt: "Draft a forms-needed note from contributor attestations. Read-only; do not change tax status or propose payments. Not tax advice. Demo data." },
 ];
 const PROPOSE = SUGGESTIONS[1]!.prompt;
 // Earlier turns ride along in the prompt so follow-ups make sense; the server caps a prompt at 2000 characters.
@@ -306,8 +305,20 @@ export function Agent() {
   const input = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const listening = mic.state === "live";
-  // Oldest first, like any chat; runs arrive newest first.
-  const thread = [...(runs ?? [])].reverse();
+  const [since, setSince] = useState(0);
+  const [showFailed, setShowFailed] = useState(false);
+  const sinceKey = `skarl:agent:since:${orderId}`;
+  useEffect(() => { try { setSince(Number(localStorage.getItem(sinceKey)) || 0); } catch { setSince(0); } }, [sinceKey]);
+  function newChat() {
+    const now = Date.now();
+    try { localStorage.setItem(sinceKey, String(now)); } catch { /* storage unavailable */ }
+    setSince(now); setSelfTest(null); setShowFailed(false);
+  }
+  // Oldest first, like any chat. A fresh chat hides earlier runs; failed runs fold away unless they are the latest answer.
+  const visible = [...(runs ?? [])].reverse().filter(r => r._creationTime > since);
+  const latest = visible[visible.length - 1];
+  const failed = visible.filter(r => r.status === "failed" && r !== latest);
+  const thread = showFailed ? visible : visible.filter(r => r.status !== "failed" || r === latest);
 
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [thread.length, pending, selfTest]);
   useEffect(() => {
@@ -351,19 +362,29 @@ export function Agent() {
   }
 
   const chips = (
-    <div className="flex flex-wrap justify-center gap-2">
+    <div className="mx-auto flex w-fit max-w-full gap-2 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {SUGGESTIONS.map(s => (
         <button key={s.label} type="button" disabled={busy} onClick={() => void send(s.prompt)} title={s.prompt}
-          className="rounded-pill border border-line-control px-3.5 py-1.5 type-label-sm text-text-2 hover:bg-hover hover:text-text-1 disabled:opacity-50">{s.label}</button>
+          className="shrink-0 whitespace-nowrap rounded-pill border border-line-control px-3.5 py-1.5 type-label-sm text-text-2 hover:bg-hover hover:text-text-1 disabled:opacity-50">{s.label}</button>
       ))}
       <button type="button" disabled={selfTest === "running"} onClick={() => void trySelfApproval()}
-        className="rounded-pill border border-fail-text/40 px-3.5 py-1.5 type-label-sm text-fail-text hover:bg-fail-text/5 disabled:opacity-50">Make it approve itself</button>
+        className="shrink-0 whitespace-nowrap rounded-pill border border-fail-text/40 px-3.5 py-1.5 type-label-sm text-fail-text hover:bg-fail-text/5 disabled:opacity-50">Make it approve itself</button>
     </div>
   );
   const empty = runs !== undefined && thread.length === 0 && !pending && !selfTest;
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-9rem)] w-full max-w-3xl flex-col">
       {orderId && <div className="pb-6 pt-2"><Brief orderId={orderId} /></div>}
+      {(visible.length > 0 || selfTest) && (
+        <div className="flex items-center gap-3 pb-2 type-label-sm text-text-3">
+          {failed.length > 0 && (
+            <button type="button" onClick={() => setShowFailed(v => !v)} className="underline underline-offset-4 hover:text-text-1">
+              {showFailed ? "Hide failed runs" : `${failed.length} failed ${failed.length === 1 ? "run" : "runs"} hidden`}
+            </button>
+          )}
+          <button type="button" onClick={newChat} disabled={busy} className="ms-auto rounded-pill border border-line-control px-3 py-1 text-text-2 hover:bg-hover hover:text-text-1">New chat</button>
+        </div>
+      )}
       <div className="flex-1">
         {runs === undefined ? <Loading rows={3} /> : empty ? (
           <div className="flex min-h-[50dvh] flex-col items-center justify-center gap-5 text-center">
