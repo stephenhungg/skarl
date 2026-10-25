@@ -1,5 +1,7 @@
+import { checkSpokenLiveness, instructionLike, type SpokenLivenessChallenge } from "./spokenLiveness.ts";
+
 /** Pure, advisory evidence comparison. No model, storage, or payment authority. */
-export const PIPELINE_VERSION = "red-cup-evidence-1.1";
+export const PIPELINE_VERSION = "red-cup-evidence-1.2";
 /** Evaluation overrides are deliberately bounded and never change payment authority. */
 export const EVALUATION_VIDEO_MODELS = ["gemini-4-argon", "gemini-3.8-flash"] as const;
 export type EvaluationVideoModel = typeof EVALUATION_VIDEO_MODELS[number];
@@ -80,6 +82,7 @@ export interface BuildVerificationReportInput {
   criteria: RubricCriterion[];
   video?: VideoObservation;
   audio?: AudioObservation;
+  liveness?: SpokenLivenessChallenge;
   modelRuns: ModelRun[];
   duplicate: DuplicateResult;
   warnings?: string[];
@@ -277,12 +280,6 @@ const SEEDED_CRITERIA: Record<string, { description: string; modality: RubricCri
   "coaster-placement": { description: "Place the red cup on the marked coaster", modality: "temporal" },
   "narration-alignment": { description: "Narration agrees with visible actions and object", modality: "cross_modal" },
 };
-function instructionLike(value: string): boolean {
-  return /\bignore\b[\s\S]{0,80}\b(?:instructions?|rules?|rubric|previous|system)\b/i.test(value)
-    || /\b(?:mark|set|return|output|declare)\b[\s\S]{0,80}\b(?:accepted|approved|supported|passed)\b/i.test(value)
-    || /\b(?:approve|release|send|transfer)\b[\s\S]{0,80}\b(?:payments?|payouts?|funds?|usdc|money)\b/i.test(value)
-    || /\b(?:system|developer)\s*:/i.test(value);
-}
 function evidence(modality: "video" | "audio", observation: ActionObservation): Evidence {
   return { modality, startMs: observation.startMs, endMs: observation.endMs, claim: observation.description };
 }
@@ -390,6 +387,13 @@ export function buildVerificationReport(input: BuildVerificationReportInput): Ve
     if (criterion.criterionId === "coaster-placement") return comparePlacement(video, criterion.criterionId);
     return compareNarration(video, audio, criterion.criterionId);
   });
+  const liveness = checkSpokenLiveness(input.liveness, audio, input.durationMs);
+  if (liveness.status === "passed") {
+    // An extra evidence line preserves the frozen rubric and legacy report schema.
+    const narration = criteria.find(item => item.criterionId === "narration-alignment");
+    if (narration) narration.evidence.push(liveness.evidence);
+    else warnings.push("Spoken liveness matched, but the rubric has no narration evidence lane; human review required.");
+  } else warnings.push(liveness.warning);
   const hasUnobservable = criteria.some(item => item.status === "unobservable");
   const hasContradiction = criteria.some(item => item.status === "contradicted");
   const needsReview = warnings.length > 0 || hasUnobservable || !video || !audio || input.failure !== undefined;

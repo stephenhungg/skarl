@@ -85,6 +85,35 @@ states that iOS disables the Taptic Engine while the camera is active to prevent
 destabilization. The existing [Expo DeviceMotion API](https://docs.expo.dev/versions/latest/sdk/devicemotion/)
 is included in Expo Go.
 
+## Per-take spoken liveness
+
+Opening the camera requests `liveness:issueChallenge` with
+`{ demoIdentity: "contributor" }`. It returns `{ challengeId, words, expiresAt }`:
+three common words and a two-minute expiry in Unix milliseconds. The preview
+shows “Say these words while recording” in the landing-page typography and palette.
+Say all three in order, then narrate the task. If less than a minute remains before
+recording, the button requests fresh words and requires a second tap to record.
+The words stay fixed during a take. Failed/interrupted recordings close the camera;
+opening it again, including after a discarded take, issues a new challenge.
+
+The saved draft sends `livenessChallengeId` with `submissions:create`. The server
+atomically consumes that contributor's unexpired, unused challenge and stores
+`liveness: { words, issuedAt, consumedAt }` on the submission. Submit promptly:
+expiry is checked when creation commits, so time spent reviewing or uploading
+counts toward the two minutes. An explicit expired/used/foreign/missing challenge
+refusal permits discarding and recording fresh words; the app never assigns a
+new code to old video. A timeout preserves the original request ID, storage IDs,
+and challenge ID for an idempotent retry, including after challenge expiry.
+Older saved drafts without the optional ID still submit for human review.
+
+After transcription, deterministic matching checks the issued words in order,
+ignoring case and punctuation, and records timestamped evidence without adding a
+rubric criterion. Missing or failed liveness routes to `needs_review`, never an
+automatic rejection or acceptance. Spoken instructions cannot declare a pass.
+This adds a freshness signal; it does not establish hardware attestation or rule
+out a generated or composited recording made after the code was issued. Original
+sensor trace formats and optional sensor evidence remain unchanged.
+
 ## Upload and trust boundary
 
 The client gets `submissions:generateUploadUrl`, POSTs the video and sensor JSON
@@ -130,14 +159,22 @@ can omit both fields. Neither metric changes acceptance or payment authority.
 Local strict TypeScript and the iOS Metro/Hermes export are build checks. Synthetic
 backend tests cover content validation, rate/size caps, monotonic timestamps,
 ownership, replay/immutability and non-authority over acceptance/payments. Mobile
-retry tests exercise loss of a create/attach response. None establish a physical
-iPhone capture, live model inference or payment.
+retry tests exercise loss of a create/attach response, preserve the original
+challenge through an uncertain creation, and permit retaking after explicit
+liveness refusals. None establish a physical iPhone capture, live model inference or payment.
 
 **A Convex deployment from main is required** for the optional submission fields,
-index and sensor action, including the new channel validators and summary fields.
-Deploy the backend before using the updated client's five-channel uploads; an
-older backend will reject them. The mobile work does not deploy Convex. The operator
+index, sensor action, new channel validators/summary fields, liveness challenge
+mutation and deterministic verifier gate. Deploy the backend before using the
+updated client's five-channel uploads or challenge fetch; an older backend cannot
+serve those requests. The mobile work does not deploy Convex. The operator
 should deploy, then follow the [phone smoke test](../apps/mobile/README.md#phone-smoke-test).
+Also check that fresh words appear on camera open and retake, stay readable over
+the live preview while filming, survive a lost-create retry, and produce an
+explicit retake path if upload finishes after expiry. Record one valid sequence,
+one wrong-order sequence and one silent take; inspect timestamped liveness
+results and confirm the latter two require review. These require a human device
+and live transcription test; local tests and exports do not establish them.
 
 ## Visual alignment
 

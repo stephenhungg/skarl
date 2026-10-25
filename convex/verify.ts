@@ -48,7 +48,7 @@ export const run = internalAction({
       duplicate=await ctx.runQuery(internal.submissions.copies,{submissionId:submission._id});
 
       const observed=await observeEvidence(media,{submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,
-        criteria:rubric.criteria,duplicate,warnings,reportId:`analysis:${job._id}:${generation}`},submission.evalVideoModel);
+        criteria:rubric.criteria,liveness:submission.liveness,duplicate,warnings,reportId:`analysis:${job._id}:${generation}`},submission.evalVideoModel);
       ({video,audio,failure,jury}=observed);
       runs.push(...observed.modelRuns); warnings.splice(0,warnings.length,...observed.warnings);
     } catch(error) {
@@ -61,13 +61,13 @@ export const run = internalAction({
       }
     }
     const scope={verificationOnly:submission.verificationOnly,evalRunId:submission.evalRunId};
-    let reports=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,criteria:rubric.criteria,
+    let reports=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,criteria:rubric.criteria,liveness:submission.liveness,
       video,audio,modelRuns:runs,duplicate,warnings,...(failure ? {failure} : {}),reportId:`analysis:${job._id}:${generation}`},scope);
     const validReports=()=>[reports.report,...(reports.qualityReport ? [reports.qualityReport] : [])]
       .every(report=>validateVerificationReportForRubric(report,rubric.criteria.map(c=>c.criterionId)).valid);
     if (!validReports()) {
       failure="report_validation_failed";
-      reports=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,criteria:rubric.criteria,
+      reports=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,criteria:rubric.criteria,liveness:submission.liveness,
         modelRuns:runs,duplicate:{status:"not_checked",matches:[]},warnings,failure,reportId:`analysis:${job._id}:${generation}`},scope);
       if (!validReports()) throw new Error("fallback_report_invalid");
     }
@@ -96,7 +96,7 @@ export const interrupted = internalAction({
     if(!context) return {skipped:true};
     const {job,submission,rubric,asset}=context;
     const {report,qualityReport}=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash:job.sourceHash,
-      durationMs:asset?.durationMs ?? 0,criteria:rubric.criteria,modelRuns:[],duplicate:{status:"not_checked",matches:[]},
+      durationMs:asset?.durationMs ?? 0,criteria:rubric.criteria,liveness:submission.liveness,modelRuns:[],duplicate:{status:"not_checked",matches:[]},
       failure:"verification_interrupted",reportId:`analysis:${job._id}:${args.generation}`},
       {verificationOnly:submission.verificationOnly,evalRunId:submission.evalRunId});
     report.pipeline.version=job.pipelineVersion;

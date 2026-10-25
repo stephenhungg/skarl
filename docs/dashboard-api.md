@@ -51,6 +51,49 @@ Additional runtime constraints: `requestId` matches `[a-zA-Z0-9_-]{1,100}`, prom
 
 **Deployment/source drift:** `submissions:evaluationRun` and the extra `getReport` fields `verificationOnly`/`evalRunId` are deployed but absent from this worktree's current `submissions.ts`. Validators were read from the main checkout's `convex/submissions.ts:245` and verified live. Coordinate the backend merge; do not deploy this older worktree to restore them. Controller dashboards should use `dashboard:submissions`/`getReport`; `evaluationRun` is a contributor evaluation-harness lookup.
 
+## Per-take spoken liveness (source handoff; deployment required)
+
+`liveness:issueChallenge` is a contributor mutation with
+`{demoIdentity: "contributor"}`. It returns
+`{challengeId: Id<"livenessChallenges">, words: string[], expiresAt: number}`:
+three distinct common words and an expiry exactly two minutes after issuance.
+The mobile camera requests a fresh challenge per take and asks the contributor
+to say the words in order while recording. These are public challenge words,
+not authentication credentials; the existing demo identity limitations apply.
+
+`submissions:create` adds optional
+`livenessChallengeId: Id<"livenessChallenges">`. The same transaction binds the
+server-issued words and consumes the challenge. Refusals are
+`liveness_challenge_not_found`, `liveness_challenge_foreign`,
+`liveness_challenge_used`, and `liveness_challenge_expired` (including the exact
+expiry boundary). Expiry is checked when creating the submission, so capture
+and upload must finish within two minutes. A successful request can be retried
+with the exact same arguments after expiry; changing or removing its challenge
+ID returns `submission_request_conflict`. A refused fresh create needs a new
+take, not new words attached to old footage.
+
+`dashboard:submissions` exposes optional `livenessChallengeId` and
+`liveness: {words: string[], issuedAt: number, consumedAt: number}` on each row.
+`submissions:getReport` also exposes that optional `liveness` object. All times
+are Unix milliseconds. Missing means no challenge was supplied; it does not
+mean passed. Old documents, clients and sensor-trace schemas remain valid.
+
+The deterministic comparator checks whole transcript words in chronological
+order, ignoring case and punctuation. A match adds audio evidence under the
+existing `narration-alignment` criterion, with a claim beginning
+`Spoken liveness matched` and containing transcript-segment `startMs`/`endMs`.
+Use those milliseconds for the evidence player's seek link; they are segment
+bounds, not invented word timings. No new criterion ID or report schema field
+is introduced. Failure, missing challenge/transcript, or instruction-like
+narration adds a `Spoken liveness:` warning and forces `needs_review`, including
+otherwise contradictory work. It never causes automatic rejection or acceptance.
+Already-stored historical reports keep their original validation contract.
+
+This is evidence of speaking fresh words, not a guarantee against real-time
+synthesis, edited audio or screen recapture. Human review remains the decision
+boundary. Local tests use synthetic transcripts and uploads; a Convex deployment
+and physical-phone capture/transcription smoke test are still required.
+
 ## Return shapes and trimmed live examples
 
 Documents also include `_id`, `_creationTime` and their stored metadata. Use generated API return types rather than duplicating database types. `undefined` from a React query means loading; `null`/`[]` are resolved empty states.

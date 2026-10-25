@@ -7,6 +7,7 @@ import { audit, actorFor, digest, requireTenant } from "./lib/finance";
 import { validateFrameHashes, compareFrameHashes } from "./lib/copyDetection";
 import { PIPELINE_VERSION, validateEvaluationScope, applyVerificationOnlyGuard, EVALUATION_PROJECTION_VERSION } from "./lib/verificationReport";
 import { evaluationVideoModel } from "./validators";
+import { checkSpokenLiveness } from "./lib/spokenLiveness";
 
 const frame = v.object({ timestampMs: v.number(), hash: v.string() });
 const evidenceFrame = v.object({ storageId: v.id("_storage"), timestampMs: v.number(), contentHash: v.string(), sizeBytes: v.number(),
@@ -19,7 +20,7 @@ export const generateUploadUrl = mutation({
 export const create = mutation({
   args: { demoIdentity: v.string(), orderId: v.id("orders"), storageId: v.id("_storage"), clientRequestId: v.string(),
     consentAcknowledged: v.boolean(), clientFrameDHashes: v.optional(v.array(frame)), verificationOnly: v.optional(v.boolean()), evalRunId: v.optional(v.string()),
-    evalVideoModel: v.optional(evaluationVideoModel) },
+    evalVideoModel: v.optional(evaluationVideoModel), livenessChallengeId: v.optional(v.id("livenessChallenges")) },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, "contributor");
     const order = await ctx.db.get(args.orderId);
@@ -33,7 +34,7 @@ export const create = mutation({
       .eq("contributorTokenIdentifier", principal.tokenIdentifier).eq("clientRequestId", args.clientRequestId)).unique();
     if (existing) {
       const asset = existing.originalAssetId ? await ctx.db.get(existing.originalAssetId) : null;
-      if (existing.orderId !== args.orderId || asset?.storageId !== args.storageId ||
+      if (existing.orderId !== args.orderId || asset?.storageId !== args.storageId || existing.livenessChallengeId !== args.livenessChallengeId ||
         !!existing.verificationOnly !== !!args.verificationOnly || existing.evalRunId !== args.evalRunId || existing.evalVideoModel !== args.evalVideoModel || digest(existing.clientFrameDHashes ?? []) !== digest(args.clientFrameDHashes ?? [])) throw new Error("submission_request_conflict");
       return { submissionId: existing._id, replayed: true };
     }
@@ -56,11 +57,22 @@ export const create = mutation({
     if (attached) throw new Error("upload_already_attached");
     if (args.clientFrameDHashes) validateFrameHashes(args.clientFrameDHashes);
     const now = Date.now();
+    const challenge = args.livenessChallengeId ? await ctx.db.get(args.livenessChallengeId) : null;
+    if (args.livenessChallengeId) {
+      if (!challenge) throw new Error("liveness_challenge_not_found");
+      if (challenge.organizationId !== principal.organizationId || challenge.contributorTokenIdentifier !== principal.tokenIdentifier) throw new Error("liveness_challenge_foreign");
+      if (challenge.consumedAt !== undefined || challenge.submissionId !== undefined) throw new Error("liveness_challenge_used");
+      if (now >= challenge.expiresAt) throw new Error("liveness_challenge_expired");
+    }
     const submissionId = await ctx.db.insert("submissions", { organizationId: order.organizationId, orderId: order._id,
       taskVersionId: rubric._id, contributorTokenIdentifier: principal.tokenIdentifier, status: "queued",
       clientRequestId: args.clientRequestId, expectedSourceHash: uploadedHash, ...(args.clientFrameDHashes ? { clientFrameDHashes: args.clientFrameDHashes } : {}),
       verificationOnly: args.verificationOnly ?? false, ...(args.evalRunId !== undefined ? { evalRunId: args.evalRunId } : {}),
-      ...(args.evalVideoModel !== undefined ? { evalVideoModel: args.evalVideoModel } : {}), updatedAt: now });
+      ...(args.evalVideoModel !== undefined ? { evalVideoModel: args.evalVideoModel } : {}),
+      ...(challenge ? { livenessChallengeId: challenge._id, liveness: { words: challenge.words, issuedAt: challenge.issuedAt, consumedAt: now } } : {}), updatedAt: now });
+    // This write shares the submission transaction: failed creates consume nothing,
+    // and racing creates cannot bind one challenge to two different uploads.
+    if (challenge) await ctx.db.patch(challenge._id, { consumedAt: now, submissionId });
     const originalAssetId = await ctx.db.insert("mediaAssets", { organizationId: order.organizationId, submissionId,
       storageId: args.storageId, purpose: "original", status: "uploaded", contentHash: uploadedHash,
       mimeType: uploadMime, sizeBytes: metadata.size });
@@ -94,11 +106,11 @@ export const claim = internalMutation({
       rubric.organizationId !== job.organizationId || rubric._id !== submission.taskVersionId) throw new Error("job_reference_mismatch");
     if (submission.status === "accepted" || submission.currentAnalysisId) return null;
     const generation = job.leaseGeneration + 1;
-    await ctx.db.patch(job._id, { status: "leased", attempt: job.attempt + 1, leaseGeneration: generation, leaseExpiresAt: Date.now() + 5 * 60_000 });
+    await ctx.db.patch(job._id, { status: "leased", pipelineVersion: PIPELINE_VERSION, attempt: job.attempt + 1, leaseGeneration: generation, leaseExpiresAt: Date.now() + 5 * 60_000 });
     await ctx.db.patch(submission._id, { status: "analysing", updatedAt: Date.now() });
     // Watchdog ensures interrupted actions eventually expose review, not a permanent spinner.
     await ctx.scheduler.runAfter(5 * 60_000, internal.submissions.expire, { jobId: job._id, generation });
-    return { job, submission, rubric, asset, generation };
+    return { job: { ...job, pipelineVersion: PIPELINE_VERSION }, submission, rubric, asset, generation };
   },
 });
 
@@ -178,6 +190,12 @@ export const complete = internalMutation({
     if (!submission || submission.status === "accepted" || submission.taskVersionId !== job.taskVersionId || submission.sourceHash !== job.sourceHash) throw new Error("submission_changed");
     validateEvaluationScope(submission.verificationOnly, submission.evalRunId);
     const observations = JSON.parse(args.observationsJson);
+    // Recompute from persisted challenge facts and transcript, never a model's
+    // claimed pass flag. Legacy reports retain their original validation contract.
+    const livenessNeedsReview = job.pipelineVersion === PIPELINE_VERSION &&
+      checkSpokenLiveness(submission.liveness, observations?.audio, report.source.durationMs).status !== "passed";
+    if (livenessNeedsReview &&
+      report.recommendation !== "needs_review") throw new Error("liveness_must_review");
     const evaluation = observations?.evaluation;
     if (submission.evalRunId !== undefined) {
       const quality = evaluation?.qualityReport;
@@ -192,6 +210,7 @@ export const complete = internalMutation({
         quality.submissionId !== report.submissionId || quality.taskVersionId !== report.taskVersionId ||
         digest(quality.source) !== digest(report.source) || quality.pipeline.version !== job.pipelineVersion ||
         digest(quality) !== evaluation.qualityReportHash || digest(applyVerificationOnlyGuard(quality)) !== args.reportHash) throw new Error("evaluation_report_mismatch");
+      if (livenessNeedsReview && quality.recommendation !== "needs_review") throw new Error("liveness_must_review");
     } else if (evaluation !== undefined) throw new Error("unexpected_evaluation_projection");
     if (submission.verificationOnly && report.recommendation !== "needs_review") throw new Error("verification_only_must_review");
     const frameAssetIds: Id<"mediaAssets">[] = [], dHashFrameIndices: number[] = [];
@@ -257,6 +276,7 @@ export const getReport = query({
     if (analysis && (analysis.organizationId !== submission.organizationId || analysis.submissionId !== submission._id)) throw new Error("analysis_reference_mismatch");
     return { status: submission.status, sourceHash: submission.sourceHash, perceptualHashSource: submission.perceptualHashSource,
       verificationOnly: submission.verificationOnly ?? false, evalRunId: submission.evalRunId, evalVideoModel: submission.evalVideoModel,
+      ...(submission.liveness ? { liveness: submission.liveness } : {}),
       report: analysis?.reportJson ? JSON.parse(analysis.reportJson) : null,
       observations: analysis?.observationsJson ? JSON.parse(analysis.observationsJson) : null,
       processingElapsedMs: analysis?.processingElapsedMs };

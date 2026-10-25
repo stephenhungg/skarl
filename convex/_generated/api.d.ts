@@ -51,6 +51,7 @@ import type * as lib_sensorTrace from "../lib/sensorTrace.js";
 import type * as lib_verificationReport from "../lib/verificationReport.js";
 import type * as lib_visualJury from "../lib/visualJury.js";
 import type * as media from "../media.js";
+import type * as liveness from "../liveness.js";
 import type * as orders from "../orders.js";
 import type * as payments from "../payments.js";
 import type * as refunds from "../refunds.js";
@@ -115,6 +116,7 @@ declare const fullApi: ApiFromModules<{
   "lib/verificationReport": typeof lib_verificationReport;
   "lib/visualJury": typeof lib_visualJury;
   media: typeof media;
+  liveness: typeof liveness;
   orders: typeof orders;
   payments: typeof payments;
   refunds: typeof refunds;

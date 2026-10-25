@@ -15,6 +15,7 @@ const DRAFT_KEY = 'skarl.contribution.v1';
 export type Draft = {
   uri: string; clientRequestId: string; orderId: string; trace: Trace;
   videoStorageId?: string; sensorStorageId?: string; submissionId?: string;
+  livenessChallengeId?: string; livenessExpiresAt?: number;
   createAttempted?: boolean; attached?: boolean; attachmentClosed?: boolean;
 };
 export const saveDraft = (draft: Draft) => AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -68,11 +69,13 @@ export async function submitDraft(client: ConvexReactClient, initial: Draft,
     await persist({ createAttempted: true }, 'Creating consented contribution…');
     try {
       const result = await client.mutation(api.create, { ...identity, orderId: draft.orderId,
-        storageId: draft.videoStorageId!, clientRequestId: draft.clientRequestId, consentAcknowledged: true });
+        storageId: draft.videoStorageId!, clientRequestId: draft.clientRequestId, consentAcknowledged: true,
+        ...(draft.livenessChallengeId ? { livenessChallengeId: draft.livenessChallengeId } : {}) });
       await persist({ submissionId: result.submissionId }, 'Contribution queued; attaching sensors…');
     } catch (error) {
-      if (refused(error, ['order_closed', 'consent_required', 'rubric_required', 'frozen_rubric_required', 'upload_size_invalid', 'unsupported_upload_type'])) {
-        await persist({ createAttempted: false }, 'Contribution refused; you may discard this take.');
+      if (refused(error, ['order_closed', 'consent_required', 'rubric_required', 'frozen_rubric_required', 'upload_size_invalid', 'unsupported_upload_type',
+        'liveness_challenge_expired', 'liveness_challenge_used', 'liveness_challenge_foreign', 'liveness_challenge_not_found'])) {
+        await persist({ createAttempted: false }, 'Contribution refused; discard this take and record a new one with fresh words.');
       }
       throw error;
     }

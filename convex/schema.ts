@@ -181,6 +181,16 @@ export default defineSchema({
     frozenAt: v.optional(v.number()),
   }).index("by_order_version", ["orderId", "version"]),
 
+  livenessChallenges: defineTable({
+    ...tenant,
+    contributorTokenIdentifier: tokenIdentifier,
+    words: v.array(v.string()),
+    issuedAt: v.number(),
+    expiresAt: v.number(),
+    consumedAt: v.optional(v.number()),
+    submissionId: v.optional(v.id("submissions")),
+  }),
+
   submissions: defineTable({
     ...tenant,
     orderId: v.id("orders"),
@@ -191,6 +201,8 @@ export default defineSchema({
     originalAssetId: v.optional(v.id("mediaAssets")),
     consentRecordId: v.optional(v.id("consentRecords")),
     sensorTrace: v.optional(sensorTrace),
+    livenessChallengeId: v.optional(v.id("livenessChallenges")),
+    liveness: v.optional(v.object({ words: v.array(v.string()), issuedAt: v.number(), consumedAt: v.number() })),
     expectedSourceHash: v.optional(v.string()),
     sourceHash: v.optional(v.string()),
     perceptualHash: v.optional(v.string()),

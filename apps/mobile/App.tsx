@@ -10,7 +10,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { File, Paths } from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 import { ConvexProvider, ConvexReactClient, useConvex, useConvexConnectionState, useQuery } from 'convex/react';
-import { api, identity, usdc } from './src/api';
+import { api, identity, usdc, type LivenessChallenge } from './src/api';
 import { availableSensors, startTrace, type Sensor } from './src/sensors';
 import { createMotionCoach, type MotionCoaching } from './src/motionCoach';
 import { clearDraft, loadDraft, saveDraft, submitDraft, type Draft } from './src/upload';
@@ -57,6 +57,8 @@ function Contribute() {
   const [consent, setConsent] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [ready, setReady] = useState(false);
+  const [challenge, setChallenge] = useState<LivenessChallenge | null>(null);
+  const [now, setNow] = useState(Date.now());
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [recording, setRecording] = useState(false);
   const [coaching, setCoaching] = useState<MotionCoaching>({ steady: null, tilted: null });
@@ -104,20 +106,45 @@ function Contribute() {
     return () => { mounted = false; subscription.remove(); trace.current?.stop(); camera.current?.stopRecording(); };
   }, []);
 
+  useEffect(() => {
+    if (!enabled && (!draft?.livenessExpiresAt || draft.submissionId)) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [enabled, draft?.livenessExpiresAt, draft?.submissionId]);
+
+  async function refreshChallenge() {
+    setBusy(true); setError(null); setChallenge(null);
+    try {
+      const issued = await convex.mutation(api.challenge, identity);
+      setChallenge(issued); setNow(Date.now());
+    } catch (error) { setError(`Could not get fresh words: ${message(error)}`); }
+    finally { setBusy(false); }
+  }
+
   async function enableCamera() {
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setChallenge(null);
     try {
       const cam = await askCamera();
       const mic = await askMic();
       if (!cam.granted || !mic.granted) throw new Error('Camera and microphone access are required. Enable both in iPhone Settings.');
       const available = await availableSensors().catch(() => [] as Sensor[]);
+      const issued = await convex.mutation(api.challenge, identity);
+      if (AppState.currentState !== 'active') throw new Error('Return to Skarl and turn on the camera again for fresh words.');
+      setChallenge(issued); setNow(Date.now());
       setSensors(available); setReady(false); setEnabled(true);
     } catch (error) { setError(message(error)); }
     finally { setBusy(false); }
   }
 
   async function record() {
-    if (!camera.current || !context || !ready || !consent || captureBusy.current) return;
+    if (!camera.current || !context || !ready || !consent || captureBusy.current || busy) return;
+    // Leave time for a full take and upload. Never swap the words while filming.
+    if (!challenge || challenge.expiresAt - Date.now() < 60_000) {
+      await refreshChallenge();
+      return;
+    }
+    const takeChallenge = challenge;
     captureBusy.current = true; interrupted.current = false; recordedDuration.current = 0; setError(null); setElapsed(0); setRecording(true);
     try {
       motionCoach.current = createMotionCoach();
@@ -132,13 +159,15 @@ function Contribute() {
       const extension = /\.mov(?:\?|$)/i.test(result.uri) ? 'mov' : 'mp4';
       const file = new File(Paths.document, `skarl-${clientRequestId}.${extension}`);
       new File(result.uri).copy(file);
-      const next: Draft = { uri: file.uri, clientRequestId, orderId: context.orderId, trace: data };
+      const next: Draft = { uri: file.uri, clientRequestId, orderId: context.orderId, trace: data,
+        livenessChallengeId: takeChallenge.challengeId, livenessExpiresAt: takeChallenge.expiresAt };
       setDraft(next);
       await saveDraft(next);
-      setEnabled(false); setReady(false);
     } catch (error) { setError(message(error)); }
     finally {
       trace.current?.stop(); trace.current = null; captureBusy.current = false; setRecording(false);
+      // Even a failed or interrupted recording used this take's words. Reopen for a new challenge.
+      setChallenge(null); setEnabled(false); setReady(false);
     }
   }
 
@@ -155,7 +184,7 @@ function Contribute() {
     try {
       await clearDraft();
       if (draft) { const file = new File(draft.uri); if (file.exists) file.delete(); }
-      setDraft(null); setError(null); setLabel(''); setElapsed(0); setEnabled(false); setReady(false); setConsent(false);
+      setDraft(null); setError(null); setLabel(''); setElapsed(0); setEnabled(false); setReady(false); setConsent(false); setChallenge(null);
     } catch (error) { setError(message(error)); }
   }
 
@@ -215,13 +244,21 @@ function Contribute() {
             <Pill tone={coaching.steady === null ? 'strong' : 'accent'}>{coaching.steady === null ? 'Motion unavailable' : coaching.steady ? 'Steady' : 'Hold still'}</Pill>
             {coaching.tilted && <Pill tone="accent">Level the phone</Pill>}
           </View>}
+          <View pointerEvents="none" style={s.challenge}>
+            <Text style={s.challengeLabel}>Say these words while recording</Text>
+            <Text accessibilityLiveRegion="polite" style={s.challengeWords}>{challenge?.words.join(' · ') ?? 'Getting fresh words…'}</Text>
+            <Text style={s.challengeMeta}>{recording ? 'Say all three in this order, then narrate the task.'
+              : !challenge || challenge.expiresAt - now < 60_000 ? 'Get fresh words before starting a take.'
+                : `Fresh for ${Math.max(0, Math.ceil((challenge.expiresAt - now) / 1000))}s · submit promptly after recording`}</Text>
+          </View>
         </View>
         : <View style={[s.camera, s.placeholder]}><Text style={[s.placeholderText, { fontFamily: f.regular, fontSize: 18 }]}>Camera is off</Text><Text style={s.placeholderText}>Agree to the consent terms to turn it on.</Text><Text style={s.cameraMeta}>BACK CAMERA · PORTRAIT</Text></View>}
       {enabled && <Text style={s.meta}>{sensors.length ? `Motion capture: ${sensors.join(', ')} · target 50 Hz` : 'Motion unavailable or permission denied. The trace will explicitly contain no samples.'}</Text>}
       <Text style={recording ? s.meta : s.body}>{recording ? `${(elapsed / 1000).toFixed(1)} / 30 seconds · recording video, audio and motion` : 'Keep the camera fixed as the task asks. Include red and blue cups and the marked coaster.'}</Text>
       {!enabled ? <Button title="Turn on camera" onPress={() => void enableCamera()} disabled={!consent || busy || !summary?.rubric || !!closed} />
         : recording ? <Button recording title={elapsed < 10_000 ? 'Keep recording (10 seconds minimum)' : 'Stop recording'} onPress={() => camera.current?.stopRecording()} disabled={elapsed < 10_000} />
-          : <Button title={ready ? 'Record take' : 'Preparing camera…'} onPress={() => void record()} disabled={!ready || busy || !consent} />}
+          : <Button title={!ready ? 'Preparing camera…' : busy ? 'Getting fresh words…'
+            : !challenge || challenge.expiresAt - now < 60_000 ? 'Get fresh words' : 'Record take'} onPress={() => void record()} disabled={!ready || busy || !consent} />}
       {(!cameraPermission?.canAskAgain || !micPermission?.canAskAgain) && !permitted && <Button title="Open iPhone Settings" onPress={() => void Linking.openSettings()} secondary />}
     </View>}
     {draft && <View style={s.card}>
@@ -229,6 +266,11 @@ function Contribute() {
       {!draft.submissionId && <Preview uri={draft.uri} />}
       <Text style={s.title}>{(draft.trace.durationMs / 1000).toFixed(1)} seconds · {draft.trace.samples.length} motion samples</Text>
       <Text style={s.body}>{draft.trace.sensors.length ? draft.trace.sensors.join(' · ') : 'No motion samples available'}</Text>
+      {draft.livenessChallengeId && !draft.submissionId && <Text style={s.notice}>{draft.createAttempted
+        ? 'Resume with this take’s original words. A lost response may mean the submission already exists.'
+        : draft.livenessExpiresAt && draft.livenessExpiresAt <= now
+          ? 'These words have expired. Discard and retake to record fresh words.'
+          : 'Submit promptly: these words expire two minutes after they are issued. An expired take needs a new recording.'}</Text>}
       <Text style={s.meta}>Video and sensor trace stay private. Timing is approximate, based on app callback times.</Text>
       {!!label && <Text style={s.label}>{label}</Text>}
       {busy && <ActivityIndicator color={c.slate700} />}
@@ -286,7 +328,11 @@ const s = StyleSheet.create({
   checkbox: { width: 20, height: 20, borderRadius: 5, backgroundColor: c.haze, alignItems: 'center', justifyContent: 'center' },
   checkText: { fontSize: 14, color: c.accentInk },
   camera: { width: '100%', aspectRatio: 9 / 16, borderRadius: 10, overflow: 'hidden', backgroundColor: c.ink },
-  coaching: { position: 'absolute', top: 12, left: 12, right: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  coaching: { position: 'absolute', bottom: 12, left: 12, right: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  challenge: { position: 'absolute', top: 12, left: 12, right: 12, padding: 14, gap: 8, borderRadius: 10, backgroundColor: c.paper },
+  challengeLabel: { fontFamily: f.book, fontSize: 14, lineHeight: 19, color: c.slate700 },
+  challengeWords: { fontFamily: f.medium, fontSize: 29, lineHeight: 35, color: c.ink },
+  challengeMeta: { fontFamily: f.mono, fontSize: 10, lineHeight: 15, color: c.slate700 },
   placeholder: { justifyContent: 'center', alignItems: 'center', padding: 18, gap: 10 },
   placeholderText: { fontFamily: f.book, color: c.haze, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   cameraMeta: { fontFamily: f.mono, color: c.slate300, fontSize: 10, marginTop: 14 },

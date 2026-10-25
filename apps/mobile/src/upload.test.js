@@ -41,6 +41,7 @@ test('lost create response resumes same request and stored video; no second subm
   expect(creations.size).toBe(1);
   expect(requests[1]).toEqual(requests[0]);
   expect(requests[0]).not.toHaveProperty('verificationOnly');
+  expect(requests[0]).not.toHaveProperty('livenessChallengeId'); // Pre-update saved drafts still submit for human review.
   expect(requests[0].consentAcknowledged).toBe(true);
   expect(posts.length).toBe(2);
   expect(posts[0].options.headers['Content-Type']).toBe('video/quicktime');
@@ -79,4 +80,38 @@ test('late evidence refusal retains known submission and permits a new take', as
     action: async () => { throw new Error('Uncaught Error: submission_evidence_closed\n    at handler'); } };
   await expect(submitDraft(client, initial(), update)).rejects.toThrow('submission_evidence_closed');
   expect(latest.submissionId).toBe('reviewed-1'); expect(latest.attachmentClosed).toBe(true); expect(latest.attached).not.toBe(true);
+});
+
+
+test('a lost create response retries the original spoken challenge even after expiry because the server may have consumed it', async () => {
+  const requests = [];
+  const captured = { ...initial(), livenessChallengeId: 'challenge-from-this-take', livenessExpiresAt: Date.now() - 1 };
+  const client = { mutation: async (ref, args) => {
+    if (getFunctionName(ref) === 'submissions:generateUploadUrl') return 'https://storage.example/upload';
+    requests.push(args);
+    if (requests.length === 1) throw new Error('Connection lost after server committed');
+    return { submissionId: 'submission-with-witness', replayed: true };
+  }, action: async () => ({}) };
+  await expect(submitDraft(client, captured, update)).rejects.toThrow('Connection lost');
+  const restored = await loadDraft();
+  expect(restored.livenessChallengeId).toBe('challenge-from-this-take');
+  expect(restored.createAttempted).toBe(true);
+  await submitDraft(client, restored, update);
+  expect(requests[1]).toEqual(requests[0]);
+  expect(requests[0].livenessChallengeId).toBe(captured.livenessChallengeId);
+  expect(latest.attached).toBe(true);
+});
+
+test('explicit liveness refusal permits retaking instead of trapping a clip whose words can never become valid', async () => {
+  for (const code of ['expired', 'used', 'foreign', 'not_found']) {
+    const client = { mutation: async ref => {
+      if (getFunctionName(ref) === 'submissions:generateUploadUrl') return 'https://storage.example/upload';
+      throw new Error(`Uncaught Error: liveness_challenge_${code}\n    at handler`);
+    } };
+    await expect(submitDraft(client, { ...initial(), livenessChallengeId: 'refused-code' }, update)).rejects.toThrow(`liveness_challenge_${code}`);
+    expect(latest.createAttempted).toBe(false);
+    expect(latest.submissionId).toBeUndefined();
+    // Never attach new words to an already recorded video to repair freshness.
+    expect((await loadDraft()).livenessChallengeId).toBe('refused-code');
+  }
 });
