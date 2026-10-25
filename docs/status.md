@@ -1081,13 +1081,16 @@ verified wallet before account seeding. Ambiguous writes are observed rather
 than resent. Refund and standalone evidence-sale bank simulation is outside
 this slice's scope. The one-dollar-per-USDC mapping is a demo assumption.
 
-**Live integration blocked at the implementation check:**
-`~/.config/skarl/nessie.env` was absent. No live Nessie customer, bank account,
-deposit or transfer is claimed. The client and reconciliation are exercised
-with mocked provider data; that does not prove a successful hosted Nessie call
-or real fiat movement. A valid-key startup guard requires a successful POST
-probe or a known account ID because invalid-key GET requests can silently
-return an empty array with HTTP 200.
+**Live Nessie run (October 25, 2026, 04:04–04:12 PDT):** a real Nessie key
+(GitHub OAuth, private in `~/.config/skarl/nessie.env`, set in Convex) passed the
+POST credential probe. `bankWitness:seed` created the Treasury and contributor
+accounts; `bankWitness:sweep` posted four simulated funding deposits that were
+read back as `observed`. `bankWitness:reconciliation4Way` for order
+`kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg` returned order, ledger, chain and bank all
+`match`. Three live-contract fixes were needed (integer cents, required `status`,
+deposit rows without `payee_id`, empty transfer list as 404); four deposits first
+refused with HTTP 400 were released by `bankWitness:releaseRejectedOperations`.
+This is still a mock bank: no real fiat moved.
 
 **Rollout:** the deployment owner must deploy the merged `origin/main` backend
 and configure `NESSIE_API_KEY` and `NESSIE_ENABLED=true`. This task performs no
