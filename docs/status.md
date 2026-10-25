@@ -1,6 +1,6 @@
 # Build Status
 
-Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 finance and Task 2 verification run on the shared Convex cloud dev deployment below. Both visual and audio inference completed on generated-media and real YouTube-origin negative smoke tests; a human task quality benchmark remains unmeasured. Payment adapters are implemented; the payment owner recorded a first live x402 funding below. Live payout remains unconfirmed. Update this file when another integration becomes demonstrable.
+Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 finance and Task 2 verification run on the shared Convex cloud dev deployment below. Both visual and audio inference completed on generated-media and real YouTube-origin negative smoke tests; a human task quality benchmark remains unmeasured. Live x402 funding is recorded below on Base Sepolia and, at 03:29 PDT, the optional Solana Devnet rail. Live payout remains unconfirmed. Update this file when another integration becomes demonstrable.
 
 | Area | Implemented now | Remaining for the [demo path](workstreams.md) |
 | --- | --- | --- |
@@ -850,3 +850,18 @@ The source change requires the orchestrator's deployment of clean `origin/main`;
 no cloud sync was run from this checkout.
 
 Frame commit validation ran against an isolated snapshot of the staged tree, excluding other in-progress batch changes: `pnpm check` passed **550 tests** (122 Node, 287 Convex, 141 payment-route), typechecks, docs and production build. Actual local FFmpeg extraction ran; provider observations and chain evidence in tests are synthetic. The persistence regression verifies all 18 assets, both duplicate sides, exact indices/distances, role refusal, replay and invalid frame-binding refusals.
+
+
+## Confirmed Solana funding after fee-payer fix — October 25, 2026, 03:29 PDT
+
+**Live, finalized testnet transfer: [1 USDC on Solana Explorer](https://explorer.solana.com/tx/31LMrtZYcf4PcBRcyFmFX8tBmt2fNttNSBA4mz7sTrZKSw6E2kH9oghw5FTafzR77JZT9so1zzjkj8ZuVqrGUezi?cluster=devnet).** The bounded CDP-managed buyer funded `skarl-red-cup-demo-sol` (`kh70wdg1psv4np16bfkq4hkc6d8gz715`) through the **CDP facilitator**, after Vercel's production alias served fix commit `d91c1e9`. The response was HTTP 200 with `fundingStatus: confirmed` and `settledBy: cdp`; the route reports `X-Skarl-Facilitator: cdp`. No x402.org fallback was needed. No manual deployment or Convex change was performed for this fix.
+
+- Network: `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`; canonical USDC mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`; amount **1000000 micro-USDC**.
+- Buyer: `35pgsKg8sUYQRbLuWSmgYnham9rWhqNuG1JJhGKN6TWy`; treasury owner: `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh`; recipient ATA: `CtgPLBxHZU1UZcyovafXuQR2cVAFvpHksPh5HCBDJWHY`.
+- Finalized RPC observation: slot **514940239**, outer transfer instruction index **2**, exact payer/mint/recipient/amount and order memo matched the stored signed message hash. Fee payer: `GVJJ7rdGiXr5xaYbRwRbjfaJL7fmwRygFi1H6aGqDveb`.
+- Convex read-back: order `funded`, funding intent `confirmed`, attempt `kx72x5z60d65xxj20t3kmad00s8gywx5`; reconciliation returned **one 1000000-micro-USDC match and zero exceptions**, including the balanced funding journal and `(network, signature, 2)` identity.
+- Finalized balances: buyer **2000000 → 1000000**, treasury **1000000 → 2000000** micro-USDC. The treasury's pre-existing faucet deposit is not counted as order funding.
+
+Exactly one new authorization was created. Before it, finalized RPC confirmed the earlier rejected authorization's blockhash was invalid, treasury history contained only its original faucet deposit, and the order had no intent/attempt. The earlier private attempt was archived and its 1-USDC reservation retained; this retry kept a 1-USDC per-payment cap and a 2-USDC cumulative cap covering both reservations. No automatic second payment was sent.
+
+Validation: `pnpm check` passed **578 tests** (123 Node, 287 Convex, 168 payment tests), typechecks, documentation links and the production build. Subsequent incoming homepage-only edits passed fresh typechecks/build before the push. Rotation tests cover currently supported versus unsupported fee payers, every other quote field, signed-message fee-payer binding, cache expiry and single-authorization refusal. Those tests are simulated; the Explorer/RPC/Convex observations above are live. Base remains primary and the only payout rail; no Solana payout or bridge is claimed.
