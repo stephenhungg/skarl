@@ -24,7 +24,6 @@ function TaskCard({ task, onPress, index }: { task: LiveTask; onPress(): void; i
       <View style={{ flex: 1, gap: 6 }}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
           <Text style={s.taskCategory}>{task.category}</Text>
-          {task.isNew && !task.closed && <Pill tone="accent" style={s.newPill}>New</Pill>}
           {task.closed && <Pill tone="muted" style={s.newPill}>Closed</Pill>}
         </View>
         <Text numberOfLines={2} style={s.taskTitle}>{task.title}</Text>
@@ -64,7 +63,6 @@ export function TasksScreen({ navigation }: TabProps<'Tasks'>) {
         <Wordmark size={18} />
         <H1>Tasks</H1>
       </View>
-      <Pill tone={live ? 'positive' : 'muted'} dot>{live ? 'Live' : 'Connecting'}</Pill>
     </Animated.View>
 
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -gutter, marginTop: 18 }} contentContainerStyle={{ paddingHorizontal: gutter, gap: 8 }}>

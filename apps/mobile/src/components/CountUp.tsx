@@ -28,5 +28,5 @@ export function CountUp({ atomic, style, duration = 900 }: { atomic: bigint; sty
     });
     return () => { cancelled = true; cancelAnimationFrame(frame); };
   }, [atomic, duration]);
-  return <Text accessibilityLabel={`${money(atomic)} test USDC`} style={style}>{text}</Text>;
+  return <Text accessibilityLabel={`${money(atomic)} USDC`} style={style}>{text}</Text>;
 }
