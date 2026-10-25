@@ -1,12 +1,12 @@
 "use client";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { useState } from "react";
 import { Button } from "@/components/glaze/ui/button";
 import { Status } from "@/components/glaze/ui/status";
 import { Textarea } from "@/components/glaze/ui/textarea";
-import { api, CONTROLLER, useOrderId, useRuns, type AgentRun } from "./data";
+import { api, CONTROLLER, useOrderId, useRuns, type AgentRun, type Id } from "./data";
 import { formatTime, humanize } from "./format";
-import { Amount, Loading, PageHeader, Section, Unavailable } from "./ui";
+import { Amount, Loading, PageHeader, QueryBoundary, Section, Unavailable } from "./ui";
 
 const RUN_STATUS = { running: "running", completed: "ok", failed: "fail", capped: "warn" } as const;
 const DEFAULT_PROMPT = "Inspect this order and propose eligible payables; request independent approval.";
@@ -45,6 +45,7 @@ export function Agent() {
           <Button size="sm" disabled={busy || !prompt.trim()} onClick={start}>{busy ? "Running" : "Run agent"}</Button>
         </div>
       </div>
+      {orderId && <QueryBoundary><BackgroundJobs orderId={orderId} /></QueryBoundary>}
       <Section title="Runs" meta="Newest first, last 20">
         {runs === undefined ? <Loading rows={3} /> : runs.length === 0 ? <p className="type-body-sm text-text-2">The agent has not run on this order.</p> : (
           <div className="flex flex-col gap-3">{runs.map(item => <RunCard key={item._id} run={item} />)}</div>
@@ -85,5 +86,27 @@ function RunCard({ run }: { run: AgentRun }) {
         </div>
       )}
     </article>
+  );
+}
+
+const JOB_LABEL: Record<string, string> = { reconciliation: "Reconciliation", finance: "Finance agent", observation: "Chain observation", job: "Job" };
+
+/** Stephen's hosted jobs: reconcile every 2 minutes, run the bounded agent every 10. Advisory operating records. */
+function BackgroundJobs({ orderId }: { orderId: Id<"orders"> }) {
+  const rows = useQuery(api.scheduledData.snapshots, { demoIdentity: CONTROLLER, orderId });
+  if (!rows || rows.length === 0) return null;
+  return (
+    <Section title="Running on its own" meta="Hosted jobs. They observe and propose; they never approve or sign.">
+      <ul className="divide-y divide-line-faint rounded-panel border border-line-faint">
+        {rows.map(row => (
+          <li key={row._id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5">
+            <Status status={row.status === "failed" ? "fail" : row.status === "running" ? "running" : "ok"} className="w-28 shrink-0">{humanize(row.status)}</Status>
+            <span className="type-label">{JOB_LABEL[row.kind] ?? humanize(row.kind)}</span>
+            {row.lastErrorCode && <span className="type-label-sm text-fail-text">{humanize(row.lastErrorCode)}</span>}
+            <span className="ms-auto type-label-sm text-text-3 tabular-nums">Updated {formatTime(row.updatedAt)} &middot; next {formatTime(row.nextAt)}</span>
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }
