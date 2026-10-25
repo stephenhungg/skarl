@@ -45,8 +45,10 @@ export const useExceptions = (orderId: Id<"orders"> | null | undefined) => useQu
 
 /** What a controller has to act on. Counts drive the only loud badges in the nav. */
 export function needsYou(submissions: SubmissionRow[] | undefined, payables: PayableRow[] | undefined) {
-  const review = (submissions ?? []).filter(s => s.status === "needs_review");
+  // Test uploads can be reviewed but never accepted or paid, so they do not drive the loud count.
+  const review = (submissions ?? []).filter(s => s.status === "needs_review" && !s.verificationOnly);
+  const testUploads = (submissions ?? []).filter(s => s.status === "needs_review" && s.verificationOnly);
   const approve = (payables ?? []).filter(p => p.intent?.status === "proposed" && !p.approval);
   const sign = (payables ?? []).filter(p => p.dispatchReady);
-  return { review, approve, sign, total: review.length + approve.length + sign.length };
+  return { review, approve, sign, testUploads, total: review.length + approve.length + sign.length };
 }

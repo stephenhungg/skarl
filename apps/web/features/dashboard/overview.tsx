@@ -47,7 +47,7 @@ export function NeedsYouList({ orderId, submissions, payables, standalone }: { o
   const open = (exceptions ?? []).filter(item => item.stillDetected && item.disposition?.status !== "resolved");
   const rows = [
     ...n.review.map(s => ({ key: s._id, href: `/dashboard/submissions/${s._id}`, title: `Review clip ${s._id.slice(0, 8)}`,
-      detail: s.verificationOnly ? "Test upload. Review only, it cannot be paid" : s.analysis ? `AI suggests: ${humanize(s.analysis.recommendation).toLowerCase()}` : "Analysis pending", action: "Review" })),
+      detail: s.analysis ? `AI suggests: ${humanize(s.analysis.recommendation).toLowerCase()}` : "Analysis pending", action: "Review" })),
     ...n.approve.map(p => ({ key: p._id, href: "/dashboard/payables", title: <>Approve payout of <Amount value={p.amountAtomic} /></>,
       detail: `Proposed by the finance agent to ${shortHash(p.recipientAddress)}`, action: "Approve" })),
     ...n.sign.map(p => ({ key: `${p._id}:sign`, href: "/dashboard/payables", title: <>Sign approved payout of <Amount value={p.amountAtomic} /></>,
@@ -60,7 +60,7 @@ export function NeedsYouList({ orderId, submissions, payables, standalone }: { o
     <section className={standalone ? undefined : "mt-2"} aria-label="Needs you">
       {!standalone && <div className="mb-3 flex items-baseline gap-3"><h2 className="type-heading-sm">Needs you</h2>{rows.length > 0 && <Badge>{rows.length}</Badge>}</div>}
       {loading ? <Loading rows={2} /> : rows.length === 0
-        ? <div className="flex items-center gap-2 rounded-panel border border-line-faint px-4 py-3 type-body-sm text-text-2"><Lordicon name="check" size={16} trigger="in" />You are clear. Nothing waits on you.</div>
+        ? <div className="flex items-center gap-2 rounded-panel border border-line-faint px-4 py-3 type-body-sm text-text-2"><Lordicon name="check" size={16} trigger="in" />You are clear. Nothing that can be paid waits on you.</div>
         : (
           <ul className="divide-y divide-line-faint rounded-panel border border-line-faint">
             {rows.map(row => (
@@ -77,6 +77,11 @@ export function NeedsYouList({ orderId, submissions, payables, standalone }: { o
             ))}
           </ul>
         )}
+      {!loading && n.testUploads.length > 0 && (
+        <Link href="/dashboard/submissions" className="mt-2 block type-label-sm text-text-3 underline-offset-4 hover:underline">
+          {n.testUploads.length} test {n.testUploads.length === 1 ? "upload" : "uploads"} also waiting. Review only; they cannot be accepted or paid.
+        </Link>
+      )}
     </section>
   );
 }
