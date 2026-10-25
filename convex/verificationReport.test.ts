@@ -272,6 +272,19 @@ describe("frozen task-scoped evidence", () => {
     ], DURATION, value.taskSpec);
     return value;
   }
+  it("accepts the rubric-derived narration wording used by the live can task", () => {
+    // Specs extracted from a rubric reuse the narration criterion's text; rejecting it left every live can clip unobservable.
+    const value = canInput();
+    value.taskSpec = { ...value.taskSpec!, distractors: ["lamp"], narration: ["Narration agrees with visible actions and object"] };
+    value.audio = audioFromTranscriptSegments([
+      { startMs: 0, endMs: 800, text: "Apple river cloud." },
+      { startMs: 1000, endMs: 3000, text: "I pick up the can." },
+      { startMs: 5000, endMs: 7000, text: "I place it closer to the hat that is next to the lamp." },
+    ], DURATION, value.taskSpec);
+    const report = buildVerificationReport(value);
+    expect(report.criteria.map(item => item.status)).toEqual(["supported", "supported", "supported"]);
+    expect(report.recommendation).toBe("accept");
+  });
   it("accepts can/hat evidence only for its trusted task spec", () => {
     const report = buildVerificationReport(canInput());
     expect(report.pipeline.version).toBe("task-evidence-2.0");

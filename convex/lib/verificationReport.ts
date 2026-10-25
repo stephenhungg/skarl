@@ -244,7 +244,10 @@ export function audioFromTranscriptSegments(input: TranscriptSegment[], duration
     const startMs = included[0]!.segment.startMs;
     const endMs = included[included.length - 1]!.segment.endMs;
     const action: Action = /^(pick|lift|grasp)/i.test(match[0]) ? "pickup" : "place";
-    const named = [spec.object, ...spec.distractors].filter(label => labelPattern(label).test(clause));
+    // "the hat that is next to the lamp" names a landmark of the target, not the object being moved.
+    const targetWords = labelPattern(spec.target).source.slice(2, -2);
+    const objectClause = clause.replace(new RegExp(`\\b(${targetWords})\\s+(?:that|which)?\\s*(?:is\\s+)?(?:next to|beside|near|by)\\s+(?:the\\s+)?[a-z][a-z ]*`, "i"), "$1");
+    const named = [spec.object, ...spec.distractors].filter(label => labelPattern(label).test(objectClause));
     const uncertain = /\b(?:not|never|don't|didn't|cannot|can't|maybe|actually|instead|sorry)\b/i.test(`${nearbyPrefix} ${clause}`);
     let object: ObservedObject = named.length === 1 ? named[0]! : "unknown";
     const noun = spec.object.split("_").at(-1)!;
@@ -292,8 +295,10 @@ export function parseAudioResponse(raw: string, durationMs: number, spec: TaskSp
 }
 
 /** Only this decomposed two-action grammar is implemented. Extra semantics fail closed. */
+// Specs derived from a rubric carry the narration criterion's own wording; both forms mean "narrate each action".
+const NARRATION_REQUIREMENTS = new Set(["narrate each action", "narration agrees with visible actions and object"]);
 function criterionOperation(criterion: RubricCriterion, spec: TaskSpec): Action | "narration" | undefined {
-  if (spec.steps.length !== 2 || spec.narration?.some(item => normalizedWords(item) !== "narrate each action")) return undefined;
+  if (spec.steps.length !== 2 || spec.narration?.some(item => !NARRATION_REQUIREMENTS.has(normalizedWords(item)))) return undefined;
   const object = spec.object.replaceAll("_", " "), target = spec.target.replaceAll("_", " ");
   const pickup = normalizedWords(spec.steps[0]!), placement = normalizedWords(spec.steps[1]!);
   const pickupForms = [`pick up the ${object}`, `pick up ${object}`,
