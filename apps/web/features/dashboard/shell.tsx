@@ -7,7 +7,7 @@ import { cn } from "@/lib/glaze/utils";
 import { BreadcrumbTrail } from "@/components/glaze/ui/breadcrumb";
 import { Kbd } from "@/components/glaze/ui/kbd";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/glaze/ui/tooltip";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuLinkItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/glaze/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuLinkItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/glaze/ui/dropdown-menu";
 import { Toaster } from "@/components/glaze/ui/toast";
 import { ChevronSort, Icon } from "@/components/glaze/icon";
 import { LogoMark } from "@/components/logo-mark";
@@ -109,7 +109,9 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
                     </>}
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
-                    <DropdownMenuLabel>Signed in as the demo controller. This is a selector, not authentication.</DropdownMenuLabel>
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>Signed in as the demo controller. This is a selector, not authentication.</DropdownMenuLabel>
+                    </DropdownMenuGroup>
                     <DropdownMenuSeparator />
                     <DropdownMenuLinkItem render={<Link href="/contribute" />}>Open contributor view</DropdownMenuLinkItem>
                     <DropdownMenuLinkItem render={<Link href="/" />}>Back to the landing page</DropdownMenuLinkItem>

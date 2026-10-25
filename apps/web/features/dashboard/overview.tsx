@@ -6,6 +6,7 @@ import { cn } from "@/lib/glaze/utils";
 import { needsYou, useAudit, useExceptions, useOrderData, useOrderId, useReconciliation, type Id, type PayableRow, type SubmissionRow } from "./data";
 import { basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
 import { Lordicon } from "./lordicon";
+import { ActivityFeed } from "./activity";
 import { Amount, Loading, PageHeader, Section, Unavailable } from "./ui";
 
 export function Overview() {
@@ -111,17 +112,7 @@ function RecentActivity({ orderId }: { orderId: Id<"orders"> }) {
   const audit = useAudit(orderId);
   return (
     <Section title="Recent activity" meta={<Link href="/dashboard/audit" className="underline underline-offset-4">Full audit log</Link>}>
-      {audit === undefined ? <Loading /> : audit.length === 0 ? <p className="type-body-sm text-text-2">No activity yet.</p> : (
-        <ul className="flex flex-col">
-          {audit.slice(0, 6).map(event => (
-            <li key={event._id} className="flex items-baseline gap-3 border-b border-line-faint py-2 last:border-b-0">
-              <span className="w-28 shrink-0 type-label-sm text-text-3 tabular-nums">{formatTime(event.occurredAt)}</span>
-              <span className="min-w-0 flex-1 type-body-sm"><span className="type-label">{humanize(event.action)}</span> <span className="text-text-2">{readableReason(event.reason)}</span></span>
-              <span className="hidden shrink-0 type-label-sm text-text-3 sm:inline">{event.actor.kind === "service" ? "Service" : "Human"} &middot; {event.actor.identity}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {audit === undefined ? <Loading /> : audit.length === 0 ? <p className="type-body-sm text-text-2">No activity yet.</p> : <ActivityFeed events={audit} limit={4} />}
     </Section>
   );
 }
