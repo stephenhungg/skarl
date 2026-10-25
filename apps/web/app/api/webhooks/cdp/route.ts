@@ -60,8 +60,9 @@ export async function POST(request: Request) {
       // Persist only the verified candidate hash, then reuse the canonical payment mutations.
       await db.mutation(api.payments.recordTransaction, { serviceSecret, attemptId: candidate.attemptId, txHash: event.txHash });
       if (candidate.kind === "funding" && candidate.authorizationNonce) {
-        await db.mutation(api.payments.confirmFunding, { serviceSecret, attemptId: candidate.attemptId,
+        const confirmation = await db.mutation(api.payments.confirmFunding, { serviceSecret, attemptId: candidate.attemptId,
           authorizationNonce: candidate.authorizationNonce, observation });
+        if (confirmation?.ok === false) return paymentJson({ status: "reconciliation_exception", error: confirmation.code });
       } else {
         await db.mutation(api.payments.recordPayoutObservation, { serviceSecret, attemptId: candidate.attemptId, observation });
       }

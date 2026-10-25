@@ -13,7 +13,7 @@ export type SubmitState =
   | { phase: "uploading"; progress: number; sha256: string }
   | { phase: "finalizing"; sha256: string; storageId: string }
   | { phase: "queued"; sha256: string; storageId: string; submissionId: string | null; replayed: boolean }
-  | { phase: "error"; kind: SubmitErrorKind; retryable: boolean; detail?: string; sha256?: string };
+  | { phase: "error"; kind: SubmitErrorKind; retryable: boolean; detail?: string; sha256?: string; uncertainCreate?: boolean };
 
 // Convex upload POSTs time out after two minutes server side.
 const UPLOAD_TIMEOUT_MS = 120_000;
@@ -50,6 +50,13 @@ function message(error: unknown) {
   const text = error instanceof Error ? error.message : String(error);
   // Strip Convex's request-id prefix so the visible reason is the useful part.
   return text.replace(/^\[Request ID: [^\]]+\]\s*/, "").replace(/^Server Error\s*/, "").split("\n")[0].trim();
+}
+
+function refusalCode(error: unknown) {
+  if (!(error instanceof Error)) return undefined;
+  const codes = ["order_closed", "consent_required", "rubric_required", "frozen_rubric_required", "upload_size_invalid", "unsupported_upload_type",
+    "liveness_challenge_expired", "liveness_challenge_used", "liveness_challenge_foreign", "liveness_challenge_not_found"];
+  return error.message.split("\n").map(line => line.replace(/^Uncaught Error: /, "").trim()).find(line => codes.includes(line));
 }
 
 function normalizeCreate(result: CreateSubmissionResult): { ok: true; submissionId: string | null; replayed: boolean } | { ok: false; code: string } {
@@ -104,11 +111,15 @@ export function useSubmit(orderId: string | null) {
     try {
       const result = normalizeCreate(await convex.mutation(refs.createSubmission, {
         demoIdentity: DEMO_IDENTITY, orderId, storageId, clientRequestId: clip.clientRequestId, consentAcknowledged: true,
+        ...(clip.livenessChallengeId ? { livenessChallengeId: clip.livenessChallengeId } : {}),
       }));
       if (!result.ok) return setState({ phase: "error", kind: "refused", retryable: false, detail: result.code, sha256 });
       setState({ phase: "queued", sha256, storageId, submissionId: result.submissionId, replayed: result.replayed });
     } catch (error) {
-      setState({ phase: "error", kind: "create_failed", retryable: true, detail: message(error), sha256 });
+      const code = refusalCode(error);
+      setState(code
+        ? { phase: "error", kind: "refused", retryable: false, detail: `${code}. Retake with fresh words.`, sha256 }
+        : { phase: "error", kind: "create_failed", retryable: true, uncertainCreate: true, detail: message(error), sha256 });
     }
   }, [convex, orderId]);
 
@@ -117,5 +128,5 @@ export function useSubmit(orderId: string | null) {
     setState({ phase: "idle" });
   }, []);
 
-  return { state, submit, reset };
+  return { state, submit, reset, canRetake: !(state.phase === "error" && state.uncertainCreate) };
 }

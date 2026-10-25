@@ -14,6 +14,12 @@ raw channels and exposes simple plotting summaries, without claiming that phone
 motion measures hand or object motion. An accelerometer measures the camera
 device, not the cup.
 
+Attitude and gravity give labs camera orientation relative to gravity: the
+rotational half of camera pose, without claiming camera translation, calibrated
+world heading or full six-degree-of-freedom tracking. Live steadiness and horizon
+coaching help contributors keep the fixed-camera task readable, with the goal
+of fewer rejected takes; no reduction in rejections has been measured yet.
+
 Motion can contribute to an anti-recapture investigation, but it is **not hardware
 attested** and an uploaded trace can be fabricated. The current red-cup task asks
 for a **fixed camera**, so a still IMU during pickup or placement is expected. We
@@ -31,6 +37,15 @@ No location permission is requested, and the server rejects unknown JSON fields.
 - `accelerometer`: x/y/z in **g**, including gravity; stationary magnitude ≈1 g.
 - `gyroscope`: x/y/z in **radians/second**.
 - `deviceMotion`: linear acceleration x/y/z in **m/s²**, excluding gravity.
+- `attitude`: x/y/z store DeviceMotion `rotation.alpha/beta/gamma` in
+  **radians**, respectively. These are Euler components, not a Cartesian vector
+  (Expo alpha rotates about Z, beta about X, gamma about Y). They are not
+  `rotationRate`, which uses degrees/second. Heading is device-reference-relative.
+- `gravity`: x/y/z in **m/s²**, computed from the same DeviceMotion event as
+  `accelerationIncludingGravity - acceleration`. Neither missing vector is
+  assumed to be zero. These axes are phone-relative: X right, Y toward the top,
+  Z out of the screen in portrait. Both new channels reuse the existing listener;
+  no new native dependency or permission is added.
 - `timestampMs`: monotonic app callback time relative to the recording invocation,
   using `performance.now()`. This is approximate synchronization, not native
   hardware timestamps or frame-accurate alignment. OS batching/dropped events
@@ -45,6 +60,59 @@ schema is [sensorTrace.ts](../convex/lib/sensorTrace.ts), with Convex validators
 in [sensorTraceValidators.ts](../convex/sensorTraceValidators.ts). This is a
 separate evidence attachment; the canonical verification report JSON Schema and
 Python report model are unchanged.
+
+Version **1** remains unchanged: old three-channel traces, empty unavailable
+traces and stored summaries remain valid. Up to five channels and 31,000 samples
+are accepted, subject to the same byte limit. The client throttles each channel
+to at most one sample per 20 ms (at most 7,505 samples over 30 seconds), keeping
+full-precision five-channel JSON comfortably within 2 MiB. Actual sampled
+channels, rather than availability claims, populate the saved trace.
+
+## Live coaching
+
+During recording, a lime pill shows **Steady** or **Hold still**. The latter
+requires gyro magnitude >0.15 rad/s continuously for >500 ms; a sample gap
+>250 ms resets that streak. Data older than 500 ms shows **Motion unavailable**,
+never fabricated steadiness. A second pill says **Level the phone** when portrait
+horizon roll exceeds 15°: `atan2(abs(gravity.x), abs(gravity.y))`. This ignores
+forward pitch so pointing down at the task does not cause a warning. Roll is
+unavailable when the gravity vector is zero or its XY projection is less than
+10% of its magnitude (camera nearly straight up/down). Guidance resets each take
+and never blocks recording, uploading or acceptance.
+
+Coaching is visual only. [Expo's haptics documentation](https://docs.expo.dev/versions/latest/sdk/haptics/)
+states that iOS disables the Taptic Engine while the camera is active to prevent
+destabilization. The existing [Expo DeviceMotion API](https://docs.expo.dev/versions/latest/sdk/devicemotion/)
+is included in Expo Go.
+
+## Per-take spoken liveness
+
+Opening the camera requests `liveness:issueChallenge` with
+`{ demoIdentity: "contributor" }`. It returns `{ challengeId, words, expiresAt }`:
+three common words and a two-minute expiry in Unix milliseconds. The preview
+shows “Say these words while recording” in the landing-page typography and palette.
+Say all three in order, then narrate the task. If less than a minute remains before
+recording, the button requests fresh words and requires a second tap to record.
+The words stay fixed during a take. Failed/interrupted recordings close the camera;
+opening it again, including after a discarded take, issues a new challenge.
+
+The saved draft sends `livenessChallengeId` with `submissions:create`. The server
+atomically consumes that contributor's unexpired, unused challenge and stores
+`liveness: { words, issuedAt, consumedAt }` on the submission. Submit promptly:
+expiry is checked when creation commits, so time spent reviewing or uploading
+counts toward the two minutes. An explicit expired/used/foreign/missing challenge
+refusal permits discarding and recording fresh words; the app never assigns a
+new code to old video. A timeout preserves the original request ID, storage IDs,
+and challenge ID for an idempotent retry, including after challenge expiry.
+Older saved drafts without the optional ID still submit for human review.
+
+After transcription, deterministic matching checks the issued words in order,
+ignoring case and punctuation, and records timestamped evidence without adding a
+rubric criterion. Missing or failed liveness routes to `needs_review`, never an
+automatic rejection or acceptance. Spoken instructions cannot declare a pass.
+This adds a freshness signal; it does not establish hardware attestation or rule
+out a generated or composited recording made after the code was issued. Original
+sensor trace formats and optional sensor evidence remain unchanged.
 
 ## Upload and trust boundary
 
@@ -78,18 +146,35 @@ Missing channels are `null`, not zero. Active bins have any sample satisfying:
 `abs(accelMagnitudeG - 1) > 0.08`, gyro magnitude >0.15 rad/s, or linear
 acceleration >0.8 m/s². Contiguous active bins merge into intervals. These are
 simple uncalibrated plotting heuristics, not a classifier or provenance proof.
+Attitude and gravity do not activate those bins: gravity is expected even for
+a motionless phone. The global summary also includes optional nullable
+`meanTiltDegrees` (mean valid portrait horizon roll, as defined above) and
+`steadinessRatio` (fraction of gyro samples with magnitude ≤0.15 rad/s, from 0
+to 1). The ratio is sample-weighted, not elapsed-time-weighted or the UI's
+500 ms sustained-warning rate. Missing channels yield null; old stored summaries
+can omit both fields. Neither metric changes acceptance or payment authority.
 
 ## Verification and deployment
 
 Local strict TypeScript and the iOS Metro/Hermes export are build checks. Synthetic
 backend tests cover content validation, rate/size caps, monotonic timestamps,
 ownership, replay/immutability and non-authority over acceptance/payments. Mobile
-retry tests exercise loss of a create/attach response. None establish a physical
-iPhone capture, live model inference or payment.
+retry tests exercise loss of a create/attach response, preserve the original
+challenge through an uncertain creation, and permit retaking after explicit
+liveness refusals. None establish a physical iPhone capture, live model inference or payment.
 
 **A Convex deployment from main is required** for the optional submission fields,
-index and sensor action. The mobile work does not deploy Convex. The operator
+index, sensor action, new channel validators/summary fields, liveness challenge
+mutation and deterministic verifier gate. Deploy the backend before using the
+updated client's five-channel uploads or challenge fetch; an older backend cannot
+serve those requests. The mobile work does not deploy Convex. The operator
 should deploy, then follow the [phone smoke test](../apps/mobile/README.md#phone-smoke-test).
+Also check that fresh words appear on camera open and retake, stay readable over
+the live preview while filming, survive a lost-create retry, and produce an
+explicit retake path if upload finishes after expiry. Record one valid sequence,
+one wrong-order sequence and one silent take; inspect timestamped liveness
+results and confirm the latter two require review. These require a human device
+and live transcription test; local tests and exports do not establish them.
 
 ## Visual alignment
 

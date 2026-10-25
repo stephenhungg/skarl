@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { animate } from "motion/react";
 import { ACCOUNTS, accountBalance, type Account } from "@skarl/ledger";
-import { StatusPill } from "@/components/status-pill";
 import { ReceiptRule } from "@/components/ui/payment-receipt-printer";
 import { MONEY_ACCOUNT_LABEL, MONEY_LEDGER, type MoneyStep } from "../evidence";
 import { centsAt, usdc } from "./amount";
@@ -56,7 +55,6 @@ export function JournalSheet({ step, index, total, run }: { step: MoneyStep; ind
     <div className="text-[12px] leading-[1.3]">
       <div className="flex items-center justify-between gap-3">
         <span className="text-slate-500">{step.closing ? "Ending balances" : `Entry ${index + 1} of ${total}`}</span>
-        <StatusPill status={step.journalStatus} />
       </div>
       <p className="cut-regular mt-2 text-[14px] leading-[1.25] tracking-[0.01em] text-ink">{step.title}</p>
 

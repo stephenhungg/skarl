@@ -54,6 +54,17 @@ attachment works.** This work does not deploy Convex.
    and an upload interrupted by network loss. The app labels absent sensors,
    discards interrupted recordings, and resumes the same submission after retry
    or relaunch. Do not clear Expo Go app data while a contribution is pending.
+7. In a separate test take, hold the phone still, briefly shake it, then rotate
+   it continuously for over half a second: the lime pill should change from
+   “Steady” to “Hold still” only for sustained movement. Tilt the portrait horizon
+   past 15° to see “Level the phone”; aiming down at the cups alone should not
+   trigger it. Stop/retake and verify guidance resets. There should be no haptics.
+8. After the backend deploy, inspect a real uploaded trace for `attitude`
+   (x/y/z = alpha/beta/gamma radians) and `gravity` (m/s²), alongside the original
+   three channels when hardware provides them. Confirm `meanTiltDegrees` and
+   `steadinessRatio` in the server summary. Permission denial must not show
+   “Steady” or invent samples. These checks require a physical phone in Expo Go;
+   local fixture tests and exports do not verify native sensor axes or timing.
 
 The local draft and video remain in Expo Go's app storage until “Discard and
 retake” or “Record another contribution.” Upload stages persist storage IDs and

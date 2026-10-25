@@ -1,11 +1,13 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { LivenessChallenge } from "./api";
 import {
   MAX_BYTES, MAX_SECONDS, VIDEO_BITS_PER_SECOND, classifyGetUserMediaError, pickMimeType, preflight,
   type MediaFailure,
 } from "./media";
 
-export type Clip = { blob: Blob; url: string; mimeType: string; durationMs: number; sizeBytes: number; clientRequestId: string };
+export type Clip = { blob: Blob; url: string; mimeType: string; durationMs: number; sizeBytes: number; clientRequestId: string;
+  livenessChallengeId?: string; livenessExpiresAt?: number };
 
 export type RecorderState =
   | { phase: "idle" }
@@ -86,7 +88,7 @@ export function useRecorder() {
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   }, []);
 
-  const record = useCallback(() => {
+  const record = useCallback((challenge?: LivenessChallenge) => {
     const media = streamRef.current;
     if (!media) return;
     const mimeType = pickMimeType();
@@ -126,7 +128,8 @@ export function useRecorder() {
       clipUrlRef.current = url;
       // The camera stays off during review; retake asks again, which also re-checks the device.
       releaseStream();
-      setState({ phase: "recorded", clip: { blob, url, mimeType: type, durationMs, sizeBytes: blob.size, clientRequestId: newRequestId() } });
+      setState({ phase: "recorded", clip: { blob, url, mimeType: type, durationMs, sizeBytes: blob.size, clientRequestId: newRequestId(),
+        ...(challenge ? { livenessChallengeId: challenge.challengeId, livenessExpiresAt: challenge.expiresAt } : {}) } });
     };
     recorderRef.current = recorder;
     recorder.start(1000);

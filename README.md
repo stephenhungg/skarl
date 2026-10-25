@@ -37,9 +37,10 @@ The 0.25 USDC evidence-purchase endpoint is implemented, with Bazaar discovery m
 | --- | --- |
 | [10 USDC funding](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757) | Live Base Sepolia x402 buyer CLI payment through the public facilitator; reconciled funding journal. |
 | [0.01 USDC CDP funding](https://sepolia.basescan.org/tx/0x20c9252f7d67a2dac87be839ad82b83465686157478645354838ac0f7239390d) | Live CDP facilitator settlement, signed provider webhook processed, exact balanced journal and no reconciliation exceptions. This is funding, not a payout. |
-| Independent Gemini observations | Live inference on generated and real-video negative smoke tests; both correctly remained review-only. No human-task accuracy benchmark. |
-| Finance agent | Live Flash tool call to the journal-derived trial balance and persisted explanation; no proposal or transfer in that run. |
+| Independent Gemini observations | Live negative-smoke inference, including a stored Argon+Flash jury result; review-only. No human-task accuracy benchmark. |
+| Finance agent | Live Gemini and Claude read-only tool loops with persisted explanations; zero proposed amount in the observed runs. |
 | CDP wallet policy | Live contributor signature verification, an applied 2 USDC per-transfer cap, and actual CDP rejections for over-cap and non-allowlisted sends. Three faucet receipts funded 3 test USDC; these are not payouts. |
+| Nessie mock-bank witness | Live hosted mock-API deposits; order/ledger/chain/bank match for 10-USDC funding at the [04:40 refresh](docs/status.md#submission-evidence-refresh--october-25-2026-0440-pdt). No real fiat or payout match. |
 | Duplicate, approval and payout controls | Implemented with synthetic regression coverage. A licensed accepted contribution, independently approved payout and Wallet MCP execution remain unverified. |
 
 [Build status](docs/status.md) records the dated evidence and limitations. Video defaults to `gemini-4-argon`; finance reasoning uses `gemini-3.8-flash`; independent audio uses `gemini-3.5-transcribe`. Historical Flash measurements keep their actual model attribution. [Model choices](docs/ai-verification.md#models-and-configuration).

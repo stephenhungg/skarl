@@ -13,6 +13,9 @@ Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devne
 | [Convex] Best use of Convex | Convex as the system of record: live queries, atomic financial mutations, file storage, and a Workflow for the approval wait |
 | [MLH] Best Use of Solana | Live 1-USDC Solana Devnet x402 funding and finalized RPC reconciliation; Base stays primary and the only payout rail |
 | [MLH] Best Use of Gemini API | Two independent Gemini calls (silent video, audio) producing schema-validated, timestamped evidence |
+| Capital One (Nessie) | Live Nessie bank as the fourth reconciliation witness: on October 25 at 04:11 PDT, order, ledger, chain and bank all `match` for a 10 USDC order (mock bank, no fiat moved) |
+| Anthropic (Claude) | Live Claude finance agent (`claude-sonnet-5-5`, 3 read-only tool calls, about 7 s, cannot approve) and a Claude contributor coach whose output is validated server-side and cannot change verdicts |
+| [Atlassian] Best Security Solution for Agents | [Skarl Guard for Jira](../integrations/jira-forge/README.md), Agentic Workforce Challenge Track 2: deterministic injection guard, constrained Claude triage, audited refusals and selective rollback; **live on a Jira Cloud demo site (Oct 25, 04:53 PDT):** authenticated feed sync created SKARL-1..5 (0 errors); Claude triaged SKARL-5 within policy (labels, priority) with per-action audit and revert; the bulk-change test refused a six-issue batch with no Jira change. One agent comment write returned `uncertain` and was not replayed, by design. Injection-in-issue demo still to record |
 
 ## Hyphenate
 
@@ -100,11 +103,11 @@ Current configurable defaults are `gemini-4-argon` for visual evidence, `gemini-
 
 The earlier 03:13 attempt failed before settlement because fee-payer rotation broke exact quote matching. Its expired, unsettled authorization and spend reservation were retained before the single new attempt. Current-set fee-payer validation resolves that mismatch while retaining all economic and deduplication checks. See [live success and validation](status.md#confirmed-solana-funding-after-fee-payer-fix--october-25-2026-0329-pdt), [Solana rail](payments.md#solana-rail), and [Coinbase builder feedback](coinbase-submission.md#solana-fee-payer-rotation-during-x402-funding). Base/Coinbase remain primary and payouts remain Base-only. This proves testnet funding, not a Solana payout, bridge, Wallet MCP purchase or prize eligibility.
 
-## Not targeted
+## Other tracks and evidence gates
 
 - **Auth0:** Cal Hacks 13.0 has no Auth0 prize. Demo identities are seeded Convex users whose roles are checked on the server, and they are labeled as demo identities.
 - **Cartesia:** no live evidence in the current status snapshot; exclude it as a working witness.
-- **Anthropic / Capital One:** requested rubric mappings are in Devpost, but Claude runtime finance and Nessie API evidence are pending. Do not claim either integration works from an aspirational narrative.
+- **Anthropic / Capital One:** stored live Claude finance and hosted Nessie mock-bank funding evidence now support the [Devpost mapping](devpost.md#prize-specific-evidence). See the [04:40 refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt); no measured community impact or real bank settlement is claimed.
 
 ## Submission package
 

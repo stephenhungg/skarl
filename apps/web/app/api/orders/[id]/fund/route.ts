@@ -92,7 +92,8 @@ export async function POST(request: NextRequest, context: Context) {
         const observation = current.intent.network === SOLANA_PAYMENT_NETWORK
           ? await observeSolanaTransfer(current.attempt.txHash, { ...expected, authorizationNonce: authorizationNonce!, orderId: order._id })
           : await observeTransfer(current.attempt.txHash as Hash, expected, authorizationNonce);
-        await db.mutation(api.payments.confirmFunding, { serviceSecret, attemptId, authorizationNonce: authorizationNonce!, observation });
+        const confirmation = await db.mutation(api.payments.confirmFunding, { serviceSecret, attemptId, authorizationNonce: authorizationNonce!, observation });
+        if (confirmation?.ok === false) throw new Error(confirmation.code);
         const confirmed = paymentJson({ orderId: order._id, fundingStatus: "confirmed", txHash: observation.txHash, settledBy,
           network: observation.network, explorerUrl: paymentRail(observation.network).explorerTx(observation.txHash) });
         const paymentResponse = response.headers.get("PAYMENT-RESPONSE");

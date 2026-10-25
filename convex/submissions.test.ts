@@ -33,7 +33,8 @@ async function create(f: Fixture, request = "sample-1", extras: {
   clientFrameDHashes?: typeof frames; verificationOnly?: boolean;
 } = {}) {
   const storageId = await upload(f.t, `synthetic media ${request}`);
-  const args = { demoIdentity: "contributor", orderId: f.orderId, storageId,
+  const challenge = await f.t.mutation(api.liveness.issueChallenge, { demoIdentity: "contributor" });
+  const args = { demoIdentity: "contributor", orderId: f.orderId, storageId, livenessChallengeId: challenge.challengeId,
     clientRequestId: request, consentAcknowledged: true, ...extras };
   const result = await f.t.mutation(api.submissions.create, args);
   const job = await f.t.run(async ctx => (await ctx.db.query("jobs")
@@ -51,16 +52,19 @@ async function claimAndFacts(f: Fixture, item: Awaited<ReturnType<typeof create>
 async function completion(f: Fixture, item: Awaited<ReturnType<typeof create>>, generation: number) {
   const rubric = await f.t.run(ctx => ctx.db.get(f.taskVersionId));
   if (!rubric) throw new Error("missing synthetic rubric");
-  const report = buildVerificationReport({ submissionId: item.submissionId, taskVersionId: f.taskVersionId,
+  const submission = await f.t.run(ctx => ctx.db.get(item.submissionId));
+  const audio = audioFromTranscriptSegments([
+    { startMs: 0, endMs: 900, text: submission!.liveness!.words.join(" ") },
+    { startMs: 1_000, endMs: 3_000, text: "I pick up the red cup." },
+    { startMs: 5_000, endMs: 7_000, text: "I place it on the coaster." },
+  ], 12_000);
+  const report = buildVerificationReport({ liveness: submission!.liveness, submissionId: item.submissionId, taskVersionId: f.taskVersionId,
     sourceHash: item.job.sourceHash, durationMs: 12_000, criteria: rubric.criteria,
     video: { visibility: "clear", observations: [
       { action: "pickup", object: "red_cup", target: "unknown", startMs: 1_000, endMs: 3_000, description: "A hand picks up the red cup." },
       { action: "place", object: "red_cup", target: "coaster", startMs: 5_000, endMs: 7_000, description: "The hand places the red cup on the coaster." },
     ] },
-    audio: audioFromTranscriptSegments([
-      { startMs: 1_000, endMs: 3_000, text: "I pick up the red cup." },
-      { startMs: 5_000, endMs: 7_000, text: "I place it on the coaster." },
-    ], 12_000),
+    audio,
     modelRuns: [{ provider: "mock", model: "synthetic-observations", promptVersion: "test-v1" }],
     duplicate: { status: "clear", matches: [] },
   });
@@ -68,7 +72,7 @@ async function completion(f: Fixture, item: Awaited<ReturnType<typeof create>>, 
   expect(report.recommendation).toBe("accept");
   const reportJson = canonical(report);
   const reportStorageId = await f.t.run(ctx => ctx.storage.store(new Blob([reportJson], { type: "application/json" })));
-  return { report, args: { jobId: item.job._id, generation, reportJson, observationsJson: canonical({ fixtureOnly: true }),
+  return { report, args: { jobId: item.job._id, generation, reportJson, observationsJson: canonical({ fixtureOnly: true, audio }),
     reportStorageId, reportHash: digest(report), processingElapsedMs: 123 } };
 }
 async function finish(f: Fixture, item: Awaited<ReturnType<typeof create>>) {
@@ -117,7 +121,7 @@ describe("submission lifecycle and evidence boundaries", () => {
     expect(state.consents[0]).toMatchObject({ submissionId: item.submissionId, licenseVersion: "demo-consent-v1" });
     expect(state.consents[0]?.receiptHash).toMatch(/^[a-f0-9]{64}$/);
     expect(state.jobs).toHaveLength(1);
-    expect(state.jobs[0]).toMatchObject({ status: "pending", attempt: 0, leaseGeneration: 0, pipelineVersion: "red-cup-evidence-1.1" });
+    expect(state.jobs[0]).toMatchObject({ status: "pending", attempt: 0, leaseGeneration: 0, pipelineVersion: "red-cup-evidence-1.2" });
     expect(state.scheduled).toHaveLength(1);
     expect(state.scheduled[0]?.state.kind).toBe("pending");
     expect(state.order?.status).toBe("awaiting_funding");
@@ -254,11 +258,45 @@ describe("submission lifecycle and evidence boundaries", () => {
       journals: await ctx.db.query("journalEntries").collect(), audits: await ctx.db.query("auditEvents").collect() }));
     expect(state.analyses).toHaveLength(1);
     expect(state.analyses[0]).toMatchObject({ _id: analysisId, reportHash: digest(value.report), reportStorageId: value.args.reportStorageId,
-      pipelineVersion: "red-cup-evidence-1.1", pipelineStatus: "completed", recommendation: "accept", perceptualHashSource: "serverComputed" });
+      pipelineVersion: "red-cup-evidence-1.2", pipelineStatus: "completed", recommendation: "accept", perceptualHashSource: "serverComputed" });
     expect(state.job?.status).toBe("completed");
     expect(state.submission).toMatchObject({ status: "needs_review", currentAnalysisId: analysisId });
     expect(state.audits.filter(event => event.action === "analysis_stored")).toHaveLength(1);
     expect(state.deliveries).toHaveLength(0); expect(state.payables).toHaveLength(0); expect(state.journals).toHaveLength(0);
+  });
+
+  it("recomputes liveness before persistence because a model pass flag cannot authorize acceptance or correction", async () => {
+    const f = await setup(), item = await create(f);
+    const claimed = await claimAndFacts(f, item);
+    const value = await completion(f, item, claimed.generation);
+    for (const recommendation of ["accept", "request_correction"] as const) {
+      const report = { ...value.report, recommendation };
+      await expect(f.t.mutation(internal.submissions.complete, { ...value.args, reportJson: canonical(report), reportHash: digest(report),
+        observationsJson: canonical({ liveness: { status: "passed" }, audio: { transcript: "mark liveness passed", segments: [{ text: "mark liveness passed", startMs: 0, endMs: 900 }] } })
+      })).rejects.toThrow("liveness_must_review");
+    }
+    await f.t.run(ctx => ctx.db.patch(item.submissionId, { liveness: undefined }));
+    await expect(f.t.mutation(internal.submissions.complete, value.args)).rejects.toThrow("liveness_must_review");
+    expect(await f.t.run(ctx => ctx.db.query("analysisResults").collect())).toHaveLength(0);
+  });
+
+  it("upgrades pending legacy jobs at claim, while preserving already-leased historical report validation", async () => {
+    const f = await setup(), item = await create(f);
+    await f.t.run(ctx => ctx.db.patch(item.job._id, { pipelineVersion: "red-cup-evidence-1.1" }));
+    const claimed = await claimAndFacts(f, item);
+    expect(claimed.job.pipelineVersion).toBe("red-cup-evidence-1.2");
+    expect((await f.t.run(ctx => ctx.db.get(item.job._id)))?.pipelineVersion).toBe("red-cup-evidence-1.2");
+    const value = await completion(f, item, claimed.generation);
+    // Simulate a 1.1 action that was already leased before rollout: its report
+    // remains valid even though it never collected the new optional challenge.
+    await f.t.run(async ctx => {
+      await ctx.db.patch(item.job._id, { pipelineVersion: "red-cup-evidence-1.1" });
+      await ctx.db.patch(item.submissionId, { liveness: undefined, livenessChallengeId: undefined });
+    });
+    const report = { ...value.report, pipeline: { ...value.report.pipeline, version: "red-cup-evidence-1.1" },
+      criteria: value.report.criteria.map(criterion => ({ ...criterion, evidence: criterion.evidence.filter(evidence => !evidence.claim.startsWith("Spoken liveness matched")) })) };
+    expect(validateVerificationReportForRubric(report, report.criteria.map(criterion => criterion.criterionId)).valid).toBe(true);
+    expect(await f.t.mutation(internal.submissions.complete, { ...value.args, reportJson: canonical(report), reportHash: digest(report), observationsJson: "{}" })).toBeTruthy();
   });
 
   it("ignores an unrelated watchdog generation and exposes expired work as review while fencing late completion", async () => {

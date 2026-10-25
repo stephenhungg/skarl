@@ -51,6 +51,140 @@ Additional runtime constraints: `requestId` matches `[a-zA-Z0-9_-]{1,100}`, prom
 
 **Deployment/source drift:** `submissions:evaluationRun` and the extra `getReport` fields `verificationOnly`/`evalRunId` are deployed but absent from this worktree's current `submissions.ts`. Validators were read from the main checkout's `convex/submissions.ts:245` and verified live. Coordinate the backend merge; do not deploy this older worktree to restore them. Controller dashboards should use `dashboard:submissions`/`getReport`; `evaluationRun` is a contributor evaluation-harness lookup.
 
+## Scenario lab — judge injections
+
+**Source handoff; deployment required.** Both endpoints require the persisted
+controller role and the selected order's organization. The existing
+`demoIdentity` selector is impersonable demo authentication. Buyer, contributor
+and finance-agent selectors cannot run scenarios or read the controller's lab
+history. Scenario artifacts are **SIMULATED CONTROL TEST — NO TRANSFER**; never
+render their synthetic chain hashes as evidence of a real transfer.
+
+| Function | Kind | Arguments and result |
+| --- | --- | --- |
+| `scenarios:run` | A | `{demoIdentity:"controller",scenario:ScenarioName,orderId?:Id<"orders">}` → one recorded `ScenarioRun` below. Call only from an explicit controller action. |
+| `scenarios:listRuns` | Q | `{demoIdentity:"controller",orderId?:Id<"orders">,limit?:number}` → newest-first `ScenarioRun[]`. `orderId` filters by source order. |
+
+```ts
+type ScenarioName =
+  | "wrong_amount_transfer"
+  | "unknown_transfer"
+  | "duplicate_submission"
+  | "agent_self_approval"
+  | "prompt_injection_narration"
+  | "bank_mismatch";
+
+type ScenarioRun = {
+  scenario: ScenarioName;
+  scenarioId: string;
+  runId: Id<"auditEvents">;
+  orderId: Id<"orders">;       // Selected source order
+  labOrderId: Id<"orders">;    // Isolated, labeled simulated artifacts
+  simulated: true;
+  expectedControl: string;
+  observedOutcome: string;
+  evidenceIds: string[];
+  passed: boolean;
+  createdAt: number;           // Unix milliseconds
+  agentEvidence?: {
+    status: string;
+    chatId?: string;
+    answer?: string;
+  };
+};
+```
+
+Use the generated API's actual return types when integrating. `passed` is
+computed from the real control's stored outcome and the protected state read
+back from Convex, rather than from the requested scenario name. A missing
+accepted original for the duplicate scenario is a failed prerequisite; do not
+display it as a caught duplicate. Self-approval requires an existing
+finance-agent-authored payout proposal; the lab never fabricates an obligation
+or creates a real payout proposal.
+The lab does not grant a synthetic submission
+license, create an unlicensed payable, approve an intent, sign, or send funds.
+History defaults to 20 rows; `limit` must be an integer from 1 through 100.
+Omitting `orderId` from `run` selects `skarl-red-cup-demo-v2`; omitting it from
+`listRuns` returns controller-visible runs across the organization.
+
+```tsx
+const runs = useQuery(api.scenarios.listRuns, {
+  demoIdentity: "controller", orderId, limit: 20,
+});
+const runScenario = useAction(api.scenarios.run);
+// In an explicit controller click handler:
+await runScenario({ demoIdentity: "controller", orderId,
+  scenario: "wrong_amount_transfer" });
+```
+
+Render the simulation label, scenario name, `expectedControl`,
+`observedOutcome`, pass/fail, timestamp and evidence links. `undefined` means
+loading; `[]` means no runs. Keep failed or prerequisite-blocked runs visible.
+Link to the returned lab order for its actual reconciliation/submission
+records; the source order remains the navigation context for run history.
+Self-approval exercises the existing source-order intent, so its refusal audit
+links to that intent rather than moving the obligation into the lab order.
+The run history is stored in existing audit events, requiring no new schema
+table. Input labels and event descriptions identify the scenario; synthetic
+evidence must retain that context wherever displayed. The bank scenario uses a
+lab-order snapshot rather than replacing the organization's bank snapshot. Its
+fourth column retains **simulated bank (Capital One Nessie mock)**.
+
+For narration injection, `agentEvidence` separately describes an optional
+read-only `agentChat.askAgent` call when `GEMINI_API_KEY` is configured.
+Display its status and answer as advisory evidence; deterministic detector and
+stored-report checks determine `passed`. A missing key records a `not_run`
+status, and an optional-agent failure does not invent a successful response.
+Input failures produce a durable `scenario_input_error` audit and a failed
+assessment; retain the failed result for the judge to inspect.
+
+See [judge commands and expected evidence](demo-script.md#if-a-judge-injects-a-scenario).
+This handoff documents the backend contract; no dashboard panel or deployed
+scenario success is claimed here.
+
+## Per-take spoken liveness (source handoff; deployment required)
+
+`liveness:issueChallenge` is a contributor mutation with
+`{demoIdentity: "contributor"}`. It returns
+`{challengeId: Id<"livenessChallenges">, words: string[], expiresAt: number}`:
+three distinct common words and an expiry exactly two minutes after issuance.
+The mobile camera requests a fresh challenge per take and asks the contributor
+to say the words in order while recording. These are public challenge words,
+not authentication credentials; the existing demo identity limitations apply.
+
+`submissions:create` adds optional
+`livenessChallengeId: Id<"livenessChallenges">`. The same transaction binds the
+server-issued words and consumes the challenge. Refusals are
+`liveness_challenge_not_found`, `liveness_challenge_foreign`,
+`liveness_challenge_used`, and `liveness_challenge_expired` (including the exact
+expiry boundary). Expiry is checked when creating the submission, so capture
+and upload must finish within two minutes. A successful request can be retried
+with the exact same arguments after expiry; changing or removing its challenge
+ID returns `submission_request_conflict`. A refused fresh create needs a new
+take, not new words attached to old footage.
+
+`dashboard:submissions` exposes optional `livenessChallengeId` and
+`liveness: {words: string[], issuedAt: number, consumedAt: number}` on each row.
+`submissions:getReport` also exposes that optional `liveness` object. All times
+are Unix milliseconds. Missing means no challenge was supplied; it does not
+mean passed. Old documents, clients and sensor-trace schemas remain valid.
+
+The deterministic comparator checks whole transcript words in chronological
+order, ignoring case and punctuation. A match adds audio evidence under the
+existing `narration-alignment` criterion, with a claim beginning
+`Spoken liveness matched` and containing transcript-segment `startMs`/`endMs`.
+Use those milliseconds for the evidence player's seek link; they are segment
+bounds, not invented word timings. No new criterion ID or report schema field
+is introduced. Failure, missing challenge/transcript, or instruction-like
+narration adds a `Spoken liveness:` warning and forces `needs_review`, including
+otherwise contradictory work. It never causes automatic rejection or acceptance.
+Already-stored historical reports keep their original validation contract.
+
+This is evidence of speaking fresh words, not a guarantee against real-time
+synthesis, edited audio or screen recapture. Human review remains the decision
+boundary. Local tests use synthetic transcripts and uploads; a Convex deployment
+and physical-phone capture/transcription smoke test are still required.
+
 ## Return shapes and trimmed live examples
 
 Documents also include `_id`, `_creationTime` and their stored metadata. Use generated API return types rather than duplicating database types. `undefined` from a React query means loading; `null`/`[]` are resolved empty states.
@@ -88,6 +222,130 @@ Reproduce a read without changing deployment:
 pnpm exec convex run dashboard:orderSummary '{"demoIdentity":"controller","orderId":"kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg"}'
 pnpm exec convex run submissions:evaluationRun '{"demoIdentity":"contributor","orderId":"kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg","evalRunId":"eval-dcf1ae08-f3c5-4afb-a196-6216414fd712"}'
 ```
+
+## Witness receipt
+
+**Source implementation; Convex deployment required.**
+`witnessReceipt.forSubmission({demoIdentity, submissionId})` is one read-only
+projection of the stored witnesses behind a submission. It neither runs new
+inference nor creates an attestation, decision, proposal, journal or payment.
+Controllers in the organization, the order's buyer and the owning contributor
+can read it. A finance-agent identity cannot read this endpoint. Demo selectors
+remain impersonable demo credentials, not production authentication.
+
+For Matthew's dashboard, subscribe with
+`useQuery(api.witnessReceipt.forSubmission, {demoIdentity: "controller", submissionId})`.
+`undefined` means loading. The HTTP equivalent is
+`GET /api/samples/<submissionId>/witnesses` with the explicit header
+`x-skarl-demo-identity: controller` (or `buyer` / `contributor`). The route also
+accepts `sample-<submissionId>`, matching the other sample routes. Responses use
+`Cache-Control: private, no-store`; any bigint values become decimal integer
+strings. This read does not require the payment service secret or an x402 charge.
+
+```sh
+curl -H 'x-skarl-demo-identity: controller' \
+  https://skarl.vercel.app/api/samples/mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j/witnesses
+```
+
+Source-derived example shape below, with the witness list trimmed for readability;
+this is an illustration, not a live response or a claim about that stored sample:
+
+```json
+{
+  "submissionId": "mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j",
+  "verdict": "needs_review",
+  "recommendation": "request_correction",
+  "witnesses": [
+    {
+      "key": "vision_jury",
+      "label": "Vision jury agreement (advisory)",
+      "kind": "work",
+      "status": "disagree",
+      "detail": "2 model reports; agreement fraction: 0; disputed criteria: pickup. Unavailable reports are not agreement.",
+      "evidenceUrl": null,
+      "live": false
+    },
+    {
+      "key": "eas_attestation",
+      "label": "EAS attestation (Base Sepolia testnet)",
+      "kind": "work",
+      "status": "missing",
+      "detail": "No confirmed EAS attestation for the current analysis.",
+      "evidenceUrl": null,
+      "live": false
+    },
+    {
+      "key": "deterministic_judge",
+      "label": "Deterministic judge recommendation",
+      "kind": "judgment",
+      "status": "disagree",
+      "detail": "Stored recommendation: request_correction; implementation: inference; pipeline: completed. Advisory; does not authorize payment.",
+      "evidenceUrl": null,
+      "live": false
+    },
+    {
+      "key": "bank_witness",
+      "label": "simulated bank (Capital One Nessie mock)",
+      "kind": "money",
+      "status": "missing",
+      "detail": "No related payout intent to compare with simulated bank activity.",
+      "evidenceUrl": null,
+      "live": false
+    }
+  ]
+}
+```
+
+`verdict` is the submission's persisted status; `recommendation` is its current
+analysis recommendation or `null` when no analysis exists. Incomplete/unavailable
+analysis cannot project an `accept` recommendation. Each witness has exactly
+`key`, `label`, `kind`, `status`, `detail`, `evidenceUrl` and `live`. Kinds are
+`work`, `judgment`, `money`; statuses are `agree`, `disagree`, `missing`, `pending`,
+`not_applicable`. A missing result is not agreement, and pending payment evidence
+is not a paid claim. These rows do not grant acceptance or payment authority.
+
+`agree` is specific to each witness's claim: audio means a stored transcription
+exists, a human decision means the controller recorded acceptance, and a bank
+row means simulated activity matches the payout bindings. Those are different
+claims; they do not all corroborate the filmed action. Keep the detail visible
+so a checked row cannot imply more than its source establishes.
+
+Render a checklist grouped by `kind`, keyed by `key`, preserving each row's label,
+status and plain-text detail. Check only `agree` rows; use distinct visible states
+for disagreement, missing, pending and not applicable. Do not collapse the
+witnesses into a single green fraud score. The list includes:
+
+- Work: each vision model and jury agreement, audio transcript, optional IMU
+  summary, duplicate/copy score, prompt-injection scan, current EAS attestation
+  and optional spoken liveness. A persisted instruction-like-content warning
+  appears as a disagreeing heuristic scan witness. An absent explicit scan or
+  liveness result stays missing; absence of a warning is not a clean scan.
+  When a stored per-take liveness challenge exists, the shared deterministic
+  comparator checks it against the stored timestamped transcript. Matching words
+  show agreement with segment bounds; missing transcript stays missing, and
+  invalid challenges, mismatched words or instruction-like narration disagree.
+  This performs no new inference and does not establish speaker identity.
+- Judgment: deterministic recommendation, human controller decision, and related
+  finance-agent proposals/refusals. A proposal is not approval or payment.
+- Money: payable, related ledger journals, observed payout transfers and the
+  **simulated bank (Capital One Nessie mock)** witness.
+
+When `evidenceUrl` is non-null, render an “Evidence” link beside that witness.
+Confirmed EAS rows link to
+`https://base-sepolia.easscan.org/attestation/view/<uid>`; payout observations link
+to `https://sepolia.basescan.org/tx/<txHash>`. Preserve the Base Sepolia testnet
+label. Null links mean there is no public evidence URL; do not generate media
+URLs or attach private original recordings to this receipt.
+
+`live` is conservative provenance metadata, not a success indicator. The current
+stored records do not establish live provenance, so this projection returns
+`false`, including for testnet and simulated bank sources. A stored agreement or
+explorer link alone must not create a “live” badge. Hosted Nessie calls are still
+simulated bank evidence.
+
+HTTP errors are fixed public codes: missing identity or malformed ID → `400`,
+role/ownership denial → `403`, missing submission/order → `404`, unavailable or
+undeployed backend → `503`. Wrapped backend errors are not exposed.
 
 ## React wiring
 
@@ -617,6 +875,11 @@ channels/array explicitly mean unavailable. Timestamp order is strict per
 channel and nondecreasing across channels, bounded by duration; sample rates are capped, vectors finite/bounded,
 unknown fields rejected. Acceleration is **g including gravity**, gyro **rad/s**,
 and DeviceMotion linear acceleration **m/s² excluding gravity**.
+Version 1 also permits `attitude` (x/y/z = alpha/beta/gamma **radians**) and
+`gravity` (**m/s²**, including-gravity acceleration minus linear acceleration).
+The old three-channel example remains valid. Up to five channels and 31,000
+samples are allowed, still within 2 MiB; the mobile client caps each channel at
+50 Hz. Deploy the updated validators before attaching five-channel uploads.
 
 `media:submissionEvidence` adds this field (null when absent):
 
@@ -630,6 +893,8 @@ sensorTrace: {
     accelRmsG: number | null,
     gyroRmsRadPerSec: number | null,
     linearAccelerationRmsMps2: number | null,
+    meanTiltDegrees?: number | null, // portrait horizon roll; absent in legacy summaries
+    steadinessRatio?: number | null, // fraction of gyro samples <=0.15 rad/s
     activeMotionIntervals: Array<{ startMs: number; endMs: number }>,
     bins: Array<{
       startMs: number; endMs: number; sampleCount: number;
@@ -774,6 +1039,111 @@ coach failures include `coach_invalid_output`, `coach_source_changed`,
 `coach_interrupted` and `coach_unavailable`; provider failures use the Claude
 codes above. Do not display a mock fallback as a live Claude response or describe
 an unavailable coach as successful inference.
+
+## Buyer dataset export
+
+**Source implementation; deployment required.** `datasets.forOrder({demoIdentity,
+orderId})` returns the buyer's versioned dataset, rather than the review queue.
+The order's buyer and an active controller in its organization may export it.
+Other buyers, contributors, and finance agents are refused. Demo identities
+remain impersonable selectors, not production authentication.
+
+```sh
+curl -H 'x-skarl-demo-identity: buyer' \
+  'https://skarl.vercel.app/api/orders/ORDER_ID/dataset' > dataset.json
+curl -H 'x-skarl-demo-identity: buyer' \
+  'https://skarl.vercel.app/api/orders/ORDER_ID/dataset?format=jsonl' > samples.jsonl
+```
+
+The JSON response has `schema: "skarl.dataset.v1"`, `orderId`, `generatedAt`
+(Unix milliseconds), `task: {id, version, criterionIds}`, and `samples`.
+An order with no deliveries returns `samples: []`; a draft without a rubric has
+`task: null`. JSONL streams one complete sample per line, repeating task and
+license metadata so each line can be loaded independently. Empty JSONL is an
+empty response body. Example sample (illustrative, not live evidence):
+
+```json
+{
+  "submissionId": "SUBMISSION_ID",
+  "sourceSha256": "64-lowercase-hex-characters",
+  "durationMs": 12000,
+  "task": {"id": "RUBRIC_ID", "version": 1, "criterionIds": ["red-cup-pickup"]},
+  "acceptedAt": 1792926000000,
+  "acceptance": {"basis": "machine", "decisionId": "DECISION_ID"},
+  "license": {"version": "demo-consent-v1", "scope": "Stored contributor consent scope"},
+  "criteria": [{"criterionId": "red-cup-pickup", "status": "supported", "evidence": [{"modality": "video", "startMs": 1000, "endMs": 2000}]}],
+  "transcriptSegments": [{"startMs": 1000, "endMs": 2000, "text": "I pick up the red cup."}],
+  "sensorTrace": null,
+  "liveness": null,
+  "duplicate": {"status": "clear"},
+  "attestation": null,
+  "payout": {"status": "pending", "amountAtomic": "1875000", "txHash": null, "explorerUrl": null},
+  "media": {"mimeType": "video/mp4", "url": "https://skarl.vercel.app/api/orders/ORDER_ID/dataset/media?token=SIGNED_GRANT", "binding": "DELIVERY_BINDING_HASH", "expiresAt": 1792926300000}
+}
+```
+
+Only accepted, licensed submissions with a valid published delivery are included.
+Verification-only and evaluation recordings, review/correction/rejected rows,
+quarantined or swapped originals, and invalid consent/delivery bindings are
+excluded. A report alone never grants delivery. `acceptance.basis` distinguishes
+`machine` (controller acceptance of completed machine evidence) from
+`human_controller` (explicit human review). Evidence comes from the analysis
+bound to that delivery, preserving the accepted snapshot after a later rerun.
+Missing findings remain `unobservable` with empty evidence; they are never
+invented. A human decision can accept a report whose machine recommendation
+remained `needs_review`.
+
+When attached, `sensorTrace` includes `rawTraceExists`, sample counts/rate,
+duration, channels, and the stored `motionSummary`, including optional
+`meanTiltDegrees` and `steadinessRatio`. It exposes no raw trace storage ID or
+URL. The summary remains `clientReported`. Spoken `liveness` is the deterministic
+comparison of stored challenge and transcript, or null when no challenge exists;
+it does not prove identity. `duplicate.status` is the stored report check status
+or `not_checked`, not a claim of exhaustive uniqueness. Confirmed EAS records
+bound to the delivered analysis include `uid`, `easscanUrl`, and `basescanUrl`.
+
+All monetary amounts are decimal integer micro-USDC strings. A payout becomes
+`paid` with a `txHash` and BaseScan `explorerUrl` only when the payable, payment
+command, attempt and confirmed Base Sepolia USDC observation agree. Approval,
+broadcast and unresolved transactions remain `pending`.
+
+Export responses use `Cache-Control: private, no-store`. Both the public query
+and HTTP manifest expose a signed five-minute download URL, with Unix-millisecond
+`media.expiresAt`. Export again to refresh an expired grant. The proxy checks the
+signature, expiry, order, caller's current membership/ownership and the current
+licensed delivery binding before streaming only the original asset. Changes to
+consent, delivery, source or eligibility invalidate an old grant. URLs are bearer
+credentials: do not publish or cache them.
+
+The HTTP route changes the query's optional `refreshKey` each minute so an
+unchanged dataset still receives fresh grants. Direct query clients should pass
+`refreshKey: Math.floor(Date.now() / 60000)` when refreshing an export; this is
+only a cache key, never the signing clock or payment authority.
+
+Native Convex bearer URLs from `ctx.storage.getUrl` have no configurable expiry;
+they are available only to the trusted proxy through service-authenticated
+`datasets.originalMedia`, and are never returned by the public manifest or in a
+redirect. The proxy uses the existing matching `SKARL_PAYMENTS_SERVICE_SECRET`
+in Convex and the web server, and fails closed if it is absent. Buyer dataset
+grants do not reuse the paid sample endpoint's x402 grants. No deployment or live
+download was performed as part of this implementation.
+
+### Contributor earnings
+
+`datasets.contributorEarnings({demoIdentity: "contributor"})` returns only that
+contributor's submissions in their active organization. Buyers, controllers and
+finance agents are refused; there is no HTTP route. Each row has `submissionId`,
+`orderId`, submission `status`, exact decimal-string `amountAtomic`,
+`payableStatus` (`accrued`, `payout_in_progress`, `paid`, `reversed`, or null),
+and `payout` with `status`, `amountAtomic`, `txHash`, and `explorerUrl`.
+
+No recorded payable means `amountAtomic: "0"`, `payableStatus: null`, and
+`payout.status: "not_payable"`; an upload or the advertised order rate is not
+earned compensation. When present, `amountAtomic` is the stored obligation's
+original amount; a `reversed` obligation must not be counted as current earnings.
+Recorded obligations use the same conservative `pending`/confirmed `paid`
+projection and BaseScan links as the buyer export. No media, destination wallet,
+or another contributor's rows are returned.
 
 ## Bank witness — Capital One Nessie
 

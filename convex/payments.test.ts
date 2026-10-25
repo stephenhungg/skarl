@@ -148,7 +148,7 @@ describe("payment service and funding invariants", () => {
 
   it.each([
     [{ tokenAddress: RECIPIENT }, "wrong_token"], [{ toAddress: RECIPIENT }, "wrong_recipient"],
-    [{ fromAddress: RECIPIENT }, "wrong_sender"], [{ amountAtomic: 1n }, "wrong_amount"],
+    [{ fromAddress: RECIPIENT }, "wrong_sender"],
     [{ succeeded: false }, "receipt_failed"], [{ confirmations: 1 }, "insufficient_confirmations"],
     [{ network: "eip155:8453" }, "wrong_network"],
   ] as const)("rolls back invalid funding evidence %#", async (change, code) => {
@@ -158,6 +158,29 @@ describe("payment service and funding invariants", () => {
     await expect(fixture.t.mutation(api.payments.confirmFunding, { serviceSecret: SERVICE_SECRET, attemptId: attempt.attemptId,
       authorizationNonce: NONCE, observation: { ...fixture.observation, ...change } })).rejects.toThrow(code);
     expect(await snapshot(fixture)).toEqual(before);
+  });
+
+  it("retains a wrong amount as an idempotent reconciliation exception without posting cash", async () => {
+    const fixture = await setup();
+    const attempt = await fixture.t.mutation(api.payments.recordFundingAttempt, fixture.funding);
+    const args = { serviceSecret: SERVICE_SECRET, attemptId: attempt.attemptId, authorizationNonce: NONCE,
+      observation: { ...fixture.observation, amountAtomic: fixture.observation.amountAtomic - 1n } };
+    const refusal = await fixture.t.mutation(api.payments.confirmFunding, args);
+    expect(refusal).toMatchObject({ ok: false, code: "wrong_amount", replayed: false });
+    expect(await fixture.t.mutation(api.payments.confirmFunding, args)).toEqual({ ...refusal, replayed: true });
+    const state = await snapshot(fixture);
+    expect(state.observations).toHaveLength(1);
+    expect(state.observations[0]?.amountAtomic).toBe(99_999_999n);
+    expect(state.attempts[0]?.status).toBe("reconciling");
+    expect(state.intents[0]?.status).toBe("settlement_pending");
+    expect(state.order?.status).toBe("awaiting_funding");
+    expect(state.journals).toHaveLength(0);
+    expect(state.lines).toHaveLength(0);
+    const reconciliation = await fixture.t.query(api.payments.reconciliation, { demoIdentity: "controller", orderId: fixture.orderId });
+    expect(reconciliation.matches).toHaveLength(0);
+    expect(reconciliation.exceptions.some(row => row.code === "wrong_amount")).toBe(true);
+    const audit = await fixture.t.run(ctx => ctx.db.query("auditEvents").collect());
+    expect(audit.filter(row => row.action === "funding_reconciliation_refused")).toHaveLength(1);
   });
 
   it("refuses a mismatched authorization and rolls back inserts if order state changed after signing", async () => {

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { CATCH_CARDS } from "../evidence";
 import { CatchCard } from "./catch-card";
 
@@ -11,13 +11,28 @@ const HOVER_DELAY_MS = 400;
 const OFFSETS = [-2, -1, 0, 1, 2] as const;
 const SWIPE_PX = 40;
 
+type Item = { id: string; title: string };
+type RenderState = { active: boolean; visible: boolean };
+
 export function CatchCarousel() {
+  return (
+    <StoryCarousel
+      items={CATCH_CARDS}
+      label="Example reviews"
+      render={(card, s) => <CatchCard card={card} active={s.active} visible={s.visible} />}
+    />
+  );
+}
+
+// The shared carousel: centre card full size, neighbours at 0.95 and dimmed, click a neighbour or use the
+// arrows to move. Used by the verification examples and the how it works steps.
+export function StoryCarousel<T extends Item>({ items, label, render }: { items: T[]; label: string; render: (item: T, state: RenderState) => ReactNode }) {
   const [index, setIndex] = useState(0);
   const [ready, setReady] = useState(false);
   const [inView, setInView] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const downX = useRef<number | null>(null);
-  const n = CATCH_CARDS.length;
+  const n = items.length;
   const at = (i: number) => ((i % n) + n) % n;
 
   useEffect(() => {
@@ -56,7 +71,7 @@ export function CatchCarousel() {
     if (Math.abs(dx) > SWIPE_PX) go(index + (dx < 0 ? 1 : -1));
   };
 
-  const current = CATCH_CARDS[at(index)]!;
+  const current = items[at(index)]!;
 
   return (
     <div ref={rootRef} className="flex w-full flex-col items-center gap-6">
@@ -64,7 +79,7 @@ export function CatchCarousel() {
         className="skc-track"
         role="region"
         aria-roledescription="carousel"
-        aria-label="Example reviews"
+        aria-label={label}
         tabIndex={0}
         onKeyDown={onKey}
         onPointerDown={onDown}
@@ -74,7 +89,7 @@ export function CatchCarousel() {
         <div className="skc-rail">
           {OFFSETS.map(offset => {
             const slot = index + offset;
-            const card = CATCH_CARDS[at(slot)]!;
+            const card = items[at(slot)]!;
             const center = offset === 0;
             const side = offset === -1 || offset === 1;
             return (
@@ -90,7 +105,7 @@ export function CatchCarousel() {
                 style={{ "--skc-o": offset, "--skc-s": center ? 1 : SIDE_SCALE } as CSSProperties}
               >
                 <div className="skc-slot-inner" style={{ pointerEvents: center && ready ? "auto" : "none" }}>
-                  <CatchCard card={card} active={center && inView} visible={center || side} />
+                  {render(card, { active: center && inView, visible: center || side })}
                 </div>
               </div>
             );
@@ -99,15 +114,15 @@ export function CatchCarousel() {
       </div>
 
       <div className="flex items-center gap-4">
-        <button type="button" className="skc-nav" aria-label="Previous example" onClick={() => go(index - 1)}>
+        <button type="button" className="skc-nav" aria-label="Previous" onClick={() => go(index - 1)}>
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
         <div className="flex items-center gap-1.5" aria-hidden="true">
-          {CATCH_CARDS.map((c, i) => (
+          {items.map((c, i) => (
             <span key={c.id} className="h-[3px] rounded-full transition-[width,background-color] duration-500 ease-[var(--ease-slide)]" style={{ width: i === at(index) ? 24 : 8, background: i === at(index) ? "rgb(var(--deep))" : "rgb(var(--haze))" }} />
           ))}
         </div>
-        <button type="button" className="skc-nav" aria-label="Next example" onClick={() => go(index + 1)}>
+        <button type="button" className="skc-nav" aria-label="Next" onClick={() => go(index + 1)}>
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
       </div>

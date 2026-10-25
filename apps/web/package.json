@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "vitest run --config vitest.config.mts",
     "typecheck": "next typegen && tsc --noEmit",
     "dev:https": "next dev --experimental-https"
   },

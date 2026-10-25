@@ -226,6 +226,44 @@ describe("Nessie durable simulated bank intent", () => {
 });
 
 describe("Nessie fourth witness projection", () => {
+  it("compares a labeled scenario snapshot through the real bank detector without replacing treasury evidence", async () => {
+    const f = await setup(); await prepared(f); await snapshot(f, [activity(f)]);
+    const beforeSnapshot = await f.t.run(ctx => ctx.db.query("bankSnapshots").collect());
+    const scenarioId = "bank-isolation-test";
+    const accountId = `SIMULATED:${scenarioId}:treasury`;
+    const lab = await f.t.run(async ctx => {
+      const source = await ctx.db.get(f.orderId);
+      if (!source) throw new Error("missing_source_order");
+      const {_id, _creationTime, ...fields} = source;
+      const orderId = await ctx.db.insert("orders", {...fields, publicId: `scenario:${scenarioId}`,
+        title: `SIMULATED ${scenarioId}`, status: "awaiting_funding", acceptedCount: 0n});
+      const {_id: sourceIntentId, _creationTime: intentTime, ...terms} = f.intent;
+      const intentId = `SIMULATED:${scenarioId}:funding`;
+      const paymentIntentId = await ctx.db.insert("paymentIntents", {...terms, orderId, intentId, status: "settlement_pending"});
+      await ctx.db.insert("bankOperations", {organizationId: f.organizationId, orderId, paymentIntentId, intentId,
+        kind: "deposit", amountAtomic: terms.amountAtomic, accountId, status: "submitted", createdAt: Date.now(), updatedAt: Date.now()});
+      return {orderId, intentId};
+    });
+    // A lab order never borrows an existing treasury snapshot, even before its own snapshot is stored.
+    const labScope = {...f.scope, orderId: lab.orderId};
+    expect((await f.t.query(ref("reconciliation4Way"), labScope)).bankAvailable).toBe(false);
+    await f.t.mutation(ref("storeSnapshot"), {organizationId: f.organizationId, accountId, status: "available",
+      scenarioOrderId: lab.orderId, scenarioId,
+      activitiesJson: JSON.stringify([activity(f, {id: `SIMULATED:${scenarioId}:row`, accountId,
+        description: lab.intentId, amountAtomic: "100000001"})])});
+    const read = await f.t.query(ref("reconciliation4Way"), labScope);
+    expect(read.rows[0]?.bank).toMatchObject({status: "mismatch", reason: "bank_binding_or_amount_mismatch", amountAtomic: "100000001"});
+    expect(read.exceptions).toContainEqual(expect.objectContaining({code: "bank_mismatch", eventKey: lab.intentId}));
+    expect(await f.t.run(ctx => ctx.db.query("bankSnapshots").collect())).toEqual(beforeSnapshot);
+    expect((await f.t.query(ref("reconciliation4Way"), f.scope)).rows[0]?.bank.status).toBe("match");
+    expect(await f.t.run(ctx => ctx.db.query("journalEntries").withIndex("by_order", q => q.eq("orderId", lab.orderId)).collect())).toEqual([]);
+    const event = await f.t.run(ctx => ctx.db.query("auditEvents").withIndex("by_event_key", q =>
+      q.eq("organizationId", f.organizationId).eq("eventKey", `scenario-bank:${scenarioId}`)).unique());
+    expect(JSON.parse(event!.reason)).toMatchObject({simulated: true, scenarioId, accountId});
+    await expect(f.t.mutation(ref("storeSnapshot"), {organizationId: f.organizationId, accountId, status: "available",
+      scenarioOrderId: f.orderId, scenarioId, activitiesJson: "[]"})).rejects.toThrow("scenario_bank_scope_invalid");
+  });
+
   it("reports match, missing, amount mismatch, pending, duplicate and stale bank evidence honestly", async () => {
     const f = await setup(); await prepared(f);
     const read = () => f.t.query(ref("reconciliation4Way"), f.scope);
@@ -358,6 +396,20 @@ describe("Nessie action guards and timeout recovery", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  // A 400 validation refusal proves Nessie created nothing, so it may be retried; a lost response may have committed, so it may not.
+  it("releases only provider-refused operations, never uncertain timeouts", async () => {
+    const f = await setup();
+    const org = await f.t.run(async ctx => (await ctx.db.query("organizations").first())!._id);
+    const base = await f.t.run(async ctx => (await ctx.db.query("paymentIntents").first())!);
+    const insert = (errorCode: string) => f.t.run(ctx => ctx.db.insert("bankOperations", {organizationId: org, orderId: base.orderId,
+      paymentIntentId: base._id, intentId: `${base.intentId}-${errorCode}`, kind: "deposit", amountAtomic: 10_000n, accountId: BANK_ACCOUNT,
+      status: "uncertain", errorCode, createdAt: Date.now(), updatedAt: Date.now()}));
+    await insert("nessie_http_400"); await insert("nessie_timeout"); await insert("nessie_request_or_response_failed");
+    expect(await f.t.mutation(ref("releaseRejectedOperations"), {organizationId: org})).toEqual({released: 1});
+    expect((await f.t.run(ctx => ctx.db.query("bankOperations").collect())).map(row => row.errorCode).sort())
+      .toEqual(["nessie_request_or_response_failed", "nessie_timeout"]);
+  });
+
   it("rejects a silent empty GET credential response before reading activity or sending money", async () => {
     const f = await setup(); await confirm(f); await treasury(f);
     const fetchMock = vi.fn(async () => response([])); vi.stubGlobal("fetch", fetchMock);
@@ -377,7 +429,7 @@ describe("Nessie action guards and timeout recovery", () => {
       if (init?.method === "POST") {
         posts++;
         expect(path).toBe(`/accounts/${BANK_ACCOUNT}/deposits`);
-        expect(String(init.body)).toContain('"amount":100.000000');
+        expect(String(init.body)).toContain('"amount":10000'); // 100 USDC as integer cents
         expect(String(init.body)).toContain(f.intent.intentId);
         // The server committed, but the response was lost. This is not a failed payment.
         deposited = true;
@@ -385,8 +437,8 @@ describe("Nessie action guards and timeout recovery", () => {
       }
       if (path === `/accounts/${BANK_ACCOUNT}`) return response({_id: BANK_ACCOUNT});
       if (path.endsWith("/transfers")) return response([]);
-      if (path.endsWith("/deposits")) return response(deposited ? [{_id: "synthetic-deposit", payee_id: BANK_ACCOUNT,
-        amount: 100, description: f.intent.intentId, status: "completed"}] : []);
+      if (path.endsWith("/deposits")) return response(deposited ? [{_id: "synthetic-deposit", medium: "balance",
+        amount: 10000, description: f.intent.intentId, status: "completed"}] : []);
       throw new Error("unexpected_synthetic_request");
     });
     vi.stubGlobal("fetch", fetchMock);

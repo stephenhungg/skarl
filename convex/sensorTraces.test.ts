@@ -16,20 +16,72 @@ const trace = () => ({ version: 1, sampleRateHz: 50, durationMs: 1000, recordedA
     { sensor: "gyroscope", timestampMs: 250, x: 0, y: 0, z: 2 },
     { sensor: "deviceMotion", timestampMs: 500, x: 0, y: 0, z: 3 },
   ] });
+const orientationTrace = () => ({ ...trace(), sensors: [...trace().sensors, "attitude", "gravity"],
+  samples: [...trace().samples,
+    { sensor: "attitude", timestampMs: 500, x: 0.1, y: 0.2, z: 0.3 },
+    { sensor: "gravity", timestampMs: 500, x: 0, y: -9.81, z: 0 },
+  ] });
 
 // Synthetic storage only. Never calls a model, device sensor, or chain.
 beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
-async function setup() {
+async function setup(input = trace()) {
   const t = convexTest(schema, modules), seeded = await t.mutation(internal.seed.demo, {});
   const video = await t.run(ctx => ctx.storage.store(new Blob(["synthetic"], { type: "video/mp4" })));
   const { submissionId } = await t.mutation(api.submissions.create, { demoIdentity: "contributor", orderId: seeded.orderId,
     storageId: video, clientRequestId: "sensor-fixture", consentAcknowledged: true });
-  const storageId = await t.run(ctx => ctx.storage.store(new Blob([JSON.stringify(trace())], { type: "application/json" })));
+  const storageId = await t.run(ctx => ctx.storage.store(new Blob([JSON.stringify(input)], { type: "application/json" })));
   return { t, ...seeded, submissionId, storageId, args: { demoIdentity: "contributor", submissionId, storageId } };
 }
 
 describe("sensor trace validation and untrusted motion summary", () => {
+  it("keeps version 1 so both old three-channel clients and new five-channel captures validate", () => {
+    for (const input of [trace(), orientationTrace()]) {
+      const validated = validateSensorTrace(input);
+      expect(validated.version).toBe(1);
+      expect(validated.sensors).toEqual(input.sensors);
+      expect(validated.samples).toEqual(input.samples);
+    }
+    // Even the original clock-less version-1 upload remains readable.
+    const { clock, ...legacy } = trace();
+    expect(validateSensorTrace(legacy).clock).toBe("js-callback-performance-now");
+  });
+  it("retains the allowlist so orientation support cannot admit unrelated private sensor channels", () => {
+    const input = orientationTrace();
+    expect(() => validateSensorTrace({ ...input, sensors: [...input.sensors, "magnetometer"] })).toThrow("invalid_sensor_trace");
+    expect(() => validateSensorTrace({ ...input, sensors: ["magnetometer"],
+      samples: [{ sensor: "magnetometer", timestampMs: 0, x: 0, y: 0, z: 0 }] })).toThrow("invalid_sensor_trace");
+    expect(() => validateSensorTrace({ ...input,
+      samples: [{ sensor: "unknown", timestampMs: 0, x: 0, y: 0, z: 0 }] })).toThrow("invalid_sensor_trace");
+  });
+  it("allows the five-channel callback budget while retaining a finite sample-count bound", () => {
+    const sensors = orientationTrace().sensors;
+    const samples = Array.from({ length: 31_000 }, (_, i) => ({ sensor: sensors[i % 5]!, timestampMs: Math.floor(i / 5) * 5, x: 0, y: 0, z: 0 }));
+    const input = { ...orientationTrace(), durationMs: 31_000, sampleRateHz: 100, samples };
+    expect(validateSensorTrace(input).samples).toHaveLength(31_000);
+    expect(() => validateSensorTrace({ ...input, samples: [...samples, { ...samples[0], timestampMs: 31_000 }] })).toThrow("invalid_sensor_trace");
+  });
+  it("reports horizon roll and gyro steadiness without treating orientation or Earth's gravity as motion", () => {
+    const summary = summarizeMotion(validateSensorTrace({ ...trace(), sensors: ["gravity", "attitude", "gyroscope"], samples: [
+      { sensor: "gravity", timestampMs: 0, x: 0, y: -9.81, z: 0 },
+      { sensor: "attitude", timestampMs: 0, x: 2, y: 1, z: 3 },
+      { sensor: "gyroscope", timestampMs: 0, x: 0, y: 0, z: 0.15 },
+      { sensor: "gravity", timestampMs: 250, x: 4.905, y: -4.905, z: 6.9367175 },
+      { sensor: "gyroscope", timestampMs: 250, x: 0, y: 0, z: 0 },
+      { sensor: "gravity", timestampMs: 500, x: 0, y: 0, z: 9.81 },
+      { sensor: "gyroscope", timestampMs: 500, x: 0, y: 0, z: 0.16 },
+      { sensor: "gravity", timestampMs: 750, x: 0, y: 0, z: 0 },
+    ] }));
+    // Forward pitch does not change horizon roll; looking straight down and
+    // zero gravity cannot claim level. Only the two valid roll samples average.
+    expect(summary.meanTiltDegrees).toBeCloseTo(22.5);
+    expect(summary.steadinessRatio).toBeCloseTo(2 / 3);
+    expect(summary.activeMotionIntervals).toEqual([{ startMs: 500, endMs: 750 }]);
+    expect(summary.bins[0]?.active).toBe(false);
+    expect(summarizeMotion(validateSensorTrace(trace())).meanTiltDegrees).toBeNull();
+    expect(summarizeMotion(validateSensorTrace({ ...trace(), sensors: [], samples: [] })))
+      .toMatchObject({ meanTiltDegrees: null, steadinessRatio: null });
+  });
   it("computes RMS magnitudes with gravity-aware activity, plot bins, and missing channels as null", () => {
     const summary = summarizeMotion(validateSensorTrace(trace()));
     expect(summary.accelRmsG).toBeCloseTo(Math.sqrt(2.5));
@@ -61,6 +113,28 @@ describe("sensor trace validation and untrusted motion summary", () => {
 });
 
 describe("private sensor attachment", () => {
+  it("persists five-channel evidence through Convex validators without changing acceptance authority", async () => {
+    const f = await setup(orientationTrace());
+    await f.t.action(api.sensorTraces.attachSensorTrace, f.args);
+    const evidence = await f.t.query(api.media.submissionEvidence, { demoIdentity: "controller", submissionId: f.submissionId });
+    expect(evidence.sensorTrace).toMatchObject({ sensors: orientationTrace().sensors, sampleCount: 8,
+      motionSummary: { meanTiltDegrees: 0, steadinessRatio: 0.5 } });
+    expect((await f.t.run(ctx => ctx.db.get(f.submissionId)))?.status).toBe("queued");
+  });
+  it("accepts legacy stored summaries without new optional metrics so deployments need no data migration", async () => {
+    const f = await setup();
+    const validated = validateSensorTrace(trace());
+    const { meanTiltDegrees, steadinessRatio, ...legacySummary } = summarizeMotion(validated);
+    const metadata = await f.t.query(internal.sensorTraces.authorize, f.args);
+    await f.t.mutation(internal.sensorTraces.attachValidated, { ...f.args, trace: {
+      storageId: f.storageId, sampleRateHz: validated.sampleRateHz, sampleCount: validated.samples.length,
+      durationMs: validated.durationMs, sensors: validated.sensors, device: validated.device,
+      recordedAt: validated.recordedAt, clock: validated.clock, sizeBytes: metadata.sizeBytes,
+      attachedAt: Date.now(), motionSummary: legacySummary,
+    } });
+    const evidence = await f.t.query(api.media.submissionEvidence, { demoIdentity: "controller", submissionId: f.submissionId });
+    expect(evidence.sensorTrace?.motionSummary).toEqual(legacySummary);
+  });
   it("reads stored JSON, attaches once, exposes bounded evidence to owner/controller, and never accepts or pays", async () => {
     const f = await setup();
     expect(await f.t.action(api.sensorTraces.attachSensorTrace, f.args)).toEqual({ submissionId: f.submissionId, replayed: false });

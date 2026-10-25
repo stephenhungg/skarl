@@ -160,7 +160,7 @@ export const recordTransaction = mutation({
     await ctx.db.patch(attempt._id, { txHash, status: "reconciling", updatedAt: Date.now() });
   },
 });
-export async function insertObservation(ctx: MutationCtx, attempt: Doc<"paymentAttempts">, observation: TransferObservation) {
+export async function insertObservation(ctx: MutationCtx, attempt: Doc<"paymentAttempts">, observation: TransferObservation, confirmed = true) {
   if (observation.network !== attempt.network) throw new Error("wrong_network");
   const txHash = transactionHash(attempt.network, observation.txHash);
   if (attempt.txHash && attempt.txHash !== txHash) throw new Error("transaction_already_bound");
@@ -176,13 +176,13 @@ export async function insertObservation(ctx: MutationCtx, attempt: Doc<"paymentA
   const observationId = await ctx.db.insert("chainObservations", { ...observation, organizationId: attempt.organizationId,
     paymentAttemptId: attempt._id, network: attempt.network, tokenAddress: paymentRail(attempt.network).token, txHash,
     fromAddress: railAddress(attempt.network, observation.fromAddress), toAddress: railAddress(attempt.network, observation.toAddress) });
-  await ctx.db.patch(attempt._id, { txHash, status: "confirmed", updatedAt: Date.now() });
+  await ctx.db.patch(attempt._id, { txHash, status: confirmed ? "confirmed" : "reconciling", updatedAt: Date.now() });
   return { observationId, replayed: false };
 }
-export const confirmFunding = mutation({
-  args: { ...secretArg, attemptId: v.id("paymentAttempts"), authorizationNonce: v.string(), observation: evidence },
-  handler: async (ctx, args) => {
-    service(args.serviceSecret);
+/** Shared trusted observation path. A proven wrong amount is evidence, never posted cash. */
+export async function confirmFundingFor(ctx: MutationCtx, args: {
+  attemptId: Id<"paymentAttempts">; authorizationNonce: string; observation: TransferObservation;
+}) {
     const attempt = await ctx.db.get(args.attemptId);
     const intent = attempt?.paymentIntentId && await ctx.db.get(attempt.paymentIntentId);
     if (!attempt || !intent || intent.kind === "contributor_payout") throw new Error("funding_attempt_not_found");
@@ -191,9 +191,23 @@ export const confirmFunding = mutation({
       intent.tokenAddress !== paymentRail(intent.network).token) throw new Error("funding_rail_changed");
     const order = await ctx.db.get(intent.orderId);
     if (!order || order.budgetAtomic !== intent.amountAtomic || order.termsHash !== intent.termsHash) throw new Error("quote_changed");
-    validateTransfer(args.observation, { network: intent.network, fromAddress: intent.buyerWalletAddress, toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic });
+    const expected = { network: intent.network, fromAddress: intent.buyerWalletAddress, toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic };
+    try { validateTransfer(args.observation, expected); }
+    catch (error) {
+      if (!(error instanceof Error) || error.message !== "wrong_amount") throw error;
+      // Retain only a structurally valid, confirmed transfer with exact sender/recipient/asset.
+      // This second validation also checks fields after the amount check (e.g. observation time).
+      validateTransfer(args.observation, { ...expected, amountAtomic: args.observation.amountAtomic });
+      const result = await insertObservation(ctx, attempt, args.observation, false);
+      await audit(ctx, { organizationId: intent.organizationId,
+        eventKey: `funding_reconciliation_refused:${result.observationId}`, actor: { kind: "service", identity: "payments-reconciliation" },
+        action: "funding_reconciliation_refused", entityType: "orders", entityId: order._id,
+        reason: "wrong_amount: observed USDC differs from the stored funding intent; no cash journal posted.",
+        evidenceReferences: [intent._id, attempt._id, result.observationId] });
+      return { ...result, ok: false as const, code: "wrong_amount" as const };
+    }
     const result = await insertObservation(ctx, attempt, args.observation);
-    if (result.replayed) return result;
+    if (result.replayed) return { ...result, ok: true as const };
     if (!["draft", "awaiting_funding"].includes(order.status)) throw new Error("order_not_fundable");
     const journal = await recordJournal(ctx, order.organizationId, createFundingJournal({ eventId: `funding:${order._id}`,
       orderId: order._id, amountMicroUsdc: intent.amountAtomic }));
@@ -202,7 +216,13 @@ export const confirmFunding = mutation({
     // Solana funding does not change the Base payout/refund address on the order.
     await ctx.db.patch(order._id, { status: "funded",
       ...(intent.network === PAYMENT_NETWORK ? { buyerWalletAddress: intent.buyerWalletAddress } : {}), updatedAt: Date.now() });
-    return result;
+    return { ...result, ok: true as const };
+}
+export const confirmFunding = mutation({
+  args: { ...secretArg, attemptId: v.id("paymentAttempts"), authorizationNonce: v.string(), observation: evidence },
+  handler: async (ctx, args) => {
+    service(args.serviceSecret);
+    return confirmFundingFor(ctx, args);
   },
 });
 
@@ -361,6 +381,11 @@ export const reconciliation = query({
       journals.push({ eventKey: entry.eventKey, orderId: order._id, kind: entry.kind, network: entry.network,
         tokenAddress: entry.tokenAddress, recipientAddress: entry.recipientAddress, lines, ...(linked ? { transfer: linked } : {}) });
     }
-    return reconcilePayments({ obligations, journals, observations, now: Date.now() });
+    const result = reconcilePayments({ obligations, journals, observations, now: Date.now() });
+    if (order.publicId.startsWith("scenario:")) {
+      const label = `SIMULATED ${order.publicId.slice("scenario:".length)}`;
+      result.exceptions = result.exceptions.map(exception => ({...exception, detail: `${label}: ${exception.detail}`}));
+    }
+    return result;
   },
 });

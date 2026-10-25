@@ -7,8 +7,8 @@ import { formatMs } from "@/components/evidence-timeline";
 import { StatusPill, type EvidenceStatus } from "@/components/status-pill";
 import { useReducedMotionSafe } from "@/lib/use-reduced-motion";
 
-type Verdict = "pass" | "fail" | "unclear";
-type Row = { check: string; video: string; videoAt?: number; said: string; saidAt?: number; verdict: Verdict; note: string };
+export type Verdict = "pass" | "fail" | "unclear";
+export type Row = { check: string; video: string; videoAt?: number; said: string; saidAt?: number; verdict: Verdict; note: string };
 
 const CHECKS: Record<string, string> = {
   "red-cup-pickup": "Right object",
@@ -26,7 +26,7 @@ function overlaps(a: Evidence, b: Evidence) {
 }
 
 // One row per rubric check: what the silent video shows next to what the person said at that moment.
-function rows(report: VerificationReport): Row[] {
+export function rows(report: VerificationReport): Row[] {
   const allAudio = report.criteria.flatMap(c => c.evidence.filter(e => e.modality === "audio"));
   const out: Row[] = report.criteria
     .filter(c => CHECKS[c.criterionId])

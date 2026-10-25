@@ -1,0 +1,29 @@
+{
+  "name": "skarl-guard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Guarded finance exception triage for Jira on Atlassian Forge",
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "check": "npm test && node ./node_modules/typescript/bin/tsc --noEmit",
+    "lint": "forge lint"
+  },
+  "dependencies": {
+    "@forge/api": "8.3.0",
+    "@forge/bridge": "7.2.0",
+    "@forge/events": "3.0.8",
+    "@forge/kvs": "2.1.0",
+    "@forge/react": "12.3.1",
+    "@forge/resolver": "2.0.1",
+    "react": "18.3.1"
+  },
+  "devDependencies": {
+    "@forge/cli": "14.2.0",
+    "@types/node": "22.19.7",
+    "@types/react": "18.3.27",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

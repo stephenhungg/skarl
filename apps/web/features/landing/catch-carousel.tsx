@@ -1,11 +1,11 @@
 import { SectionHeader } from "@/components/section-header";
-import { CatchCarousel } from "./catch/carousel";
+import { CheckConsole } from "./catch/check-console";
 
 const CARD_EASE = "cubic-bezier(.64,.39,.23,.88)";
 
 // Geometry and timing ported from the Kled-style stories carousel: 750x500 center card,
 // neighbors at scale .95 and opacity .75, 0.75s slide, an edge mask fading the neighbors (linear, so the dark center card keeps full tone).
-const css = `
+export const CAROUSEL_CSS = `
 .skc-root{--skc-cw:750px;--skc-ch:500px}
 .skc-track{position:relative;width:100%;height:var(--skc-ch);display:flex;align-items:center;justify-content:center;overflow:visible;outline:none;touch-action:pan-y;--skc-mask:linear-gradient(90deg,#0000 0%,#000 calc(50% - var(--skc-cw) / 2 - 24px),#000 calc(50% + var(--skc-cw) / 2 + 24px),#0000 100%);-webkit-mask-image:var(--skc-mask);mask-image:var(--skc-mask)}
 .skc-track:focus-visible .skc-slot[data-pos="center"] .skc-frame{outline:2px solid rgb(var(--accent));outline-offset:2px}
@@ -54,11 +54,11 @@ const css = `
 export function CatchSection() {
   return (
     <section id="the-catch" className="skc-root relative flex w-full flex-col items-center gap-8 overflow-x-clip py-[72px]" aria-labelledby="catch-title">
-      <style>{css}</style>
+      <style>{CAROUSEL_CSS}</style>
       <div className="frame">
         <SectionHeader id="catch-title" eyebrow="Verification" title="How Skarl checks a clip" />
       </div>
-      <CatchCarousel />
+      <CheckConsole />
     </section>
   );
 }

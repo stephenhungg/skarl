@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/button";
 import { ContourTide } from "@/components/react-bits/contour-tide";
+import { ResilientCanvas } from "@/components/resilient-canvas";
 import { BuiltOn } from "./built-on";
 import { DEMO_VIDEO_URL } from "./evidence";
 
@@ -31,7 +32,9 @@ export function Hero() {
           maskImage: "linear-gradient(180deg, #000 0%, #000 55%, transparent 88%)",
         }}
       >
-        <ContourTide className="h-full w-full" colors={["#7d8c76", "#eef8e3"]} backgroundColor="#10120e" horizon={0.12} interactive={false} clickRipples={false} />
+        <ResilientCanvas className="h-full w-full">
+          <ContourTide className="h-full w-full" colors={["#7d8c76", "#eef8e3"]} backgroundColor="#10120e" horizon={0.12} interactive={false} clickRipples={false} blocks={1} />
+        </ResilientCanvas>
       </motion.div>
 
       <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(60% 40% at 50% 45%, rgb(var(--ink) / .4), transparent 75%)" }} />

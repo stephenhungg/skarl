@@ -25,7 +25,9 @@ const video: VideoObservation = { visibility: "clear", observations: [
   { action: "pickup", object: "red_cup", target: "unknown", startMs: 1_000, endMs: 3_000, description: "A hand picks up the red cup." },
   { action: "place", object: "red_cup", target: "coaster", startMs: 5_000, endMs: 7_000, description: "The hand places the red cup on the coaster." },
 ] };
+const liveness = { words: ["apple", "river", "cloud"], issuedAt: 1_000, consumedAt: 20_000 };
 const audio = audioFromTranscriptSegments([
+  { startMs: 0, endMs: 800, text: "Apple river cloud." },
   { startMs: 1_000, endMs: 3_000, text: "I pick up the red cup." },
   { startMs: 5_000, endMs: 7_000, text: "I place it on the coaster." },
 ], 12_000);
@@ -47,13 +49,16 @@ async function create(f: Fixture, request: string, evalRunId?: string, evalVideo
     consentAcknowledged: true, ...(evalRunId !== undefined ? { verificationOnly: true, evalRunId } : {}),
     ...(evalVideoModel !== undefined ? { evalVideoModel } : {}) };
   const { submissionId } = await f.t.mutation(api.submissions.create, args);
+  // Fixed server facts keep these mocked evaluation tests about corpus/licensing isolation.
+  // Challenge issuance, expiry and single-use are covered separately at the mutation boundary.
+  await f.t.run(ctx => ctx.db.patch(submissionId, { liveness }));
   const job = await f.t.run(async ctx => (await ctx.db.query("jobs").withIndex("by_logical_job", q => q.eq("submissionId", submissionId)).unique())!);
   return { submissionId, args, job };
 }
 async function inputFor(f: Fixture, item: Awaited<ReturnType<typeof create>>): Promise<BuildVerificationReportInput> {
   const rubric = await f.t.run(ctx => ctx.db.get(f.taskVersionId));
   return { submissionId: item.submissionId, taskVersionId: f.taskVersionId, sourceHash: item.job.sourceHash,
-    durationMs: 12_000, criteria: rubric!.criteria, video, audio, modelRuns: [run], duplicate: { status: "clear", matches: [] } };
+    durationMs: 12_000, criteria: rubric!.criteria, video, audio, liveness, modelRuns: [run], duplicate: { status: "clear", matches: [] } };
 }
 async function finish(f: Fixture, item: Awaited<ReturnType<typeof create>>) {
   await f.t.action(internal.verify.run, { jobId: item.job._id });
@@ -67,6 +72,15 @@ async function setFacts(f: Fixture, item: Awaited<ReturnType<typeof create>>) {
 }
 
 describe("evaluation corpus isolation and advisory projection", () => {
+  it("keeps an old client upload valid but prevents an otherwise passing clip from bypassing fresh spoken evidence", async () => {
+    const f = await setup(), item = await create(f, "legacy-no-challenge");
+    await f.t.run(ctx => ctx.db.patch(item.submissionId, { liveness: undefined }));
+    const stored = await finish(f, item);
+    expect(stored.report.recommendation).toBe("needs_review");
+    expect(stored.report.criteria.every((criterion: { status: string }) => criterion.status === "supported")).toBe(true);
+    expect(stored.report.warnings.some((warning: string) => warning.includes("no per-take challenge"))).toBe(true);
+  });
+
   it("allows model overrides only for scoped verification-only runs and binds them on replay", async () => {
     const f = await setup(), item = await create(f, "model-bound", "model-run", "gemini-4-argon");
     expect(await f.t.mutation(api.submissions.create, item.args)).toMatchObject({ replayed: true });
@@ -253,16 +267,35 @@ describe("evaluation corpus isolation and advisory projection", () => {
     const evaluation = { evaluationOnly: true, projectionVersion: EVALUATION_PROJECTION_VERSION, qualityReport: quality, qualityReportHash: digest(quality) };
     const reportJson = canonical(reports.report), reportStorageId = await f.t.run(ctx => ctx.storage.store(new Blob([reportJson], { type: "application/json" })));
     const args = { jobId: item.job._id, generation: claim.generation, reportJson, reportStorageId,
-      reportHash: digest(reports.report), observationsJson: canonical({ evaluation }), processingElapsedMs: 1 };
+      reportHash: digest(reports.report), observationsJson: canonical({ audio, evaluation }), processingElapsedMs: 1 };
     for (const patch of [{ qualityReportHash: "0".repeat(64) }, { projectionVersion: "different" }, { evaluationOnly: false },
       { qualityReport: { ...quality, submissionId: "foreign" } }, { qualityReport: { ...quality, criteria: quality.criteria.slice(1) } }]) {
-      await expect(f.t.mutation(internal.submissions.complete, { ...args, observationsJson: canonical({ evaluation: { ...evaluation, ...patch } }) }))
+      await expect(f.t.mutation(internal.submissions.complete, { ...args, observationsJson: canonical({ audio, evaluation: { ...evaluation, ...patch } }) }))
         .rejects.toThrow("evaluation_report_mismatch");
     }
     await expect(f.t.mutation(internal.submissions.complete, { ...args, reportJson: canonical(quality), reportHash: digest(quality) }))
       .rejects.toThrow("evaluation_report_mismatch");
     await expect(f.t.mutation(internal.submissions.complete, { ...args, observationsJson: "{}" })).rejects.toThrow("evaluation_report_mismatch");
     expect(await f.t.mutation(internal.submissions.complete, args)).toBeTruthy();
+  });
+
+  it("refuses an accepting advisory projection without a stored challenge even when licensing already forces operational review", async () => {
+    const f = await setup(), item = await create(f, "missing-witness", "missing-witness-run"), claim = await setFacts(f, item);
+    const reports = buildVerificationReports(await inputFor(f, item), { verificationOnly: true, evalRunId: "missing-witness-run" });
+    expect(reports.report.recommendation).toBe("needs_review");
+    expect(reports.qualityReport!.recommendation).toBe("accept");
+    // A correctly hashed advisory acceptance must not launder liveness facts that
+    // were never persisted for this submission through the licensing review guard.
+    await f.t.run(ctx => ctx.db.patch(item.submissionId, { liveness: undefined }));
+    const reportJson = canonical(reports.report);
+    const reportStorageId = await f.t.run(ctx => ctx.storage.store(new Blob([reportJson], { type: "application/json" })));
+    const evaluation = { evaluationOnly: true, projectionVersion: EVALUATION_PROJECTION_VERSION,
+      qualityReport: reports.qualityReport, qualityReportHash: digest(reports.qualityReport) };
+    await expect(f.t.mutation(internal.submissions.complete, { jobId: item.job._id, generation: claim.generation,
+      reportJson, reportStorageId, reportHash: digest(reports.report), observationsJson: canonical({ audio, evaluation }), processingElapsedMs: 1 }))
+      .rejects.toThrow("liveness_must_review");
+    expect(await f.t.run(ctx => ctx.db.query("analysisResults").collect())).toHaveLength(0);
+    expect((await f.t.run(ctx => ctx.db.get(item.submissionId)))!.currentAnalysisId).toBeUndefined();
   });
 
   it("keeps the finance copy guard global and counts accepted rows rather than evaluation uploads", async () => {
@@ -288,8 +321,11 @@ describe("evaluation corpus isolation and advisory projection", () => {
       .toMatchObject({ ok: false, code: "duplicate_submission", matchingSubmissionId: accepted });
   });
 
-  it("persists an evaluation-only failure projection when the worker lease expires", async () => {
+  it.each(["red-cup-evidence-1.1", "red-cup-evidence-1.2"])("recovers an expired %s lease without rewriting its historical report version", async pipelineVersion => {
     const f = await setup(), item = await create(f, "watchdog", "watchdog-run"), claim = await setFacts(f, item);
+    // A deployment may arrive while a worker is already leased. Recovery must
+    // retain that lease's contract even when the current comparator has changed.
+    await f.t.run(ctx => ctx.db.patch(item.job._id, { pipelineVersion }));
     vi.setSystemTime(Date.now() + 5 * 60_000 + 1);
     await f.t.mutation(internal.submissions.expire, { jobId: item.job._id, generation: claim.generation });
     expect(await f.t.action(internal.verify.interrupted, { jobId: item.job._id, generation: claim.generation })).toHaveProperty("analysisId");
@@ -297,6 +333,10 @@ describe("evaluation corpus isolation and advisory projection", () => {
     expect(stored.observations.evaluation.qualityReport).toMatchObject({ recommendation: "needs_review", pipeline: { status: "failed" } });
     expect(stored.observations.evaluation.qualityReportHash).toBe(digest(stored.observations.evaluation.qualityReport));
     expect(stored.report.warnings).toContain(VERIFICATION_ONLY_WARNING);
+    for (const report of [stored.report, stored.observations.evaluation.qualityReport]) {
+      expect(report.pipeline.version).toBe(pipelineVersion);
+      expect(validateVerificationReportForRubric(report, report.criteria.map((criterion: { criterionId: string }) => criterion.criterionId)).valid).toBe(true);
+    }
   });
 
 });
