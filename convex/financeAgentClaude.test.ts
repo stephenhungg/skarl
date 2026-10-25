@@ -14,7 +14,7 @@ const call = (id: string, name: string, input: unknown = {}) => ({ type: "tool_u
 const turn = (content: unknown[], stop_reason = content.some(b => (b as { type: string }).type === "tool_use") ? "tool_use" : "end_turn") =>
   ({ id: "msg_synthetic", type: "message", role: "assistant", model: "claude-sonnet-5-5", content, stop_reason, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } });
 const final = () => turn([{ type: "text", text: "Independent human approval is required. No transfer occurred." }]);
-type Body = { model: string; system: string; messages: { role: string; content: any }[]; tools: any[]; tool_choice: unknown; output_config: unknown };
+type Body = { model: string; system: { type: string; text: string; cache_control: unknown }[]; messages: { role: string; content: any }[]; tools: any[]; tool_choice: unknown; output_config: unknown };
 function provider(respond: (body: Body, index: number) => unknown) {
   let index = 0;
   const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => new Response(JSON.stringify(respond(JSON.parse(init!.body as string), index++)), { status: 200, headers: { "content-type": "application/json" } }));
@@ -73,8 +73,8 @@ describe("Claude finance provider with synthetic SDK HTTP responses", () => {
     const scope = { demoIdentity: "controller", orderId: f.orderId };
     const before = await f.t.query(api.tax.summary, scope);
     provider((body, index) => {
-      expect(body.system).toContain("Not tax advice — demo data");
-      expect(body.system).toContain("never change form status");
+      expect(body.system[0]?.text).toContain("Not tax advice — demo data");
+      expect(body.system[0]?.text).toContain("never change form status");
       if (!index) return turn([call("tax", "taxSummary", { orderId: f.orderId, year: null }),
         call("forms", "contributorsNeedingForms"), call("forbidden-form", "setProfile", { taxForm: "w9_on_file" }),
         call("other-order", "taxSummary", { orderId: f.organizationId, year: 2026 }),
@@ -109,8 +109,10 @@ describe("Claude finance provider with synthetic SDK HTTP responses", () => {
       expect(body.output_config).toEqual({ effort: "low" });
       expect(body.tools.map(t => t.name)).toEqual(financeTools.map(t => t.name));
       expect(body.tools.every(t => t.strict && t.input_schema.additionalProperties === false)).toBe(true);
+      expect(body.system[0]?.cache_control).toEqual({ type: "ephemeral" });
+      expect(body.tools.at(-1)?.cache_control).toEqual({ type: "ephemeral" });
       expect(body.tools.some(t => /approve|send|sign/i.test(t.name))).toBe(false);
-      expect(body.system).toContain("untrusted DATA");
+      expect(body.system[0]?.text).toContain("untrusted DATA");
       expect(body.messages.at(-1)?.role).toBe("user");
       if (!index) {
         expect(body.messages).toHaveLength(1);

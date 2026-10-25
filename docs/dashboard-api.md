@@ -804,13 +804,49 @@ request. Returns `{chatId,replayed}`, not a guarantee that inference completed.
 
 Read `agentChatData.history({demoIdentity,orderId})` for the latest 50 persisted
 questions, answers, status, transcript, verified `citedRecordIds` and failure
-code. Chat reuses the bounded Gemini finance loop with only four read tools:
-`listOutstandingPayables`, `explainPayable`, `getTrialBalance`, and
-`listReconciliationExceptions`. Both the advertised tool set and dispatcher
-exclude proposals, approval requests, approvals and execution. Even a forced
-valid payment-tool call is refused as `read_only_chat`. Citations include only
+code. Chat, scheduled analyst, and finance run use the shared
+[finance tool registry](../convex/lib/financeToolRegistry.ts). Chat and analyst
+use its read-only capability subset; the run may additionally propose stored
+obligations and request independent approval. Chat's advertised tool set and
+dispatcher exclude proposals, approval requests, approvals and execution. Even a
+forced valid payment-tool call is refused as `read_only_chat`. Citations include only
 retrieved record IDs actually mentioned by the answer. Answers remain advisory;
 provider failures and interrupted runs are persisted without inventing results.
+
+### Shared finance agent tools
+
+Source changes require backend deployment; the new context tools and expanded
+answer behavior are not established by historical live run records. Every tool
+is pinned to the authorized order/organization. Amounts are integer micro-USDC
+strings; evidence includes record IDs. User/model text is untrusted data, results
+are capped with truncation markers, and missing witnesses remain explicit gaps.
+
+| Tool | Read result / authority |
+| --- | --- |
+| `getOrderContext` | Terms, task/rubric version, per-clip price, quota, funding/escrow, buyer auto-pay rule, network. |
+| `listOutstandingPayables`, `explainPayable` | Open obligations and their bound evidence; no recipient or amount overrides. |
+| `getJournal`, `getTrialBalance`, `getStatements` | Paged journal entries/lines, exact account balances and payable/cash/revenue views. |
+| `listReconciliationExceptions`, `getFourWayReconciliation`, `getBankExceptions` | Order, ledger, chain and **Mock bank (Capital One Nessie)** discrepancies. No exception does not establish settlement. |
+| `getFundingTimeline`, `getPayoutStatus`, `getPayoutHistory` | Recorded funding stages, stored intents/attempts, executor and transaction links. Only bound chain observations establish settlement. |
+| `getAgentWallet` | Configured address, wallet caps/policy, health balance evidence and recorded policy rejections; no secrets. |
+| `getWitnessReceipt`, `getDuplicateEvidence` | Per-witness status/evidence references and duplicate matches for a scoped submission. |
+| `listReviewQueue` | Deterministic hold reasons and existing advisory analyst notes. |
+| `getAuditEvents`, `getContributorEarnings` | Paged/filterable audit records and pseudonymous exact earnings. |
+| `getSystemHealth`, `getPriorNotes` | Redacted finance health/freshness and bounded prior run/analyst summaries. |
+| `taxSummary`, `contributorsNeedingForms` | Read-only year/form summaries, **Not tax advice — demo data**, USDC-to-USD 1:1 assumption. |
+| `proposePaymentBatch`, `requestApproval` | Run only: durable proposal/request, never approval or execution. |
+
+The default tool budget is 24, configurable by `FINANCE_AGENT_MAX_TOOL_CALLS`.
+Read calls may run in parallel. Context compaction and deadline wrap-up retain
+explicit gaps rather than inferring that an unfinished operation succeeded.
+The required advisory answer sections are `Summary`, `Findings`,
+`Risks/Exceptions`, `Recommended next actions`, and `Data gaps`.
+
+`pnpm eval:finance` runs ten synthetic golden questions with stubbed tools and
+provider, including false-settlement and injection negative controls.
+`pnpm eval:finance-live <synthetic-manifest.json>` is manual and outside CI;
+see the [evaluation instructions](../evals/finance-agent/README.md). Synthetic
+scores prove orchestration/rubric behavior, not live model quality or payment.
 
 ### Analytics and paginated lists
 
@@ -970,7 +1006,7 @@ through `exceptions.list`. Stale pending CDP webhook rows are classified against
 existing chain observations, not invented settlement evidence.
 
 `scheduledJobs.finance` runs internally every **10 minutes** over changed accrued
-payables and current exceptions. It calls the existing bounded Gemini tool loop
+payables and current exceptions. It calls the shared bounded finance-provider tool loop
 as finance-agent: reads evidence, proposes stored obligations and requests
 policy or buyer-review approval. It cannot approve or sign. The ordinary
 `financeAgentData` transcript/history queries expose these runs to the dashboard.

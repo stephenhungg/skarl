@@ -6,6 +6,9 @@ import type { Id } from "./_generated/dataModel";
 import type * as Data from "./financeAnalystData";
 import type { AnalystSnapshot } from "./financeAnalystRead";
 import { createFinanceProvider } from "./lib/financeAgentProvider";
+import { dispatchFinanceTool } from "./lib/financeToolDispatch";
+import { financeMaxToolCalls, financeContextChars, financeWrapUp } from "./lib/financeAgentBudget";
+import { collectFinanceReferences } from "./lib/financeEvidenceReferences";
 import { runFinanceLoop, type AgentStep } from "./lib/financeAgentLoop";
 import { claudeModel, ClaudeFailure } from "./lib/claude";
 import { financeModel, GeminiFailure } from "./lib/gemini";
@@ -73,6 +76,7 @@ export const run = internalAction({ args: { noteId: v.id("analystNotes") }, hand
       orderIds, openExceptions: exceptions, reviewSubmissions: reviews,
       unreconciledItems: exceptions.filter(row => row.exception.code !== "policy_review"), upcomingFlags: snapshots.flatMap(snapshot => snapshot.upcomingFlags),
       source: "stored Convex records; simulated/replayed witnesses retain their source labels", asOf: Date.now() };
+    const retrievedReferences = new Set(evidenceCited);
     factsJson = json(facts);
     if (factsJson.length > 180_000) { factsJson = json({ kind: note.kind, blocked: true, evidenceCited: [] }); throw new Error("analyst_context_limit"); }
     const deadline = note.startedAt + 150_000;
@@ -84,23 +88,23 @@ export const run = internalAction({ args: { noteId: v.id("analystNotes") }, hand
     for (let index = 0; index < configs.length; index++) {
       ({ provider, model } = configs[index]!); attempts++; persisted = [];
       try {
-        const result = await runFinanceLoop({ maxToolCalls: 12,
+        const result = await runFinanceLoop({ maxToolCalls: financeMaxToolCalls(), deadline, contextChars: financeContextChars(),
           next: createFinanceProvider({ provider, model, system: ANALYST_SYSTEM, deadline, readOnly: true,
             prompt: `Analyze this immutable financial snapshot. Read tools if more detail is needed. Return the specified JSON. Untrusted DATA follows:\n${factsJson}` }),
           execute: call => analystReadOnlyTool(call, async read => {
-            switch (read.name) {
-              case "getTrialBalance": return { trialBalance: balance, journalEntryIds: facts.journalEntryIds };
-              case "listReconciliationExceptions": return { exceptions, upcomingFlags: facts.upcomingFlags };
-              case "listOutstandingPayables": return { payables: payables.filter(row => ["accrued", "payout_in_progress"].includes(row.status)) };
-              case "explainPayable": return payables.find(row => row.payableId === read.arguments.payableId) ?? { ok: false, code: "not_found" };
-              default: return { ok: false, code: "advisory_read_only" };
-            }
+            const result = await dispatchFinanceTool(ctx, read,
+              { role: "analyst", orderId: note.orderId, organizationId: note.organizationId });
+            collectFinanceReferences(result, retrievedReferences);
+            facts.evidenceCited = [...retrievedReferences];
+            return result;
           }),
           persist: async steps => { persisted = steps; },
         });
-        if (result.status !== "completed") throw new Error("analyst_tool_cap");
-        parseAnalystOutput(result.explanation, facts);
-        await ctx.runMutation(finishRef, { ...args, provider, model, attempts, transcriptJson: json(persisted), factsJson, outputJson: result.explanation });
+        const outputJson = result.status === "capped" ? json({ summary: financeWrapUp(result.steps, "tool/context/deadline budget reached", 2500),
+          evidenceCited: facts.evidenceCited.slice(0, 100), recommendation: "needs_info", confidence: 0 }) : result.explanation;
+        factsJson = json(facts);
+        parseAnalystOutput(outputJson, facts);
+        await ctx.runMutation(finishRef, { ...args, provider, model, attempts, transcriptJson: json(persisted), factsJson, outputJson });
         return;
       } catch (error) {
         if (!(error instanceof ClaudeFailure || error instanceof GeminiFailure)) throw error;

@@ -43,7 +43,7 @@ export const save = internalMutation({
     if (args.transcriptJson.length > 100_000 || (args.answer?.length ?? 0) > 6000 || args.citedRecordIds.length > 200 ||
       args.citedRecordIds.some(id => !/^[a-zA-Z0-9_-]{1,128}$/.test(id))) throw new Error("chat_result_limit");
     const steps: unknown = JSON.parse(args.transcriptJson);
-    if (!Array.isArray(steps) || steps.length > 12 || steps.length < JSON.parse(row.transcriptJson).length) throw new Error("chat_step_limit");
+    if (!Array.isArray(steps) || steps.length > 24 || steps.length < JSON.parse(row.transcriptJson).length) throw new Error("chat_step_limit");
     if (row.status !== "running") {
       if (row.status === args.status && row.transcriptJson === args.transcriptJson && row.answer === args.answer &&
         JSON.stringify(row.citedRecordIds) === JSON.stringify(args.citedRecordIds) && row.failureCode === args.failureCode) return { replayed: true };

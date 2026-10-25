@@ -4,24 +4,17 @@
 
 The target agent fills two financial seats: settlement accountant and accounts-payable clerk. It explains obligations, proposes bounded payments and identifies reconciliation exceptions (period close is deferred). It does not decide whether a clip contains the right action, approve its own payment, hold a wallet key or rewrite the ledger.
 
-The Convex `financeAgent.run` action implements a configurable Gemini/Claude function-calling loop over the same eight allowlisted tools. Tool results, provider/model and the final advisory explanation persist in `financeAgentRuns` for buyer Review. Server mutations enforce cumulative exact proposal limits and existing independent-approval rules. A Convex Workflow waits for separate policy or buyer exception approval, revalidates the stored proposal and releases the execution outbox; wallet execution remains separate. Mocked responses test policy boundaries; live Gemini measurements are recorded in [status](status.md). Claude currently has synthetic provider coverage only; deployment, credentials and live inference remain pending in the [Anthropic handoff](anthropic.md).
+The Convex `financeAgent.run` action implements a configurable Gemini/Claude function-calling loop over the same shared registry of 24 allowlisted tools. Tool results, provider/model and the final advisory explanation persist in `financeAgentRuns` for buyer Review. Server mutations enforce cumulative exact proposal limits and existing independent-approval rules. A Convex Workflow waits for separate policy or buyer exception approval, revalidates the stored proposal and releases the execution outbox; wallet execution remains separate. Mocked responses test policy boundaries; live Gemini measurements are recorded in [status](status.md). The expanded registry and prompt have synthetic provider coverage only; historical live observations do not establish the expanded path. See the [Anthropic handoff](anthropic.md).
 
-## Bounded tool surface
+## Shared tool surface
 
-Implement tools as typed application operations, not arbitrary SQL, shell, generic HTTP fetch or unrestricted Convex calls. Each tool resolves authenticated membership and organization on the server. `FINANCE_AGENT_PROVIDER` selects `gemini` (default) or `claude`; Claude uses the installed `@anthropic-ai/sdk` with the same dispatcher and strict tool schemas. See [provider configuration and limits](anthropic.md#how-claude-is-constrained).
+`convex/lib/financeToolRegistry.ts` is the single tool catalogue for `financeAgent.run`, `agentChat.askAgent` and the scheduled analyst. All 22 reads use the same internal, order/organization-scoped query backend; only the run has proposal and approval-request callbacks. The [dashboard API tools table](dashboard-api.md#shared-finance-agent-tools) lists all 24 definitions and arguments. The registry validates arguments independently of provider schemas, caps each result with an explicit truncation marker and refuses scope-changing fields. Providers wrap every result as untrusted JSON data. No original media URLs, signing credentials or contributor identity tokens enter this context.
 
-| Tool | Input and result | Authority |
-| --- | --- | --- |
-| `listOutstandingPayables` | No model-controlled scope; returns this order's open payable IDs, exact amounts and proposal status | Read only |
-| `explainPayable` | Existing payable ID; returns amount/status plus explicitly untrusted report/narration excerpts | Read only; same order |
-| `getTrialBalance` | No arguments; sums stored journal lines and asserts each entry balances | Read only; exact integer strings |
-| `listReconciliationExceptions` | No arguments; reads the existing payment reconciliation query | Read only; bounded exceptions |
-| `taxSummary` | `{orderId: string or null, year: integer or null}`; null selects this run's order/current UTC year; non-null order must match the run | Read only; Tax-ready ledger, exact micro-USD strings |
-| `contributorsNeedingForms` | No arguments; reads missing form attestations for the run's order | Read only; never collects forms or identifiers |
-| `proposePaymentBatch` | Up to 20 unique existing payable IDs; server resolves amounts and destinations atomically | Proposal only; cumulative per-run amount cap |
-| `requestApproval` | Existing payout intent ID | Records an approval request; never approves |
+A run advertises proposal tools only when its authorized request explicitly asks to propose a batch or request approval. Ambiguous questions stay read-only; quoted narration/Jira instructions cannot enable that capability. Even a provider-forced valid proposal is refused when the trusted request is read-only. Chat and analyst refuse proposal/request tools regardless of user wording. These are additional capability checks; independent approval and execution remain server-enforced.
 
-Do not expose signing or `approvePayment` as agent tools. The internal `policy-engine` applies the buyer-signed rule to the exact proposal in Convex; failures go to the order’s buyer for review. The agent may then call Coinbase Wallet MCP `send` **only for that stored, approved intent** (exact recipient, amount and token; no other parameters), as a legacy signing path. The happy path uses the existing CDP executor with its independent wallet cap. The Coinbase retail MCP's x402 tools run on Base mainnet with a 5 USDC cap and are not used on the demo path. An attempt to approve its own proposal is refused and logged; this refusal is part of the demo moment. The payment executor consumes the approved command and stores the attempt before submission. Recipient, amount, token, network or payable-version changes invalidate the prior approval.
+Finance reads include frozen order terms/rubric, journals/statements, four-way reconciliation, mock-bank exceptions, funding stages, payout attempts, wallet health, jury and other submission witnesses, duplicates, held items, audit history, pseudonymous earnings and prior notes. Missing HTTP/facilitator stages or historical executor facts are explicit data gaps rather than invented milestones. No-exception and stored confirmed labels alone establish neither chain settlement nor bank completion. Tax tools retain the existing exact journal projections and demo disclosures.
+
+Do not expose signing or `approvePayment` as agent tools. The internal `policy-engine` applies the buyer-signed rule to the exact proposal in Convex; failures go to the order’s buyer for review. A separate authorized legacy executor may then call Coinbase Wallet MCP `send` **only for that stored, approved intent** (exact recipient, amount and token; no other parameters), as a legacy signing path. The happy path uses the existing CDP executor with its independent wallet cap. The Coinbase retail MCP's x402 tools run on Base mainnet with a 5 USDC cap and are not used on the demo path. An attempt to approve its own proposal is refused and logged; this refusal is part of the demo moment. The payment executor consumes the approved command and stores the attempt before submission. Recipient, amount, token, network or payable-version changes invalidate the prior approval.
 
 The tax tools support plain-language year-end summaries and forms-needed notes labeled **Not tax advice — demo data**. They return deterministic journal-derived payouts and advisory country notes, under the explicit USDC-to-USD 1:1 assumption. They cannot update a contributor's tax status, approve a payout, compute or withhold real tax, or file anything. Null fields preserve Claude's strict tool schema while selecting the current authenticated scope; supplied years must be integral UTC calendar years (1970–9999). Source implementation and synthetic provider tests do not establish live Claude inference or external reporting compliance. See [Tax-ready ledger](tax.md).
 
@@ -79,14 +72,15 @@ refused. Natural-language requests do not guarantee a model will attempt the
 forbidden call; the mocked policy test exercises that exact attempted call.
 
 Convex environment configuration: `GEMINI_FINANCE_MODEL` defaults to
-`gemini-3.8-flash`; the read-only `askAgent` action shares this default. Video
+`gemini-3.8-flash`; read-only `askAgent` follows the shared finance provider/model selection. Video
 verification defaults separately to `gemini-4-argon`; the finance model stays
-Flash for interactive latency. `FINANCE_AGENT_MAX_TOOL_CALLS` defaults to 12
+Flash for interactive latency. `FINANCE_AGENT_MAX_TOOL_CALLS` defaults to 24
 (range 1–24);
+`FINANCE_AGENT_CONTEXT_CHARS` defaults to 80,000 (range 32,000–100,000 serialized request characters);
 `FINANCE_AGENT_MAX_BATCH_ATOMIC` defaults to `10000000` micro-USDC. The existing
 server-only `GEMINI_API_KEY` is reused. No key reaches model input or transcript.
 The run has a two-minute overall budget, at most 30 seconds per provider round,
-a bounded transcript and a three-minute interruption watchdog. The Gemini
+parallel independent reads (writes remain serialized), a bounded transcript and a three-minute interruption watchdog. The Gemini
 transport permits at most three transient attempts within that single 30-second
 round deadline, including response reads and backoff; retries do not restart the
 clock. Claude disables automatic SDK retries. Billing is now enabled for Gemini; the latest 3.8 Flash Interactions probe returned
@@ -99,7 +93,9 @@ twice. The cap applies to the whole run, including multiple batches.
 
 Query `financeAgentData.runs({demoIdentity:"controller",orderId})` for the latest
 20 runs, typed tool calls/results, terminal status, failure code and explanation.
-Amounts are decimal micro-USDC strings. Hidden model reasoning is kept only in
+Amounts are decimal micro-USDC strings. Oldest tool results are summarized deterministically when context grows; complete retained IDs, statuses and atomic amounts are labelled as partial evidence. Raw provider call signatures remain transient. A hard serialized provider-request cap prevents oversized requests, and deadline/call-budget wrap-up produces the required Summary, Findings, Risks/Exceptions, Recommended next actions and Data gaps sections. The scheduled analyst preserves its JSON contract with these sections inside `summary`.
+
+Claude marks its static system block and last tool definition for [prompt caching](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-use-with-prompt-caching); cache hits, cost and expanded live quality remain unmeasured. The prompt stays free of run-specific facts. Hidden model reasoning is kept only in
 the provider conversation in action memory and is not persisted. Explanations
 remain advisory model text; authoritative cash, proposal and approval state
 comes from the deterministic query/tool results. A killed run is marked failed;
@@ -136,3 +132,9 @@ credit totals, and persisted its final advisory explanation. Client time was
 payment attempt. Proposal/refusal policy coverage remains the synthetic
 regression suite; this measurement proves the native function-call/result/final
 explanation loop against the shared cloud backend.
+
+## Expanded synthetic evaluation
+
+`pnpm eval:finance` runs ten golden questions plus scorer negative controls with stubbed providers and tools; it is part of `pnpm check`. Backend tests independently exercise every registered read as a Convex query, assert protected financial tables remain unchanged, and refuse cross-organization references. These checks establish deterministic orchestration and safety coverage, not live inference quality or external settlement.
+
+`pnpm eval:finance-live <synthetic-manifest.json>` is opt-in and uses read-only chat against an explicitly configured isolated synthetic organization. See [the evaluation instructions](../evals/finance-agent/README.md). It is not run in CI and does not seed or deploy a backend. Deploy these source changes separately, set provider credentials server-side and record the resulting live scores before claiming expanded capabilities ran externally.

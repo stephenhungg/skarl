@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
+import { financeTools, financeReadToolNames } from "./lib/financeToolRegistry";
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
 const call = (id: string, name: string, args: Record<string, unknown> = {}) => ({ type: "function_call", id, name, arguments: args });
 const turn = (steps: unknown[], output_text = "") => ({ status: "completed", steps, output_text });
@@ -21,9 +22,7 @@ describe("read-only finance chat with synthetic provider responses", () => {
     let calls = 0;
     const provider = vi.fn(async (_url: unknown, init?: RequestInit) => {
       const body = JSON.parse(init!.body as string);
-      expect(body.tools.map((tool: { name: string }) => tool.name)).toEqual([
-        "listOutstandingPayables", "explainPayable", "getTrialBalance", "listReconciliationExceptions",
-      ]);
+      expect(body.tools.map((tool: { name: string }) => tool.name)).toEqual(financeTools.filter(tool => financeReadToolNames.has(tool.name)).map(tool => tool.name));
       return new Response(JSON.stringify(calls++ === 0 ? turn([
         call("balances", "getTrialBalance"), call("payables", "listOutstandingPayables"), call("exceptions", "listReconciliationExceptions"),
         call("propose", "proposePaymentBatch", { payableIds: ["synthetic-payable"] }),
@@ -80,7 +79,7 @@ describe("read-only finance chat with synthetic provider responses", () => {
     const save = { demoIdentity: "controller", chatId: started.chatId, transcriptJson: "[]", citedRecordIds: [] };
     await expect(f.t.mutation(internal.agentChatData.save, { ...save, demoIdentity: "contributor" })).rejects.toThrow("forbidden");
     await expect(f.t.mutation(internal.agentChatData.save, { ...save, demoIdentity: "finance-agent" })).rejects.toThrow("chat_not_owned");
-    await expect(f.t.mutation(internal.agentChatData.save, { ...save, transcriptJson: JSON.stringify(Array.from({ length: 13 }, () => ({}))) })).rejects.toThrow("chat_step_limit");
+    await expect(f.t.mutation(internal.agentChatData.save, { ...save, transcriptJson: JSON.stringify(Array.from({ length: 25 }, () => ({}))) })).rejects.toThrow("chat_step_limit");
     expect(await f.t.mutation(internal.agentChatData.save, { ...save, status: "completed", answer: "Synthetic result" })).toEqual({ replayed: false });
     expect(await f.t.mutation(internal.agentChatData.save, { ...save, status: "completed", answer: "Synthetic result" })).toEqual({ replayed: true });
     await expect(f.t.mutation(internal.agentChatData.save, { ...save, status: "completed", answer: "Changed" })).rejects.toThrow("chat_already_finished");
