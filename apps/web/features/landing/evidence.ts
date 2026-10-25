@@ -1,4 +1,10 @@
 import type { EvidenceStatus } from "@/components/status-pill";
+import type { VerificationReport } from "@/components/evidence-timeline";
+import {
+  accountBalance, createFulfillmentJournal, createFundingJournal, createPayoutJournal, createRefundPaidJournal, createRefundReservedJournal,
+  EMPTY_LEDGER, parseUsdc, postJournal, type Account, type Journal, type LedgerState,
+} from "@skarl/ledger";
+import { usdcShort } from "./money/amount";
 
 // Everything the landing claims lives here, so a row flips from SIMULATED to LIVE in one line.
 
@@ -20,4 +26,335 @@ export const PROOF_LOG: ProofRow[] = [
     status: "SIMULATED",
     href: "https://github.com/stephenhungg/skarl/blob/main/docs/accounting.md",
   },
+  {
+    date: "10.25",
+    title: "Seeded demo backend deployed on Convex",
+    summary: "One organization, four demo identities and one unfunded 100 USDC order with a frozen rubric. Seeding again returns the same IDs.",
+    status: "LIVE",
+    href: "https://github.com/stephenhungg/skarl/blob/main/docs/backend.md#task-1-client-contract",
+  },
+  {
+    date: "10.25",
+    title: "Self-approval and agent approval are refused",
+    summary: "A payout proposal with a changed requester, recipient or amount is refused too, and every refusal leaves an audit row. Covered by the Convex regressions.",
+    status: "SIMULATED",
+    href: "https://github.com/stephenhungg/skarl/blob/main/docs/finance-agent.md",
+  },
+  {
+    date: "10.25",
+    title: "A duplicate clip cannot create a second payable",
+    summary: "A hash match against accepted work keeps the submission as evidence and posts nothing. The hashes come from test fixtures for now.",
+    status: "SIMULATED",
+    href: "https://github.com/stephenhungg/skarl/blob/main/docs/accounting.md",
+  },
+];
+
+// Designed and not running yet. Shown under the dated rows so the log never implies they happened.
+export const PROOF_NEXT: ProofRow[] = [
+  {
+    date: "next",
+    title: "Narration checked against the video by Gemini",
+    summary: "Runs in a Convex action on a recorded clip and cites timestamps from the source video.",
+    status: "PLANNED",
+    href: "https://github.com/stephenhungg/skarl/blob/main/docs/ai-verification.md",
+  },
+  {
+    date: "next",
+    title: "Buyer funds an order over x402",
+    summary: "Test USDC on Base Sepolia through the Coinbase CDP facilitator.",
+    status: "PLANNED",
+    href: "https://github.com/stephenhungg/skarl/blob/main/docs/payments.md",
+  },
+  {
+    date: "next",
+    title: "Controller-approved payout reconciled by transaction hash",
+    summary: "One contributor payout on Base Sepolia, matched against the ledger before it shows as paid.",
+    status: "PLANNED",
+    href: "https://github.com/stephenhungg/skarl/blob/main/docs/payments.md",
+  },
+];
+
+export const STATUS_LEGEND: { status: EvidenceStatus; meaning: string }[] = [
+  { status: "LIVE", meaning: "Ran for real and is observable now" },
+  { status: "REPLAYED", meaning: "Real output recorded earlier, shown again" },
+  { status: "SIMULATED", meaning: "Deterministic fixture or synthetic data" },
+  { status: "PLANNED", meaning: "Designed, not running" },
+];
+
+export const EVIDENCE_DOCS_URL = "https://github.com/stephenhungg/skarl/tree/main/docs";
+
+export type RoleTile = { role: string; icon: "hand" | "camera" | "eye" | "ledger" | "stamp"; can: string; cannot: string; href: string };
+
+const DOC = "https://github.com/stephenhungg/skarl/blob/main/docs/";
+
+export const ROLES: RoleTile[] = [
+  { role: "Buyer", icon: "hand", can: "Fund a frozen task version", cannot: "Download unaccepted samples", href: `${DOC}product.md` },
+  { role: "Contributor", icon: "camera", can: "Record, upload, get timestamped feedback", cannot: "See pay as cash before the transfer is observed", href: `${DOC}product.md` },
+  { role: "Verifier", icon: "eye", can: "Cite timestamped evidence", cannot: "Approve or pay anything", href: `${DOC}ai-verification.md` },
+  { role: "Finance agent", icon: "ledger", can: "Propose payouts and refunds", cannot: "Approve its own proposal", href: `${DOC}finance-agent.md` },
+  { role: "Controller", icon: "stamp", can: "Approve exceptions and batches", cannot: "Share an identity with the requester", href: `${DOC}security.md` },
+];
+
+export const ROLE_INVARIANTS: string[] = [
+  "Every journal's debits equal its credits.",
+  "Each event ID posts at most once.",
+  "One accepted submission creates at most one payable.",
+  "A payout proposal cannot be approved by its requester or by an agent.",
+];
+
+// Where the money goes: the $100 finance fixture from docs/accounting.md, built with the same
+// ledger helpers the tests replay. Amounts are exact micro-USDC; nothing here is a retyped float.
+
+export type MoneyTransfer = {
+  label: string;
+  amountMicro: bigint;
+  status: EvidenceStatus; // chain transfer state, flip to LIVE only with an observed tx
+  detail: string;
+  txHref: string | null; // explorer link, set only when the transfer is real
+};
+
+export type MoneyStep = {
+  id: string;
+  title: string;
+  detail: string;
+  journals: Journal[]; // empty when the step posts nothing
+  note?: string; // shown on the receipt in place of, or under, the lines
+  closing?: boolean; // last step prints the ending balances instead of a journal
+  transfer: MoneyTransfer | null;
+  idleNote?: string; // what the payment card says when no transfer belongs to the step
+  journalStatus: EvidenceStatus; // how the journal itself has been exercised
+};
+
+const ORDER = "order-fixture";
+const PRICE = parseUsdc("10");
+const RATE = parseUsdc("7.5");
+const FUNDED = PRICE * 10n;
+const REFUND = FUNDED - PRICE;
+
+const funding = createFundingJournal({ eventId: "fund-1", orderId: ORDER, amountMicroUsdc: FUNDED });
+const fulfillment = createFulfillmentJournal({ eventId: "fulfil-1", orderId: ORDER, sampleId: "sample-1", contributorId: "contributor-1", priceMicroUsdc: PRICE, contributorMicroUsdc: RATE });
+const payout = createPayoutJournal({ eventId: "payout-1", orderId: ORDER, contributorId: "contributor-1", payableId: "sample-1", amountMicroUsdc: RATE });
+const refundReserved = createRefundReservedJournal({ eventId: "refund-reserve-1", orderId: ORDER, amountMicroUsdc: REFUND });
+const refundPaid = createRefundPaidJournal({ eventId: "refund-paid-1", orderId: ORDER, amountMicroUsdc: REFUND });
+
+/** Replayed through postJournal, so an unbalanced or out-of-order fixture fails at build time, not on stage. */
+export const MONEY_LEDGER: LedgerState = [funding, fulfillment, payout, refundReserved, refundPaid].reduce(postJournal, EMPTY_LEDGER);
+export const MONEY_CASH_LEFT = accountBalance(MONEY_LEDGER, "asset:usdc");
+
+export const MONEY_SEATS = "Fills the settlement accountant and accounts-payable clerk seats. The controller stays human.";
+
+export const MONEY_ACCOUNT_LABEL: Record<Account, string> = {
+  "asset:usdc": "USDC cash",
+  "liability:customer_prepayments": "Customer prepayments",
+  "liability:contributor_payables": "Contributor payables",
+  "liability:customer_refunds": "Refunds payable",
+  "revenue:dataset_sales": "Dataset sales revenue",
+  "expense:contributor_acquisition": "Contributor expense",
+};
+
+export const MONEY_STEPS: MoneyStep[] = [
+  {
+    id: "prepay",
+    title: `Buyer prepays ${usdcShort(FUNDED)} for ten samples`,
+    detail: `${usdcShort(FUNDED)} test USDC on Base Sepolia, paid through Coinbase x402. It is held as a customer prepayment, a liability, not revenue.`,
+    journals: [funding],
+    journalStatus: "SIMULATED",
+    transfer: { label: "Buyer funding", amountMicro: FUNDED, status: SETTLEMENT.status, detail: "x402 funding on Base Sepolia, not yet observed", txHref: null },
+  },
+  {
+    id: "accept",
+    title: "One sample accepted",
+    detail: `${usdcShort(PRICE)} of the prepayment becomes revenue and a ${usdcShort(RATE)} contributor payable accrues.`,
+    journals: [fulfillment],
+    journalStatus: "SIMULATED",
+    transfer: null,
+    idleNote: "Revenue and the payable are booked. No cash moves until a payout is approved and confirmed.",
+  },
+  {
+    id: "approve",
+    title: "Agent proposes, controller approves",
+    detail: "The finance agent drafts the payout. A human controller approves it, and the agent cannot approve its own request.",
+    journals: [],
+    note: "Approval posts nothing. It binds the recipient, amount, chain and proposal version, and the payable stays open until the transfer confirms.",
+    journalStatus: "SIMULATED",
+    transfer: { label: "Contributor payout", amountMicro: RATE, status: "PLANNED", detail: "Proposed by the agent, approved by the controller, not yet observed on chain", txHref: null },
+  },
+  {
+    id: "payout",
+    title: "Payout confirmed",
+    detail: `The ${usdcShort(RATE)} payable clears only when the approved transfer confirms. A signature appears here once one is observed.`,
+    journals: [payout],
+    journalStatus: "SIMULATED",
+    transfer: { label: "Contributor payout", amountMicro: RATE, status: SETTLEMENT.status, detail: "Base Sepolia transfer, not yet observed", txHref: null },
+  },
+  {
+    id: "refund",
+    title: `Nine samples cancelled, ${usdcShort(REFUND)} refunded`,
+    detail: "The unfulfilled balance moves to refunds payable, then clears when the refund transfer confirms.",
+    journals: [refundReserved, refundPaid],
+    journalStatus: "SIMULATED",
+    transfer: { label: "Buyer refund", amountMicro: REFUND, status: SETTLEMENT.status, detail: "Base Sepolia transfer, not yet observed", txHref: null },
+  },
+  {
+    id: "close",
+    title: `Cash ends at ${usdcShort(MONEY_CASH_LEFT)}`,
+    detail: "Before inference, fees and gas, not profit.",
+    journals: [],
+    closing: true,
+    idleNote: "Cash left on the order after the payout and the refund.",
+    note: "Before inference, fees and gas, not profit. Prepayments, payables and refunds all end at zero.",
+    journalStatus: "SIMULATED",
+    transfer: null,
+  },
+];
+
+// Built-on strip. LIVE only when it runs now; everything else is PLANNED until it does.
+export type BuiltOnItem = { name: string; role: string; status: EvidenceStatus };
+
+export const BUILT_ON: BuiltOnItem[] = [
+  { name: "Convex", role: "ledger and live state", status: "LIVE" },
+  { name: "Gemini", role: "evidence", status: "PLANNED" },
+  { name: "x402", role: "funding", status: "PLANNED" },
+  { name: "Coinbase Wallet MCP", role: "agent payments", status: "PLANNED" },
+  { name: "Base Sepolia", role: "settlement in test USDC", status: "PLANNED" },
+];
+
+// The catch. Every report below is illustrative, not model output, so every card is SIMULATED.
+// The mismatch report is the appendix report in docs/design.md; the others are derived from it.
+const ILLUSTRATIVE_WARNING = "Illustrative example for page copy. Not a model inference result.";
+const MODEL_RUNS: VerificationReport["pipeline"]["modelRuns"] = [
+  { provider: "google", model: "gemini-3.8-flash", promptVersion: "silent-video-v1" },
+  { provider: "local", model: "faster-whisper base.en int8", promptVersion: "asr-v1" },
+];
+
+export const CATCH_REPORT_MISMATCH: VerificationReport = {
+  schemaVersion: "1.0",
+  reportId: "illustrative-report-catch-001",
+  submissionId: "illustrative-submission-001",
+  taskVersionId: "red-cup-v1",
+  source: { sha256: "9f2c1e7a4b0d5e8f3a6c9b2d1e0f7a4c8b5d2e9f6a3c0b7d4e1f8a5c2b9d6e3f", durationMs: 14200 },
+  pipeline: { version: "pipeline-0.1.0", status: "completed", implementation: "inference", modelRuns: MODEL_RUNS },
+  criteria: [
+    {
+      criterionId: "red-cup-pickup",
+      status: "contradicted",
+      evidence: [
+        { modality: "video", startMs: 3100, endMs: 4400, claim: "Right hand grasps and lifts the blue cup; the red cup stays in place." },
+        { modality: "audio", startMs: 2900, endMs: 4600, claim: "Narration: \"I'm picking up the red cup.\"" },
+      ],
+      reason: "Spoken object (red cup) conflicts with the object observed in the silent video (blue cup).",
+    },
+    {
+      criterionId: "placed-on-coaster",
+      status: "supported",
+      evidence: [{ modality: "video", startMs: 7800, endMs: 9100, claim: "A cup is set down fully inside the marked coaster." }],
+      reason: "Placement on the marked target is visible.",
+    },
+    {
+      criterionId: "narration-alignment",
+      status: "contradicted",
+      evidence: [
+        { modality: "audio", startMs: 2900, endMs: 4600, claim: "Narration names the red cup." },
+        { modality: "video", startMs: 3100, endMs: 4400, claim: "Blue cup is the object moved." },
+      ],
+      reason: "Narration does not describe the action shown.",
+    },
+  ],
+  duplicate: { status: "clear", matches: [] },
+  recommendation: "request_correction",
+  warnings: [ILLUSTRATIVE_WARNING],
+};
+
+// Same task, retaken: all three criteria supported. An accept report carries no warnings by schema.
+export const CATCH_REPORT_RETAKE: VerificationReport = {
+  ...CATCH_REPORT_MISMATCH,
+  reportId: "illustrative-report-catch-002",
+  submissionId: "illustrative-submission-002",
+  source: { sha256: "4b8e0d2a6c1f9e3b7d5a0c8f2e6b4d1a9c7e3f5b0d8a2c6e4f1b9d7a3c5e0f82", durationMs: 13600 },
+  criteria: [
+    {
+      criterionId: "red-cup-pickup",
+      status: "supported",
+      evidence: [
+        { modality: "video", startMs: 2600, endMs: 3900, claim: "Right hand grasps and lifts the red cup." },
+        { modality: "audio", startMs: 2400, endMs: 4100, claim: "Narration: \"I'm picking up the red cup.\"" },
+      ],
+      reason: "Spoken object matches the object lifted in the silent video.",
+    },
+    {
+      criterionId: "placed-on-coaster",
+      status: "supported",
+      evidence: [{ modality: "video", startMs: 7200, endMs: 8500, claim: "The red cup is set down fully inside the marked coaster." }],
+      reason: "Placement on the marked target is visible.",
+    },
+    {
+      criterionId: "narration-alignment",
+      status: "supported",
+      evidence: [
+        { modality: "audio", startMs: 6900, endMs: 8700, claim: "Narration: \"Setting it on the coaster.\"" },
+        { modality: "video", startMs: 7200, endMs: 8500, claim: "Red cup moves onto the coaster." },
+      ],
+      reason: "Narration describes the action shown.",
+    },
+  ],
+  duplicate: { status: "clear", matches: [] },
+  recommendation: "accept",
+  warnings: [],
+};
+
+// A cropped re-upload of the retake. The criteria still pass, so only the duplicate check stops it.
+export const CATCH_REPORT_DUPLICATE: VerificationReport = {
+  ...CATCH_REPORT_RETAKE,
+  reportId: "illustrative-report-catch-003",
+  submissionId: "illustrative-submission-003",
+  source: { sha256: "c3a91f5e7b2d0a8c4e6f1b9d3a5c7e0f2b4d6a8c1e3f5b7d9a0c2e4f6b8d1a3c", durationMs: 13600 },
+  duplicate: { status: "suspected", matches: [{ submissionId: "illustrative-submission-002", score: 0.96, overlapMs: 13600 }] },
+  recommendation: "needs_review",
+  warnings: [ILLUSTRATIVE_WARNING],
+};
+
+// The hand hides the set-down, so placement cannot be judged either way and a person decides.
+export const CATCH_REPORT_UNOBSERVABLE: VerificationReport = {
+  ...CATCH_REPORT_RETAKE,
+  reportId: "illustrative-report-catch-004",
+  submissionId: "illustrative-submission-004",
+  source: { sha256: "7e1d5b9f3a0c6e2b8d4f1a7c5e9b3d0f6a2c8e4b1d7f3a9c5e0b6d2f8a4c1e7b", durationMs: 12400 },
+  pipeline: { ...CATCH_REPORT_MISMATCH.pipeline, status: "needs_review" },
+  criteria: [
+    CATCH_REPORT_RETAKE.criteria[0]!,
+    {
+      criterionId: "placed-on-coaster",
+      status: "unobservable",
+      evidence: [{ modality: "video", startMs: 6800, endMs: 8600, claim: "The left hand covers the coaster while the cup is set down." }],
+      reason: "The target is hidden at the moment of placement.",
+    },
+    {
+      criterionId: "narration-alignment",
+      status: "supported",
+      evidence: [
+        { modality: "audio", startMs: 6500, endMs: 8400, claim: "Narration: \"Setting it on the coaster.\"" },
+        { modality: "video", startMs: 6800, endMs: 8600, claim: "Red cup moves toward the coaster." },
+      ],
+      reason: "Narration describes the visible motion.",
+    },
+  ],
+  recommendation: "needs_review",
+  warnings: [ILLUSTRATIVE_WARNING],
+};
+
+export type CatchCard = {
+  id: string;
+  status: EvidenceStatus;
+  title: string;
+  result: string;
+  report: VerificationReport;
+  provenance: EvidenceStatus;
+  href?: string; // set once the dashboard review view exists
+};
+
+export const CATCH_CARDS: CatchCard[] = [
+  { id: "mismatch", status: "HELD", title: "Said the red cup. Picked up the blue one.", result: "Acceptance held · no payable created", report: CATCH_REPORT_MISMATCH, provenance: "SIMULATED" },
+  { id: "retake", status: "ACCEPTED", title: "Retake matches the narration. Payable created.", result: "Accepted by the controller · one payable created", report: CATCH_REPORT_RETAKE, provenance: "SIMULATED" },
+  { id: "duplicate", status: "DUPLICATE", title: "Cropped re-upload. No second payable.", result: "Duplicate suspected · no second payable", report: CATCH_REPORT_DUPLICATE, provenance: "SIMULATED" },
+  { id: "unobservable", status: "REVIEW", title: "Hand covers the coaster. Sent to a person.", result: "Sent to a person · no payable yet", report: CATCH_REPORT_UNOBSERVABLE, provenance: "SIMULATED" },
 ];
