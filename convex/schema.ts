@@ -602,4 +602,15 @@ export default defineSchema({
   })
     .index("by_service_request", ["serviceId", "requestId"])
     .index("by_expiry", ["expiresAt"]),
+  // Cron leases, immutable agent request bindings and advisory exception snapshots.
+  scheduledCheckpoints: defineTable({
+    ...tenant, key: v.string(), orderId: v.optional(v.id("orders")),
+    kind: v.union(v.literal("job"), v.literal("observation"), v.literal("reconciliation"), v.literal("finance")),
+    generation: v.number(), nextAt: v.number(), leaseUntil: v.number(),
+    status: v.union(v.literal("running"), v.literal("complete"), v.literal("failed")),
+    cursor: v.optional(v.string()), fingerprint: v.optional(v.string()), payloadJson: v.optional(v.string()),
+    requestId: v.optional(v.string()), runId: v.optional(v.id("financeAgentRuns")),
+    lastErrorCode: v.optional(v.string()), updatedAt: v.number(),
+  }).index("by_key", ["organizationId", "key"]).index("by_order", ["orderId"]),
+
 });

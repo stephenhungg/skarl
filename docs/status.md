@@ -899,3 +899,27 @@ Frame commit validation ran against an isolated snapshot of the staged tree, exc
 Exactly one new authorization was created. Before it, finalized RPC confirmed the earlier rejected authorization's blockhash was invalid, treasury history contained only its original faucet deposit, and the order had no intent/attempt. The earlier private attempt was archived and its 1-USDC reservation retained; this retry kept a 1-USDC per-payment cap and a 2-USDC cumulative cap covering both reservations. No automatic second payment was sent.
 
 Validation: `pnpm check` passed **578 tests** (123 Node, 287 Convex, 168 payment tests), typechecks, documentation links and the production build. Subsequent incoming homepage-only edits passed fresh typechecks/build before the push. Rotation tests cover currently supported versus unsupported fee payers, every other quote field, signed-message fee-payer binding, cache expiry and single-authorization refusal. Those tests are simulated; the Explorer/RPC/Convex observations above are live. Base remains primary and the only payout rail; no Solana payout or bridge is claimed.
+## Backend batch — hosted cron jobs
+
+Added real Convex intervals: every two minutes, observe existing Base/Solana
+funding and Base payout attempts without signing/resending; every ten minutes,
+run the bounded finance-agent loop over changed accrued payables and exceptions.
+The loop persists tool calls/results/explanations, can propose stored payouts,
+and has no approval/signing authority. Unchanged state and completed failed model
+runs do not repeatedly spend inference; interrupted pre-action reservations reuse
+their durable request ID.
+
+Atomic leases/generations, least-recently-checked observation reservations and
+pagination cap each tick at three orders/four pending attempts per order.
+Confirmed/finalized/definitively failed attempts are skipped. Ten stale pending
+CDP webhook receipts per tick are classified from existing observations. Current
+unknown/late discrepancies persist as advisory snapshots/audits and remain in
+`exceptions.list`. Hashless attempts stay pending; none are re-sent.
+
+Controller/finance-agent query `scheduledData.snapshots` exposes scoped operating
+state. Global and finance-only kill switches are documented in the dashboard
+contract. Existing Gemini time/tool/amount caps apply. These jobs require the
+orchestrator's clean-main deployment; no hosted execution or live settlement is
+claimed from the new mocked tests.
+
+Cron commit validation: isolated staged-source `pnpm check` passed **567 tests** (122 Node, 304 Convex, 141 payment-route), typechecks, docs and production build. The 17 new cron cases cover Base/Solana receipt reconciliation, existing payout observation, ambiguity without resend, status/call caps, fair pagination, unchanged/failed finance runs, approval refusal and tenant/role fences. CLI API generation completed without activating a deployment; all provider/chain observations in these tests are mocked.
