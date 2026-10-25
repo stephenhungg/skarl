@@ -562,3 +562,7 @@ Both responses included `errorLink:https://docs.cdp.coinbase.com/api-reference/v
 No outgoing agent or treasury transfer is claimed. No deployment is needed for this documentation-only follow-up or the already-applied environment values. A live payout still requires licensed acceptance, the corresponding bound payable, independent stored approval and an explicitly enabled executor.
 
 Validation for this follow-up: `pnpm check` passed all typechecks, **466 tests** (107 Node, 273 Convex, 86 payments), local links/anchors in 33 Markdown files and the production web build. `git diff --check` passed. These local checks are separate from the live API and chain evidence above.
+
+## Solana funding rail (October 25)
+
+Implemented optional Solana Devnet x402 funding with Base first, durable message-hash claims, strict RPC reconciliation, a bounded CDP buyer, and an idempotent 1 USDC demo seed. Base payouts and human approval remain unchanged. Receive-only treasury `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh` and its canonical USDC ATA are live; the treasury address is configured in Vercel production and Convex. This is setup evidence, not a funding claim. Live x402 funding awaits the deployment owner's Convex deploy of `origin/main` and is not yet demonstrated. See [Solana rail](payments.md#solana-rail).

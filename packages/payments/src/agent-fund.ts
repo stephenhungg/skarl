@@ -63,6 +63,16 @@ async function jsonResponse(response: Response): Promise<Record<string, unknown>
 }
 
 export async function fundOrder(args = process.argv.slice(2)) {
+  const railIndex = args.indexOf("--rail");
+  if (railIndex !== -1) {
+    const rail = args[railIndex + 1];
+    if (rail !== "solana" && rail !== "base") throw new BuyerError("Usage: pnpm agent:fund --rail solana|base [orderId]");
+    args = args.filter((_, index) => index !== railIndex && index !== railIndex + 1);
+    if (rail === "solana") {
+      const { fundOrderWithSolana } = await import("./cdp-solana-buyer.ts");
+      return fundOrderWithSolana(args.filter(arg => arg !== "--cdp"));
+    }
+  }
   validateEnvironment();
   if (args.includes("--cdp")) {
     const { fundOrderWithCdp } = await import("./cdp-buyer.ts");

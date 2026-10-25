@@ -1,10 +1,10 @@
 # Payment architecture
 
-Updated October 25, 2026. **Base Sepolia only; test funds.** Implementation and tests do not establish a live transfer.
+Updated October 25, 2026. **Base Sepolia primary; optional Solana Devnet funding; test funds.** Implementation and tests do not establish a live transfer.
 
 ## Current implementation boundary
 
-Implemented: dynamic x402 funding, durable nonce claims, receipt verification, atomic funding/payout journals, three-way reconciliation, a testnet buyer CLI, and a controller browser-wallet payout library. The HTTP payment service authenticates to Convex with a shared secret. No schema additions were needed; existing intents, attempts, approvals, observations and journals are reused.
+Implemented: dynamic x402 funding, durable nonce claims, receipt verification, atomic funding/payout journals, three-way reconciliation, a testnet buyer CLI, and a controller browser-wallet payout library. The HTTP payment service authenticates to Convex with a shared secret. Existing intents, attempts, approvals, observations and journals are reused. Funding-related network/token validators accept both rails; payout validators stay Base-only. Solana message hashes have a dedicated deduplication index.
 
 Prior live funding evidence is recorded in [build status](status.md), including the v2 order's reconciled 10 USDC funding. This change does not claim a new transfer or live payout. A fresh public facilitator `/supported` read on October 25 returned V2 `exact`, `upto`, and `batch-settlement` on `eip155:84532`, plus `builder-code`, `eip2612GasSponsoring`, and `erc20ApprovalGasSponsoring` extensions. Skarl still enables **exact only**. Buyer ETH is unnecessary for EIP-3009 funding: the buyer signs an authorization and the facilitator pays transaction gas. Wallet MCP execution requires a connected human wallet and approval.
 
@@ -12,7 +12,7 @@ Prior live funding evidence is recorded in [build status](status.md), including 
 
 Canonical values come from `packages/contracts/src/chain.ts`: `PAYMENT_NETWORK`, `PAYMENT_CHAIN_ID`, `USDC_ADDRESS`, `USDC_DECIMALS`. Money stays bigint micro-USDC in code/Convex and decimal integer strings in HTTP JSON. Never infer an asset from its symbol.
 
-`@x402/core`, `@x402/evm`, `@x402/fetch`, `@x402/next`, `@x402/extensions`, `@x402/svm` and `@x402/paywall` are pinned to 2.28.0; `@coinbase/cdp-sdk` is pinned to 1.60.0. The SVM peer is required by the CDP SDK import graph; no Solana payment network is registered. The web route registers only the canonical Base Sepolia network and supplies an explicit asset/atomic amount, avoiding dollar-price parsing.
+`@x402/core`, `@x402/evm`, `@x402/fetch`, `@x402/next`, `@x402/extensions`, `@x402/svm` and `@x402/paywall` are pinned to 2.28.0; `@coinbase/cdp-sdk` is pinned to 1.60.0. The funding route registers Base Sepolia first and optionally Solana Devnet when `SKARL_SOLANA_TREASURY_ADDRESS` is configured. Both quote explicit assets and atomic amounts; paid evidence and payouts remain Base-only. `@solana/kit` is pinned directly to 6.10.0 for SVM transaction decoding.
 
 Default facilitator: `https://x402.org/facilitator`, which needs no CDP key for testnet. When both `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` are configured, both paid routes use `createCdpFacilitatorClient({apiKeyId, apiKeySecret})` from `@coinbase/cdp-sdk/x402`. Setting only one refuses service. `X402_FACILITATOR_URL` optionally overrides the public default. CDP failures never trigger a public fallback. SDK initialization checks supported networks before advertising requirements. `X-Skarl-Facilitator` names the configured provider (`cdp`, `x402.org`, or `custom`); `settledBy` is set only after a successful facilitator response. Structured settlement logs include the actual provider and transaction hash. Existing funding status does not guess a historical provider from current environment settings. [CDP facilitator documentation](https://docs.cdp.coinbase.com/x402/seller/facilitator)
 
@@ -38,7 +38,7 @@ The evidence sale claims its nonce before settlement, uses the existing payment-
 
 ## Funding a collection order
 
-`GET /api/orders/[id]/fund` returns the stored amount, treasury address, funding status and any transaction hash. IDs may be Convex IDs or the seeded public ID. `POST` protects that specific route with `@x402/next` and the `exact` EIP-3009 scheme.
+`GET /api/orders/[id]/fund` returns the stored amount, treasury address, funding status and any transaction hash. IDs may be Convex IDs or the seeded public ID. `POST` protects that specific route with `@x402/next` and the `exact` scheme (Base EIP-3009 first, Solana second when configured).
 
 Before a challenge, the server checks persisted buyer membership, ownership, order state and deadline. The current demo uses public, impersonable identity selectors (`x-skarl-demo-identity: buyer`), **not production authentication**. Receipt import still requires the private server service secret.
 
@@ -108,3 +108,24 @@ Before claiming the sponsor demo works, capture one live funding transaction, on
 
 
 SDK integration traps verified locally: `@coinbase/cdp-sdk/x402` imports its optional `@x402/svm` peer even for an EVM-only facilitator; pinning it fixes runtime import failures. Bazaar's 2.28.0 declaration omits the output schema unless an output example is also supplied. The Next middleware does not forward `result.extensionResponses`; the evidence route explicitly forwards that base64 JSON as `EXTENSION-RESPONSES`. Tests use simulated facilitator, RPC and Convex fixtures and do not prove catalog acceptance or payment settlement. No current Coinbase retail-MCP transaction cap is asserted here; that separate mainnet product is not this integration.
+
+
+## Solana rail
+
+Solana Devnet is a second **funding-only** rail targeting MLH Best Use of Solana. Coinbase/CDP and Base remain primary. Canonical network is `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`; USDC mint is `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, six decimals. There is no bridge or Solana payout flow: controller-approved browser-wallet payouts still require Base USDC liquidity.
+
+The CDP receive-only account `skarl-treasury-devnet` is `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh`. Its canonical USDC associated token account (ATA), `CtgPLBxHZU1UZcyovafXuQR2cVAFvpHksPh5HCBDJWHY`, was initialized through the USDC faucet and independently observed on Devnet before enabling payment. Its public address is configured as `SKARL_SOLANA_TREASURY_ADDRESS` in Vercel production and Convex. No treasury signing operation is used by this integration.
+
+After the deployment owner deploys `origin/main` to Convex, run `CONVEX_DEPLOYMENT=dev:keen-marmot-986 pnpm exec convex run seed:solanaDemo`. This idempotently creates `skarl-red-cup-demo-sol`: one sample, exactly 1 USDC; existing orders remain unchanged. Funding terms and outgoing payable denomination stay Base; the selected incoming rail is stored on the funding intent, attempt, observation and journal.
+
+With CDP credentials loaded privately, set `SKARL_APP_URL=https://skarl.vercel.app` and the approved Solana treasury address, then run `pnpm agent:fund --rail solana skarl-red-cup-demo-sol`. The buyer uses the managed `skarl-buyer-devnet` account, Solana Devnet `exact`, and `SpendControls` allowlisting only this network, USDC mint and treasury. It persists spend reservations and signed payloads privately and reconciles an existing attempt on rerun. A timeout never authorizes another payment. The facilitator injects `extra.feePayer`, pays fees and signs its own transaction slot; the buyer requires **0 SOL**.
+
+Before settlement, the server validates the payer signature, canonical mint, exact amount, treasury ATA and memo `skarl:<canonical Convex order ID>`. It claims `0x` + SHA-256 of the serialized message bytes durably; the final transaction signature is unavailable until the facilitator signs. A Solana message hash cannot claim another order or a case-mutated payer. Base58 addresses and signatures are case-sensitive throughout storage and reconciliation.
+
+After settlement, Solana RPC must show `meta.err === null`, confirmed status with at least two confirmations (or finalized), an outer `transferChecked` to the treasury ATA with the canonical mint, payer authority, amount and required memo. Parsed and raw transaction reads must agree on signature/slot, and the raw message must hash to the stored authorization. Only then may `confirmFunding` post the balanced journal and activate the order. Chain identity reuses `(network, txHash, logIndex)`, with `txHash` holding the Solana signature and `logIndex` the outer instruction index. `SOLANA_DEVNET_RPC_URL` optionally overrides the public Devnet RPC; its genesis hash is checked.
+
+`POST /api/payments/reconcile` accepts a case-preserved Solana signature as `txHash`. A lost facilitator response without a signature requires operator lookup of that transaction before recovery; the route does not scan or create a new payment. Solana Devnet does not use CDP webhooks or SQL API. Funding status and activity observations expose `network` and a rail-specific `explorerUrl` for dashboard badges.
+
+Implementation tests use simulated RPC/facilitator data and real local transaction signatures. Treasury/faucet setup is live; a real x402 Solana funding transaction is still pending the backend deployment and will be recorded here and in [build status](status.md) when observed.
+
+Live setup check: CDP buyer `35pgsKg8sUYQRbLuWSmgYnham9rWhqNuG1JJhGKN6TWy` has 2 USDC and 0 SOL before the funding demonstration. Two immediate faucet requests initially returned the same signature despite distinct idempotency keys; RPC showed only one deposit. The buyer now waits for each faucet signature to finalize before issuing the next claim. Private setup records retain the duplicate response and the separately confirmed replacement claim; no duplicate deposit is counted.

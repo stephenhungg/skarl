@@ -2,7 +2,7 @@
 
 Pitch: **Skarl is the AP/settlement seat for a human-data company.** It verifies narrated demonstrations with multimodal AI, then pays contributors and keeps the books, with x402 payments on Base Sepolia. The prize list on [Devpost](https://cal-hacks-13-0.devpost.com/) is authoritative. The deadline is October 25, 2026, 12:00 PM EDT (9:00 AM PDT).
 
-Current scope is **Base Sepolia only**. Repository docs and fixture tests are not evidence of a working sponsor integration.
+Current scope is **Base Sepolia primary, with Solana Devnet as a second funding-only rail**. Repository docs and fixture tests are not evidence of a working sponsor integration.
 
 ## Targeted tracks
 
@@ -11,6 +11,7 @@ Current scope is **Base Sepolia only**. Repository docs and fixture tests are no
 | [Hyphenate] The Hyphenated Enterprise: Autonomous Systems for Finance (**primary**) | The duplicate-clip catch, the blocked second payable, the agent's refused self-approval, a reconciled payout and balanced books |
 | [Coinbase] Best Use of x402, **Payment Agents** track | A buyer agent funds orders via x402 and the finance agent pays contributors, both through Coinbase Wallet MCP within approved caps |
 | [Convex] Best use of Convex | Convex as the system of record: live queries, atomic financial mutations, file storage, and a Workflow for the approval wait |
+| [MLH] Best Use of Solana | Solana Devnet x402 order funding settled by CDP, with strict RPC reconciliation; Base stays primary |
 | [MLH] Best Use of Gemini API | Two independent Gemini calls (silent video, audio) producing schema-validated, timestamped evidence |
 
 ## Hyphenate
@@ -93,9 +94,12 @@ The pipeline makes two independent calls so the visual evidence is not contamina
 
 Current configurable defaults are `gemini-4-argon` for visual evidence, `gemini-3.8-flash` for finance reasoning and read-only `askAgent`, and `gemini-3.5-transcribe` for audio. Billing is enabled; the team's latest probes returned correct HTTP 200 responses for 3.8 Flash, 4 Argon and 3.6 Flash. Earlier free-tier quota failures are historical and no longer current blockers. No automatic model fallback is configured. The shared transport gives each logical request one 30-second deadline across at most three transient attempts; finance rounds fit inside a two-minute overall budget. Preserve the actual model ID for every historical measurement and record prompt version and measured latency. [Configuration and probe results](ai-verification.md#models-and-configuration), [Gemini models](https://ai.google.dev/gemini-api/docs/models).
 
+## Solana
+
+**MLH Best Use of Solana** is targeted again through Solana Devnet x402 funding, settled by CDP. Base/Coinbase remain primary; payouts remain Base-only. Implementation and treasury ATA setup are complete; live funding evidence is pending the backend deployment. See [Solana rail](payments.md#solana-rail).
+
 ## Not targeted
 
-- **MLH Best Use of Solana:** dropped with the move to Base Sepolia.
 - **Auth0:** Cal Hacks 13.0 has no Auth0 prize. Demo identities are seeded Convex users whose roles are checked on the server, and they are labeled as demo identities.
 - **Cartesia or other extra layers:** out of scope.
 

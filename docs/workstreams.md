@@ -77,7 +77,7 @@ Ordering rule: never start a quality item while your core slice is red. At 05:00
 
 ## Cut (infrastructure only; designs kept in subsystem docs)
 
-The Railway Python worker, HMAC service gateway, job leasing, faster-whisper and SSCD (Gemini plus perceptual hashing replace them), the held-out eval split protocol (the mini evaluation replaces it), period close, Auth0 (no prize; demo identities instead), the Coinbase retail MCP (Base mainnet only) and Solana.
+The Railway Python worker, HMAC service gateway, job leasing, faster-whisper and SSCD (Gemini plus perceptual hashing replace them), the held-out eval split protocol (the mini evaluation replaces it), period close, Auth0 (no prize; demo identities instead), the Coinbase retail MCP (Base mainnet only). Solana Devnet was reopened as a tightly scoped second funding rail; payouts remain Base-only.
 
 ## Shared rules
 
