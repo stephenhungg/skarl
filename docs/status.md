@@ -931,3 +931,23 @@ Cron commit validation: isolated staged-source `pnpm check` passed **567 tests**
 The prior cron change also passed a later rebased full check of **613 tests** (126 Node, 319 Convex, 168 payment-route), including the concurrently merged visual jury and monotonic duplicate alignment.
 
 Guard commit validation: isolated staged-source `pnpm check` passed **649 tests** (162 Node, 319 Convex, 168 payment-route), typechecks, documentation and production build. All 36 wrapper tests inject command execution and configuration reads; none start a real Convex backend. Tests include process/file precedence, quoted/export/colon dotenv grammar, whitespace bypass refusal, local/anonymous allowance and explicit remote opt-in.
+
+## Mobile contribution slice (October 25, 2026)
+
+Standalone Expo SDK 58 (`expo 58.0.19`) iPhone app implemented in
+`apps/mobile`, with Bun and explicit pnpm workspace exclusion. Captures 10–30s
+back-camera narrated video, ~50 Hz available IMU channels, device metadata and
+consent; uploads private video/JSON with stable request IDs and resumable stages.
+Live reports show persisted status and timestamped criteria. Additive sensor
+attachment validates stored bytes and computes RMS/activity chart bins. Sensors
+never authorize acceptance or payment. The fixed-camera task makes a still-IMU
+recapture warning unsound, so that stretch is intentionally omitted.
+
+Strict mobile TypeScript, iOS Metro/Hermes and web exports, 8 mobile tests and
+`pnpm check` passed. Synthetic sensor backend regressions passed. The native UI
+uses the web tokens, converted Montreal/Fono fonts and a reduced-motion-aware
+settle transition. [390px comparison screenshots](mobile.md#visual-alignment)
+were rendered from the Expo web export and deployed contributor page. These checks do not establish physical iPhone camera,
+mic, sensors or live upload behavior. **Convex deployment is needed and was not
+performed by this work.** The operator deploys main, then follows the
+[phone run and smoke-test instructions](../apps/mobile/README.md).
