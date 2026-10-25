@@ -535,3 +535,81 @@ become active only after the designated deployment owner's clean-main deploy.
 ### Safe backend checks
 
 Use `pnpm test:convex` for isolated application tests. `pnpm check:convex` now refuses any remote deployment selected by process environment, `.env.local` or `.env`, including alternate deployment keys/remote self-hosted URLs. An explicit `--allow-cloud` is required for intentional remote sync; it does not waive the clean-checkout/matching-`origin/main` deployment rule or the designated deployment owner. The wrapper never forwards arbitrary CLI flags.
+
+## Mobile sensor evidence
+
+Additive mobile backend; **deploy from main before using**. Existing submissions
+and queries remain valid without a trace. No Convex deployment was performed by
+the mobile work. See [mobile capture](mobile.md) and the [phone quickstart](../apps/mobile/README.md).
+
+| Function | Kind | Exact args / identity |
+| --- | --- | --- |
+| `submissions:generateUploadUrl` | M | `{demoIdentity: "contributor"}`; obtain a separate URL for video and JSON |
+| `sensorTraces:attachSensorTrace` | A | `{demoIdentity: "contributor", submissionId: Id<"submissions">, storageId: Id<"_storage">}` |
+| `media:submissionEvidence` | Q | Existing `{demoIdentity: "controller" \| "contributor", submissionId: Id<"submissions">}`; contributors must own the submission |
+
+POST the JSON with `Content-Type: application/json`, maximum 2 MiB. Create the
+video submission normally, with acknowledged consent and a stable request UUID;
+then attach its trace. Action returns `{submissionId, replayed}`. Same storage ID
+replays; a different attachment is refused. Role, ownership, tenant and consent
+are checked server-side, including again at persistence. Accepted/rejected
+submissions cannot gain new sensor evidence. Explicit sensor failures leave the
+existing video contribution intact and must not trigger another creation.
+
+Trace format (synthetic shape illustration, not device evidence):
+
+```json
+{
+  "version": 1,
+  "sampleRateHz": 50,
+  "durationMs": 10000,
+  "recordedAt": "2026-10-25T10:30:00.000Z",
+  "clock": "js-callback-performance-now",
+  "sensors": ["accelerometer", "gyroscope", "deviceMotion"],
+  "device": {
+    "model": "iPhone", "os": "iOS", "osVersion": "26", "appVersion": "0.1.0",
+    "cameraFacing": "back", "requestedVideoQuality": "720p"
+  },
+  "samples": [
+    {"sensor": "accelerometer", "timestampMs": 0, "x": 0, "y": 0, "z": 1},
+    {"sensor": "gyroscope", "timestampMs": 0, "x": 0, "y": 0, "z": 0},
+    {"sensor": "deviceMotion", "timestampMs": 0, "x": 0, "y": 0, "z": 0}
+  ]
+}
+```
+
+Optional `device.resolution: string`, `device.fps: number` are actual measurements
+only; mobile currently omits them. Channels must match actual samples; empty
+channels/array explicitly mean unavailable. Timestamp order is strict per
+channel and nondecreasing across channels, bounded by duration; sample rates are capped, vectors finite/bounded,
+unknown fields rejected. Acceleration is **g including gravity**, gyro **rad/s**,
+and DeviceMotion linear acceleration **m/s² excluding gravity**.
+
+`media:submissionEvidence` adds this field (null when absent):
+
+```ts
+sensorTrace: {
+  storageId, sampleRateHz, sampleCount, durationMs, sensors, device,
+  recordedAt, clock, sizeBytes, attachedAt,
+  url: string | null, // private bearer URL; never publish/cache
+  motionSummary: {
+    source: "clientReported", version: 1, binWidthMs: 250,
+    accelRmsG: number | null,
+    gyroRmsRadPerSec: number | null,
+    linearAccelerationRmsMps2: number | null,
+    activeMotionIntervals: Array<{ startMs: number; endMs: number }>,
+    bins: Array<{
+      startMs: number; endMs: number; sampleCount: number;
+      accelRmsG: number | null; gyroRmsRadPerSec: number | null;
+      linearAccelerationRmsMps2: number | null; active: boolean;
+    }>
+  }
+}
+```
+
+Matthew can plot `bins` against video seconds (`startMs / 1000`), with separate
+axes/units per channel and gaps for `null`. `sampleCount` counts all channel
+readings, not video frames. Activity thresholds and approximation limits are in
+[mobile motion summary](mobile.md#motion-summary-for-the-dashboard). A still
+phone is normal for the fixed-camera task. These client-reported signals do not
+change report recommendations, human acceptance, payables or payment authority.
