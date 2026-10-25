@@ -5,7 +5,7 @@ import { Status } from "@/components/glaze/ui/status";
 import { Badge } from "@/components/glaze/ui/badge";
 import { cn } from "@/lib/glaze/utils";
 import { api, CONTROLLER, needsYou, useAudit, useExceptions, useOrderData, useOrderId, useReconciliation, type Id, type PayableRow, type SubmissionRow } from "./data";
-import { formatMs, basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
+import { rail, formatMs, basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
 import { Lordicon } from "./lordicon";
 import { ActivityFeed } from "./activity";
 import { Amount, Loading, PageHeader, Section, Unavailable } from "./ui";
@@ -92,7 +92,7 @@ export function NeedsYouList({ orderId, submissions, payables, standalone }: { o
 function Funding({ orderId }: { orderId: Id<"orders"> }) {
   const reconciliation = useReconciliation(orderId);
   const funding = reconciliation?.matches.find(match => match.eventKey.startsWith("funding:"));
-  const chain = parseChainIdentity(funding?.chainIdentity);
+  const chain = rail(funding?.chainIdentity);
   return (
     <Section title="Funding">
       {reconciliation === undefined ? <Loading rows={1} /> : !funding || !chain
@@ -101,8 +101,9 @@ function Funding({ orderId }: { orderId: Id<"orders"> }) {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-panel border border-line-faint px-4 py-3">
             <Status status="ok">Reconciled</Status>
             <Amount value={funding.amountAtomic} className="type-label" />
-            <a href={basescanTx(chain.txHash)} target="_blank" rel="noreferrer" className="flex items-center gap-1 type-label-sm text-text-2 underline underline-offset-4">
-              View on BaseScan
+            <Badge variant="outline">{chain.label}</Badge>
+            <a href={chain.href} target="_blank" rel="noreferrer" className="flex items-center gap-1 type-label-sm text-text-2 underline underline-offset-4">
+              View on {chain.explorer}
             </a>
           </div>
         )}

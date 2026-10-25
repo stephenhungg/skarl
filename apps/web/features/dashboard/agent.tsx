@@ -61,7 +61,7 @@ function RunMeta({ run }: { run: AgentRun }) {
   const proposed = BigInt(run.proposedAtomic);
   return (
     <span className="type-label-sm text-text-3">
-      {run.model} &middot; {new Date(run._creationTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}{took ? ` · took ${took}` : ""}
+      {run.provider ? `${humanize(run.provider)} ` : ""}{run.model} &middot; {new Date(run._creationTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}{took ? ` · took ${took}` : ""}
       {" · "}{proposed > 0n ? `proposed ${formatUsdc(run.proposedAtomic)} of ${formatUsdc(run.maxBatchAtomic)} USDC cap` : "no payouts proposed"}
     </span>
   );

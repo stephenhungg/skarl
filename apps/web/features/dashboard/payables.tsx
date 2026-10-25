@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import type { EIP1193Provider } from "viem";
 import { Button } from "@/components/glaze/ui/button";
@@ -9,11 +9,14 @@ import { Status } from "@/components/glaze/ui/status";
 import { cn } from "@/lib/glaze/utils";
 import { usePayout } from "@/lib/payments/use-payout";
 import { getPayoutRecovery } from "@/lib/payments/payout";
-import { api, CONTROLLER, FINANCE_AGENT, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type PayableRow } from "./data";
-import { basescanAddress, basescanTx, formatTime, humanize, parseChainIdentity, shortHash } from "./format";
+import { api, CONTROLLER, FINANCE_AGENT, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type Id, type PayableRow } from "./data";
+import { basescanAddress, basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
+import { actorName } from "./activity";
+import { executeApprovedRefund } from "@/lib/payments/refund";
+import { Textarea } from "@/components/glaze/ui/textarea";
 import { ReceiptRule } from "@/components/ui/payment-receipt-printer";
 import { Receipt } from "./receipt";
-import { Amount, ConfirmDialog, Loading, PageHeader, Unavailable } from "./ui";
+import { Amount, ConfirmDialog, Loading, PageHeader, QueryBoundary, Unavailable } from "./ui";
 import { toast } from "@/components/glaze/ui/toast";
 
 const STEPS = ["Accrued", "Proposed", "Approved", "Submitted", "Paid"] as const;
@@ -35,10 +38,12 @@ export function Payables() {
   return (
     <>
       <PageHeader title="Payables" />
+      <RefusalHero audit={audit ?? []} />
       {payables === undefined ? <Loading rows={3} /> : payables.length === 0
         ? <Unavailable title="No payables yet" description="One appears when you accept a licensed clip." />
         : <div className="flex flex-col gap-4">{payables.map(p => <PayableCard key={p._id} payable={p} audit={audit ?? []}
             matches={reconciliation?.matches ?? []} />)}</div>}
+      {orderId && <QueryBoundary><Refund orderId={orderId} /></QueryBoundary>}
     </>
   );
 }
@@ -176,5 +181,78 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
       {payout.error && <p role="alert" className="type-label-sm text-fail-text">{payout.error.message}</p>}
       {payout.result && <a href={payout.result.explorerUrl} target="_blank" rel="noreferrer" className="type-label-sm underline underline-offset-4">View submitted transaction</a>}
     </div>
+  );
+}
+
+/** The separation-of-duties moment: an approval the system refused, shown first because it is the proof. */
+function RefusalHero({ audit }: { audit: AuditEvent[] }) {
+  const refusals = audit.filter(e => e.action.endsWith("_refused") && /approv/.test(`${e.action} ${e.reason}`));
+  const latest = refusals[0];
+  if (!latest) return null;
+  return (
+    <div className="mb-6 flex flex-wrap items-start gap-3 rounded-panel border border-fail bg-fail-tint px-4 py-3">
+      <Status status="fail" className="shrink-0">Refused</Status>
+      <div className="min-w-0 flex-1">
+        <p className="type-label">{actorName(latest.actor.identity)} tried to approve a payout and was refused.</p>
+        <p className="type-body-sm text-text-2">{readableReason(latest.reason)} &middot; {formatTime(latest.occurredAt)}{refusals.length > 1 ? ` \u00b7 ${refusals.length} refusals in total` : ""}</p>
+      </div>
+      <Link href="/dashboard/audit" className="type-label-sm underline underline-offset-4">Audit log</Link>
+    </div>
+  );
+}
+
+/** A buyer's cancelled remainder: refund proposal, independent approval, wallet signature, observed transfer. */
+function Refund({ orderId }: { orderId: Id<"orders"> }) {
+  const refund = useQuery(api.refunds.forOrder, { demoIdentity: CONTROLLER, orderId });
+  const approve = useMutation(api.refunds.approve);
+  const provider = useInjectedWallet();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [signing, setSigning] = useState(false);
+  if (!refund) return null;
+  const approved = refund.approval?.status === "approved";
+  async function sign() {
+    if (!provider || !refund) return;
+    setSigning(true);
+    try {
+      await executeApprovedRefund({ commandId: refund.commandId, demoIdentity: CONTROLLER, provider });
+      toast.success("Refund submitted", { description: "Waiting for confirmations." });
+    } catch (error) {
+      toast.fail("Refund not sent", { description: error instanceof Error ? error.message : "Check the wallet before trying again." });
+    } finally { setSigning(false); }
+  }
+  return (
+    <section className="mt-8" aria-label="Buyer refund">
+      <h2 className="mb-3 type-heading-sm">Buyer refund</h2>
+      <article className="shell">
+        <div className="panel flex flex-wrap items-baseline gap-3 p-4">
+          <Amount value={refund.amountAtomic} className="type-heading" />
+          <span className="type-body-sm text-text-2">to <span className="mono">{shortHash(refund.recipientAddress, 8, 6)}</span></span>
+          <Status status={refund.txHash ? "running" : approved ? "waiting" : "idle"} className="ms-auto">{humanize(refund.status)}</Status>
+          {refund.explorerUrl && <a href={refund.explorerUrl} target="_blank" rel="noreferrer" className="basis-full type-label-sm underline underline-offset-4">View transfer on BaseScan</a>}
+        </div>
+        <div className="shell-foot flex items-center gap-2">
+          {!approved && !refund.txHash && <>
+            <span className="me-auto type-label-sm text-text-3">Needs an independent controller approval</span>
+            <Button size="sm" onClick={() => setOpen(true)}>Approve refund</Button>
+          </>}
+          {refund.executionAvailable && <>
+            <span className="me-auto type-label-sm text-text-3">{provider ? "Approved. Sign in the treasury wallet." : "Connect the treasury wallet in this browser to sign."}</span>
+            <Button size="sm" disabled={!provider || signing} onClick={() => void sign()}>{signing ? "Signing" : "Sign refund"}</Button>
+          </>}
+        </div>
+      </article>
+      <ConfirmDialog open={open} onOpenChange={setOpen} title="Approve this refund?" actionLabel="Approve refund"
+        description="You sign the transfer in your wallet after this."
+        onConfirm={async () => {
+          if (!reason.trim()) throw new Error("Add a reason first.");
+          const result = await approve({ demoIdentity: CONTROLLER, commandId: refund.commandId as Id<"paymentCommands">, reason: reason.trim() });
+          if (result && typeof result === "object" && "ok" in result && !result.ok) throw new Error(`Refused: ${humanize(String((result as { code?: string }).code ?? "refused"))}.`);
+          toast.success("Refund approved");
+        }}>
+        <label className="mb-1 block type-label" htmlFor="refund-reason">Reason</label>
+        <Textarea id="refund-reason" rows={2} value={reason} onChange={event => setReason(event.target.value)} />
+      </ConfirmDialog>
+    </section>
   );
 }

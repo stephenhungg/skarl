@@ -37,18 +37,20 @@ const CONTROLLER_NAV: ShellConfig["nav"] = [
   { group: "Work", items: [
     { href: "/dashboard/submissions", label: "Submissions", icon: "file-pencil", count: "review" },
     { href: "/dashboard/payables", label: "Payables", icon: "coins", count: "approve" },
+    { href: "/dashboard/reconciliation", label: "Reconciliation", icon: "check" },
     { href: "/dashboard/ledger", label: "Ledger", icon: "layers" },
   ] },
   { group: "System", items: [
     { href: "/dashboard/agent", label: "Finance agent", icon: "browser-terminal" },
     { href: "/dashboard/audit", label: "Audit log", icon: "fingerprint-circle" },
     { href: "/dashboard/scenarios", label: "Scenario lab", icon: "wrench" },
+    { href: "/dashboard/integrations", label: "Integrations", icon: "globe" },
   ] },
 ];
 export const CONTROLLER_SHELL: ShellConfig = {
   home: "/dashboard", role: "Controller", homeLabel: "Overview", nav: CONTROLLER_NAV,
   mobile: [CONTROLLER_NAV[0]!.items[0]!, CONTROLLER_NAV[0]!.items[1]!, CONTROLLER_NAV[1]!.items[0]!, CONTROLLER_NAV[1]!.items[1]!],
-  titles: { receipt: "Receipt", inbox: "Needs you", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log", scenarios: "Scenario lab" },
+  titles: { receipt: "Receipt", inbox: "Needs you", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log", scenarios: "Scenario lab", reconciliation: "Reconciliation", integrations: "Integrations" },
   switchTo: { label: "Open contributor view", href: "/contribute" },
 };
 const STORE = "skarl:dashboard:sidebar";

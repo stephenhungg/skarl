@@ -51,3 +51,13 @@ export function readableReason(reason: string) {
     : (/^[a-z0-9_]+$/.test(body.split(": ")[0]!) ? body.split(": ").map((part, i) => i === 0 ? humanize(part) : part).join(". ") : body);
   return /^[a-z0-9_]+$/.test(head!) ? `${humanize(head!)}. ${tail}` : reason;
 }
+
+/** Rail label and explorer link from a CAIP chain identity ("eip155:84532:..." or "solana:<genesis>:..."). */
+export function rail(chainIdentity: string | null | undefined) {
+  const parsed = parseChainIdentity(chainIdentity);
+  if (!chainIdentity || !parsed) return null;
+  if (chainIdentity.startsWith("solana:")) {
+    return { label: "Solana Devnet", explorer: "Solana Explorer", href: `https://explorer.solana.com/tx/${parsed.txHash}?cluster=devnet`, ...parsed };
+  }
+  return { label: "Base Sepolia", explorer: "BaseScan", href: basescanTx(parsed.txHash), ...parsed };
+}

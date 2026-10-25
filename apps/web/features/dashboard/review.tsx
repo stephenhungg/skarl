@@ -12,6 +12,7 @@ import { cn } from "@/lib/glaze/utils";
 import { api, CONTROLLER, useOrderData, useOrderId, type Id } from "./data";
 import { formatMs, humanize, shortHash } from "./format";
 import { SubmissionStatus } from "./submissions";
+import { WitnessReceipt } from "./witnesses";
 import { ConfirmDialog, Loading, PageHeader, Unavailable } from "./ui";
 import { toast } from "@/components/glaze/ui/toast";
 
@@ -137,6 +138,7 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
               })}
             </ol>
           )}
+          <WitnessReceipt submissionId={submissionId} />
           <Decision submissionId={submissionId} status={report.status} report={parsed} verificationOnly={report.verificationOnly} />
         </aside>
       </div>
