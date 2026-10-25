@@ -1,11 +1,14 @@
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { colors as c, fonts as f } from '../../theme';
 
-type Props = { style?: StyleProp<ViewStyle>; compact?: boolean; title?: string; object?: string; target?: string; distractors?: string[] };
+type Props = { style?: StyleProp<ViewStyle>; compact?: boolean; title?: string; object?: string; target?: string; distractors?: string[]; imageUrl?: string | null };
 const label = (value: string) => value.replace(/[_-]/g, ' ');
 
 /** Actual frozen task props, with a neutral title treatment while extraction is pending. */
-export function TaskArt({ style, compact, title, object, target, distractors = [] }: Props) {
+export function TaskArt({ style, compact, title, object, target, distractors = [], imageUrl }: Props) {
+  if (imageUrl) return <View accessibilityLabel={title} style={[s.art, s.bleed, style]}>
+    <Image source={{ uri: imageUrl }} resizeMode="cover" style={StyleSheet.absoluteFill} />
+  </View>;
   return <View accessibilityLabel={title} style={[s.art, style]}>
     <View style={[s.card, compact && s.compact]}>
       <Text numberOfLines={compact ? 2 : 3} style={[s.object, compact && s.small]}>{object ? label(object) : title ?? 'Task'}</Text>
@@ -16,6 +19,7 @@ export function TaskArt({ style, compact, title, object, target, distractors = [
 }
 const s = StyleSheet.create({
   art: { backgroundColor: c.mist, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  bleed: { padding: 0 },
   card: { borderRadius: 18, borderWidth: 1, borderColor: c.haze, backgroundColor: c.paper, padding: 20, gap: 10, maxWidth: '100%' },
   compact: { padding: 6, borderRadius: 8, borderWidth: 0, backgroundColor: 'transparent' },
   object: { fontFamily: f.medium, fontSize: 25, color: c.ink },

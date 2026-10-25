@@ -11,6 +11,7 @@ export type Summary = {
   order: { _id: string; _creationTime: number; publicId: string; title: string; status: string; network: string; contributorRateAtomic: string;
     quantityRequested: string; acceptedCount: string; deadlineAt?: number; taskSpecStatus?: 'pending' | 'ready'; taskSpec?: TaskSpec };
   rubric: { version: number; contentHash: string; taskPrompt: string; taskSpecStatus?: 'pending' | 'ready'; taskSpec?: TaskSpec; criteria: { criterionId: string; description: string; modality: string }[] } | null;
+  thumbnailUrl?: string | null;
 };
 export type LivenessChallenge = { challengeId: string; words: string[]; expiresAt: number };
 export type Report = {

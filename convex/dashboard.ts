@@ -29,7 +29,8 @@ export const orderSummary = query({
     return { order: { ...order, quantityRequested: order.quantityRequested.toString(), acceptedCount: order.acceptedCount.toString(),
       autoPay: order.autoPay ? { ...order.autoPay, maxPerClipAtomic: order.autoPay.maxPerClipAtomic.toString() } : undefined,
       pricePerSampleAtomic: order.pricePerSampleAtomic.toString(), contributorRateAtomic: order.contributorRateAtomic.toString(), budgetAtomic: order.budgetAtomic.toString() },
-      rubric, balances, demoOnly: true, realFundingRequired: order.status === "awaiting_funding" };
+      rubric, balances, demoOnly: true, realFundingRequired: order.status === "awaiting_funding",
+      thumbnailUrl: order.thumbnailStorageId ? await ctx.storage.getUrl(order.thumbnailStorageId) : null };
   },
 });
 

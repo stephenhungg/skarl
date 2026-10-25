@@ -43,7 +43,7 @@ export function TaskDetailScreen({ navigation, route }: RootProps<'TaskDetail'>)
   return <View style={s.screen}>
     <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}>
       <View>
-        <TaskArt title={task?.title} {...task?.taskSpec} style={[s.hero, { paddingTop: insets.top }]} />
+        <TaskArt title={task?.title} {...task?.taskSpec} imageUrl={task?.thumbnailUrl} style={[s.hero, { paddingTop: insets.top }]} />
         <PressableScale accessibilityRole="button" accessibilityLabel="Back" onPress={() => navigation.goBack()} style={[s.back, { top: insets.top + 8 }]}>
           <ChevronLeft />
         </PressableScale>

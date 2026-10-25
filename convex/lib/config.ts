@@ -29,6 +29,7 @@ export const configuredVideoModel = () => envString("GEMINI_VIDEO_MODEL", "gemin
 export const configuredFinanceModel = () => envString("GEMINI_FINANCE_MODEL", "gemini-3.8-flash");
 export const configuredAudioModel = () => envString("GEMINI_AUDIO_MODEL", "gemini-3.5-transcribe");
 export const configuredClaudeModel = () => envString("ANTHROPIC_MODEL", "claude-sonnet-5-5");
+export const configuredImageModel = () => envString("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image");
 export const transcriptionModel = () => envString("GEMINI_TRANSCRIPTION_MODEL", "gemini-3.5-transcribe");
 export const evaluationVideoModels = () => {
   // The jury is its own pair (pre-config behaviour); deriving it from GEMINI_VIDEO_MODEL collapsed it to one model.

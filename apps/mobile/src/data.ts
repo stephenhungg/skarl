@@ -12,6 +12,7 @@ export type LiveTask = {
   openSpots: string; quantity: string; isNew: boolean; criteria: NonNullable<Summary['rubric']>['criteria'];
   steps: string[];
   rubricVersion: number; rubricHash: string; network: string; taskSpec?: Summary['order']['taskSpec'];
+  thumbnailUrl: string | null;
 };
 
 /** Order titles name what is being collected; the category is that noun phrase, nothing more. */
@@ -32,6 +33,7 @@ function toTask(orderId: string, summary: Summary | undefined, network: string):
     closed: CLOSED.includes(order.status), openSpots: (open < 0n ? 0n : open).toString(), quantity: order.quantityRequested,
     isNew: Date.now() - order._creationTime < mobileConfig.newTaskWindowMs, criteria: rubric.criteria,
     rubricVersion: rubric.version, rubricHash: rubric.contentHash, network: order.network ?? network, taskSpec: spec,
+    thumbnailUrl: summary.thumbnailUrl ?? null,
     steps: [...(spec?.steps ?? rubric.criteria.map(criterion => criterion.description)), ...(spec?.narration ?? [])],
   };
 }

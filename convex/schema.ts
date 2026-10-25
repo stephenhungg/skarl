@@ -154,6 +154,8 @@ export default defineSchema({
     ...tenant,
     ...asset,
     publicId: v.string(),
+    // Advisory illustration generated from the task's own title and steps; never evidence.
+    thumbnailStorageId: v.optional(v.id("_storage")),
     buyerTokenIdentifier: tokenIdentifier,
     buyerWalletAddress: evmAddress,
     // Optional operator-selected treasury, frozen at order creation (Base only).
