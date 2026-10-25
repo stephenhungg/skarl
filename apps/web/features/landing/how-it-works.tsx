@@ -14,8 +14,8 @@ const PANES: Step[] = [
 
 function Pane({ step }: { step: Step }) {
   return (
-    <div className="relative">
-      <LandingFigure name={step.fig} className="rounded-none" />
+    <div className="relative overflow-hidden rounded-[12px]">
+      <LandingFigure name={step.fig} />
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 px-5 pb-4 pt-12"
         style={{ background: "linear-gradient(180deg, transparent, rgb(var(--ink) / .85) 55%)" }}
@@ -42,14 +42,14 @@ function SeamArrow({ left, top, rotate }: { left: string; top: string; rotate: n
   );
 }
 
-// The four steps as one window: four panes with thin bars between them and arrows on the seams.
+// The four steps as a tight two by two grid of panels, with arrows on the seams between them.
 export function HowItWorks() {
   return (
     <section id="how-it-works" aria-labelledby="how-it-works-title" className="py-[72px] xl:py-[108px]">
       <div className="frame">
         <SectionHeader id="how-it-works-title" eyebrow="How Skarl works" title="From task to payout" />
         <div className="relative mx-auto mt-10 max-w-[760px]">
-          <ol className="m-0 grid list-none grid-cols-1 gap-[6px] overflow-hidden rounded-[16px] p-0 min-[640px]:grid-cols-2">
+          <ol className="m-0 grid list-none grid-cols-1 gap-[10px] p-0 min-[640px]:grid-cols-2">
             {PANES.map(step => (
               <li key={step.title} className={step.order}><Pane step={step} /></li>
             ))}
