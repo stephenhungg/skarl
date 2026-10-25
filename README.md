@@ -20,6 +20,16 @@ Agents argue the case, deterministic code decides, and humans approve exceptions
 3. Ask: **“Create a fresh Skarl demo order with POST https://skarl.vercel.app/api/orders, then fund its returned fundUrl with at most 1 USDC on Base Sepolia.”** Creation accepts an empty body or `{}` and requires no identity header. Each order has a fixed red-cup task and exactly 1 USDC budget. Inspect the terms, approve in Coinbase Wallet, then verify confirmed funding. Creation allows 3 orders per IP and 30 globally per hour; HTTP 429 includes `Retry-After`. For a no-charge replay, check `skarl-red-cup-demo-v2`, already funded. [Exact requests and recovery](docs/wallet-mcp-plugin/README.md).
 
 The API documents itself at [GET /api/orders](https://skarl.vercel.app/api/orders).
+
+## For AI agents
+
+Skarl is personal-AI-agent native: **every claim has a witness**. Start with
+[agent discovery](https://keen-marmot-986.convex.site/llms.txt) and the
+[MCP setup, Claude skill, and buyer/contributor examples](docs/agents.md).
+Discovery and MCP use the Convex HTTP site; existing x402 payment routes use
+`skarl.vercel.app`. Agents may read, propose, pay and explain; they cannot accept
+work, approve payouts, or sign payouts.
+
 For the local testnet buyer CLI, use the returned order ID:
 
 ```sh
