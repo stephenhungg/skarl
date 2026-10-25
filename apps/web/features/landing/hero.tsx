@@ -4,8 +4,7 @@ import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/button";
 import { DotField } from "@/components/dot-field";
-import { StatusPill } from "@/components/status-pill";
-import { DEMO_VIDEO_URL, PROOF_LOG, SETTLEMENT } from "./evidence";
+import { DEMO_VIDEO_URL } from "./evidence";
 
 const SETTLE = [0.43, 0.42, 0.37, 0.97] as const;
 
@@ -18,7 +17,6 @@ function Rise({ delay, duration, children, className }: { delay: number; duratio
 }
 
 export function Hero() {
-  const latest = PROOF_LOG[0];
   return (
     <section className="relative flex min-h-[860px] flex-col items-center justify-center overflow-clip pt-16" aria-labelledby="hero-title">
       <motion.div className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.25, duration: 0.65, ease: SETTLE }}>
@@ -45,20 +43,6 @@ export function Hero() {
             <Link href={DEMO_VIDEO_URL} target="_blank" rel="noopener noreferrer" className="text-[14px] text-slate-500 underline decoration-haze underline-offset-4 hover:text-deep">Watch a 3 min demo</Link>
           </Rise>
         )}
-        <Rise delay={0.6} duration={0.65} className="mt-10">
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 rounded-[10px] bg-[rgb(var(--paper)/.85)] px-4 py-2.5 backdrop-blur-[4px]">
-            <span className="flex items-center gap-2 text-[12px] text-slate-700">
-              <StatusPill status={SETTLEMENT.status} />
-              <span className="mono">{SETTLEMENT.label}: {SETTLEMENT.detail}</span>
-            </span>
-            {latest && (
-              <span className="flex items-center gap-2 text-[12px] text-slate-700">
-                <StatusPill status={latest.status} />
-                <span className="mono">{latest.date} {latest.title}</span>
-              </span>
-            )}
-          </div>
-        </Rise>
       </div>
     </section>
   );
