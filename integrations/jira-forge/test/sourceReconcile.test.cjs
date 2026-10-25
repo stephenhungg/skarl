@@ -76,3 +76,16 @@ test('a sync that fails before any Jira write records failed, not uncertain', as
   const attempt = [...records.values()].find(value => value.action?.type === 'sync_source');
   assert.equal(attempt.state, 'failed');
 });
+test('a 4xx on create is Jira refusing the request, so it is failed rather than uncertain; a 5xx stays uncertain', async () => {
+  for (const [status, expected] of [[400, 'failed'], [503, 'uncertain']]) {
+    const records = new Map();
+    const store = { exclusive: async work => work(), kvs: { get: async key => records.get(key), set: async (key, value) => records.set(key, value) },
+      saveAudit: async value => records.set(`audit:${value.id}`, structuredClone(value)), newAudit: data => ({ id: `a-${records.size}`, timestamp: 1, ...data }),
+      rateContext: async () => ({ usedActions: 0, recentIssueCount: 0 }), rekeyRateIssue: async () => {}, listActions: async () => ({ actions: [], nextCursor: null }) };
+    const item = { id: 'src-1', kind: 'reconciliation_exception', status: 'open', createdAt: 1, description: 'Held payout', simulated: true };
+    const fetcher = async url => url.endsWith('/jira/feed') ? { ok: true, text: async () => JSON.stringify({ version: 1, generatedAt: 1, items: [item] }) } : { ok: true };
+    const jira = { adf: text => text, findSource: async () => null, createIssue: async () => { const error = new Error(`Jira request failed (${status})`); error.status = status; throw error; } };
+    await createSync({ store, jira, config: { projectKey: 'OPS', feedSecret: 'secret', convexSiteUrl: 'https://keen-marmot-986.convex.site', hourlyBudget: 40, issueType: 'Task' }, fetcher }).sync();
+    assert.equal([...records.values()].find(value => value.action?.type === 'sync_source').state, expected);
+  }
+});

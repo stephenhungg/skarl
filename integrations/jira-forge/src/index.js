@@ -77,7 +77,10 @@ exports.scheduledSync = async () => {
   // Read-only reconciliation first, so the sync's health publish reflects it. Never blocks the sync.
   try { console.log('Guard reconcile pass', JSON.stringify(await deps.reconciler.reconcileOpen())); }
   catch (error) { console.error('Guard reconcile pass skipped', error.code || 'error'); }
-  return deps.sync.sync();
+  const result = await deps.sync.sync();
+  // Counts and our own status-only messages; never feed or Jira response bodies.
+  console.log('Guard sync', JSON.stringify({ created: result.created, updated: result.updated, skipped: result.skipped, errors: result.errors.map(item => item.reason) }));
+  return result;
 };
 exports.issueEvent = async event => {
   try { return await services().agent.triage(event); }

@@ -44,8 +44,9 @@ function createSync({ store, jira, config, fetcher }) {
               ...(item.orderId ? [`Order: ${item.orderId}`] : []), clean(item.description, 2000),
               ...(item.witnessReceiptUrl ? [`Witness receipt: ${item.witnessReceiptUrl} (requires authorized Skarl access)`] : []),
               'This issue is operational evidence. Financial decisions require independent controller authorization.'].join('\n');
+            const fields = { project: { key: config.projectKey }, issuetype: { name: config.issueType }, summary: clean(`[Skarl${item.simulated ? ' simulated' : ''}] ${item.kind}: ${item.status} — ${item.id}`, 250), description: jira.adf(description), labels };
             wrote = true;
-            const issue = await jira.createIssue({ project: { key: config.projectKey }, issuetype: { name: config.issueType }, summary: clean(`[Skarl${item.simulated ? ' simulated' : ''}] ${item.kind}: ${item.status} — ${item.id}`, 250), description: jira.adf(description), labels }, { id: item.id, fingerprint });
+            const issue = await jira.createIssue(fields, { id: item.id, fingerprint });
             issueKey = issue.key;
             // Persist the returned Jira identity immediately. A lost create
             // response remains pending and is never automatically re-created.
@@ -70,8 +71,10 @@ function createSync({ store, jira, config, fetcher }) {
           entry.issueKey = issueKey; entry.state = 'applied'; entry.after = { sourceId: item.id, fingerprint, issueKey };
           await store.saveAudit(entry);
         } catch (error) {
-          // Only a Jira write can leave an unknown outcome; a failed read or precondition changed nothing.
-          entry.state = wrote ? 'uncertain' : 'failed'; entry.reason = clean(error.message, 500); await store.saveAudit(entry);
+          // Only a Jira write can leave an unknown outcome; a failed read or precondition changed nothing,
+          // and a 4xx is Jira refusing the request outright. Timeouts and 5xx stay uncertain.
+          const rejected = Number.isInteger(error.status) && error.status >= 400 && error.status < 500;
+          entry.state = wrote && !rejected ? 'uncertain' : 'failed'; entry.reason = clean(error.message, 500); await store.saveAudit(entry);
           result.errors.push({ id: item.id, reason: entry.reason });
         }
       }
