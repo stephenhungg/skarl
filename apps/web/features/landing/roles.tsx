@@ -45,7 +45,7 @@ export function Roles() {
             ))}
           </ul>
           <p className="m-0 text-[12px] leading-[1.35] text-slate-500">
-            These hold in the ledger and Convex test suites, which run on fixtures. Demo identities can be impersonated, so the role checks are demo policy, not production sign-in.
+            These hold in our ledger and Convex test suites, which run on fixtures, and since demo identities can be impersonated these role checks are demo policy for now.
           </p>
         </div>
       </Reveal>

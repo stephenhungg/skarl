@@ -46,7 +46,7 @@ export function ProofLog() {
 
       <div className="flex justify-end px-0 pt-6 md:px-6">
         <a href={EVIDENCE_DOCS_URL} target="_blank" rel="noopener noreferrer" className="pl-open cut-regular relative flex items-center py-2 pl-2 pr-[38px] text-[16px] leading-[1.2] text-slate-700 hover:text-deep">
-          Browse the evidence
+          Browse our evidence
           <ArrowGlyph className="pl-open-a absolute top-1/2 -translate-y-1/2" />
           <ArrowGlyph className="pl-open-b absolute top-1/2 -translate-y-1/2" />
         </a>

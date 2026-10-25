@@ -56,7 +56,7 @@ export function Footer() {
           <div className="flex max-w-[360px] flex-col gap-4">
             <Wordmark size={24} />
             <p className="m-0 text-[14px] leading-[1.3] tracking-[0.01em] text-slate-500">
-              Narrated human demonstrations, checked against the video and paid in test USDC after a person approves.
+              Narrated task videos from real people, reviewed by a person and paid in test USDC.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 md:w-[540px] md:flex-none">

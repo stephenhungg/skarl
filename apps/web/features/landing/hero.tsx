@@ -33,7 +33,7 @@ export function Hero() {
         </Rise>
         <Rise delay={0.35} duration={0.5} className="mt-4 max-w-[600px]">
           <p className="text-[14px] leading-[1.2] tracking-[0.01em] text-slate-500 md:text-[18px]">
-            AI teams post a task and fund it. You record yourself doing it and say what you are doing. The video is checked against what you said, and once a person approves it you are paid in test USDC on Base Sepolia.
+            AI teams post tasks they need recorded, you film yourself doing one while you talk through it, and once a reviewer signs off you get paid in test USDC on Base Sepolia.
           </p>
         </Rise>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-[18px]">
@@ -42,7 +42,7 @@ export function Hero() {
         </div>
         {DEMO_VIDEO_URL && (
           <Rise delay={0.65} duration={0.5} className="mt-4">
-            <Link href={DEMO_VIDEO_URL} target="_blank" rel="noopener noreferrer" className="text-[14px] text-slate-500 underline decoration-haze underline-offset-4 hover:text-deep">Watch the 3 min demo</Link>
+            <Link href={DEMO_VIDEO_URL} target="_blank" rel="noopener noreferrer" className="text-[14px] text-slate-500 underline decoration-haze underline-offset-4 hover:text-deep">Watch a 3 min demo</Link>
           </Rise>
         )}
         <Rise delay={0.6} duration={0.65} className="mt-10">
