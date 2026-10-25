@@ -235,6 +235,13 @@ describe("observation-only scheduled reconciliation", () => {
     const snapshot = await f.t.query(snapshots, { demoIdentity: "controller", orderId: f.orderId });
     expect(snapshot.some((row: any) => row.snapshot?.some?.((x: any) => x.exception.code === "late_settlement"))).toBe(true);
   });
+  it("does not report planted SIMULATED scenario attempts as stuck settlements", async () => {
+    // Scenario fixtures are designed never to reconcile; counting them as pending would mark the reconciliation cron unhealthy forever.
+    const f = await setup(); await funding(f, false, null);
+    await f.t.run(async ctx => { const row = (await ctx.db.query("paymentAttempts").collect())[0]; await ctx.db.patch(row._id, { attemptId: "SIMULATED:bank_mismatch:fixture" }); });
+    expect(await f.t.action(reconcile, {})).toMatchObject({ pending: 0, confirmed: 0, status: "complete" });
+    expect((await counts(f)).observations).toBe(0);
+  });
   it("atomic leases coalesce overlapping ticks and reject stale completion", async () => {
     const f = await setup();
     const [a, b] = await Promise.all([f.t.mutation(reserveJob, { job: "reconciliation" }), f.t.mutation(reserveJob, { job: "reconciliation" })]);

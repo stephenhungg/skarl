@@ -41,8 +41,10 @@ export const reconcile = internalAction({
           const pending = await ctx.runQuery(pendingForOrder, { orderId });
           await Promise.all(pending.map(async payment => {
             const { attempt } = payment;
+            // Planted scenario attempts are designed never to reconcile; they surface as exceptions, not stuck settlements.
+            const simulated = attempt.attemptId.startsWith("SIMULATED:");
             if (!await ctx.runMutation(reserveObservation, { attemptId: attempt._id })) return;
-            if (!attempt.txHash || !secret || secret.length < 32) { result.pending++; return; }
+            if (!attempt.txHash || !secret || secret.length < 32) { if (!simulated) result.pending++; return; }
             try {
               if ("refund" in payment) {
                 const { refund } = payment;
@@ -70,7 +72,7 @@ export const reconcile = internalAction({
                 }
               }
               result.confirmed++;
-            } catch { result.pending++; }
+            } catch { if (!simulated) result.pending++; }
           }));
           const exceptions = (await ctx.runQuery(api.exceptions.list, { demoIdentity: "finance-agent", orderId }))
             .filter(row => row.stillDetected).map(row => ({ exceptionKey: row.exceptionKey, exception: row.exception }))
