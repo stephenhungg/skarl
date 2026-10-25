@@ -134,6 +134,8 @@ import type * as statements from "../statements.js";
 import type * as submissions from "../submissions.js";
 import type * as taskSpecExtraction from "../taskSpecExtraction.js";
 import type * as taskSpecMigration from "../taskSpecMigration.js";
+import type * as taskThumbnails from "../taskThumbnails.js";
+import type * as taskThumbnailsData from "../taskThumbnailsData.js";
 import type * as tax from "../tax.js";
 import type * as validators from "../validators.js";
 import type * as verify from "../verify.js";
@@ -272,6 +274,8 @@ declare const fullApi: ApiFromModules<{
   submissions: typeof submissions;
   taskSpecExtraction: typeof taskSpecExtraction;
   taskSpecMigration: typeof taskSpecMigration;
+  taskThumbnails: typeof taskThumbnails;
+  taskThumbnailsData: typeof taskThumbnailsData;
   tax: typeof tax;
   validators: typeof validators;
   verify: typeof verify;
