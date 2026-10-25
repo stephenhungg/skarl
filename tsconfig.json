@@ -1,11 +1,9 @@
 {
   "extends": "./tsconfig.base.json",
   "include": [
-    "convex/**/*.ts",
     "packages/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "convex/_generated"
+    "node_modules"
   ]
 }

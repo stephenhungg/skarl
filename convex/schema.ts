@@ -3,28 +3,51 @@ import { v } from "convex/values";
 import {
   actor,
   amountAtomic,
-  commitment,
+  attemptStatus,
+  completedInferenceOutcome,
+  count,
+  evmAddress,
+  fundingStatus,
+  journalSide,
   ledgerAccount,
   membershipRole,
   network,
   orderStatus,
-  paymentStatus,
-  pipelineStatus,
-  recommendation,
+  payableStatus,
+  payoutStatus,
+  reviewOnlyOutcome,
   submissionStatus,
-  usdcMint,
+  tokenIdentifier,
+  usdcToken,
 } from "./validators";
 
 const tenant = { organizationId: v.id("organizations") };
-const asset = { network, mint: usdcMint };
+const asset = { network, tokenAddress: usdcToken };
 
 // This is a storage scaffold, not an implemented financial workflow.
 // Indexes below are lookup indexes, NOT unique constraints. Future mutations
 // must perform idempotency reads and dependent writes in one transaction.
+// Identities are stored as Convex `tokenIdentifier` (issuer + subject) so that
+// comparisons such as self-approval checks cannot confuse two issuers.
+
+const analysisContext = {
+  ...tenant,
+  jobId: v.id("jobs"),
+  submissionId: v.id("submissions"),
+  taskVersionId: v.id("rubricVersions"),
+  sourceHash: v.string(),
+  pipelineVersion: v.string(),
+  leaseGeneration: v.number(),
+  summary: v.string(),
+  reportStorageId: v.id("_storage"),
+  reportHash: v.string(),
+  evidenceAssetIds: v.array(v.id("mediaAssets")),
+  completedAt: v.number(),
+};
 export default defineSchema({
   organizations: defineTable({
     name: v.string(),
-    createdBySubject: v.string(),
+    createdByTokenIdentifier: tokenIdentifier,
     status: v.union(v.literal("active"), v.literal("disabled")),
   }),
 
@@ -32,35 +55,53 @@ export default defineSchema({
     ...tenant,
     issuer: v.string(),
     subject: v.string(),
+    tokenIdentifier,
+    // Roles are granted by an existing controller (or seeded by an operator),
+    // never self-assigned. Provisioning must reject contributor + controller
+    // on one membership so payout requester and approver stay separate.
     roles: v.array(membershipRole),
+    grantedByTokenIdentifier: tokenIdentifier,
     status: v.union(v.literal("active"), v.literal("revoked")),
-    walletAddress: v.optional(v.string()),
-    walletVerifiedAt: v.optional(v.number()),
+    // Written only by a dedicated wallet-verification mutation after it checks
+    // an EIP-191 (SIWE) signature over a server-issued nonce. Payables copy the
+    // address from a verified record.
+    walletAddress: v.optional(evmAddress),
+    walletVerification: v.optional(
+      v.object({
+        siweMessageHash: v.string(),
+        nonce: v.string(),
+        signature: v.string(),
+        chainId: v.number(),
+        verifiedAt: v.number(),
+      }),
+    ),
   })
     .index("by_org_identity", ["organizationId", "issuer", "subject"])
-    .index("by_identity", ["issuer", "subject"]),
+    .index("by_identity", ["issuer", "subject"])
+    .index("by_token_identifier", ["tokenIdentifier"]),
 
   orders: defineTable({
     ...tenant,
     ...asset,
     publicId: v.string(),
-    buyerSubject: v.string(),
-    buyerWalletAddress: v.string(),
+    buyerTokenIdentifier: tokenIdentifier,
+    buyerWalletAddress: evmAddress,
     title: v.string(),
     status: orderStatus,
     taskVersionId: v.optional(v.id("rubricVersions")),
-    quantityRequested: v.number(),
+    quantityRequested: count,
     pricePerSampleAtomic: amountAtomic,
     contributorRateAtomic: amountAtomic,
+    // Must equal quantityRequested * pricePerSampleAtomic; computed on write.
     budgetAtomic: amountAtomic,
-    acceptedCount: v.number(),
+    acceptedCount: count,
     deadlineAt: v.number(),
     termsHash: v.string(),
     updatedAt: v.number(),
   })
     .index("by_public_id", ["publicId"])
     .index("by_org_status", ["organizationId", "status"])
-    .index("by_org_buyer", ["organizationId", "buyerSubject"]),
+    .index("by_org_buyer", ["organizationId", "buyerTokenIdentifier"]),
 
   rubricVersions: defineTable({
     ...tenant,
@@ -80,7 +121,7 @@ export default defineSchema({
       }),
     ),
     contentHash: v.string(),
-    createdBySubject: v.string(),
+    createdByTokenIdentifier: tokenIdentifier,
     frozenAt: v.optional(v.number()),
   }).index("by_order_version", ["orderId", "version"]),
 
@@ -88,7 +129,7 @@ export default defineSchema({
     ...tenant,
     orderId: v.id("orders"),
     taskVersionId: v.id("rubricVersions"),
-    contributorSubject: v.string(),
+    contributorTokenIdentifier: tokenIdentifier,
     status: submissionStatus,
     clientRequestId: v.string(),
     originalAssetId: v.optional(v.id("mediaAssets")),
@@ -101,14 +142,19 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_order_status", ["orderId", "status"])
-    .index("by_contributor", ["organizationId", "contributorSubject"])
-    .index("by_request", ["organizationId", "clientRequestId"])
+    .index("by_contributor", ["organizationId", "contributorTokenIdentifier"])
+    // Scoped to the contributor so one user cannot claim another's request ID.
+    .index("by_request", [
+      "organizationId",
+      "contributorTokenIdentifier",
+      "clientRequestId",
+    ])
     .index("by_source_hash", ["organizationId", "sourceHash"]),
 
   consentRecords: defineTable({
     ...tenant,
     submissionId: v.id("submissions"),
-    contributorSubject: v.string(),
+    contributorTokenIdentifier: tokenIdentifier,
     licenseVersion: v.string(),
     licenseHash: v.string(),
     scope: v.string(),
@@ -178,23 +224,12 @@ export default defineSchema({
       "sourceHash",
     ]),
 
-  analysisResults: defineTable({
-    ...tenant,
-    jobId: v.id("jobs"),
-    submissionId: v.id("submissions"),
-    taskVersionId: v.id("rubricVersions"),
-    sourceHash: v.string(),
-    pipelineVersion: v.string(),
-    leaseGeneration: v.number(),
-    implementation: v.union(v.literal("scaffold"), v.literal("inference")),
-    pipelineStatus,
-    recommendation,
-    summary: v.string(),
-    reportStorageId: v.id("_storage"),
-    reportHash: v.string(),
-    evidenceAssetIds: v.array(v.id("mediaAssets")),
-    completedAt: v.number(),
-  })
+  analysisResults: defineTable(
+    v.union(
+      v.object({ ...analysisContext, ...completedInferenceOutcome }),
+      v.object({ ...analysisContext, ...reviewOnlyOutcome }),
+    ),
+  )
     .index("by_job_generation", ["jobId", "leaseGeneration"])
     .index("by_submission", ["submissionId"]),
 
@@ -209,7 +244,7 @@ export default defineSchema({
       v.literal("rejected"),
       v.literal("request_correction"),
     ),
-    reviewerSubject: v.string(),
+    reviewerTokenIdentifier: tokenIdentifier,
     reason: v.string(),
     evidenceHash: v.string(),
     decidedAt: v.number(),
@@ -238,11 +273,11 @@ export default defineSchema({
     orderId: v.id("orders"),
     submissionId: v.id("submissions"),
     decisionId: v.id("reviewDecisions"),
-    contributorSubject: v.string(),
-    recipientOwnerAddress: v.string(),
+    contributorTokenIdentifier: tokenIdentifier,
+    recipientAddress: evmAddress,
     amountAtomic,
     sourceEventKey: v.string(),
-    status: paymentStatus,
+    status: payableStatus,
     createdAt: v.number(),
   })
     .index("by_source_event", ["organizationId", "sourceEventKey"])
@@ -254,15 +289,15 @@ export default defineSchema({
     ...asset,
     orderId: v.id("orders"),
     intentId: v.string(),
-    buyerWalletAddress: v.string(),
-    recipientOwnerAddress: v.string(),
+    buyerWalletAddress: evmAddress,
+    recipientAddress: evmAddress,
     amountAtomic,
     termsHash: v.string(),
     resourcePath: v.string(),
     x402Version: v.literal(2),
     paymentIdentifier: v.string(),
     expiresAt: v.number(),
-    status: paymentStatus,
+    status: fundingStatus,
     updatedAt: v.number(),
   })
     .index("by_intent_id", ["intentId"])
@@ -273,7 +308,8 @@ export default defineSchema({
     ...tenant,
     paymentCommandId: v.id("paymentCommands"),
     requestedBy: actor,
-    approverSubject: v.string(),
+    // Must differ from requestedBy.identity (both are tokenIdentifiers).
+    approverTokenIdentifier: tokenIdentifier,
     bindingHash: v.string(),
     status: v.union(
       v.literal("approved"),
@@ -295,12 +331,11 @@ export default defineSchema({
     commandId: v.string(),
     kind: v.union(v.literal("contributor_payout"), v.literal("buyer_refund")),
     requestedBy: actor,
-    recipientOwnerAddress: v.string(),
-    destinationTokenAccount: v.optional(v.string()),
+    recipientAddress: evmAddress,
     amountAtomic,
     bindingHash: v.string(),
     sourceVersion: v.string(),
-    status: paymentStatus,
+    status: payoutStatus,
     approvalId: v.optional(v.id("approvals")),
     attemptCount: v.number(),
     leaseGeneration: v.number(),
@@ -311,6 +346,8 @@ export default defineSchema({
   })
     .index("by_command_id", ["commandId"])
     .index("by_payable", ["payableId"])
+    // Refunds have no payable; this finds an existing refund for an order.
+    .index("by_order_kind", ["orderId", "kind"])
     .index("by_org_status", ["organizationId", "status"]),
 
   paymentAttempts: defineTable({
@@ -321,11 +358,13 @@ export default defineSchema({
     attemptId: v.string(),
     attempt: v.number(),
     amountAtomic,
-    transactionSignature: v.optional(v.string()),
-    serializedTransactionHash: v.optional(v.string()),
-    blockhash: v.optional(v.string()),
-    lastValidBlockHeight: v.optional(v.number()),
-    status: paymentStatus,
+    txHash: v.optional(v.string()),
+    // x402 `exact` funding on EVM is an EIP-3009 transferWithAuthorization.
+    // Claim (payer, nonce) before settlement so one authorization cannot
+    // fund two orders.
+    payerAddress: v.optional(evmAddress),
+    authorizationNonce: v.optional(v.string()),
+    status: attemptStatus,
     lastErrorCode: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -333,27 +372,27 @@ export default defineSchema({
     .index("by_attempt_id", ["attemptId"])
     .index("by_command", ["paymentCommandId"])
     .index("by_intent", ["paymentIntentId"])
-    .index("by_signature", ["network", "transactionSignature"]),
+    .index("by_tx_hash", ["network", "txHash"])
+    .index("by_authorization_nonce", ["network", "payerAddress", "authorizationNonce"]),
 
+  // One row per ERC-20 Transfer log. A transaction can emit several transfers,
+  // so identity is (network, txHash, logIndex), never the transaction alone.
   chainObservations: defineTable({
     ...tenant,
     ...asset,
     paymentAttemptId: v.id("paymentAttempts"),
-    transactionSignature: v.string(),
-    instructionIndex: v.number(),
-    innerInstructionIndex: v.optional(v.number()),
-    slot: v.number(),
-    sourceTokenAccount: v.string(),
-    destinationTokenAccount: v.string(),
-    sourceOwnerAddress: v.string(),
-    destinationOwnerAddress: v.string(),
+    txHash: v.string(),
+    logIndex: v.number(),
+    blockNumber: v.int64(),
+    blockHash: v.string(),
+    fromAddress: evmAddress,
+    toAddress: evmAddress,
     amountAtomic,
-    feeLamports: v.int64(),
-    commitment,
+    confirmations: v.number(),
     succeeded: v.boolean(),
     observedAt: v.number(),
   })
-    .index("by_transfer", ["network", "transactionSignature", "instructionIndex"])
+    .index("by_transfer", ["network", "txHash", "logIndex"])
     .index("by_attempt", ["paymentAttemptId"]),
 
   journalEntries: defineTable({
@@ -377,14 +416,15 @@ export default defineSchema({
     reversalOf: v.optional(v.id("journalEntries")),
   })
     .index("by_event_key", ["organizationId", "eventKey"])
-    .index("by_order", ["orderId"]),
+    .index("by_order", ["orderId"])
+    .index("by_reversal_of", ["reversalOf"]),
 
   journalLines: defineTable({
     ...tenant,
     journalEntryId: v.id("journalEntries"),
     account: ledgerAccount,
-    debitAtomic: amountAtomic,
-    creditAtomic: amountAtomic,
+    side: journalSide,
+    amountAtomic,
     lineNumber: v.number(),
   })
     .index("by_entry", ["journalEntryId", "lineNumber"])

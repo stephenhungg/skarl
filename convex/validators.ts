@@ -1,16 +1,38 @@
-import { v } from "convex/values";
+import { v, type VLiteral } from "convex/values";
 import {
-  SOLANA_DEVNET_NETWORK,
-  SOLANA_DEVNET_USDC_MINT,
-} from "../packages/contracts/src/solana";
+  fundingStatuses,
+  orderStatuses,
+  payoutStatuses,
+  submissionStatuses,
+} from "../packages/contracts/src/index";
+import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 
 // Storage validators constrain types. Business invariants still require mutations.
-export const network = v.literal(SOLANA_DEVNET_NETWORK);
-export const usdcMint = v.literal(SOLANA_DEVNET_USDC_MINT);
+
+type Literals<T extends readonly string[]> = { -readonly [K in keyof T]: VLiteral<T[K]> };
+
+/** Build a union validator from a shared `as const` list so storage cannot drift from the contracts. */
+function literalUnion<const T extends readonly [string, string, ...string[]]>(values: T) {
+  return v.union(...(values.map((value) => v.literal(value)) as Literals<T>));
+}
+
+export const network = v.literal(PAYMENT_NETWORK);
+export const usdcToken = v.literal(USDC_ADDRESS);
+/** EVM 0x address. Mutations must validate and lowercase before writing so equality checks hold. */
+export const evmAddress = v.string();
 export const amountAtomic = v.int64();
+/** Whole-number counters that feed bigint budget and capacity arithmetic. */
+export const count = v.int64();
+
+/**
+ * Convex `identity.tokenIdentifier` (issuer + subject). Store this, not a bare
+ * subject, wherever identities are compared (for example self-approval checks).
+ */
+export const tokenIdentifier = v.string();
 
 export const actor = v.object({
   kind: v.union(v.literal("human"), v.literal("service")),
+  // tokenIdentifier for humans, service ID for services.
   identity: v.string(),
 });
 
@@ -20,58 +42,30 @@ export const membershipRole = v.union(
   v.literal("controller"),
 );
 
-export const orderStatus = v.union(
-  v.literal("draft"),
-  v.literal("awaiting_funding"),
-  v.literal("funded"),
-  v.literal("collecting"),
-  v.literal("fulfilled"),
-  v.literal("cancelling"),
-  v.literal("refunded"),
-  v.literal("closed"),
-  v.literal("funding_failed"),
-);
+export const orderStatus = literalUnion(orderStatuses);
+export const submissionStatus = literalUnion(submissionStatuses);
+/** Buyer funding lifecycle for `paymentIntents`. */
+export const fundingStatus = literalUnion(fundingStatuses);
+/** Outgoing payout/refund lifecycle for `paymentCommands`. */
+export const payoutStatus = literalUnion(payoutStatuses);
 
-export const submissionStatus = v.union(
-  v.literal("uploading"),
-  v.literal("queued"),
-  v.literal("analysing"),
-  v.literal("needs_review"),
-  v.literal("needs_correction"),
-  v.literal("accepted"),
-  v.literal("rejected"),
+// TODO(contracts owner): move these storage lifecycles into packages/contracts
+// once a client needs them; they are not exchanged across service boundaries yet.
+/** Compensation obligation lifecycle. `paid` requires a confirmed chain observation. */
+export const payableStatus = v.union(
+  v.literal("accrued"),
+  v.literal("payout_in_progress"),
+  v.literal("paid"),
+  v.literal("reversed"),
 );
-
-export const paymentStatus = v.union(
-  v.literal("proposed"),
-  v.literal("approved"),
+/** One broadcast attempt. A timeout stays `reconciling`; it is not `failed`. */
+export const attemptStatus = v.union(
+  v.literal("prepared"),
   v.literal("submitted"),
-  v.literal("pending"),
   v.literal("reconciling"),
   v.literal("confirmed"),
   v.literal("finalized"),
   v.literal("failed"),
-  v.literal("expired"),
-  v.literal("cancelled"),
-);
-
-export const commitment = v.union(
-  v.literal("processed"),
-  v.literal("confirmed"),
-  v.literal("finalized"),
-);
-
-export const pipelineStatus = v.union(
-  v.literal("completed"),
-  v.literal("needs_review"),
-  v.literal("failed"),
-  v.literal("ml_unavailable"),
-);
-
-export const recommendation = v.union(
-  v.literal("accept"),
-  v.literal("request_correction"),
-  v.literal("needs_review"),
 );
 
 export const ledgerAccount = v.union(
@@ -82,3 +76,32 @@ export const ledgerAccount = v.union(
   v.literal("revenue:dataset_sales"),
   v.literal("expense:contributor_acquisition"),
 );
+
+export const journalSide = v.union(v.literal("debit"), v.literal("credit"));
+
+/**
+ * Mirrors the verification report schema: only completed inference may
+ * recommend acceptance. Scaffold output and any non-completed pipeline are
+ * stored as `needs_review` and can never carry `accept`. Spread each variant
+ * into its own `v.object` so the table validator is a union.
+ */
+export const completedInferenceOutcome = {
+  implementation: v.literal("inference"),
+  pipelineStatus: v.literal("completed"),
+  recommendation: v.union(
+    v.literal("accept"),
+    v.literal("request_correction"),
+    v.literal("needs_review"),
+  ),
+};
+
+export const reviewOnlyOutcome = {
+  implementation: v.union(v.literal("inference"), v.literal("scaffold")),
+  pipelineStatus: v.union(
+    v.literal("completed"),
+    v.literal("needs_review"),
+    v.literal("failed"),
+    v.literal("ml_unavailable"),
+  ),
+  recommendation: v.literal("needs_review"),
+};

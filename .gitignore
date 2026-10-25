@@ -12,3 +12,4 @@ convex/_generated/
 .DS_Store
 work/
 services/verifier/.cache/
+.convex/
