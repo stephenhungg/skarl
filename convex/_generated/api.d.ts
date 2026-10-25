@@ -10,10 +10,13 @@
 
 import type * as dashboard from "../dashboard.js";
 import type * as finance from "../finance.js";
+import type * as financeAgent from "../financeAgent.js";
+import type * as financeAgentData from "../financeAgentData.js";
 import type * as health from "../health.js";
 import type * as lib_copyDetection from "../lib/copyDetection.js";
 import type * as lib_demoAuth from "../lib/demoAuth.js";
 import type * as lib_finance from "../lib/finance.js";
+import type * as lib_financeAgentLoop from "../lib/financeAgentLoop.js";
 import type * as lib_gemini from "../lib/gemini.js";
 import type * as lib_media from "../lib/media.js";
 import type * as lib_verificationReport from "../lib/verificationReport.js";
@@ -32,10 +35,13 @@ import type {
 declare const fullApi: ApiFromModules<{
   dashboard: typeof dashboard;
   finance: typeof finance;
+  financeAgent: typeof financeAgent;
+  financeAgentData: typeof financeAgentData;
   health: typeof health;
   "lib/copyDetection": typeof lib_copyDetection;
   "lib/demoAuth": typeof lib_demoAuth;
   "lib/finance": typeof lib_finance;
+  "lib/financeAgentLoop": typeof lib_financeAgentLoop;
   "lib/gemini": typeof lib_gemini;
   "lib/media": typeof lib_media;
   "lib/verificationReport": typeof lib_verificationReport;

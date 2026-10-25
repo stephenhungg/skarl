@@ -49,6 +49,14 @@ const analysisContext = {
   perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))),
 };
 export default defineSchema({
+  financeAgentRuns: defineTable({
+    ...tenant, orderId: v.id("orders"), requestId: v.string(), prompt: v.string(),
+    requesterTokenIdentifier: tokenIdentifier, model: v.string(), maxToolCalls: v.number(),
+    maxBatchAtomic: amountAtomic, proposedAtomic: amountAtomic, reservedPayableIds: v.array(v.id("payables")),
+    status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed"), v.literal("capped")),
+    transcriptJson: v.string(), explanation: v.optional(v.string()), failureCode: v.optional(v.string()),
+    startedAt: v.number(), completedAt: v.optional(v.number()),
+  }).index("by_request", ["organizationId", "requestId"]).index("by_order", ["orderId"]),
   organizations: defineTable({
     name: v.string(),
     demoKey: v.optional(v.string()),

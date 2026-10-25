@@ -17,7 +17,7 @@ interface Interaction {
   status?: string; output_text?: string;
   steps?: {type?:string;content?:{type?:string;text?:string;annotations?:{type?:string;text?:string;start_offset?:string;end_offset?:string}[]}[]}[];
 }
-export async function requestInteraction(body: Record<string, unknown>, fetcher: typeof fetch = fetch, timeoutMs = 90_000, retryDelayMs = 1000): Promise<Interaction> {
+export async function requestInteraction(body: Record<string, unknown>, fetcher: typeof fetch = fetch, timeoutMs = 90_000, retryDelayMs = 1000, allowFunctionCalls = false): Promise<Interaction> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new GeminiFailure("gemini_not_configured");
   const controller = new AbortController();
@@ -39,7 +39,7 @@ export async function requestInteraction(body: Record<string, unknown>, fetcher:
       if (raw.length > 500_000) throw new GeminiFailure("gemini_response_too_large");
       let data: Interaction;
       try { data=JSON.parse(raw); } catch { throw new GeminiFailure("gemini_invalid_json"); }
-      if (!data || typeof data !== "object" || data.status !== "completed") throw new GeminiFailure("gemini_incomplete");
+      if (!data || typeof data !== "object" || (data.status !== "completed" && !(allowFunctionCalls && data.status === "requires_action" && Array.isArray(data.steps) && data.steps.some(step => step.type === "function_call")))) throw new GeminiFailure("gemini_incomplete");
       return data;
     }
     throw new GeminiFailure("gemini_retry_exhausted");

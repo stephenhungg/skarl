@@ -152,9 +152,7 @@ export const acceptAndPublish = mutation({
   },
 });
 
-export const proposePayment = mutation({
-  args: { demoIdentity: v.string(), payableId: v.id("payables") },
-  handler: async (ctx, args) => {
+export async function proposePaymentFor(ctx: MutationCtx, args: { demoIdentity: string; payableId: Id<"payables"> }) {
     const auth = await authorize(ctx, args.demoIdentity, ["finance-agent", "controller"]);
     if (!auth.principal) return { ok: false as const, code: auth.denied! };
     const principal = auth.principal;
@@ -183,7 +181,10 @@ export const proposePayment = mutation({
       action: "payment_proposed", entityType: "paymentIntents", entityId: intentId,
       reason: "Proposal derived from the stored payable; independent controller approval required.", evidenceReferences: [payable._id, paymentCommandId] });
     return { ok: true as const, intentId, paymentCommandId, replayed: false };
-  },
+}
+export const proposePayment = mutation({
+  args: { demoIdentity: v.string(), payableId: v.id("payables") },
+  handler: proposePaymentFor,
 });
 
 export const approve = mutation({

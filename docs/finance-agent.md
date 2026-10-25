@@ -4,7 +4,7 @@
 
 The target agent fills two financial seats: settlement accountant and accounts-payable clerk. It explains obligations, proposes bounded payments and identifies reconciliation exceptions (period close is deferred). It does not decide whether a clip contains the right action, approve its own payment, hold a wallet key or rewrite the ledger.
 
-Only the deterministic ledger helpers exist today. The agent loop, model adapter, tool endpoints, policy engine and approval workflow below are **planned work**. A successful journal test is not a working autonomous accountant.
+The Convex `financeAgent.run` action implements a real Gemini function-calling loop over six allowlisted tools. Tool results and the final advisory explanation persist in `financeAgentRuns` for the controller dashboard. Server mutations enforce cumulative exact proposal limits and existing independent-approval rules. Approval Workflow integration is the next quality item; wallet execution remains separate. Mocked responses test policy boundaries; live provider measurements are recorded in [status](status.md).
 
 ## Bounded tool surface
 
@@ -12,14 +12,12 @@ Implement tools as typed application operations, not arbitrary SQL, shell, gener
 
 | Tool | Input and result | Authority |
 | --- | --- | --- |
-| `getOrderFinancials` | Order ID; returns funding, delivered allocations, unused prepayment and related event IDs | Read only, organization scoped |
-| `listOpenObligations` | Organization, bounded page/cursor; returns payable/refund records with versions | Read only; exclude raw contributor media |
-| `getReconciliation` | Payment command ID; returns expected facts versus observed transfers | Read only; no chain-status invention |
-| `getPeriodReport` (deferred) | Period ID; opening balances, activity, closing balances and unexplained differences | Deterministic ledger projection, not model arithmetic |
-| `proposePayment` | Existing obligation IDs/versions and request ID | Server calculates recipient/amount/network from stored terms; returns proposal and policy findings |
-| `requestIndependentApproval` | Proposal ID/version and explanation | Records a request to an authorized controller; cannot approve it |
-| `requestReconciliation` | Existing unresolved attempt ID | Enqueues observation only; cannot build a new transfer |
-| `prepareClose` (deferred) | Period ID and immutable source versions | Reports blockers and draft close artifacts; no silent historical adjustments |
+| `listOutstandingPayables` | No model-controlled scope; returns this order's open payable IDs, exact amounts and proposal status | Read only |
+| `explainPayable` | Existing payable ID; returns amount/status plus explicitly untrusted report/narration excerpts | Read only; same order |
+| `getTrialBalance` | No arguments; sums stored journal lines and asserts each entry balances | Read only; exact integer strings |
+| `listReconciliationExceptions` | No arguments; reads the existing payment reconciliation query | Read only; bounded exceptions |
+| `proposePaymentBatch` | Up to 20 unique existing payable IDs; server resolves amounts and destinations atomically | Proposal only; cumulative per-run amount cap |
+| `requestApproval` | Existing payout intent ID | Records an independent-controller request; never approves |
 
 Do not expose signing or `approvePayment` as agent tools. The authenticated controller approves the exact proposal in Convex. The agent may then call Coinbase Wallet MCP `send` **only for that stored, approved intent** (exact recipient, amount and token; no other parameters), and Coinbase Wallet asks the controller to approve the write. The Coinbase retail MCP's x402 tools run on Base mainnet with a 5 USDC cap and are not used on the demo path. An attempt to approve its own proposal is refused and logged; this refusal is part of the demo moment. The payment executor consumes the approved command and stores the attempt before submission. Recipient, amount, token, network or payable-version changes invalidate the prior approval.
 
@@ -61,3 +59,35 @@ The demo's memorable output is one defended decision: "this clip is a re-encoded
 - [Payment boundaries](payments.md)
 - [Backend transactions](backend.md)
 - [Identity and approval security](security.md)
+
+## Running the implemented agent
+
+```sh
+pnpm exec convex run financeAgent:run '{"demoIdentity":"controller","orderId":"<order-id>","requestId":"finance-demo-1","prompt":"Inspect payables, trial balance and reconciliation exceptions. Propose eligible obligations and request independent approval."}'
+```
+
+The action pins every tool to `finance-agent`; model arguments cannot select an
+identity, recipient, amount, network, organization or arbitrary Convex function.
+For the refusal demo, an unadvertised `approve`/`approvePayment` function call is
+routed solely to `finance.approve` with that same agent identity. The server
+records its self/agent-approval refusal. Unknown tools and extra fields are
+refused. Natural-language requests do not guarantee a model will attempt the
+forbidden call; the mocked policy test exercises that exact attempted call.
+
+Convex environment configuration: `GEMINI_FINANCE_MODEL` defaults to
+`gemini-3.8-flash`; `FINANCE_AGENT_MAX_TOOL_CALLS` defaults to 12 (range 1–24);
+`FINANCE_AGENT_MAX_BATCH_ATOMIC` defaults to `10000000` micro-USDC. The existing
+server-only `GEMINI_API_KEY` is reused. No key reaches model input or transcript.
+The run has a two-minute model deadline, at most 60 seconds per provider round,
+a bounded transcript and a three-minute interruption watchdog. Reusing the same
+request ID returns the original run and never repeats proposals; use a new ID
+for a deliberate new attempt. Proposal replay does not consume the run's cap
+twice. The cap applies to the whole run, including multiple batches.
+
+Query `financeAgentData.runs({demoIdentity:"controller",orderId})` for the latest
+20 runs, typed tool calls/results, terminal status, failure code and explanation.
+Amounts are decimal micro-USDC strings. Hidden model reasoning is kept only in
+the provider conversation in action memory and is not persisted. Explanations
+remain advisory model text; authoritative cash, proposal and approval state
+comes from the deterministic query/tool results. A killed run is marked failed;
+it does not resume money-related tools automatically.

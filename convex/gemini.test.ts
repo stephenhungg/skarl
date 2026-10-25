@@ -86,3 +86,11 @@ it("rejects a visual event interval with no sampled source frame",async()=>{
   const frames=Array.from({length:12},(_,i)=>({timestampMs:(i+1)*500,bytes:new Uint8Array([255,216,255]),mimeType:"image/jpeg" as const}));
   await expect(observeVideo(frames,10_000)).rejects.toThrow("video_observation_invalid");
 });
+
+it("accepts requires_action only for explicitly enabled function calling, never verifier inference",async()=>{
+  vi.stubEnv("GEMINI_API_KEY","unit-test-placeholder");
+  const fetcher=vi.fn(async()=>response({status:"requires_action",steps:[{type:"function_call",id:"read-1",name:"getTrialBalance",arguments:{}}]}));
+  await expect(requestInteraction({},fetcher,1000,1)).rejects.toThrow("gemini_incomplete");
+  expect((await requestInteraction({},fetcher,1000,1,true)).status).toBe("requires_action");
+  await expect(requestInteraction({},async()=>response({status:"requires_action",steps:[]}),1000,1,true)).rejects.toThrow("gemini_incomplete");
+});

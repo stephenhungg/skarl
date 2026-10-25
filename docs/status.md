@@ -11,7 +11,7 @@ Truthful state as of October 25, 2026, after the adversarial audit and the move 
 | Evaluation | Scoring scaffolding | Deferred: no labeled corpus. Staged demo clips only |
 | Ledger | Audited pure helpers plus atomic Convex journal/line persistence, fulfillment accrual, event fingerprints and replay protection | Live funding/payout settlement and reconciliation evidence |
 | Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | Supply controller treasury address; complete Wallet MCP authentication; run real funding/payout. Live buyer balance verified at 20 USDC; v2 seeded and awaiting funding; no live transfer yet |
-| Finance agent | Server payment proposal, independent approval, durable refused self/agent approval audit and exact dashboard projections | Model explanation/tool loop, Workflow wait, approved-command execution |
+| Finance agent | Gemini function-calling action; six typed tools; persisted transcript/explanation; cumulative exact batch and call caps; existing proposal and refused approval audits | Live model measurement below; Workflow wait and wallet execution remain separate |
 | Sponsors | Requirements checked against Devpost and the briefs | Working integrations; Coinbase eligibility checklist per member |
 
 Local tests prove only the behavior they execute. They do not prove settlement, inference quality, authorization or sponsor eligibility.
@@ -150,3 +150,24 @@ the controller audit but currently show generic review in the contributor UI.
 ## First live x402 funding (October 25, 2026, ~01:30 PDT)
 
 The buyer agent (`pnpm agent:fund skarl-red-cup-demo-v2`) paid the x402-protected funding route on Base Sepolia through the public testnet facilitator. Transaction [0x28b3…d757](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757) (block 49978209, status success) transferred exactly 10.000000 USDC (`0x036C…CF7e`) from the buyer `0xa54D…1a9D` to the controller's Coinbase Wallet `0x8408…695f`; the buyer paid no gas. Convex reported the funding as `confirmed` only after the server observed the Transfer log. Receipt and balances were rechecked independently over Base Sepolia RPC.
+
+## Task 3 — finance agent
+
+A real Gemini function-calling loop is implemented in `financeAgent.run`, with
+six allowlisted tools over deterministic Convex projections and proposals.
+Model-selected approval calls can only reach the existing server refusal as the
+finance-agent identity. Batch amounts/destinations come from stored payables in
+one transaction; the model cannot set them. Runs and tool results are persisted
+for the dashboard. See [agent API/configuration](finance-agent.md#running-the-implemented-agent).
+
+Approval Workflow, statement queries and the clip evaluation runner are the next
+ordered quality items. The transcript tests use mocked provider responses and
+synthetic obligations; they do not prove a live transfer or inference accuracy.
+
+Agent validation: `pnpm check` passed 74 package, 126 Convex and 24 payment-route
+tests plus typechecks/docs/build. The 14 new action tests mock the provider; an
+additional transport regression covers Gemini's `requires_action` status. The
+cloud action deployed successfully. A live read-only Flash request timed out
+after **60,423 ms**, stored run `mx765vzkc04sqfqe66jjxx1ssd8gyhff` as failed with
+`gemini_timeout`, and executed no tools. No complete live agent loop or payment
+is claimed from this attempt.
