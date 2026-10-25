@@ -2,22 +2,46 @@
 import { SectionHeader } from "@/components/section-header";
 import { CAROUSEL_CSS } from "./catch-carousel";
 import { StoryCarousel } from "./catch/carousel";
-import { LandingFigure, type LandingFigureName } from "./figures/landing-figure";
+import { useEffect, useRef } from "react";
 
-type Step = { id: string; fig: LandingFigureName; title: string; body: string };
+type Step = { id: string; title: string; body: string };
 
 const STEPS: Step[] = [
-  { id: "record", fig: "record", title: "Record", body: "A contributor films the task and narrates it." },
-  { id: "check", fig: "check", title: "Check", body: "AI compares video with narration and flags copies." },
-  { id: "approve", fig: "approve", title: "Approve", body: "A person on the team signs off on each payout." },
-  { id: "pay", fig: "pay", title: "Pay", body: "Test USDC moves on Base Sepolia and the books balance." },
+  { id: "record", title: "Record", body: "A contributor films the task and narrates it." },
+  { id: "check", title: "Check", body: "AI compares video with narration and flags copies." },
+  { id: "approve", title: "Approve", body: "A person on the team signs off on each payout." },
+  { id: "pay", title: "Pay", body: "Test USDC moves on Base Sepolia and the books balance." },
 ];
 
-function StepCard({ step, visible }: { step: Step; visible: boolean }) {
+// A short silent clip for each step; only the centre card plays.
+function StepClip({ id, active }: { id: string; active: boolean }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (active && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) void v.play().catch(() => {});
+    else v.pause();
+  }, [active]);
+  return (
+    <video
+      ref={ref}
+      src={`/steps/${id}.mp4`}
+      poster={`/steps/${id}.jpg`}
+      muted
+      loop
+      playsInline
+      preload="metadata"
+      aria-hidden="true"
+      className="absolute inset-0 h-full w-full object-cover"
+    />
+  );
+}
+
+function StepCard({ step, visible, active }: { step: Step; visible: boolean; active: boolean }) {
   return (
     <article className="skc-card">
       <div className="skc-frame">
-        {visible && <LandingFigure name={step.fig} className="absolute inset-0 !aspect-auto h-full rounded-none" />}
+        {visible && <StepClip id={step.id} active={active} />}
         <div
           className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-2 p-8 pt-20 max-[809px]:p-5"
           style={{ background: "linear-gradient(180deg, transparent, rgb(var(--ink) / .88) 60%)" }}
@@ -38,7 +62,7 @@ export function HowItWorks() {
       <div className="frame">
         <SectionHeader id="how-it-works-title" eyebrow="How Skarl works" title="From task to payout" />
       </div>
-      <StoryCarousel items={STEPS} label="How Skarl works" render={(step, s) => <StepCard step={step} visible={s.visible} />} />
+      <StoryCarousel items={STEPS} label="How Skarl works" render={(step, s) => <StepCard step={step} visible={s.visible} active={s.active} />} />
     </section>
   );
 }
