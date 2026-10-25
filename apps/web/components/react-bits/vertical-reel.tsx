@@ -93,7 +93,14 @@ interface Overlay {
 }
 
 interface Layer {
-  image: HTMLImageElement;
+  image: HTMLImageElement | HTMLVideoElement;
+  /** Video layers are redrawn from the playing element every few frames so the card animates. */
+  video: boolean;
+  /** Still frame shown on a video card until the video has a frame to draw. */
+  poster?: HTMLImageElement;
+  /** Set when a playing video has a newer frame; the card keeps its last frame until it is redrawn. */
+  stale?: boolean;
+  lastDraw: number;
   ready: boolean;
   drawn: boolean;
   aspect: number;
@@ -590,17 +597,21 @@ const createReel = (
 
   const drawLayer = (index: number) => {
     const layer = layers[index];
-    if (!layer || !layer.ready || layer.drawn || !samplerContext) return false;
+    if (!layer || !layer.ready || (layer.drawn && !layer.stale) || !samplerContext) return false;
     sampler.width = layerWidth;
     sampler.height = layerHeight;
     try {
-      samplerContext.drawImage(layer.image, 0, 0, layerWidth, layerHeight);
+      const playing = layer.video && (layer.image as HTMLVideoElement).readyState >= 2;
+      const source = layer.video && !playing && layer.poster ? layer.poster : layer.image;
+      samplerContext.drawImage(source, 0, 0, layerWidth, layerHeight);
       const pixels = samplerContext.getImageData(0, 0, layerWidth, layerHeight).data;
       layerData.set(pixels, index * layerWidth * layerHeight * 4);
     } catch {
       return false;
     }
     layer.drawn = true;
+    layer.stale = false;
+    layer.lastDraw = clock();
     images.addLayerUpdate(index);
     images.needsUpdate = true;
     return true;
@@ -616,13 +627,46 @@ const createReel = (
     });
     const n = Math.max(items.length, 1);
     const centre = wrap(Math.round(pos));
+    layers.forEach((layer) => {
+      if (layer.video) (layer.image as HTMLVideoElement).pause();
+    });
     layers = items.map((item, index) => {
+      const apart = Math.abs(index - centre) % n;
+      if (/\.(mp4|webm)(\?|$)/i.test(item.src)) {
+        const video = document.createElement("video");
+        video.crossOrigin = "anonymous";
+        video.muted = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.preload = "auto";
+        const poster = new Image();
+        poster.crossOrigin = "anonymous";
+        const layer: Layer = { image: video, video: true, poster, lastDraw: 0, ready: false, drawn: false, aspect: 1.6, fade: 0 };
+        poster.onload = () => {
+          if (destroyed || layer.ready) return;
+          layer.aspect = poster.naturalWidth / Math.max(poster.naturalHeight, 1);
+          layer.ready = true;
+          schedule();
+        };
+        poster.src = item.src.replace(/\.(mp4|webm)(\?.*)?$/i, ".jpg");
+        video.addEventListener("loadeddata", () => {
+          if (destroyed) return;
+          layer.stale = true;
+          if (!layer.ready) {
+            layer.aspect = video.videoWidth / Math.max(video.videoHeight, 1);
+            layer.ready = true;
+          }
+          schedule();
+        });
+        video.src = item.src;
+        void video.play().catch(() => {});
+        return layer;
+      }
       const image = new Image();
       image.crossOrigin = "anonymous";
       image.decoding = "async";
-      const apart = Math.abs(index - centre) % n;
       image.fetchPriority = Math.min(apart, n - apart) <= 2 ? "high" : "low";
-      const layer: Layer = { image, ready: false, drawn: false, aspect: 1.6, fade: 0 };
+      const layer: Layer = { image, video: false, lastDraw: 0, ready: false, drawn: false, aspect: 1.6, fade: 0 };
       image.onload = () => {
         if (destroyed) return;
         const finish = () => {
@@ -853,12 +897,22 @@ const createReel = (
 
     let drew = false;
     const centre = wrap(Math.round(pos));
+    // Keep video cards near the centre animating at about 15 frames a second.
+    const nowSec = clock();
+    for (let i = 0; i < layers.length; i++) {
+      const layer = layers[i];
+      if (!layer.video || !layer.ready || !layer.drawn) continue;
+      const apart = Math.min(Math.abs(i - centre), n - Math.abs(i - centre));
+      if (apart <= 1 && nowSec - layer.lastDraw > 1 / 15) layer.stale = true;
+    }
+    if (layers.some((layer) => layer.video)) busy = true;
     const order = layers
       .map((layer, index) => ({ index, distance: Math.min(Math.abs(index - centre), n - Math.abs(index - centre)) }))
-      .sort((a, b) => a.distance - b.distance);
+      // Cards that have never been drawn go first, so redrawing playing videos can't starve them.
+      .sort((a, b) => (layers[a.index].lastDraw === 0 ? -1 : 0) - (layers[b.index].lastDraw === 0 ? -1 : 0) || a.distance - b.distance);
     for (const entry of order) {
       const layer = layers[entry.index];
-      if (layer.ready && !layer.drawn) {
+      if (layer.ready && (!layer.drawn || layer.stale)) {
         drew = drawLayer(entry.index);
         if (drew) break;
       }
@@ -1318,6 +1372,14 @@ const createReel = (
     spin,
     destroy: () => {
       destroyed = true;
+      layers.forEach((layer) => {
+        if (layer.video) {
+          const video = layer.image as HTMLVideoElement;
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+        }
+      });
       if (raf) cancelAnimationFrame(raf);
       if (timer) view.clearTimeout(timer);
       observer?.disconnect();
