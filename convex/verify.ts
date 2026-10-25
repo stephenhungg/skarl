@@ -17,6 +17,8 @@ export const run = internalAction({
     if (!claimed) return {skipped:true};
     const {job,submission,rubric,asset,generation}=claimed;
     const started=Date.now(), runs:ModelRun[]=[], warnings:string[]=[];
+    const evidenceFrames: { storageId: Id<"_storage">; timestampMs: number; contentHash: string; sizeBytes: number;
+      kind: "visual" | "dhash"; sampleIndex: number; decodedFrameIndex?: number }[] = [];
     let sourceHash=asset.contentHash, durationMs=0, video:VideoObservation|undefined, audio:AudioObservation|undefined, failure:string|undefined;
     let duplicate:{status:"not_checked"|"clear"|"suspected";matches:{submissionId:string;score:number;overlapMs:number}[]}={status:"not_checked",matches:[]};
     try {
@@ -31,6 +33,16 @@ export const run = internalAction({
       warnings.push(...media.warnings);
       await ctx.runMutation(internal.submissions.facts,{jobId:job._id,generation,sourceHash,durationMs,mediaVerified:true,
         frameDHashes:media.frameDHashes,perceptualHash:media.perceptualHash,perceptualHashSource:"serverComputed"});
+      for (const [sampleIndex, frame] of media.videoFrames.entries()) {
+        const storageId = await ctx.storage.store(new Blob([new Uint8Array(frame.bytes)], {type:"image/jpeg"}));
+        evidenceFrames.push({storageId, timestampMs:frame.timestampMs, contentHash:createHash("sha256").update(frame.bytes).digest("hex"),
+          sizeBytes:frame.bytes.byteLength, kind:"visual", sampleIndex});
+      }
+      for (const frame of media.hashFrames ?? []) {
+        const storageId = await ctx.storage.store(new Blob([new Uint8Array(frame.bytes)], {type:"image/jpeg"}));
+        evidenceFrames.push({storageId, timestampMs:frame.timestampMs, contentHash:createHash("sha256").update(frame.bytes).digest("hex"),
+          sizeBytes:frame.bytes.byteLength, kind:"dhash", sampleIndex:frame.sampleIndex, decodedFrameIndex:frame.frameIndex});
+      }
       duplicate=await ctx.runQuery(internal.submissions.copies,{submissionId:submission._id});
 
       const outcomes=await Promise.allSettled([observeVideo(media.videoFrames,durationMs,submission.evalVideoModel),
@@ -67,10 +79,11 @@ export const run = internalAction({
     const reportStorageId=await ctx.storage.store(new Blob([reportJson],{type:"application/json"}));
     try {
       const analysisId=await ctx.runMutation(internal.submissions.complete,{jobId:job._id,generation,reportJson,
-        observationsJson:canonical({video,audio,failureCode:failure,...(evaluation ? {evaluation} : {})}),reportStorageId,reportHash:digest(report),processingElapsedMs:Date.now()-started,...(failure ? {failureCode:failure} : {})});
+        observationsJson:canonical({video,audio,failureCode:failure,...(evaluation ? {evaluation} : {})}),reportStorageId,evidenceFrames,reportHash:digest(report),processingElapsedMs:Date.now()-started,...(failure ? {failureCode:failure} : {})});
       return {analysisId};
     } catch {
-      await ctx.storage.delete(reportStorageId);
+      // A transport failure does not prove the mutation rolled back. Keep private
+      // storage for recovery instead of deleting possibly committed evidence.
       throw new Error("analysis_persistence_failed");
     }
   },

@@ -111,6 +111,38 @@ describe("evaluation corpus isolation and advisory projection", () => {
     expect(failedReport.report.recommendation).toBe("needs_review");
   });
 
+  it("persists twelve visual samples and six exact fingerprint frames linked to each analysis", async () => {
+    const f = await setup();
+    const hashes = Array.from({length: 6}, (_, i) => ({timestampMs: (i + 1) * 1000, hash: frames[i % frames.length]!.hash}));
+    const bytes = new Uint8Array([255, 216, 255, 217]);
+    mocked.prepare.mockResolvedValue({durationMs:12_000, silentVideo:bytes, audio:bytes, warnings:[], frameDHashes:hashes,
+      perceptualHash:hashes.map(f => f.hash).join(""),
+      videoFrames:Array.from({length:12}, (_, i) => ({timestampMs:(i+1)*900, bytes, mimeType:"image/jpeg"})),
+      hashFrames:hashes.map((frame, sampleIndex) => ({...frame, bytes, mimeType:"image/jpeg", sampleIndex, frameIndex:sampleIndex*2+1}))});
+    const left = await create(f, "stored-left", "stored-frames");
+    await finish(f, left);
+    const right = await create(f, "stored-right", "stored-frames");
+    await finish(f, right);
+    const evidence = await f.t.query(api.media.submissionEvidence, {demoIdentity:"controller", submissionId:left.submissionId});
+    expect(evidence.framesAvailable).toBe(true);
+    expect(evidence.frames).toHaveLength(12); expect(evidence.dHashFrames).toHaveLength(6);
+    expect(evidence.dHashFrameIndices).toEqual([1,3,5,7,9,11]);
+    for (const frame of [...evidence.frames, ...evidence.dHashFrames]) expect(frame.url).toMatch(/^https?:/);
+    const pair = await f.t.query(api.media.duplicatePair, {demoIdentity:"controller", submissionId:left.submissionId, matchingSubmissionId:right.submissionId});
+    expect(pair.matchedFrames).toHaveLength(6);
+    for (const [i, frame] of pair.matchedFrames.entries()) {
+      expect(frame.distance).toBe(0); expect(frame.sampleIndex).toBe(i);
+      expect(frame.leftFrame).toMatchObject({kind:"dhash", sampleIndex:i, decodedFrameIndex:i*2+1});
+      expect(frame.rightFrame).toMatchObject({kind:"dhash", sampleIndex:i});
+      expect(frame.leftFrame!.url).toMatch(/^https?:/); expect(frame.rightFrame!.url).toMatch(/^https?:/);
+    }
+    await f.t.action(internal.verify.run, {jobId:left.job._id});
+    expect(await f.t.run(async ctx => (await ctx.db.query("mediaAssets").withIndex("by_submission_purpose", q => q.eq("submissionId", left.submissionId).eq("purpose", "evidence_frame")).collect()).length)).toBe(18);
+    const analysis = await f.t.run(async ctx => (await ctx.db.get((await ctx.db.get(left.submissionId))!.currentAnalysisId!))!);
+    expect(analysis.evidenceAssetIds).toHaveLength(19);
+    await expect(f.t.query(api.media.submissionEvidence, {demoIdentity:"finance-agent", submissionId:left.submissionId})).rejects.toThrow();
+  });
+
   it("binds scope on replay and rejects invalid or non-verification scopes", async () => {
     const f = await setup(), item = await create(f, "immutable", "run-a");
     expect(await f.t.mutation(api.submissions.create, item.args)).toEqual({ submissionId: item.submissionId, replayed: true });

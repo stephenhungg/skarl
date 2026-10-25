@@ -828,3 +828,25 @@ creation once, retain its returned order ID, verify the 1 USDC x402 challenge,
 and only then perform the authorized single testnet funding and read back its
 reconciled transaction. Record that result here; do not substitute the already
 funded seeded order as proof of outsider creation.
+## Backend batch — persisted verifier frames
+
+New verification actions store the twelve sampled visual JPEGs and six additional
+JPEGs of the exact decoded 6-fps frames underlying the existing dHashes. Sample
+timestamps and decoded fingerprint indices are persisted as private storage
+assets linked to the job and analysis in the report-completion transaction.
+Storage hash/size/type, sample indices, source times and current job generation
+are checked before linking. The existing fingerprint algorithm is unchanged.
+
+`media.submissionEvidence` now exposes role-checked `frames` (12), `dHashFrames`
+(6), `dHashFrameIndices` and `framesAvailable`; `media.duplicatePair` returns both
+sides' matching fingerprint frame URLs and per-frame Hamming distances. These
+are bearer URLs issued only after both submissions' tenant/ownership checks.
+Older analyses are not backfilled and retain honest unavailable states. Failed
+storage/analysis work cannot become acceptance evidence. An ambiguous completion
+failure retains private blobs for recovery instead of deleting possibly linked
+assets. No real media or storage URLs are committed.
+
+The source change requires the orchestrator's deployment of clean `origin/main`;
+no cloud sync was run from this checkout.
+
+Frame commit validation ran against an isolated snapshot of the staged tree, excluding other in-progress batch changes: `pnpm check` passed **550 tests** (122 Node, 287 Convex, 141 payment-route), typechecks, docs and production build. Actual local FFmpeg extraction ran; provider observations and chain evidence in tests are synthetic. The persistence regression verifies all 18 assets, both duplicate sides, exact indices/distances, role refusal, replay and invalid frame-binding refusals.

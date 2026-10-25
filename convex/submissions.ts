@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
 import { audit, actorFor, digest, requireTenant } from "./lib/finance";
 import { validateFrameHashes, compareFrameHashes } from "./lib/copyDetection";
@@ -8,6 +9,8 @@ import { PIPELINE_VERSION, validateEvaluationScope, applyVerificationOnlyGuard, 
 import { evaluationVideoModel } from "./validators";
 
 const frame = v.object({ timestampMs: v.number(), hash: v.string() });
+const evidenceFrame = v.object({ storageId: v.id("_storage"), timestampMs: v.number(), contentHash: v.string(), sizeBytes: v.number(),
+  kind: v.union(v.literal("visual"), v.literal("dhash")), sampleIndex: v.number(), decodedFrameIndex: v.optional(v.number()) });
 export const generateUploadUrl = mutation({
   args: { demoIdentity: v.string() },
   handler: async (ctx, args) => { await requireRole(ctx, args.demoIdentity, "contributor"); return ctx.storage.generateUploadUrl(); },
@@ -153,7 +156,7 @@ export const copies = internalQuery({
  */
 export const complete = internalMutation({
   args: { jobId: v.id("jobs"), generation: v.number(), reportJson: v.string(), observationsJson: v.string(),
-    reportStorageId: v.id("_storage"), reportHash: v.string(), processingElapsedMs: v.number(), failureCode: v.optional(v.string()) },
+    reportStorageId: v.id("_storage"), reportHash: v.string(), processingElapsedMs: v.number(), evidenceFrames: v.optional(v.array(evidenceFrame)), failureCode: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, "contributor", "contributor");
     const job = await ctx.db.get(args.jobId);
@@ -191,10 +194,31 @@ export const complete = internalMutation({
         digest(quality) !== evaluation.qualityReportHash || digest(applyVerificationOnlyGuard(quality)) !== args.reportHash) throw new Error("evaluation_report_mismatch");
     } else if (evaluation !== undefined) throw new Error("unexpected_evaluation_projection");
     if (submission.verificationOnly && report.recommendation !== "needs_review") throw new Error("verification_only_must_review");
+    const frameAssetIds: Id<"mediaAssets">[] = [], dHashFrameIndices: number[] = [];
+    const suppliedFrames = args.evidenceFrames ?? [];
+    if (suppliedFrames.length > 18 || new Set(suppliedFrames.map(frame => frame.storageId)).size !== suppliedFrames.length ||
+      new Set(suppliedFrames.map(frame => `${frame.kind}:${frame.sampleIndex}`)).size !== suppliedFrames.length) throw new Error("invalid_evidence_frames");
+    for (const frame of [...suppliedFrames].sort((a, b) => a.sampleIndex - b.sampleIndex)) {
+      if (!Number.isSafeInteger(frame.timestampMs) || frame.timestampMs < 0 || frame.timestampMs > report.source.durationMs ||
+        !Number.isSafeInteger(frame.sampleIndex) || frame.sampleIndex < 0 || frame.sampleIndex >= (frame.kind === "visual" ? 12 : 6) ||
+        !/^[a-f0-9]{64}$/.test(frame.contentHash) || !Number.isSafeInteger(frame.sizeBytes) || frame.sizeBytes < 4 || frame.sizeBytes > 100 * 1024 ||
+        (frame.kind === "dhash" && (!Number.isSafeInteger(frame.decodedFrameIndex) || frame.decodedFrameIndex! < 0 || frame.decodedFrameIndex! > 181 ||
+          submission.frameDHashes?.[frame.sampleIndex]?.timestampMs !== frame.timestampMs))) throw new Error("invalid_evidence_frames");
+      const metadata = await ctx.db.system.get(frame.storageId);
+      if (!metadata || metadata.contentType !== "image/jpeg" || metadata.size !== frame.sizeBytes) throw new Error("evidence_frame_storage_mismatch");
+      const storedHash = /^[a-f0-9]{64}$/.test(metadata.sha256) ? metadata.sha256 : [...atob(metadata.sha256)].map(char => char.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+      if (storedHash !== frame.contentHash || await ctx.db.query("mediaAssets").withIndex("by_storage_id", q => q.eq("storageId", frame.storageId)).first()) throw new Error("evidence_frame_storage_mismatch");
+      frameAssetIds.push(await ctx.db.insert("mediaAssets", { organizationId: job.organizationId, submissionId: submission._id, jobId: job._id,
+        storageId: frame.storageId, purpose: "evidence_frame", status: "verified", contentHash: frame.contentHash, mimeType: "image/jpeg", sizeBytes: frame.sizeBytes,
+        sourceTimestampMs: frame.timestampMs, frameKind: frame.kind, sampleIndex: frame.sampleIndex,
+        ...(frame.decodedFrameIndex !== undefined ? { decodedFrameIndex: frame.decodedFrameIndex } : {}) }));
+      if (frame.kind === "dhash") dHashFrameIndices.push(frame.decodedFrameIndex!);
+    }
     const context = { organizationId: job.organizationId, jobId: job._id, submissionId: job.submissionId, taskVersionId: job.taskVersionId,
       sourceHash: job.sourceHash, pipelineVersion: job.pipelineVersion, leaseGeneration: args.generation,
       summary: `${report.recommendation}: ${report.criteria.map((c: {criterionId:string;status:string}) => `${c.criterionId}=${c.status}`).join(", ")}`,
-      reportStorageId: args.reportStorageId, reportHash: args.reportHash, evidenceAssetIds: submission.originalAssetId ? [submission.originalAssetId] : [],
+      reportStorageId: args.reportStorageId, reportHash: args.reportHash, evidenceAssetIds: [...(submission.originalAssetId ? [submission.originalAssetId] : []), ...frameAssetIds],
+      ...(dHashFrameIndices.length ? { dHashFrameIndices } : {}),
       completedAt: Date.now(), reportJson: args.reportJson, observationsJson: args.observationsJson, processingElapsedMs: args.processingElapsedMs,
       ...(submission.perceptualHashSource ? { perceptualHashSource: submission.perceptualHashSource } : {}) };
     const outcome = report.pipeline.status === "completed"

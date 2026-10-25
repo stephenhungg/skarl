@@ -313,8 +313,8 @@ not a scan of every treasury transfer.
 
 | Query | Arguments | Return |
 | --- | --- | --- |
-| `media.submissionEvidence` | `{demoIdentity,submissionId}` | `{submissionId,analysisId,clip,frames,framesAvailable,transcriptSegments,perceptualHashSource}`. Clip includes asset ID, MIME type, status, duration and URL. Frames include asset ID, `timestampMs`, MIME type and URL. Segments contain `{startMs,endMs,text}`. |
-| `media.duplicatePair` | `{demoIdentity,submissionId,matchingSubmissionId}` | `{left,right,matchedFrames,score,exactSourceMatch,perceptualMatch,heuristicOnly:true}`. Each match includes both hash timestamps, Hamming `distance`, and nullable frame assets at those exact timestamps. |
+| `media.submissionEvidence` | `{demoIdentity,submissionId}` | `{submissionId,analysisId,clip,frames,dHashFrames,dHashFrameIndices,framesAvailable,transcriptSegments,perceptualHashSource}`. Clip includes asset ID, MIME type, status, duration and URL. Visual `frames` (12) and `dHashFrames` (6) include asset ID, `timestampMs`, MIME type, URL, `kind`, `sampleIndex` and nullable `decodedFrameIndex`. `dHashFrameIndices` contains the six indices in the decoded 6-fps silent video. Segments contain `{startMs,endMs,text}`. |
+| `media.duplicatePair` | `{demoIdentity,submissionId,matchingSubmissionId}` | `{left,right,matchedFrames,score,exactSourceMatch,perceptualMatch,heuristicOnly:true}`. Each match includes `sampleIndex`, both hash timestamps, Hamming `distance`, and nullable `leftFrame`/`rightFrame` assets for the exact underlying fingerprint frames. |
 
 Controller access is organization-scoped; contributors can access only their
 own submissions. Both sides of a duplicate pair are authorized independently,
@@ -325,9 +325,7 @@ These are native Convex **bearer storage URLs issued after role checks**, not a
 custom expiring signed-URL service. Do not publish or cache them. A deleted or
 quarantined clip is unavailable. Extracted frames are returned only when verified,
 linked to the current analysis and its job, and persisted with timestamps.
-The current verifier does not persist those frame assets: empty `frames` and
-null matched frame assets are honest unavailable states, not fabricated images.
-The original clip can still be sought to the hash/transcript timestamps.
+New verifier runs persist twelve chronological visual JPEGs and six additional JPEGs of the exact decoded frames used for dHash, linked atomically to the analysis. The six fingerprint images preserve the existing hash algorithm; their sample timestamps and decoded frame indices are explicit. Older analyses are not backfilled: empty arrays/null matched frames remain honest unavailable states. The original clip can still be sought to the hash/transcript timestamps.
 Perceptual matching is a bounded heuristic, not proof of robust copy detection.
 
 ### Ask the finance agent

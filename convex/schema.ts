@@ -47,6 +47,7 @@ const analysisContext = {
   reportStorageId: v.id("_storage"),
   reportHash: v.string(),
   evidenceAssetIds: v.array(v.id("mediaAssets")),
+  dHashFrameIndices: v.optional(v.array(v.number())),
   completedAt: v.number(),
   reportJson: v.optional(v.string()),
   observationsJson: v.optional(v.string()),
@@ -243,6 +244,9 @@ export default defineSchema({
     sizeBytes: v.number(),
     durationMs: v.optional(v.number()),
     sourceTimestampMs: v.optional(v.number()),
+    frameKind: v.optional(v.union(v.literal("visual"), v.literal("dhash"))),
+    sampleIndex: v.optional(v.number()),
+    decodedFrameIndex: v.optional(v.number()),
     width: v.optional(v.number()),
     height: v.optional(v.number()),
   })
