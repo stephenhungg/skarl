@@ -1,7 +1,7 @@
 import { ArrowGlyph } from "@/components/arrow";
 import { SectionHeader } from "@/components/section-header";
 import { StatusPill } from "@/components/status-pill";
-import { EVIDENCE_DOCS_URL, PROOF_LOG, PROOF_NEXT, STATUS_LEGEND } from "./evidence";
+import { EVIDENCE_DOCS_URL, PROOF_LOG, PROOF_NEXT } from "./evidence";
 import { PROOF_CSS, ProofRow } from "./proof/proof-row";
 import { Reveal } from "./roles/reveal";
 
@@ -16,17 +16,6 @@ export function ProofLog() {
       </Reveal>
 
       <Reveal className="mt-8">
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-2.5 rounded-[12px] bg-[rgb(var(--mist)/0.5)] px-[18px] py-4 sm:grid-cols-2 md:px-6 xl:grid-cols-4">
-          {STATUS_LEGEND.map((item) => (
-            <div key={item.status} className="flex items-center gap-2.5">
-              <dt className="flex-none"><StatusPill status={item.status} /></dt>
-              <dd className="m-0 text-[13px] leading-[1.25] text-slate-500">{item.meaning}</dd>
-            </div>
-          ))}
-        </dl>
-      </Reveal>
-
-      <Reveal className="mt-3">
         <ul className="m-0 flex list-none flex-col p-0">
           {PROOF_LOG.map((row) => (
             <ProofRow key={row.title} row={row} />

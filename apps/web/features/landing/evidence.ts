@@ -74,13 +74,6 @@ export const PROOF_NEXT: ProofRow[] = [
   },
 ];
 
-export const STATUS_LEGEND: { status: EvidenceStatus; meaning: string }[] = [
-  { status: "LIVE", meaning: "Ran for real and is observable now" },
-  { status: "REPLAYED", meaning: "Real output recorded earlier, shown again" },
-  { status: "SIMULATED", meaning: "Deterministic fixture or synthetic data" },
-  { status: "PLANNED", meaning: "Designed, waiting to be built" },
-];
-
 export const EVIDENCE_DOCS_URL = "https://github.com/stephenhungg/skarl/tree/main/docs";
 
 export type RoleTile = { role: string; icon: "hand" | "camera" | "eye" | "ledger" | "stamp"; can: string; cannot: string; href: string };
