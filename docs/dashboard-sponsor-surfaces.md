@@ -6,13 +6,67 @@ Status: **Shown** = rendered in `apps/web/app/dashboard/**` today. **Missing** =
 
 Labelling rule for every surface: testnet and simulated data carry a visible badge (`Base Sepolia`, `Solana Devnet`, `Mock bank (Nessie)`, `SIMULATED`). Never render an unconfirmed payout as paid.
 
+## Gap audit (Oct 25, 06:10 PDT, main @ `f20665c`)
+
+Method: grep of `apps/web/app`, `apps/web/features` and `apps/web/components` for each sponsor API and sponsor name. This audits **what a judge can see in the UI**, not whether the backend works (the backend items below are deployed and verified separately in [status](status.md)).
+
+**Verdict:** the backend is A-tier and the dashboard is B- at best. Most sponsor proof lives only in Convex queries, CLI scripts and docs.
+
+### UI grade per sponsor (if judged on the dashboard alone)
+
+| Sponsor | Grade | Why |
+| --- | --- | --- |
+| Capital One (Nessie) | **D** | Zero UI mentions. Four-way bank reconciliation and bank exceptions exist only as queries. |
+| Atlassian (Skarl Guard) | **C+** | The demo lives in Jira; the app never links to it or shows mirrored exceptions. |
+| Coinbase (x402 / CDP) | **B-** | x402 copy is present; the agent wallet, CDP policy, payout transactions and funding timeline are not. |
+| Convex | **B** | Everything is live-reactive, but nothing calls out Workflow, crons, scheduler, storage, HTTP actions. |
+| Hyphenate | **B** | Inbox, payables, ledger, buyer review exist; four-way recon, scenario lab and a highlighted refusal moment are missing. |
+| Google Gemini (MLH) | **B-** | Two mentions; no per-criterion jury panel showing both models, agreement and latency. |
+| Anthropic (Claude) | **B-** | Coach is wired; no provider badge on agent runs, Claude's role is not visible. |
+| Solana (MLH) | **C+** | Explorer link only; no `Solana Devnet` rail badge on funding. |
+
+### Missing surfaces (API live, UI absent)
+
+| # | Surface | Source (deployed) | Tracks | Owner |
+| --- | --- | --- | --- | --- |
+| G1 | Four-way reconciliation table, label **Mock bank (Capital One Nessie)**, mismatches red, bank exceptions list | `bankWitness.reconciliation4Way`, `bankWitness.bankExceptions` | Capital One, Hyphenate | Proof-page worker |
+| G2 | Scenario lab: run buttons + live pass/fail read back from the DB | `scenarios.run`, `scenarios.listRuns` | Hyphenate, Convex, MTC | **Matthew (PR #2)** |
+| G3 | Agent wallet card: address (BaseScan link), CDP policy id, per-payout cap, the two `policy_violation` rejections, executor badge `cdp_agent` | `agentWallet`, [agent-wallet](agent-wallet.md), `payments.payoutAttempt` | Coinbase | Proof-page worker |
+| G4 | Payout history with transaction links | `activity.payoutHistory` | Coinbase, Hyphenate | Proof-page worker |
+| G5 | x402 funding timeline: 402 challenge → signed payment → facilitator settlement → CDP webhook → chain observation | `payments.fundingStatus`, `chainWitness.reconciliationWithWitness`, `chainWitness.webhookExceptions` | Coinbase | Proof-page worker |
+| G6 | EAS attestation badge + EASScan link per verified submission | `attestations.forSubmission` | Coinbase, MTC | Proof-page worker |
+| G7 | Skarl Guard card: Jira project link (`one-atlas-hmeq.atlassian.net`, project SKARL), count of mirrored exceptions, "agents can't approve" note | `/jira/feed` contents, `exceptions.list` | Atlassian | Proof-page worker |
+| G8 | "Convex features in use" panel + analytics: Workflow (approval wait), crons (reconcile 2m, attest 2m, bank sweep 2m, finance 10m), scheduler, file storage, Node actions, HTTP actions (`/mcp`, `/jira/feed`, discovery) | `analytics.overview`, `analytics.timeSeries`, `scheduledData.snapshots` | Convex | Proof-page worker |
+| G9 | Jury panel per submission: both models, per-criterion verdict, agreement, latency | `submissions.getReport` (`pipeline.modelRuns`), `witnessReceipt.forSubmission` | Gemini | Proof-page worker |
+| G10 | Provider badge (`claude-sonnet-5-5` / gemini) on every finance-agent run; coach card labelled "Claude, advisory" | `financeAgentData.runs` (`provider`, `model`), `coachData.forSubmission` | Anthropic | Proof-page worker |
+| G11 | Rail badge `Base Sepolia` / `Solana Devnet` + explorer link on funding | `payments.fundingStatus` (`network`, `explorerUrl`) | Coinbase, Solana | Proof-page worker |
+| G12 | Tax panel: YTD per contributor, form status, flags, CSV, "Not tax advice" | tax worker (in flight) | Hyphenate | Tax worker |
+| G13 | Highlighted refusal card: agent proposal → `self_approval_refused` with audit reason, then policy-engine approval | `financeAgentData.runs`, `dashboard.auditEvents` | Hyphenate, Anthropic, Coinbase | Proof-page worker |
+
+### Build plan
+
+1. **Matthew — merge PR #2** (`matthew/dashboard`: scenario lab, contributor capture view, order switcher, phone evidence). It is open and `CONFLICTING` with main: rebase on main, keep main's buyer/controller auth and auto-pay changes, re-run `pnpm check`, merge.
+2. **Proof-page worker** — new route `apps/web/app/dashboard/proof/page.tsx` plus cards in `apps/web/features/dashboard/proof/*` (new files only, to avoid colliding with in-flight auth and PR #2 changes). One section per sponsor with a sponsor heading, G1 and G3–G11 and G13, a link to it in the dashboard nav.
+3. **Tax worker** — G12, already queued.
+
+### Acceptance (per surface)
+
+- Reads live data from the deployed Convex functions above; no hardcoded numbers except documented static evidence (CDP policy id, the two recorded rejections).
+- Carries the labelling badges above; unconfirmed payouts never render as paid.
+- Empty state says exactly which prerequisite is missing (for example "No accepted clip yet").
+- Every external proof is a clickable link (BaseScan, Solana Explorer, EASScan, Jira, Nessie account id).
+
+### Demo path through the proof page (60 seconds)
+
+Scenario lab: run `bank_mismatch` → four-way table turns red live (Capital One, Convex) → agent run card shows Claude badge and the refused self-approval, then policy-engine approval (Anthropic, Hyphenate) → payout row with BaseScan transaction link and `cdp_agent` executor (Coinbase) → Skarl Guard card opens the Jira ticket (Atlassian).
+
 ## P0: build these first (they carry the most tracks)
 
 | # | Surface | Source | Status | Tracks |
 | --- | --- | --- | --- | --- |
-| 1 | **Witness receipt** per submission: checklist of every witness (agree / disagree / missing / pending) with evidence links | `witnessReceipt.forSubmission` | Missing (receipt page reads only `submissions.getReport` + `media.submissionEvidence`) | All, the thesis made visible |
-| 2 | **Four-way reconciliation table**: order · ledger · chain · bank per intent, mismatches in red | `bankWitness.reconciliation4Way`, `bankWitness.bankExceptions` | Missing (dashboard uses 3-way `payments.reconciliation`) | Hyphenate, Capital One |
-| 3 | **Scenario lab**: buttons to inject the 6 attacks, live pass/fail table read back from the DB | `scenarios.run`, `scenarios.listRuns` | Missing | Hyphenate, Convex, MTC |
+| 1 | **Witness receipt** per submission: checklist of every witness (agree / disagree / missing / pending) with evidence links | `witnessReceipt.forSubmission` | Shown (audit Oct 25) | All, the thesis made visible |
+| 2 | **Four-way reconciliation table**: order · ledger · chain · bank per intent, mismatches in red | `bankWitness.reconciliation4Way`, `bankWitness.bankExceptions` | Missing (G1) | Hyphenate, Capital One |
+| 3 | **Scenario lab**: buttons to inject the 6 attacks, live pass/fail table read back from the DB | `scenarios.run`, `scenarios.listRuns` | In PR #2, not merged (G2) | Hyphenate, Convex, MTC |
 | 4 | **Agent refused** moment: finance agent proposal → self-approval refused, with audit reason | `financeAgentData.runs`, `dashboard.auditEvents` | Partially shown (agent page, audit page); make the refusal a highlighted card | Hyphenate, Anthropic, Coinbase |
 | 5 | **Funding with rail badge and explorer links** (BaseScan / Solana Explorer), x402 status | `payments.fundingStatus` (`network`, `explorerUrl`) | Check: order summary shown; rail badge + explorer link likely missing | Coinbase, Solana |
 
