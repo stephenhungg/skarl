@@ -65,6 +65,7 @@ import type * as statements from "../statements.js";
 import type * as submissions from "../submissions.js";
 import type * as validators from "../validators.js";
 import type * as verify from "../verify.js";
+import type * as witnessReceipt from "../witnessReceipt.js";
 
 import type {
   ApiFromModules,
@@ -130,6 +131,7 @@ declare const fullApi: ApiFromModules<{
   submissions: typeof submissions;
   validators: typeof validators;
   verify: typeof verify;
+  witnessReceipt: typeof witnessReceipt;
 }>;
 
 /**

@@ -132,6 +132,125 @@ pnpm exec convex run dashboard:orderSummary '{"demoIdentity":"controller","order
 pnpm exec convex run submissions:evaluationRun '{"demoIdentity":"contributor","orderId":"kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg","evalRunId":"eval-dcf1ae08-f3c5-4afb-a196-6216414fd712"}'
 ```
 
+## Witness receipt
+
+**Source implementation; Convex deployment required.**
+`witnessReceipt.forSubmission({demoIdentity, submissionId})` is one read-only
+projection of the stored witnesses behind a submission. It neither runs new
+inference nor creates an attestation, decision, proposal, journal or payment.
+Controllers in the organization, the order's buyer and the owning contributor
+can read it. A finance-agent identity cannot read this endpoint. Demo selectors
+remain impersonable demo credentials, not production authentication.
+
+For Matthew's dashboard, subscribe with
+`useQuery(api.witnessReceipt.forSubmission, {demoIdentity: "controller", submissionId})`.
+`undefined` means loading. The HTTP equivalent is
+`GET /api/samples/<submissionId>/witnesses` with the explicit header
+`x-skarl-demo-identity: controller` (or `buyer` / `contributor`). The route also
+accepts `sample-<submissionId>`, matching the other sample routes. Responses use
+`Cache-Control: private, no-store`; any bigint values become decimal integer
+strings. This read does not require the payment service secret or an x402 charge.
+
+```sh
+curl -H 'x-skarl-demo-identity: controller' \
+  https://skarl.vercel.app/api/samples/mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j/witnesses
+```
+
+Source-derived example shape below, with the witness list trimmed for readability;
+this is an illustration, not a live response or a claim about that stored sample:
+
+```json
+{
+  "submissionId": "mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j",
+  "verdict": "needs_review",
+  "recommendation": "request_correction",
+  "witnesses": [
+    {
+      "key": "vision_jury",
+      "label": "Vision jury agreement (advisory)",
+      "kind": "work",
+      "status": "disagree",
+      "detail": "2 model reports; agreement fraction: 0; disputed criteria: pickup. Unavailable reports are not agreement.",
+      "evidenceUrl": null,
+      "live": false
+    },
+    {
+      "key": "eas_attestation",
+      "label": "EAS attestation (Base Sepolia testnet)",
+      "kind": "work",
+      "status": "missing",
+      "detail": "No confirmed EAS attestation for the current analysis.",
+      "evidenceUrl": null,
+      "live": false
+    },
+    {
+      "key": "deterministic_judge",
+      "label": "Deterministic judge recommendation",
+      "kind": "judgment",
+      "status": "disagree",
+      "detail": "Stored recommendation: request_correction; implementation: inference; pipeline: completed. Advisory; does not authorize payment.",
+      "evidenceUrl": null,
+      "live": false
+    },
+    {
+      "key": "bank_witness",
+      "label": "simulated bank (Capital One Nessie mock)",
+      "kind": "money",
+      "status": "missing",
+      "detail": "No related payout intent to compare with simulated bank activity.",
+      "evidenceUrl": null,
+      "live": false
+    }
+  ]
+}
+```
+
+`verdict` is the submission's persisted status; `recommendation` is its current
+analysis recommendation or `null` when no analysis exists. Incomplete/unavailable
+analysis cannot project an `accept` recommendation. Each witness has exactly
+`key`, `label`, `kind`, `status`, `detail`, `evidenceUrl` and `live`. Kinds are
+`work`, `judgment`, `money`; statuses are `agree`, `disagree`, `missing`, `pending`,
+`not_applicable`. A missing result is not agreement, and pending payment evidence
+is not a paid claim. These rows do not grant acceptance or payment authority.
+
+`agree` is specific to each witness's claim: audio means a stored transcription
+exists, a human decision means the controller recorded acceptance, and a bank
+row means simulated activity matches the payout bindings. Those are different
+claims; they do not all corroborate the filmed action. Keep the detail visible
+so a checked row cannot imply more than its source establishes.
+
+Render a checklist grouped by `kind`, keyed by `key`, preserving each row's label,
+status and plain-text detail. Check only `agree` rows; use distinct visible states
+for disagreement, missing, pending and not applicable. Do not collapse the
+witnesses into a single green fraud score. The list includes:
+
+- Work: each vision model and jury agreement, audio transcript, optional IMU
+  summary, duplicate/copy score, prompt-injection scan, current EAS attestation
+  and optional spoken liveness. A persisted instruction-like-content warning
+  appears as a disagreeing heuristic scan witness. An absent explicit scan or
+  liveness result stays missing; absence of a warning is not a clean scan.
+- Judgment: deterministic recommendation, human controller decision, and related
+  finance-agent proposals/refusals. A proposal is not approval or payment.
+- Money: payable, related ledger journals, observed payout transfers and the
+  **simulated bank (Capital One Nessie mock)** witness.
+
+When `evidenceUrl` is non-null, render an “Evidence” link beside that witness.
+Confirmed EAS rows link to
+`https://base-sepolia.easscan.org/attestation/view/<uid>`; payout observations link
+to `https://sepolia.basescan.org/tx/<txHash>`. Preserve the Base Sepolia testnet
+label. Null links mean there is no public evidence URL; do not generate media
+URLs or attach private original recordings to this receipt.
+
+`live` is conservative provenance metadata, not a success indicator. The current
+stored records do not establish live provenance, so this projection returns
+`false`, including for testnet and simulated bank sources. A stored agreement or
+explorer link alone must not create a “live” badge. Hosted Nessie calls are still
+simulated bank evidence.
+
+HTTP errors are fixed public codes: missing identity or malformed ID → `400`,
+role/ownership denial → `403`, missing submission/order → `404`, unavailable or
+undeployed backend → `503`. Wrapped backend errors are not exposed.
+
 ## React wiring
 
 For a file in `apps/web/features/dashboard/` (same relative depth as `app/dashboard/`), under the existing Convex provider:
