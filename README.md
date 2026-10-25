@@ -70,6 +70,14 @@ The local UI uses the public demo Convex URL and treasury in the example; no pri
 Record from an iPhone with the standalone [Expo Go mobile app](apps/mobile/README.md):
 video, narration and device motion, using Bun. [Sensor evidence and limits](docs/mobile.md).
 
+## For robotics labs
+
+- Export licensed, accepted episodes as LeRobot-style manifests or RLDS JSON with task instructions and narration transcripts.
+- Mobile v2 preserves six available phone sensor channels, including magnetic field, and an explicit approximate video sync offset; unavailable channels stay absent. Expo Go cannot establish native frame accuracy.
+- Optional rubric step markers provide sub-task boundaries; remembered mount, dominant hand, environment and lighting accompany client-read camera metadata and explicitly estimated iPhone intrinsics.
+- Frame-grid IMU state and saved advisory hand keypoints support conversion experiments. Phone motion and model keypoints are not robot controls, calibrated poses or verified action labels.
+- See [dataset field mapping and limits](docs/datasets.md), [mobile timing contract](docs/mobile.md), and the [human device checklist](apps/mobile/README.md). Convex deployment and physical capture verification remain required.
+
 ## Team handoffs
 
 | Owner | Workstream | Primary folders |

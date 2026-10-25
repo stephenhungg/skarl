@@ -44,6 +44,10 @@ export const attachSensorTrace = action({
     try { json = JSON.parse(await blob.text()); } catch { throw new Error("invalid_sensor_trace"); }
     const trace = validateSensorTrace(json);
     return ctx.runMutation(internal.sensorTraces.attachValidated, { ...args, trace: {
+      version: trace.version,
+      ...(trace.version === 2 ? { videoStartOffsetMs: trace.videoStartOffsetMs, videoStopOffsetMs: trace.videoStopOffsetMs,
+        syncSource: trace.syncSource, syncAccuracy: trace.syncAccuracy, segments: trace.segments, context: trace.context,
+        unavailableSensors: trace.unavailableSensors } : {}),
       storageId: args.storageId, sampleRateHz: trace.sampleRateHz, sampleCount: trace.samples.length, durationMs: trace.durationMs,
       sensors: trace.sensors, device: trace.device, recordedAt: trace.recordedAt, clock: trace.clock,
       sizeBytes: blob.size, attachedAt: Date.now(), motionSummary: summarizeMotion(trace),

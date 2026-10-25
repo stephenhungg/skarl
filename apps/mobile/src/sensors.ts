@@ -1,41 +1,58 @@
-import { Accelerometer, Gyroscope, DeviceMotion } from 'expo-sensors';
+import { Accelerometer, Gyroscope, DeviceMotion, Magnetometer } from 'expo-sensors';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
+import { estimateIntrinsics, type Intrinsics } from './cameraIntrinsics';
+import type { CaptureContext } from './captureContext';
+import type { CameraMetadata } from './cameraMetadata';
 
-export type Sensor = 'accelerometer' | 'gyroscope' | 'deviceMotion' | 'attitude' | 'gravity';
+export const SENSOR_NAMES = ['accelerometer', 'gyroscope', 'deviceMotion', 'attitude', 'gravity', 'magnetometer'] as const;
+export type Sensor = typeof SENSOR_NAMES[number];
 export type Sample = { sensor: Sensor; timestampMs: number; x: number; y: number; z: number };
-export type Trace = {
-  version: 1; sampleRateHz: number; durationMs: number; recordedAt: string;
+export type Segment = { label: string; startMs: number; endMs: number };
+type TraceBase = {
+  sampleRateHz: number; durationMs: number; recordedAt: string;
   clock: 'js-callback-performance-now'; sensors: Sensor[];
   device: { model: string; os: string; osVersion: string; appVersion: string;
-    cameraFacing: 'back'; requestedVideoQuality: '720p' };
+    cameraFacing: 'back'; requestedVideoQuality: '720p'; resolution?: string; fps?: number;
+    codec?: string | null; zoom?: number; intrinsics?: Intrinsics | null;
+    metadataSource?: 'expo-video' | 'unavailable'; videoDurationMs?: number | null; requestedCodec?: 'avc1' };
   samples: Sample[];
 };
+export type Trace = TraceBase & ({ version: 1 } | {
+  version: 2; videoStartOffsetMs: number | null; videoStopOffsetMs: number | null;
+  syncSource: 'expo-recording-progress-estimate'; syncAccuracy: 'approximate';
+  unavailableSensors: Sensor[]; context: CaptureContext; segments: Segment[];
+});
 
 export async function availableSensors(): Promise<Sensor[]> {
   // Motion permission is separate from camera/microphone permission on iOS.
   const permission = await DeviceMotion.requestPermissionsAsync();
   if (!permission.granted) return [];
   const results = await Promise.allSettled([
-    Accelerometer.isAvailableAsync(), Gyroscope.isAvailableAsync(), DeviceMotion.isAvailableAsync(),
+    Accelerometer.isAvailableAsync(), Gyroscope.isAvailableAsync(), DeviceMotion.isAvailableAsync(), Magnetometer.isAvailableAsync(),
   ]);
-  const available: Sensor[] = (['accelerometer', 'gyroscope', 'deviceMotion'] as const)
+  const available: Sensor[] = (['accelerometer', 'gyroscope', 'deviceMotion', 'magnetometer'] as const)
     .filter((_, i) => results[i]?.status === 'fulfilled' && results[i].value);
   if (available.includes('deviceMotion')) available.push('attitude', 'gravity');
   return available;
 }
 
-export function startTrace(available: Sensor[], onSample?: (sample: Sample) => void) {
+export function startTrace(available: Sensor[], onSample?: (sample: Sample) => void, options?: { context: CaptureContext; stepLabels: string[] }) {
   const start = performance.now();
   const samples: Sample[] = [];
   const last: Partial<Record<Sensor, number>> = {};
   const subscriptions: { remove(): void }[] = [];
   let finished: Trace | undefined;
+  let stoppedAt: number | null = null;
+  let videoStartOffsetMs: number | null = null, lastVideoDurationMs = 0;
+  const stepBoundaries: number[] = [];
+  const defaultContext: CaptureContext = { mount: 'handheld', dominantHand: 'right', environment: 'other', lighting: 'bright' };
+  const labels = (options?.stepLabels ?? []).slice(0, 100).map(label => label.slice(0, 160));
   const recordedAt = new Date().toISOString();
   function add(sensor: Sensor, value: { x: number; y: number; z: number } | null, timestampMs = Math.round(performance.now() - start)) {
-    // Cap each of five channels at 50 Hz: at most 7,505 samples in 30 seconds,
-    // comfortably below the unchanged 2 MiB JSON limit, even at full precision.
-    if (finished || !value || timestampMs > 30_000 || timestampMs - (last[sensor] ?? -20) < 20) return;
+    // Bound raw samples to 31 seconds (30s video plus startup), at 50 Hz.
+    // Longer startup delays remain explicit gaps; never fill missing readings.
+    if (finished || stoppedAt !== null || !value || timestampMs > 31_000 || timestampMs - (last[sensor] ?? -20) < 20) return;
     if (![value.x, value.y, value.z].every(Number.isFinite)) return;
     last[sensor] = timestampMs;
     const sample = { sensor, timestampMs, x: value.x, y: value.y, z: value.z };
@@ -56,6 +73,10 @@ export function startTrace(available: Sensor[], onSample?: (sample: Sample) => v
     Gyroscope.setUpdateInterval(20);
     return Gyroscope.addListener(value => add('gyroscope', value));
   });
+  subscribe('magnetometer', () => {
+    Magnetometer.setUpdateInterval(20);
+    return Magnetometer.addListener(value => add('magnetometer', value));
+  });
   subscribe('deviceMotion', () => {
     DeviceMotion.setUpdateInterval(20);
     return DeviceMotion.addListener(value => {
@@ -73,15 +94,51 @@ export function startTrace(available: Sensor[], onSample?: (sample: Sample) => v
       }, timestampMs);
     });
   });
+  function endRecording() {
+    if (stoppedAt !== null) return;
+    stoppedAt = performance.now();
+    subscriptions.forEach(subscription => subscription.remove());
+  }
   return {
-    stop(): Trace {
+    endRecording,
+    recordingProgress(durationMs: number) {
+      if (finished || stoppedAt !== null || !Number.isFinite(durationMs) || durationMs <= 0) return;
+      // Expo Go exposes recordedDuration but no native host timestamp. Subtract
+      // it from this callback's clock; minimum reduces (cannot eliminate) bridge lag.
+      const offset = Math.max(0, performance.now() - start - durationMs);
+      videoStartOffsetMs = videoStartOffsetMs === null ? offset : Math.min(videoStartOffsetMs, offset);
+      lastVideoDurationMs = Math.max(lastVideoDurationMs, durationMs);
+    },
+    nextStep(): boolean {
+      if (finished || stoppedAt !== null || videoStartOffsetMs === null || stepBoundaries.length >= labels.length - 1) return false;
+      const t = Math.max(0, performance.now() - start);
+      if (t <= (stepBoundaries.at(-1) ?? 0)) return false;
+      stepBoundaries.push(t);
+      return true;
+    },
+    stop(metadata?: CameraMetadata): Trace {
       if (finished) return finished;
-      subscriptions.forEach(subscription => subscription.remove());
+      endRecording();
+      const elapsedMs = Math.min(60_000, Math.max(1, Math.round(stoppedAt! - start)));
+      const videoDuration = metadata?.videoDurationMs ?? lastVideoDurationMs;
+      const videoStopOffsetMs = videoStartOffsetMs === null ? null : Math.min(elapsedMs, videoStartOffsetMs + videoDuration);
+      const duration = videoStopOffsetMs === null ? 0 : videoStopOffsetMs - videoStartOffsetMs!;
+      const boundaries = stepBoundaries.map(t => t - (videoStartOffsetMs ?? 0)).filter(t => t > 0 && t < duration);
+      const sensors = [...new Set(samples.map(sample => sample.sensor))];
+      const width = metadata?.width, height = metadata?.height;
       finished = {
-        version: 1, sampleRateHz: 50, durationMs: Math.min(30_000, Math.round(performance.now() - start)),
-        recordedAt, clock: 'js-callback-performance-now', sensors: [...new Set(samples.map(sample => sample.sensor))],
+        version: 2, sampleRateHz: 50, durationMs: elapsedMs,
+        videoStartOffsetMs, videoStopOffsetMs, syncSource: 'expo-recording-progress-estimate', syncAccuracy: 'approximate',
+        context: { ...(options?.context ?? defaultContext) }, unavailableSensors: SENSOR_NAMES.filter(sensor => !sensors.includes(sensor)),
+        segments: boundaries.length ? [0, ...boundaries].map((startMs, index) =>
+          ({ label: labels[index]!, startMs, endMs: boundaries[index] ?? duration })) : [],
+        recordedAt, clock: 'js-callback-performance-now', sensors,
         device: { model: Device.modelName ?? 'unknown', os: Device.osName ?? 'unknown', osVersion: Device.osVersion ?? 'unknown',
-          appVersion: Constants.expoConfig?.version ?? 'unknown', cameraFacing: 'back', requestedVideoQuality: '720p' },
+          appVersion: Constants.expoConfig?.version ?? 'unknown', cameraFacing: 'back', requestedVideoQuality: '720p',
+          codec: metadata?.codec ?? null, requestedCodec: 'avc1', zoom: 0, metadataSource: metadata?.metadataSource ?? 'unavailable',
+          videoDurationMs: metadata?.videoDurationMs ?? null,
+          ...(metadata?.resolution ? { resolution: metadata.resolution } : {}), ...(metadata?.fps ? { fps: metadata.fps } : {}),
+          intrinsics: width && height ? estimateIntrinsics(Device.modelName ?? 'unknown', width, height) : null },
         samples,
       };
       return finished;

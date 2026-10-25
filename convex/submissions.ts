@@ -299,6 +299,12 @@ export const getReport = query({
     const decision = submission.currentDecisionId ? await ctx.db.get(submission.currentDecisionId) : null;
     if (decision && (decision.organizationId !== submission.organizationId || decision.submissionId !== submission._id)) throw new Error("decision_reference_mismatch");
     return { status: submission.status, sourceHash: submission.sourceHash, perceptualHashSource: submission.perceptualHashSource,
+      capture: submission.sensorTrace ? { version: submission.sensorTrace.version ?? 1, device: submission.sensorTrace.device,
+        context: submission.sensorTrace.context ?? null, segments: submission.sensorTrace.segments ?? [],
+        unavailableSensors: submission.sensorTrace.unavailableSensors ?? [],
+        videoStartOffsetMs: submission.sensorTrace.videoStartOffsetMs ?? null, videoStopOffsetMs: submission.sensorTrace.videoStopOffsetMs ?? null,
+        clock: submission.sensorTrace.clock, syncSource: submission.sensorTrace.syncSource ?? null,
+        syncAccuracy: submission.sensorTrace.syncAccuracy ?? null } : null,
       submittedAt: submission._creationTime, analysisCompletedAt: analysis?.completedAt ?? null,
       decision: decision ? { _id: decision._id, decision: decision.decision, reason: decision.reason, reasonCode: decision.reasonCode,
         note: decision.note, decidedAt: decision.decidedAt } : null,

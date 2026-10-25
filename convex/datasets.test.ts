@@ -6,6 +6,7 @@ import type { Doc } from "./_generated/dataModel";
 import { canonical, digest, paymentBinding, sourceVersion } from "./lib/finance";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import schema from "./schema";
+import { summarizeMotion, validateSensorTrace } from "./lib/sensorTrace";
 
 // Isolated synthetic storage/report/ledger records; no inference or chain transfer.
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
@@ -526,5 +527,47 @@ describe("contributor earnings ownership (synthetic obligations)", () => {
     const f = await setup();
     await delivered(f);
     await expect(f.t.query(contributorEarnings, { demoIdentity })).rejects.toThrow("forbidden");
+  });
+});
+
+const trainingInputs = makeFunctionReference<"action">("datasets:trainingInputs");
+describe("training evidence hydration (synthetic storage)", () => {
+  it("validates a private raw trace and latest saved hand run only after licensed publication checks", async () => {
+    const f = await setup(), sample = await delivered(f);
+    const trace = validateSensorTrace({ version: 1, durationMs: 1000, sampleRateHz: 50,
+      recordedAt: "2026-10-25T10:00:00.000Z", sensors: ["gyroscope"], clock: "js-callback-performance-now",
+      device: { model: "Synthetic phone", os: "iOS", osVersion: "26", appVersion: "0.1.0", cameraFacing: "back", requestedVideoQuality: "720p" },
+      samples: [{ sensor: "gyroscope", timestampMs: 0, x: 1, y: 2, z: 3 }] });
+    await f.t.run(async ctx => {
+      const blob = new Blob([JSON.stringify(trace)], { type: "application/json" });
+      const storageId = await ctx.storage.store(blob);
+      await ctx.db.patch(sample.submissionId, { sensorTrace: { storageId, durationMs: trace.durationMs,
+        sampleRateHz: trace.sampleRateHz, sampleCount: trace.samples.length, sensors: trace.sensors,
+        device: trace.device, recordedAt: trace.recordedAt, clock: trace.clock, attachedAt: Date.now(),
+        sizeBytes: blob.size, motionSummary: summarizeMotion(trace) } });
+      const model = { name: "Synthetic MediaPipe", version: "fixture", runtime: "browser-wasm" as const };
+      const file = { schema: "skarl.annotations.v1", kind: "hands", model, submissionId: sample.submissionId,
+        sourceSha256: sample.sourceHash, advisory: true, sampleFps: 1, videoWidth: 720, videoHeight: 1280,
+        frames: [{ tMs: 0, hands: [] }] };
+      const handStorage = await ctx.storage.store(new Blob([JSON.stringify(file)], { type: "application/json" }));
+      await ctx.db.insert("derivedAnnotations", { organizationId: f.organizationId, submissionId: sample.submissionId,
+        kind: "hands", model, storageId: handStorage, summary: { kind: "hands", frames: 1, durationMs: 0 },
+        advisory: true, createdBy: CONTRIBUTOR, createdAt: Date.now() });
+    });
+    const exported = (await f.t.query(forOrder, args(f))).samples[0];
+    const hydrated = await f.t.action(trainingInputs, { ...args(f), submissionId: sample.submissionId, binding: exported.media.binding });
+    expect(hydrated).toMatchObject({ trace, hands: { advisory: true, frames: [{ tMs: 0, hands: [] }] }, status: "validated_storage" });
+    expect(hydrated).not.toHaveProperty("traceStorageId");
+    await expect(f.t.action(trainingInputs, { ...args(f), submissionId: sample.submissionId, binding: "rebound" })).rejects.toThrow("sample_not_available");
+    await f.t.run(ctx => ctx.db.patch(sample.consentRecordId, { revocationStatus: "requested" }));
+    await expect(f.t.action(trainingInputs, { ...args(f), submissionId: sample.submissionId, binding: exported.media.binding })).rejects.toThrow("sample_not_available");
+  });
+
+  it("missing raw bytes never create sensor observations, and contributors cannot hydrate buyer data", async () => {
+    const f = await setup(), sample = await delivered(f);
+    const exported = (await f.t.query(forOrder, args(f))).samples[0];
+    expect(await f.t.action(trainingInputs, { ...args(f), submissionId: sample.submissionId, binding: exported.media.binding }))
+      .toEqual({ trace: null, hands: null, status: "unavailable" });
+    await expect(f.t.action(trainingInputs, { ...args(f, "contributor"), submissionId: sample.submissionId, binding: exported.media.binding })).rejects.toThrow("forbidden");
   });
 });

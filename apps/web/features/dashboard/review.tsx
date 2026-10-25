@@ -102,6 +102,26 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
           <EvidenceTrack criteria={criteria.map(c => c.finding).filter((f): f is Finding => !!f)} durationMs={durationMs} now={now}
             focus={focus} onFocus={setFocus} onSeek={seek} />
           <Transcript segments={segments} now={now} onSeek={seek} />
+          {report.capture && <div className="rounded-panel border border-line-faint p-3">
+            <h2 className="mb-2 type-heading-sm">Capture context</h2>
+            <p className="type-body-sm text-text-2">{report.capture.device.model} · {report.capture.device.cameraFacing} camera
+              {report.capture.device.resolution ? ` · ${report.capture.device.resolution}` : ""}
+              {report.capture.device.fps ? ` · ${report.capture.device.fps} fps (client reported)` : ""}</p>
+            {report.capture.context && <p className="mt-1 type-body-sm text-text-2">
+              {humanize(report.capture.context.mount)} · {humanize(report.capture.context.dominantHand)} dominant hand · {humanize(report.capture.context.environment)} · {humanize(report.capture.context.lighting)} lighting (self reported)
+            </p>}
+            <p className="mt-1 type-label-sm text-text-3">{report.capture.videoStartOffsetMs === null
+              ? "Video alignment unavailable for this trace."
+              : `Video starts ${Math.round(report.capture.videoStartOffsetMs)} ms into the sensor clock. Approximate Expo progress alignment.`}</p>
+            {report.capture.unavailableSensors.length > 0 && <p className="mt-1 type-label-sm text-text-3">Unavailable: {report.capture.unavailableSensors.map(humanize).join(", ")}</p>}
+            {report.capture.segments.length ? <ol className="mt-3 flex flex-col gap-2">
+              {report.capture.segments.map((segment, index) => <li key={index}>
+                <button type="button" className="type-body-sm text-text-2 underline underline-offset-4" onClick={() => seek(segment.startMs, segment.endMs)}>
+                  {segment.label} · {formatMs(segment.startMs)}–{formatMs(segment.endMs)}
+                </button>
+              </li>)}
+            </ol> : <p className="mt-2 type-label-sm text-text-3">No contributor step markers.</p>}
+          </div>}
           {parsed?.warnings?.length ? <ul className="flex flex-col gap-1">{parsed.warnings.map(w => <li key={w} className="type-body-sm text-text-2">{w}</li>)}</ul> : null}
         </div>
         <aside className="flex flex-col gap-3 lg:sticky lg:top-16 lg:self-start">

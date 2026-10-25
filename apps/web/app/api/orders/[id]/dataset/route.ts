@@ -23,8 +23,18 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const manifest = await db.query(api.datasets.forOrder, { demoIdentity, orderId: orderId as Id<"orders">,
       refreshKey: Math.floor(Date.now() / 60_000) });
     if (format === "json") return paymentJson(manifest);
-    if (format === "lerobot") return paymentJson(lerobotManifest(manifest));
-    if (format === "rlds-json") return paymentJson(rldsJsonManifest(manifest));
+    if (format === "lerobot" || format === "rlds-json") {
+      // Hydrate one licensed episode at a time; the action repeats publication and
+      // consent checks after reading bounded private sensor/annotation storage.
+      const samples = [];
+      for (const sample of manifest.samples) {
+        const trainingInputs = await db.action(api.datasets.trainingInputs, { demoIdentity, orderId: orderId as Id<"orders">,
+          submissionId: sample.submissionId, binding: sample.media.binding });
+        samples.push({ ...sample, trainingInputs });
+      }
+      const training = { ...manifest, samples };
+      return paymentJson(format === "lerobot" ? lerobotManifest(training) : rldsJsonManifest(training));
+    }
     // Authorize and materialize the snapshot before starting the response. Each
     // pull emits one complete sample without a manifest or metadata line.
     const samples = manifest.samples[Symbol.iterator]();

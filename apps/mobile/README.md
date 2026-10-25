@@ -104,3 +104,57 @@ existing web WOFF2 assets with FontTools (`TTFont`, `flavor = None`), preserving
 the existing font data/names. They load at runtime with `expo-font` in Expo Go.
 See the [390px screenshots and comparison](../../docs/mobile.md#visual-alignment).
 The web export is for layout inspection; video/IMU capture is an iPhone flow.
+
+## Robot-data capture v2 device checklist
+
+After the operator deploys the Convex changes from main, use a physical iPhone
+in Expo Go; fixture tests and Metro export do not prove recording synchronization.
+
+1. Before filming, confirm Mount, Hand, Environment and Lighting. Change them,
+   retake, and relaunch: the choices should persist. Confirm the recorded context
+   appears in the submission report and both dataset episode formats.
+2. Record a consenting visible action with a distinct phone movement and spoken
+   cue. Inspect v2 JSON: `videoStartOffsetMs` should reflect recording startup,
+   `videoStopOffsetMs` should match start plus the file duration (bounded by the
+   trace clock), and `clock` should be `js-callback-performance-now`.
+   Compare the cue and sensor peak on replay to estimate real timing error.
+   **This is approximate synchronization**, derived from Expo's native duration
+   progress callbacks; Expo Go exposes no native camera host/frame timestamps.
+   Do not label it frame accurate. Repeat while the phone is busy and report the
+   observed error before using it for time-sensitive training.
+3. Tap the large **Next step** button when moving to each rubric action. Confirm
+   the current label advances and saved segments share video-relative boundaries.
+   Retake without tapping: recording/upload should work and `segments` should be
+   empty. A haptic is requested on taps; iOS may suppress it while the camera is
+   active, so the visible label is the reliable confirmation.
+4. Inspect recorded metadata: actual encoded track resolution, nominal FPS and duration
+   from `expo-video` when available; requested 720p/AVC remain distinct from
+   measured metadata. Codec uses the track’s reported media subtype (for example,
+   `video/avc1`); it is null when unavailable.
+   Zoom is zero; the app requests the standard wide lens with stabilization off.
+   Known iPhone 14/15 models should have `intrinsics.estimated: true`; unknown
+   models and failed metadata inspection must have null intrinsics. The lookup
+   uses Apple's main-lens full-frame-equivalent focal lengths for
+   [iPhone 14](https://support.apple.com/en-us/111850),
+   [iPhone 15](https://support.apple.com/en-us/111831) and
+   [iPhone 15 Pro](https://support.apple.com/en-us/111829). It ignores video crop,
+   distortion, file display rotation and focus changes; it is a pinhole estimate
+   in the encoded track dimensions, not calibration. Apply the video display
+   transform before comparing it to decoded/display-oriented hand coordinates.
+5. Inspect magnetometer x/y/z in microteslas when available. Turn the phone away
+   from metal and compare changes; these are raw magnetic readings, not a
+   calibrated compass heading. Deny motion permission and verify no fabricated
+   channels, vectors or zero heading: all absent channels belong in
+   `unavailableSensors`. Confirm missing recording progress yields null sync
+   offsets and no invented segments.
+6. Export a licensed accepted take as LeRobot and RLDS. Check that frame time zero
+   uses sensor time `videoStartOffsetMs`, sub-task boundaries follow your taps,
+   camera metadata accompanies the episode, and any saved hand keypoints are
+   clearly marked advisory action proxies. Compare a legacy v1 sample: it must
+   still summarize, with unavailable frame alignment shown honestly.
+7. Background the app while filming; discard the interrupted take. Then test a
+   network-loss upload/relaunch and verify the same submission resumes with its
+   original v2 trace, context and segments.
+
+ARKit poses, LiDAR/depth and native camera/sensor host-clock synchronization are
+roadmap items requiring a custom native build; they are outside this Expo Go app.
