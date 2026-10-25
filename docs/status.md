@@ -465,3 +465,31 @@ refusing to offer unlicensed/unaccepted work for sale. The plugin now documents
 the implemented 0.25 USDC contract and actual response fields. A licensed,
 accepted and delivered sample, live paid delivery, and Bazaar indexing evidence
 remain outstanding. No new transaction hash was produced by this deployment.
+
+## Production environment complete — October 25, 2026, 02:53 PDT
+
+All four CDP variables are now installed as encrypted Vercel production variables:
+`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`, and
+`CDP_CLIENT_API_KEY`. They join the public Convex URL, treasury, private payment
+service secret and Base Sepolia RPC URL. The credential watcher completed before
+the 40-minute limit. Values were passed through stdin and were not printed or
+committed. Deployment `dpl_9adbqe3hcJ5xYx2PxYSHnrvwUEz3` reached READY with the
+complete environment and remains aliased to **https://skarl.vercel.app**.
+
+Final public checks on that deployment:
+
+- Health: **200** with the documented static scaffold payload.
+- Contributor page: **200**, HTTPS HTML and Next.js assets present.
+- Funded v2 GET: **200**, confirmed `10000000` micro-USDC and the same existing
+  `0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757` hash.
+- Unfunded v1 GET: **200**, awaiting payment, null attempt and transaction hash.
+  Its unsigned POST: **402**, `X-Skarl-Facilitator: cdp`; no funds moved.
+- Verification-only sample evidence GET: **404**, `sample_unavailable`.
+
+The live CDP supported-schemes response and real production 402 challenge are
+recorded above. Installing the wallet/client secrets does not prove a CDP wallet
+transaction, SQL witness, signed webhook delivery, evidence sale or Bazaar
+listing. Those remain their integration owners' live verification steps. A
+licensed accepted/delivered sample and human Wallet MCP approval are still needed
+for the evidence-purchase demonstration. The actual camera permission/recording
+check remains a manual demo-device step.
