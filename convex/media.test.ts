@@ -167,13 +167,12 @@ describe("actual bounded FFmpeg preprocessing", () => {
     await expect(prepareMedia(new Uint8Array(25 * 1024 * 1024 + 1), "video/mp4")).rejects.toThrow("media_input_size_exceeded");
     await expect(prepareMedia(narrated, "application/json")).rejects.toThrow("unsupported_media_type");
     await expect(prepareMedia(new Uint8Array(), "video/mp4")).rejects.toThrow("empty_media");
-    const before = vi.mocked(mkdtemp).mock.results.length;
+    const cleanupDirectory = await mkdtemp(join(directory, "failed-input-"));
+    vi.mocked(mkdtemp).mockResolvedValueOnce(cleanupDirectory);
     await expect(prepareMedia(new Uint8Array([1, 2, 3]), "video/mp4")).rejects.toThrow("missing_video_stream");
     // Other checkouts may preprocess clips concurrently in the same OS temp root.
-    // Assert cleanup of this invocation's actual directory, not a global snapshot.
-    const created = await Promise.all(vi.mocked(mkdtemp).mock.results.slice(before).map(result => result.value));
-    expect(created).toHaveLength(1);
-    for (const path of created) await expect(stat(path)).rejects.toMatchObject({ code: "ENOENT" });
+    // Give this invocation its own real directory and assert only its cleanup.
+    await expect(stat(cleanupDirectory)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects overlong video even when streaming metadata has no duration", async () => {

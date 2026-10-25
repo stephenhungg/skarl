@@ -63,9 +63,9 @@ is configured.
 ```sh
 pnpm test:convex
 pnpm check
-# Cloud dev deploy/typecheck (requires project access):
+# Cloud dev deploy/typecheck (only after the clean-origin/main gate below):
 pnpm exec convex dev --once --typecheck enable
-# Offline CI uses a throwaway anonymous local backend instead:
+# Only in a throwaway copy with cloud deployment selection removed:
 pnpm check:convex
 ```
 
@@ -77,7 +77,23 @@ application logic, not real inference, wallet proofs or chain transfers.
 
 The shared development deployment is not isolated per checkout. A Convex push
 replaces the deployed module/schema set and can remove indexes that exist only
-in another branch. Deploy from freshly synchronized main and avoid overlapping
-backend deployments. Commit and merge parallel backend work before switching
-the deployment owner; a successful local typecheck does not establish that the
-checkout contains every currently deployed feature.
+in another branch. Cloud deploys must come from a **clean checkout whose HEAD
+matches freshly fetched `origin/main`**. Run checks, commit and push first, then
+verify the gate immediately before deploying:
+
+```sh
+git fetch origin main
+test -z "$(git status --porcelain)"
+test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+```
+
+Stop if either test fails; synchronize and check the merged tree first. Coordinate
+one deployment owner and avoid overlapping cloud deploys. The orchestrator
+redeploys merged `origin/main` after each batch. A successful local typecheck does
+not establish that the checkout contains every currently deployed feature.
+
+`CONVEX_AGENT_MODE=anonymous` does **not** isolate `pnpm check:convex` when this
+checkout already selects a cloud deployment. Use `pnpm test:convex` for isolated
+application tests, or a throwaway copy with all cloud selection removed for a
+local backend check. Never deploy uncommitted functions to make a runner work;
+the evaluation harness and `submissions:evaluationRun` must land together.

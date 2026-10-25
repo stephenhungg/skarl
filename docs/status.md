@@ -389,3 +389,9 @@ Submission: `mn7100dqspzfrdt5f3h8bwbzqx8gyb1w`. Original SHA-256: `f080a995943f2
 Immediately before the run, the cloud video override was observed as `gemini-4-argon`; it was restored to the requested `gemini-3.8-flash`. The stored model-run metadata above confirms Flash actually served this measurement. Code defaults for video and finance remain 3.8 Flash; the shared 30-second provider deadline is deployed.
 
 Final validation for this run: `pnpm check` passed **385 tests** (100 Node, 257 Convex, 28 payment-route), root/Convex/web typechecks, all 32 Markdown files’ local links/anchors and the production build. Cloud deploy/typecheck passed before the live run. Committed generated API types now include the already-deployed chain-witness modules.
+
+## Handoff cleanup and deployment provenance follow-up
+
+The cleanup regression now supplies its own real per-test `mkdtemp` directory to the failing preprocessing invocation and checks only that directory was removed. Two separate Vitest processes ran the media suite concurrently: **11 tests passed in each process**. The complete `pnpm check` then passed **385 tests** (100 Node, 257 Convex, 28 payment-route), typechecks, docs and the production build.
+
+The reported evaluation deployment drift was already resolved in `3c7ca29`: `submissions:evaluationRun` and the resumable evaluation harness are both committed on `origin/main`. No missing query or harness changes remained in the checkout. The [deployment rule](../convex/README.md#shared-deployment-coordination) now requires checking, committing and pushing first, followed by a clean working tree and HEAD equal to freshly fetched `origin/main`. No cloud deployment was performed for this test/documentation follow-up; the orchestrator redeploys merged batches.
