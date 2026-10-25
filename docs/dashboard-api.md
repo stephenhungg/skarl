@@ -1,5 +1,10 @@
 # Controller dashboard API
 
+> **Design alignment (read first).** The dashboard must look like the landing page and the iOS app: one product.
+> Use only the tokens in `apps/web/app/globals.css` (`paper` background, `ink` text, sage neutrals `mist/haze/fog/slate-*`, `deep`, and the lime `accent` reserved for primary actions and live/selected states), the Montreal cuts (`.cut-book/.cut-regular/.cut-medium`) for UI and `.mono` (Fono) for amounts, hashes, timestamps and tx links, and the `--ease-settle` curve for motion.
+> Reuse `components/logo-mark`, `wordmark`, `status-pill`, `evidence-timeline`, `stepper`, `button`, `ui/payment-status`, `ui/activity-feed`, `ui/payment-receipt-printer` instead of new primitives. Keep the testnet disclosure visible, label demo identities and simulated data, and show a chain badge (Base Sepolia / Solana Devnet) plus an explorer link on every on-chain item.
+
+
 Handoff for MatthewKim323. Snapshot queried with `pnpm exec convex run` on October 25, 2026 against **https://keen-marmot-986.convex.cloud**; no deployment performed. Examples below omit metadata and long evidence strings. Mutation success shapes are **source-derived, not live executions** unless stated otherwise.
 
 ## Live state and identities
