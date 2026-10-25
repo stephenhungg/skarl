@@ -1,7 +1,8 @@
 import { convexTest } from "convex-test";
 import workflowTest from "@convex-dev/workflow/test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
+import { DEMO_ORDER_IP_LIMIT } from "../packages/payments/src/demo-order";
 import { mcpHashesEqual, mcpToolErrorCode } from "./mcp";
 import schema from "./schema";
 
@@ -45,6 +46,119 @@ function toolValue(response: { result: { content: { type: string; text: string }
   return JSON.parse(response.result.content[0]!.text);
 }
 
+async function guestCall(t: Test, name: string, arguments_: unknown = {}, extraHeaders: Record<string, string> = {}) {
+  return (await t.fetch("/mcp", { method: "POST", headers: { ...protocolHeaders, ...extraHeaders },
+    body: JSON.stringify(rpc("tools/call", { name, arguments: arguments_ })) })).json();
+}
+
+describe("keyless guest MCP", () => {
+  it("exposes only the four explicit guest tools without a key or seeded data", async () => {
+    const t = convexTest(schema, modules);
+    vi.stubEnv("SKARL_MCP_KEYS", "");
+    const response = await t.fetch("/mcp", { method: "POST", headers: protocolHeaders, body: JSON.stringify(rpc("tools/list")) });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.result.tools.map((tool: { name: string }) => tool.name)).toEqual([
+      "skarl_about", "skarl_list_tasks_public", "skarl_create_order_public", "skarl_public_order_status",
+    ]);
+    // Check the entire advertised tool schema, not just operation names.
+    expect(JSON.stringify(body.result.tools)).not.toMatch(/approve|accept|sign|payout/i);
+    for (const tool of body.result.tools) expect(tool.inputSchema.additionalProperties).toBe(false);
+    const about = toolValue(await guestCall(t, "skarl_about"));
+    expect(about).toMatchObject({ guestAccess: expect.stringContaining("No key required"),
+      demoOrder: { amountAtomic: "1000000", network: "eip155:84532" } });
+    expect(about.safety.join(" ")).toContain("never approve, accept submissions or sign payouts");
+  });
+
+  it("refuses every role tool and privileged guessed name before any mutation", async () => {
+    const { t } = await setup();
+    for (const name of ["skarl_list_tasks", "skarl_create_order", "skarl_order_status", "skarl_get_dataset", "skarl_witness_receipt",
+      "skarl_open_tasks", "skarl_liveness_challenge", "skarl_my_submissions_and_earnings", "skarl_explain_outcome",
+      "skarl_reconciliation", "skarl_exceptions", "skarl_approve", "skarl_accept", "skarl_sign", "skarl_payout"]) {
+      expect(toolValue(await guestCall(t, name))).toEqual({ ok: false, code: "tool_not_allowed" });
+    }
+    expect(await t.run(ctx => ctx.db.query("livenessChallenges").collect())).toHaveLength(0);
+    expect(await t.run(ctx => ctx.db.query("approvals").collect())).toHaveLength(0);
+    expect(await t.run(ctx => ctx.db.query("demoOrderLimits").collect())).toHaveLength(0);
+  });
+
+  it("creates fixed public orders through the same durable per-IP limits as the public payment API", async () => {
+    const { t } = await setup();
+    const serviceSecret = "synthetic-mcp-payment-service-secret-at-least-32-chars";
+    vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", serviceSecret);
+    const ip = "203.0.113.8", ipDigest = await keyHash(ip);
+    // Spend one slot through the exact mutation the HTTP API uses. MCP must
+    // share its stored limit rather than keeping an independent memory counter.
+    await t.mutation(api.payments.createDemoOrder, { serviceSecret, ipDigest, requestId: crypto.randomUUID() });
+    for (let count = 1; count < DEMO_ORDER_IP_LIMIT; count++) {
+      const created = toolValue(await guestCall(t, "skarl_create_order_public", {}, {
+        "x-forwarded-for": ` ${ip}, 192.0.2.9`, "cf-connecting-ip": "198.51.100.8",
+      }));
+      expect(created).toMatchObject({ ok: true, orderId: expect.any(String), amountAtomic: "1000000", network: "eip155:84532" });
+      expect(created.fundingUrl).toBe(`https://skarl.vercel.app/api/orders/${created.orderId}/fund`);
+      expect(created.paymentInstructions).toContain("tight maxPayment");
+      const order = await t.run(ctx => ctx.db.get(created.orderId));
+      expect(order).toMatchObject({ budgetAtomic: 1_000_000n, quantityRequested: 1n, status: "awaiting_funding" });
+    }
+    const limited = await guestCall(t, "skarl_create_order_public", {}, { "cf-connecting-ip": ip });
+    expect(limited.result.isError).toBe(true);
+    expect(toolValue(limited)).toMatchObject({ ok: false, code: "demo_order_rate_limited", retryAfterSeconds: expect.any(Number) });
+    const rows = await t.run(ctx => ctx.db.query("demoOrderLimits").collect());
+    expect(rows).toContainEqual(expect.objectContaining({ key: `ip:${ipDigest}`, count: DEMO_ORDER_IP_LIMIT }));
+    expect(JSON.stringify(rows)).not.toContain(ip);
+    expect(await t.run(ctx => ctx.db.query("paymentIntents").collect())).toHaveLength(0);
+    expect(await t.run(ctx => ctx.db.query("journalEntries").collect())).toHaveLength(0);
+  });
+
+  it("shares a hashed fallback bucket without ingress and rejects caller-supplied terms or identity", async () => {
+    const { t } = await setup();
+    vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", "synthetic-mcp-payment-service-secret-at-least-32-chars");
+    for (const arguments_ of [{ amountAtomic: "10000" }, { demoIdentity: "buyer" }, { ipDigest: "a".repeat(64) }, { serviceSecret: "injected" }]) {
+      expect(toolValue(await guestCall(t, "skarl_create_order_public", arguments_))).toEqual({ ok: false, code: "invalid_tool_arguments" });
+    }
+    expect(await t.run(ctx => ctx.db.query("demoOrderLimits").collect())).toHaveLength(0);
+    const created = toolValue(await guestCall(t, "skarl_create_order_public"));
+    expect(created.ok).toBe(true);
+    expect(await t.run(ctx => ctx.db.query("demoOrderLimits").collect())).toContainEqual(
+      expect.objectContaining({ key: `ip:${await keyHash("mcp-unknown")}`, count: 1 }));
+    vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", "");
+    expect(toolValue(await guestCall(t, "skarl_create_order_public"))).toEqual({ ok: false, code: "demo_orders_unavailable" });
+  });
+
+  it("projects public rubric, prices, quota and funding without buyer identities or ledger internals", async () => {
+    const { t, orderId, defaultOrderId } = await setup();
+    await t.run(async ctx => {
+      await ctx.db.patch(orderId, { title: "PRIVATE_ROLE_ORDER", buyerTokenIdentifier: "private:buyer" });
+      await ctx.db.patch(defaultOrderId, { buyerWalletAddress: `0x${"ab".repeat(20)}`, buyerTokenIdentifier: "private:seed-buyer" });
+    });
+    const catalog = toolValue(await guestCall(t, "skarl_list_tasks_public"));
+    expect(catalog.tasks).toHaveLength(1);
+    expect(catalog.tasks[0]).toMatchObject({ orderId: defaultOrderId, criteria: expect.any(Array),
+      budgetAtomic: "10000000", pricePerAcceptedClipAtomic: "2500000", remainingQuota: "4" });
+    const status = toolValue(await guestCall(t, "skarl_public_order_status", { orderId: defaultOrderId }));
+    expect(status).toMatchObject({ orderId: defaultOrderId, acceptedCount: "0", funding: { status: "awaiting_payment" } });
+    for (const value of [catalog, status]) expect(JSON.stringify(value)).not.toMatch(/PRIVATE_ROLE_ORDER|private:|buyerTokenIdentifier|buyerWalletAddress|organizationId|balances|ledger|0xabab/i);
+    expect(toolValue(await guestCall(t, "skarl_public_order_status", { orderId }))).toEqual({ ok: false, code: "order_not_found" });
+    expect(toolValue(await guestCall(t, "skarl_public_order_status", { orderId: "not-an-id" }))).toEqual({ ok: false, code: "order_not_found" });
+  });
+
+  it("reports pending funding without returning the stored payer, destination, nonce or internal intent", async () => {
+    const { t } = await setup();
+    const serviceSecret = "synthetic-mcp-payment-service-secret-at-least-32-chars";
+    vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", serviceSecret);
+    const created = toolValue(await guestCall(t, "skarl_create_order_public"));
+    const payerAddress = `0x${"11".repeat(20)}`, recipientAddress = `0x${"22".repeat(20)}`, authorizationNonce = `0x${"aa".repeat(32)}`;
+    const { attemptId } = await t.mutation(api.payments.recordFundingAttempt, { serviceSecret, orderId: created.orderId,
+      demoIdentity: "buyer", payerAddress, recipientAddress, authorizationNonce, amountAtomic: 1_000_000n, validBefore: Date.now() + 60_000 });
+    const status = toolValue(await guestCall(t, "skarl_public_order_status", { orderId: created.orderId }));
+    expect(status).toMatchObject({ status: "awaiting_funding", acceptedCount: "0",
+      funding: { status: "settlement_pending", attemptStatus: "prepared", network: "eip155:84532" } });
+    for (const privateValue of [serviceSecret, payerAddress, recipientAddress, authorizationNonce, attemptId, "buyerWalletAddress", "paymentIntentId", "organizationId"]) {
+      expect(JSON.stringify(status)).not.toContain(privateValue);
+    }
+  });
+});
+
 describe("MCP transport and bearer boundary", () => {
   it("compares every digest byte and refuses malformed hashes rather than authenticating a matching prefix", async () => {
     const hash = await keyHash(keys.buyer);
@@ -70,9 +184,9 @@ describe("MCP transport and bearer boundary", () => {
     ]) expect(mcpToolErrorCode(error)).toBe("tool_failed");
   });
 
-  it("refuses absent, unknown, near-match and oversized credentials before any tool runs", async () => {
+  it("refuses present invalid, unknown, near-match and oversized credentials before any tool runs", async () => {
     const t = convexTest(schema, modules);
-    for (const authorization of [undefined, "Basic anything", "Bearer unknown", `Bearer ${keys.buyer.slice(0, -1)}x`, `Bearer ${"x".repeat(4097)}`]) {
+    for (const authorization of ["", "Basic anything", "Bearer unknown", `Bearer ${keys.buyer.slice(0, -1)}x`, `Bearer ${"x".repeat(4097)}`]) {
       const response = await t.fetch("/mcp", { method: "POST", headers: { ...protocolHeaders,
         ...(authorization === undefined ? {} : { Authorization: authorization }) }, body: JSON.stringify(rpc("tools/list")) });
       expect(response.status).toBe(401);
@@ -85,11 +199,14 @@ describe("MCP transport and bearer boundary", () => {
     expect(await t.run(ctx => ctx.db.query("livenessChallenges").collect())).toHaveLength(0);
   });
 
-  it("fails closed on absent, malformed or invalid key configuration", async () => {
+  it("fails closed on absent, malformed or invalid role key configuration without downgrading to guest", async () => {
     const t = convexTest(schema, modules);
     for (const config of ["", "not-json", "[]", "{}", JSON.stringify({ [await keyHash(keys.buyer)]: { identity: "finance-agent", label: "invalid scope" } })]) {
       vi.stubEnv("SKARL_MCP_KEYS", config);
-      expect((await request(t, rpc("tools/list"))).status).toBe(503);
+      expect((await request(t, rpc("tools/list"))).status).toBe(401);
+      const guest = await t.fetch("/mcp", { method: "POST", headers: protocolHeaders, body: JSON.stringify(rpc("tools/list")) });
+      expect(guest.status).toBe(200);
+      expect((await guest.json()).result.tools).toHaveLength(4);
     }
   });
 
@@ -103,7 +220,7 @@ describe("MCP transport and bearer boundary", () => {
 
   it("offers JSON Streamable HTTP and explicitly declines an authenticated standalone SSE stream", async () => {
     const t = convexTest(schema, modules);
-    expect((await t.fetch("/mcp")).status).toBe(401);
+    expect((await t.fetch("/mcp")).status).toBe(405);
     const get = await t.fetch("/mcp", { headers: headers() });
     expect(get.status).toBe(405);
     expect(get.headers.get("Allow")).toContain("POST");

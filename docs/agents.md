@@ -12,14 +12,16 @@ All agent discovery and MCP traffic uses the Convex HTTP site, independently of 
 | Agent card | <https://keen-marmot-986.convex.site/.well-known/agent-card.json> | A2A v0.3-style descriptive skills and capabilities |
 | MCP discovery | <https://keen-marmot-986.convex.site/.well-known/mcp.json> | MCP URL and authentication information |
 | OpenAPI | <https://keen-marmot-986.convex.site/openapi.json> | MCP JSON-RPC and existing x402 funding/evidence contracts |
-| Skarl MCP | <https://keen-marmot-986.convex.site/mcp> | HTTP JSON-RPC tool access with bearer authentication |
+| Skarl MCP | <https://keen-marmot-986.convex.site/mcp> | Keyless public tools; optional bearer keys unlock role tools |
 | Order creation | <https://skarl.vercel.app/api/orders> | Public fixed testnet order terms and creation |
 | Funding pattern | `https://skarl.vercel.app/api/orders/{orderId}/fund` | GET status; POST x402 purchase challenge |
 | Evidence pattern | `https://skarl.vercel.app/api/samples/sample-{submissionId}/evidence` | GET eligible evidence through x402 |
 
 The agent card describes workflows; it does not promise a separate A2A task-execution endpoint. Initialize MCP and call `tools/list` for deployed tool names and schemas. Tools can be unavailable for a role or deployment. Do not substitute an underlying mutation, controller selector, or operator credential to bypass a missing tool or refusal.
 
-Get a bearer credential from the deployment operator for your authorized agent access; the public discovery files do not contain one. Keep it in local secret storage, never in a URL, prompt, screenshot, transcript, or committed configuration. A bearer credential does not grant controller approval authority. The demo uses testnet assets and impersonable demo identities, not production user authentication.
+Connect without an API key: omit `Authorization` for guest access. Guests get exactly `skarl_about`, `skarl_list_tasks_public`, `skarl_create_order_public`, and `skarl_public_order_status`. The public catalog and status expose only explicitly public demo orders, rubric criteria, exact prices/budgets, remaining quota, and funding/delivery counts; they exclude buyer identities, private media, ledger balances, and internal payment rows. A present but invalid credential returns HTTP `401`, never a silent guest fallback.
+
+Optional bearer keys from the deployment operator unlock separate buyer, contributor, or controller tools. Keep role credentials in local secret storage, never in a URL, prompt, screenshot, transcript, or committed configuration. A bearer credential does not grant controller approval authority. The demo uses testnet assets and impersonable demo identities, not production user authentication. See [MCP roles and guest limits](mcp.md).
 
 These files document the implemented discovery surface and the MCP integration contract. The MCP server is maintained separately; a source commit does not prove deployment or a successful client session. Deployment remains an operator action. A `404` or `503` should be reported as unavailable, not silently replaced with another host or identity. See [build status](status.md) for observed integration evidence. No eligible live evidence sale or completed contributor payout is asserted by this guide.
 
@@ -36,7 +38,15 @@ If `~/.claude/skills/skarl` already exists, inspect it before replacing your loc
 
 ## Claude Code
 
-Set `SKARL_MCP_TOKEN` privately in your local shell. Add the server with an environment reference so the shared configuration contains no literal credential:
+For keyless guest access:
+
+```sh
+claude mcp add --transport http skarl https://keen-marmot-986.convex.site/mcp
+claude mcp add --transport http base-mcp https://wallet-mcp.coinbase.com
+```
+
+For optional role tools, set `SKARL_MCP_TOKEN` privately in your local shell and
+replace the Skarl configuration with an environment reference:
 
 ```sh
 claude mcp add-json --scope user skarl '{"type":"http","url":"https://keen-marmot-986.convex.site/mcp","headers":{"Authorization":"Bearer ${SKARL_MCP_TOKEN}"}}'
@@ -47,16 +57,13 @@ Use `/mcp` to check the connection and complete Coinbase's human wallet onboardi
 
 ## Cursor
 
-Merge this entry into your user `~/.cursor/mcp.json` or project `.cursor/mcp.json`; preserve other configured servers. Ensure the Cursor process receives your locally stored `SKARL_MCP_TOKEN` environment variable:
+Merge this keyless entry into your user `~/.cursor/mcp.json` or project `.cursor/mcp.json`; preserve other configured servers:
 
 ```json
 {
   "mcpServers": {
     "skarl": {
-      "url": "https://keen-marmot-986.convex.site/mcp",
-      "headers": {
-        "Authorization": "Bearer ${env:SKARL_MCP_TOKEN}"
-      }
+      "url": "https://keen-marmot-986.convex.site/mcp"
     },
     "base-mcp": {
       "url": "https://wallet-mcp.coinbase.com"
@@ -65,13 +72,19 @@ Merge this entry into your user `~/.cursor/mcp.json` or project `.cursor/mcp.jso
 }
 ```
 
-Check the server and tool list in Cursor's MCP settings, complete wallet onboarding, and provide the Skarl skill instructions as task context. See [Cursor's official MCP configuration reference](https://cursor.com/docs/mcp) for configuration locations and environment interpolation.
+For optional role access, add `"headers": { "Authorization": "Bearer ${env:SKARL_MCP_TOKEN}" }` to the Skarl entry and provide that environment variable to Cursor. Check the server and tool list in Cursor's MCP settings, complete wallet onboarding, and provide the Skarl skill instructions as task context. See [Cursor's official MCP configuration reference](https://cursor.com/docs/mcp) for configuration locations and environment interpolation.
 
 ## ChatGPT and Claude chat
 
-For ChatGPT accounts/workspaces that permit custom MCP connections, add `https://keen-marmot-986.convex.site/mcp` in the custom MCP/plugin connection interface, configure the server's required authentication, and review the scanned tool list. Account and workspace permissions apply. See [OpenAI's custom MCP connection guide](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt). If the client cannot supply Skarl's bearer header, the direct connection is unavailable; this server does not imply an OAuth authorization flow. Use an approved MCP client that supports the header, such as Claude Code or Cursor, rather than placing the token in the URL or disabling authentication.
+For ChatGPT accounts/workspaces that permit custom MCP connections, add `https://keen-marmot-986.convex.site/mcp` in the custom MCP connection interface and select no authentication for guest tools. Review the scanned tool list. Account and workspace permissions apply. See [OpenAI's custom MCP connection guide](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt). A client that supports bearer headers can optionally use an operator-issued key for role tools; never place a token in the URL. Skarl does not provide an OAuth authorization flow.
 
-In Claude chat, use its supported remote MCP/custom connector interface if your account supports it and can provide the required authentication. For a concrete bearer-header setup, use Claude Code above. Attach the skill instructions as context when the chat client does not load local Agent Skills. Connect Coinbase Wallet MCP separately for purchases; neither client configuration nor reading the skill proves that the wallet or seller host is reachable from that client.
+In Claude.ai, paste the same URL into its supported remote MCP/custom connector interface with no authentication, if your account supports custom connectors. Attach the skill instructions as context when the chat client does not load local Agent Skills. Connect Coinbase Wallet MCP separately for purchases; neither client configuration nor reading the skill proves that the wallet or seller host is reachable from that client.
+
+## Keyless order flow
+
+Call `skarl_about`, then `skarl_list_tasks_public` to inspect the rubric and exact current terms. `skarl_create_order_public` reuses `payments.createDemoOrder`, the same fixed public creation path as `POST /api/orders`. It returns an order ID, integer micro-USDC amount, and `https://skarl.vercel.app/api/orders/<orderId>/fund` for x402. The current fixed demo costs **1 test USDC**, not 0.01; a natural-language request cannot override that quote. If your requested cap is lower, stop before payment and report the mismatch. Call `skarl_public_order_status` for funding and accepted count; guests do not get a private dataset manifest.
+
+Existing `demoOrderLimits` applies: three orders per IP per hour, thirty globally. MCP hashes the first `x-forwarded-for` hop, then `cf-connecting-ip`, and finally `mcp-unknown` when neither exists; missing-IP callers share one bucket. Forwarded headers depend on trusted proxy ingress. MCP and Vercel derive different IP digests, so only the global bucket is shared between transports. There is no separate durable per-IP request budget for guest reads and no new schema. See [MCP implementation and limitations](mcp.md#guest-orders-and-request-limits).
 
 ## Purchase boundary: Coinbase Wallet MCP and x402
 

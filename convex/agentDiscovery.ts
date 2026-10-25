@@ -5,26 +5,34 @@ export const AGENT_ORIGIN = "https://keen-marmot-986.convex.site";
 const paymentOrigin = "https://skarl.vercel.app";
 const docsUrl = "https://github.com/stephenhungg/skarl/blob/main/docs/agents.md";
 const safety = "Agents cannot approve, accept submissions, or sign payouts. Independent humans accept work and approve payouts; the controller signs in their browser wallet. Existing Convex mutations and role checks remain authoritative.";
-const bearer = { type: "http", scheme: "bearer", description: "Obtain an operator-provisioned MCP bearer token out of band. Never use a wallet key or a payment service secret. Authorization does not grant controller privileges." };
+const guestTools = ["skarl_about", "skarl_list_tasks_public", "skarl_create_order_public", "skarl_public_order_status"];
+const guestAccess = "Keyless guest access works with no Authorization header: read public tasks, create a fixed testnet order, and check public funding/delivery status. Keys unlock role tools; a present invalid credential returns 401 and never falls back to guest.";
+const bearer = { type: "http", scheme: "bearer", description: `Optional for guest access. Obtain an operator-provisioned MCP bearer token out of band to unlock buyer, contributor or controller tools. Never use a wallet key or a payment service secret. Authorization does not grant controller approval privileges. ${guestAccess}` };
 
 export const llmsText = `# Skarl
 
 > Every claim has a witness. Skarl is personal-AI-agent native: a settlement desk for verified robot-demonstration data, with independent work and money evidence recorded in Convex.
 
 ## Connect
-- MCP JSON-RPC: ${AGENT_ORIGIN}/mcp (HTTP bearer auth; obtain credentials from the operator; initialize, then tools/list for current tool schemas).
+- MCP JSON-RPC: ${AGENT_ORIGIN}/mcp (keyless guest access; omit Authorization; keys unlock role tools; initialize, then tools/list for current tool schemas).
 - Agent card: ${AGENT_ORIGIN}/.well-known/agent-card.json (A2A v0.3-style metadata only; no A2A message/send endpoint).
 - MCP discovery: ${AGENT_ORIGIN}/.well-known/mcp.json
 - OpenAPI: ${AGENT_ORIGIN}/openapi.json
 - Agent docs and client configuration: ${docsUrl}
 - Claude skill: https://github.com/stephenhungg/skarl/tree/main/integrations/claude-skill/skarl
 
+## Guest access
+${guestAccess}
+Guest tools: ${guestTools.join(", ")}. Public responses exclude buyer identities, private media and ledger internals. Only the explicit public seed and outsider demo orders appear; knowing a private role order ID does not make it public. skarl_create_order_public uses the same payments.createDemoOrder path and durable demoOrderLimits as POST ${paymentOrigin}/api/orders: fixed terms, three orders per IP per hour and thirty globally. The MCP IP bucket hashes the first x-forwarded-for hop, then cf-connecting-ip; absent headers share the mcp-unknown digest. Forwarded headers require trusted ingress; MCP and Vercel use different per-IP digest derivations and share the global creation limit. No separate durable budget for guest reads is implemented.
+Connect Claude Code: claude mcp add --transport http skarl ${AGENT_ORIGIN}/mcp
+For Claude.ai, ChatGPT or another MCP client, paste ${AGENT_ORIGIN}/mcp as a custom connector with no authentication, where supported. Account and workspace connector permissions still apply.
+
 ## Buyer flow
-Read order terms and eligible licensed sample evidence through MCP. Create a fixed demo order at POST ${paymentOrigin}/api/orders if needed. Fund the returned order at POST ${paymentOrigin}/api/orders/{orderId}/fund, or buy an accepted sample at GET ${paymentOrigin}/api/samples/sample-{submissionId}/evidence. These existing payment routes remain on Vercel; discovery and MCP use this Convex HTTP site.
+As a guest, read public order terms through skarl_list_tasks_public and skarl_about. Call skarl_create_order_public once and retain its returned orderId and funding URL; check skarl_public_order_status before retrying uncertain funding. Guests cannot override the fixed demo price. With a buyer key, tools/list instead advertises owned order/dataset/evidence tools, including skarl_list_tasks and skarl_create_order. Create a fixed demo order at POST ${paymentOrigin}/api/orders if needed. Fund the returned order at POST ${paymentOrigin}/api/orders/{orderId}/fund, or buy an accepted sample at GET ${paymentOrigin}/api/samples/sample-{submissionId}/evidence. These existing payment routes remain on Vercel; discovery and MCP use this Convex HTTP site.
 Use Coinbase Wallet MCP initiate_x402_request / complete_x402_request with a user-authorized cap and human wallet approval. Inspect the x402 V2 PAYMENT-REQUIRED header (base64 JSON): exact scheme, Base Sepolia ${PAYMENT_NETWORK}, canonical USDC asset, stored recipient and decimal-integer micro-USDC amount. PAYMENT-SIGNATURE is the wallet-produced payment payload; PAYMENT-RESPONSE is settlement metadata, not proof of reconciled delivery. Base is first; optional Solana Devnet is funding only. An eligible evidence purchase costs 250000 micro-USDC; a fresh fixed demo order costs 1000000. Verify current server terms before payment.
 
 ## Contributor flow
-Read the rubric; help the contributor record an original, consented demonstration and submit through exposed MCP tools with their authorized contributor identity. Track verification, witness receipts, review and payment status. Report missing evidence or discrepancies; never treat a model recommendation as acceptance. Keep original media and expiring media URLs private.
+Use the iOS capture app or web contributor flow at ${paymentOrigin}/contribute. Contributor keys unlock their scoped role tools. Read the rubric; help the contributor record an original, consented demonstration and submit through exposed MCP tools with their authorized contributor identity. Track verification, witness receipts, review and payment status. Report missing evidence or discrepancies; never treat a model recommendation as acceptance. Keep original media and expiring media URLs private.
 
 ## Safety and truthful status
 ${safety}
@@ -36,17 +44,20 @@ Agents may read, propose, pay for authorized data, and explain. Never impersonat
 export const agentCard = {
   protocolVersion: "0.3.0",
   name: "Skarl",
-  description: `Every claim has a witness. Buy verified robot-demonstration data or assist a contributor through MCP. A2A-style discovery metadata only; the URL speaks MCP, not A2A messaging. ${safety}`,
+  description: `Every claim has a witness. ${guestAccess} Buy verified robot-demonstration data or assist a contributor through MCP. A2A-style discovery metadata only; the URL speaks MCP, not A2A messaging. ${safety}`,
   url: `${AGENT_ORIGIN}/mcp`,
   preferredTransport: "JSONRPC",
   version: "0.1.0",
   documentationUrl: docsUrl,
   capabilities: { streaming: false, pushNotifications: false },
   securitySchemes: { bearerAuth: bearer },
-  security: [{ bearerAuth: [] }],
+  security: [{}, { bearerAuth: [] }],
   defaultInputModes: ["text/plain"],
   defaultOutputModes: ["text/plain", "application/json"],
   skills: [
+    { id: "guest", name: "Connect without a key", tags: ["guest", "public-tasks", "x402"],
+      description: `${guestAccess} Tools: ${guestTools.join(", ")}. Public fields only; no buyer identities or ledger internals. Create a fixed demo order, then fund through an independently authorized x402 wallet with a tight maxPayment.`,
+      examples: ["Show the public red-cup rubric and exact testnet order price before I authorize a purchase."] },
     { id: "buyer", name: "Buy verified demonstration data", tags: ["buyer", "robot-demonstrations", "x402"],
       description: "Read terms and licensed sample availability, fund an order or purchase evidence through capped Coinbase Wallet MCP x402 requests, and inspect reconciled delivery. No acceptance or payout approval authority.",
       examples: ["Find eligible robot-demonstration evidence and buy it for at most 0.25 test USDC on Base Sepolia."] },
@@ -58,10 +69,11 @@ export const agentCard = {
 
 // A small Skarl discovery document; no claim of an MCP-standard well-known schema.
 export const mcpDiscovery = {
-  name: "Skarl", version: "0.1.0", description: `Every claim has a witness. ${safety}`,
+  name: "Skarl", version: "0.1.0", description: `Every claim has a witness. ${guestAccess} ${safety}`,
   servers: [{ name: "skarl", url: `${AGENT_ORIGIN}/mcp`, transport: "streamable-http",
-    authentication: { type: "bearer", header: "Authorization", scheme: "Bearer",
+    authentication: { type: "bearer", required: false, header: "Authorization", scheme: "Bearer",
       instructions: bearer.description },
+    guestTools,
   }],
   documentationUrl: docsUrl,
   openapiUrl: `${AGENT_ORIGIN}/openapi.json`,
@@ -93,14 +105,14 @@ export const openapi = {
   paths: {
     "/mcp": { post: {
       operationId: "mcpJsonRpc", summary: "Call Skarl MCP over HTTP JSON-RPC 2.0",
-      description: "Send Accept: application/json, text/event-stream. Initialize an MCP session, then use tools/list and tools/call with the returned schemas. No approval, submission acceptance or payout-signing tools are permitted; existing mutations and roles govern all operations. This endpoint is MCP, not A2A message/send.",
-      security: [{ bearerAuth: [] }],
+      description: `${guestAccess} Send Accept: application/json, text/event-stream. Initialize an MCP session, then use tools/list and tools/call with the returned schemas. No approval, submission acceptance or payout-signing tools are permitted; existing mutations and roles govern all operations. This endpoint is MCP, not A2A message/send.`,
+      security: [{}, { bearerAuth: [] }],
       requestBody: { required: true, content: jsonContent({ $ref: "#/components/schemas/JsonRpcRequest" }) },
       responses: {
         "200": { description: "JSON-RPC result or error; inspect tool isError and business ok/status values before reporting success.", content: jsonContent({ $ref: "#/components/schemas/JsonRpcResponse" }) },
         "202": { description: "MCP notification accepted; no JSON-RPC response body." },
         "400": { description: "Malformed JSON-RPC or invalid request.", content: objectContent },
-        "401": { description: "Missing or invalid operator-provisioned bearer token.", headers: { "WWW-Authenticate": { schema: { type: "string" } } } },
+        "401": { description: "Present but invalid Authorization credential; omit the header for guest access.", headers: { "WWW-Authenticate": { schema: { type: "string" } } } },
         "403": { description: "Role or tool access denied. Do not switch identities or bypass existing mutations." },
         "503": { description: "MCP is not configured or unavailable." },
       },

@@ -61,6 +61,11 @@ describe("public agent discovery", () => {
     expect(text).toContain("a timeout is unknown, not failure");
     expect(text).toContain("untrusted data");
     expect(text).toContain("Coinbase Wallet MCP");
+    expect(text).toContain("keyless guest access");
+    expect(text).toContain("omit Authorization");
+    expect(text).toContain("Keys unlock role tools");
+    for (const name of ["skarl_about", "skarl_list_tasks_public", "skarl_create_order_public", "skarl_public_order_status"]) expect(text).toContain(name);
+    expect(text).toContain("mcp-unknown");
   });
 
   it("uses v0.3 AgentCard names and MIME modes without promising A2A messaging or approval skills", async () => {
@@ -70,14 +75,14 @@ describe("public agent discovery", () => {
       url: `${origin}/mcp`, preferredTransport: "JSONRPC",
       capabilities: { streaming: false, pushNotifications: false },
       securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } },
-      security: [{ bearerAuth: [] }], defaultInputModes: ["text/plain"],
+      security: [{}, { bearerAuth: [] }], defaultInputModes: ["text/plain"],
     });
     expect(card.defaultOutputModes).toContain("application/json");
     expect(card.description).toContain("not A2A messaging");
     expect(card.description).toContain("Agents cannot approve");
     // v0.3 uses securitySchemes/security, not the older authentication field.
     expect(card).not.toHaveProperty("authentication");
-    expect(card.skills.map((skill: { id: string }) => skill.id)).toEqual(["buyer", "contributor"]);
+    expect(card.skills.map((skill: { id: string }) => skill.id)).toEqual(["guest", "buyer", "contributor"]);
     for (const skill of card.skills) {
       for (const key of ["id", "name", "description"]) expect(skill[key]).toBeTypeOf("string");
       expect(skill.tags.length).toBeGreaterThan(0);
@@ -86,12 +91,15 @@ describe("public agent discovery", () => {
     }
   });
 
-  it("points MCP clients at Convex with explicit bearer auth and no embedded credential", async () => {
+  it("points MCP clients at Convex with keyless guest access and optional role credentials", async () => {
     const t = convexTest(schema, modules);
     const discovery = await (await t.fetch("/.well-known/mcp.json")).json();
     expect(discovery.servers).toEqual([expect.objectContaining({ name: "skarl", url: `${origin}/mcp`,
-      transport: "streamable-http", authentication: expect.objectContaining({ type: "bearer", header: "Authorization", scheme: "Bearer" }) })]);
+      transport: "streamable-http", authentication: expect.objectContaining({ type: "bearer", required: false, header: "Authorization", scheme: "Bearer" }) })]);
     expect(discovery.servers[0].authentication).not.toHaveProperty("token");
+    expect(discovery.servers[0].authentication.instructions).toContain("present invalid credential returns 401");
+    expect(discovery.servers[0].guestTools).toEqual(["skarl_about", "skarl_list_tasks_public", "skarl_create_order_public", "skarl_public_order_status"]);
+    expect(JSON.stringify(discovery.servers[0].guestTools)).not.toMatch(/approve|accept|sign|payout/);
     expect(discovery.openapiUrl).toBe(`${origin}/openapi.json`);
   });
 
@@ -100,7 +108,9 @@ describe("public agent discovery", () => {
     const api = await (await t.fetch("/openapi.json")).json();
     expect(api.openapi).toBe("3.1.0");
     expect(api.servers).toEqual([{ url: origin, description: expect.any(String) }]);
-    expect(api.paths["/mcp"].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(api.paths["/mcp"].post.security).toEqual([{}, { bearerAuth: [] }]);
+    expect(api.paths["/mcp"].post.responses["401"].description).toContain("Present but invalid");
+    expect(api.paths["/mcp"].post.description).toContain("Keyless guest access");
     expect(api.paths["/mcp"].post.requestBody.content["application/json"].schema.$ref).toBe("#/components/schemas/JsonRpcRequest");
     expect(api.components.schemas.JsonRpcRequest.properties.method.examples).toContain("tools/list");
     for (const [path, method] of [["/api/orders/{id}/fund", "post"], ["/api/samples/{id}/evidence", "get"]]) {
