@@ -93,6 +93,15 @@ outside this Convex environment inventory and still needs separate verification.
 
 ## Coinbase Wallet MCP upgrade — October 25, 2026
 
+### Live provisioning and web deployment fence
+
+The operator deployed the backend, and `payments:createWalletMcpDemo({})` returned one order, `kh7f2fkah4hh0sx9s0wsdcweb98gzrdd`, with frozen `fundingPayTo:0x0a9efdf66c58543538824906ae267b969ed651c5`, a 1-USDC budget and disabled auto-pay. No signing or settlement occurs during provisioning. Repeated calls recover this same order through its stable creation key.
+
+Fresh unsigned GETs to both `skarl.vercel.app` and `skarl.devshardat.work` still returned the old human treasury recipient and omitted `autoPay`/`fundingTermsHash`. The coordinator rejected this stale web deployment before any Wallet MCP initiation. Deploy the payment web routes from `2841ee9` or a compatible later main commit, then verify that GET returns the frozen agent recipient, disabled rule and terms hash before preparing a wallet request. Do not bypass the preflight or fund the old quoted recipient.
+
+The final integration after the shared-config merge passed **1,701 tests** (267 package/script, 1,194 Convex, 195 payment, 34 web, 11 finance eval), typechecks, the no-hardcode check, documentation checks and production build. This proves local integration behavior, not a completed Wallet MCP payment. A human approval request and actual transfer remain pending the web deployment.
+
+
 - Added a non-signing funding coordinator (`pnpm wallet:fund`) with exact quote/recipient/cap checks, private state, write-ahead request boundaries, same-request recovery, first-completion deadlines and independent seller + canonical chain verification. Operator-entered MCP metadata is not cryptographic tool provenance or a journal check.
 - Added a versioned funding-terms commitment over the order, budget, canonical Base USDC, recipient and buyer auto-pay rule. The HTTP route and atomic claim both reject stale reviewed terms before settlement/new financial writes. Legacy callers remain compatible.
 - Added an operator-only idempotent one-order agent-treasury path with auto-pay disabled. It freezes that order's Base recipient to the configured CDP agent wallet; the global treasury and other orders stay unchanged. Public order creation cannot select an arbitrary payee.

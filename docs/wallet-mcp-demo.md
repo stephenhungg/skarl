@@ -4,6 +4,12 @@ Use the single operator-provisioned order approved for this demo: it costs 1 tes
 
 This runbook does not establish a completed Wallet MCP payment; the read-only probe below is recorded separately. The recorded SDK/facilitator funding transactions in [build status](status.md) establish those paths; a Wallet MCP approval, completion and reconciled receipt must be recorded separately. A challenge, validator simulation or approval screen alone is not completed funding or a delivered sale.
 
+## Provisioned order and current deployment gate
+
+The single order now exists: `kh7f2fkah4hh0sx9s0wsdcweb98gzrdd`, budget `1000000` micro-USDC, frozen agent payee `0x0a9efdf66c58543538824906ae267b969ed651c5`, auto-pay disabled. Its funding resource is `/api/orders/kh7f2fkah4hh0sx9s0wsdcweb98gzrdd/fund` on the chosen HTTPS payment origin. Recover this order; do not create another one.
+
+The latest unsigned web preflight stopped because both published origins still quoted the legacy human treasury and omitted the rule/hash. No Wallet MCP initiation or payment happened. The payment web deployment must serve commit `2841ee9` or a compatible later main version before proceeding. Use a new local preflight state file only after confirming the prior state is still `preparing` and no initiation tool ran; keep the same order. The coordinator must return the agent recipient and terms commitment before any approval request.
+
 ## Addresses and prerequisites
 
 | Role | Value |
