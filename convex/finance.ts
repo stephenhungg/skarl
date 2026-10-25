@@ -192,9 +192,7 @@ export const proposePayment = mutation({
   handler: proposePaymentFor,
 });
 
-export const approve = mutation({
-  args: { demoIdentity: v.string(), intentId: v.id("paymentIntents") },
-  handler: async (ctx, args) => {
+export async function approveFor(ctx: MutationCtx, args: {demoIdentity: string; intentId: Id<"paymentIntents">}) {
     const auth = await authorize(ctx, args.demoIdentity, "controller");
     if (!auth.principal) return { ok: false as const, code: auth.denied! };
     const principal = auth.principal;
@@ -245,5 +243,8 @@ export const approve = mutation({
       action: "payment_approved", entityType: "paymentIntents", entityId: intent._id,
       reason: "Independent approval recorded; wallet execution and chain reconciliation remain separate.", evidenceReferences: [approvalId, command._id] });
     return { ok: true as const, approvalId, paymentCommandId: command._id, replayed: false };
-  },
+}
+export const approve = mutation({
+  args: {demoIdentity: v.string(), intentId: v.id("paymentIntents")},
+  handler: approveFor,
 });

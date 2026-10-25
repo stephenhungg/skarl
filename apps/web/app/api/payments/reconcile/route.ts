@@ -44,8 +44,10 @@ export async function POST(request: NextRequest) {
         ? await observeSolanaTransfer(txHash, { ...expected, authorizationNonce: attempt.authorizationNonce, orderId: order._id })
         : await observeTransfer(txHash as Hash, expected, attempt.authorizationNonce);
       // Bind caller-supplied recovery hashes ONLY after verifying the nonce and exact transfer.
-      await db.mutation(api.payments.confirmFunding, { serviceSecret, attemptId: attempt._id,
+      const confirmation = await db.mutation(api.payments.confirmFunding, { serviceSecret, attemptId: attempt._id,
         authorizationNonce: attempt.authorizationNonce, observation });
+      if (confirmation?.ok === false) return paymentJson({ fundingStatus: "reconciliation_exception", network: intent.network,
+        txHash, error: confirmation.code }, 409);
       return paymentJson({ fundingStatus: "confirmed", txHash, network: intent.network, explorerUrl: paymentRail(intent.network).explorerTx(txHash) });
     } catch {
       return paymentJson({ fundingStatus: "settlement_pending", network: intent.network, txHash: attempt.txHash ?? null,

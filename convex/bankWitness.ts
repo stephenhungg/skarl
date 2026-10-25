@@ -5,7 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { api } from "./_generated/api";
 import type * as chainWitness from "./chainWitness";
 import { requireRole } from "./lib/demoAuth";
-import { requireTenant } from "./lib/finance";
+import { audit, requireTenant } from "./lib/finance";
 import { BANK_WITNESS_LABEL, createNessieClient, compareBankWitness, type BankActivity } from "./lib/nessie";
 import { validateTransfer, type ReconciliationException } from "../packages/payments/src/reconciliation";
 import { PAYMENT_CHAIN_ID } from "../packages/contracts/src/chain";
@@ -111,11 +111,27 @@ export const inputs = internalQuery({ args: {orderId: v.id("orders")}, handler: 
 
 export const storeSnapshot = internalMutation({ args: { organizationId: v.id("organizations"), accountId: v.string(),
   activitiesJson: v.string(), status: v.union(v.literal("available"), v.literal("unavailable")), reason: v.optional(v.string()),
+  scenarioOrderId: v.optional(v.id("orders")), scenarioId: v.optional(v.string()),
 }, handler: async (ctx, args) => {
+  if (args.scenarioOrderId !== undefined || args.scenarioId !== undefined) {
+    const principal = await requireRole(ctx, "controller", "controller");
+    const order = args.scenarioOrderId ? await ctx.db.get(args.scenarioOrderId) : null;
+    if (!order || !args.scenarioId || order.organizationId !== args.organizationId ||
+      order.publicId !== `scenario:${args.scenarioId}` || args.accountId !== `SIMULATED:${args.scenarioId}:treasury`) {
+      throw new Error("scenario_bank_scope_invalid");
+    }
+    requireTenant(principal, order);
+    await audit(ctx, { organizationId: order.organizationId, eventKey: `scenario-bank:${args.scenarioId}`,
+      actor: { kind: "service", identity: "scenario-lab" }, action: "scenario_bank_snapshot", entityType: "orders", entityId: order._id,
+      reason: JSON.stringify({ simulated: true, scenarioId: args.scenarioId, accountId: args.accountId,
+        activitiesJson: args.activitiesJson, status: args.status, fetchedAt: Date.now() }), evidenceReferences: [order._id] });
+    return;
+  }
   const treasury = await account(ctx, args.organizationId, "treasury");
   if (treasury?.accountId !== args.accountId) throw new Error("bank_treasury_changed");
   const prior = await ctx.db.query("bankSnapshots").withIndex("by_org", q => q.eq("organizationId", args.organizationId)).unique();
-  const values = {...args, fetchedAt: Date.now()};
+  const { scenarioOrderId, scenarioId, ...snapshotArgs } = args;
+  const values = {...snapshotArgs, fetchedAt: Date.now()};
   if (prior) await ctx.db.patch(prior._id, values); else await ctx.db.insert("bankSnapshots", values);
   if (args.status === "available") {
     const activities = JSON.parse(args.activitiesJson) as BankActivity[];
@@ -230,10 +246,11 @@ export const sweep = internalAction({args: {cursor: v.optional(v.string())}, han
   return {status: "swept"};
 } });
 
-async function bankExpectation(ctx: QueryCtx, intent: Doc<"paymentIntents">) {
+async function bankExpectation(ctx: QueryCtx, intent: Doc<"paymentIntents">, treasuryAccountId?: string) {
   const order = await ctx.db.get(intent.orderId);
   if (!order || order.organizationId !== intent.organizationId) return null;
-  const treasury = await account(ctx, intent.organizationId, "treasury");
+  const treasury = treasuryAccountId ? { status: "ready", accountId: treasuryAccountId }
+    : await account(ctx, intent.organizationId, "treasury");
   if (treasury?.status !== "ready" || !treasury.accountId) return null;
   let payeeId: string | undefined;
   if (intent.kind === "contributor_payout") {
@@ -259,9 +276,18 @@ export type BankException = Omit<ReconciliationException, "code"> & {code: "bank
 async function bankRows(ctx: QueryCtx, args: Scope) {
   const {order} = await orderScope(ctx, args);
   const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
-  const treasury = await account(ctx, order.organizationId, "treasury");
-  const snapshot = await ctx.db.query("bankSnapshots").withIndex("by_org", q => q.eq("organizationId", order.organizationId)).unique();
-  const fresh = snapshot?.status === "available" && snapshot.accountId === treasury?.accountId && Date.now() - snapshot.fetchedAt < BANK_FRESH_MS;
+  const scenarioId = order.publicId.startsWith("scenario:") ? order.publicId.slice("scenario:".length) : null;
+  const scenarioEvent = scenarioId ? await ctx.db.query("auditEvents").withIndex("by_event_key", q =>
+    q.eq("organizationId", order.organizationId).eq("eventKey", `scenario-bank:${scenarioId}`)).unique() : null;
+  type LocalSnapshot = { simulated: true; scenarioId: string; accountId: string; activitiesJson: string;
+    status: "available" | "unavailable"; fetchedAt: number; reason?: string };
+  const local: LocalSnapshot | null = scenarioEvent ? JSON.parse(scenarioEvent.reason) as LocalSnapshot : null;
+  if (local && (scenarioEvent?.entityId !== order._id || local.simulated !== true || local.scenarioId !== scenarioId ||
+    local.accountId !== `SIMULATED:${scenarioId}:treasury`)) throw new Error("scenario_bank_scope_invalid");
+  // Lab evidence is order-local: it neither replaces nor consumes the treasury-wide provider snapshot.
+  const treasuryAccountId = scenarioId ? local?.accountId : (await account(ctx, order.organizationId, "treasury"))?.accountId;
+  const snapshot = scenarioId ? local : await ctx.db.query("bankSnapshots").withIndex("by_org", q => q.eq("organizationId", order.organizationId)).unique();
+  const fresh = snapshot?.status === "available" && snapshot.accountId === treasuryAccountId && Date.now() - snapshot.fetchedAt < BANK_FRESH_MS;
   const activities: BankActivity[] = fresh ? JSON.parse(snapshot.activitiesJson) as BankActivity[] : [];
   const rows: {intent: Doc<"paymentIntents">; bank: Column; activityIds: string[]}[] = [];
   const exceptions: BankException[] = [];
@@ -276,7 +302,7 @@ async function bankRows(ctx: QueryCtx, args: Scope) {
         : {status: "missing", reason: "bank_intent_not_prepared", activityIds: []};
     }
     else {
-      const expected = await bankExpectation(ctx, intent);
+      const expected = await bankExpectation(ctx, intent, scenarioId ? treasuryAccountId : undefined);
       result = !expected || !operationAgrees(operation, intent, expected)
         ? {status: "mismatch", reason: "bank_intent_binding_changed", activityIds: []}
         : compareBankWitness(expected, activities);

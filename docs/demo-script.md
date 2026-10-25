@@ -80,6 +80,53 @@ If the duplicate-to-payout opening is still blocked, keep its simulated/refusal 
 
 Suggested narration: “Even outside our application's proposal screen, CDP refuses this wallet's over-cap and wrong-recipient sends. These are real provider rejections. An allowed payout still needs an independently approved obligation, and that part is pending.” Do not rerun outgoing negative requests just for stage effect; the recorded evidence is sufficient. The optional CDP executor and the controller-wallet payout are distinct paths.
 
+## If a judge injects a scenario
+
+Use the controller-only scenario lab after the deployment owner deploys this
+backend. Every run is **SIMULATED CONTROL TEST — NO TRANSFER**: synthetic input
+travels through the existing acceptance, approval, verification, or reconciliation
+control. The terminal's pass/fail comes from persisted evidence read back from
+Convex. A missing prerequisite or missing refusal is a failure, not a staged
+success. No chain send, Coinbase call, or wallet signing occurs.
+
+```sh
+pnpm scenario all
+# Scope the demonstration to a particular source order:
+pnpm scenario wrong_amount_transfer kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg
+```
+
+The optional argument is a Convex order document ID. Without it, the server
+selects the seeded demo order. Runs use a separately labeled lab order linked
+to that source order so the original order's balances and licensed deliveries
+remain real evidence. Follow the returned `labOrderId` to inspect control
+artifacts; keep its simulation label visible. The dashboard can subscribe to
+[`scenarios:listRuns`](dashboard-api.md#scenario-lab--judge-injections) for the
+selected source order, display the result and link its evidence IDs. If that
+panel has not been wired, show the terminal and actual query results; do not
+claim a backend run proves the dashboard integration.
+
+| Judge asks | Command | Recorded control evidence to show |
+| --- | --- | --- |
+| “What if the transfer amount is wrong?” | `pnpm scenario wrong_amount_transfer` | Reconciliation exception for the simulated amount; no journal for that transfer. |
+| “What if money arrives with no order?” | `pnpm scenario unknown_transfer` | `unknown_transfer` exception with simulated receipt/transfer identity; no posted cash. |
+| “What if a contributor submits the same clip twice?” | `pnpm scenario duplicate_submission` | Existing duplicate refusal, matching original submission ID, and no second payable. Requires an already accepted source clip; an absent original produces a failed/prerequisite result. |
+| “Can the finance agent approve itself?” | `pnpm scenario agent_self_approval` | `payment_approval_refused` audit from the real `finance:approve` path; no approval or dispatch. Requires an existing finance-agent-authored payout proposal; the lab never invents a payable or creates a real proposal. |
+| “What if the clip tells the agent to ignore its instructions?” | `pnpm scenario prompt_injection_narration` | Stored instruction-like narration and the real verification control's `needs_review` outcome. Synthetic transcript evidence is not a live model response. |
+| “What if the bank disagrees with the chain?” | `pnpm scenario bank_mismatch` | Four-way reconciliation's `bank_mismatch` exception and incorrect bank amount, labeled **simulated bank (Capital One Nessie mock)**. |
+
+The self-approval refusal remains attached to the existing source-order payout
+intent; open its returned audit/intent evidence link. Narration injection may
+also run the read-only agent when the server's Gemini key is configured. Show
+that answer's actual status separately from the deterministic control result.
+An unavailable model is shown as unavailable; it is never a simulated success.
+
+Each command prints a pass/fail table, expected control, observed outcome and
+evidence IDs. Exit 0 means every requested control was observed; exit 1 means
+at least one failed or could not run; exit 2 is invalid command usage. Inspect
+the failed result openly and explain the missing prerequisite or recovery step.
+`pnpm scenario all` runs all six even if one fails. These commands invoke
+`convex run` only; they do not run Convex dev/deploy or push backend code.
+
 ## Fallbacks and judge injections
 
 | Situation | Honest demonstration |
@@ -92,7 +139,7 @@ Suggested narration: “Even outside our application's proposal screen, CDP refu
 | Bazaar search is empty or processing | Use the direct sample URL only if eligible and label catalog discovery unverified. Preserve `EXTENSION-RESPONSES` if a real paid response exists. |
 | Wallet/HTTP response lost | Show stored attempt and hash, reconcile that original transaction, and keep pending state visible. Never initiate a replacement transfer. |
 | SQL witness fails | Show `witness_unavailable`; retain RPC-confirmed reconciliation. The recorded HTTP 500s are real, not an injected outage. |
-| Judge asks for replay / wrong amount / unauthorized approval | Demonstrate the relevant isolated regression or a safely scoped existing-state refusal, label its evidence source, and show that the ledger stays unchanged. Do not send a deliberately invalid transfer. |
+| Judge asks for replay / wrong amount / unauthorized approval | Use the scenario-lab commands above after deployment; otherwise show the relevant isolated regression with its simulation label. Show that the ledger stays unchanged. Do not send a deliberately invalid transfer. |
 | Network unavailable | Play an existing recording labeled **RECORDED LIVE TESTNET**. If none exists, use local synthetic tests and the documented receipts; do not pretend a recording exists. |
 
 ## Close the evidence inventory

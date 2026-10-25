@@ -57,6 +57,7 @@ import type * as orders from "../orders.js";
 import type * as payments from "../payments.js";
 import type * as refunds from "../refunds.js";
 import type * as review from "../review.js";
+import type * as scenarios from "../scenarios.js";
 import type * as scheduledData from "../scheduledData.js";
 import type * as scheduledJobs from "../scheduledJobs.js";
 import type * as seed from "../seed.js";
@@ -124,6 +125,7 @@ declare const fullApi: ApiFromModules<{
   payments: typeof payments;
   refunds: typeof refunds;
   review: typeof review;
+  scenarios: typeof scenarios;
   scheduledData: typeof scheduledData;
   scheduledJobs: typeof scheduledJobs;
   seed: typeof seed;

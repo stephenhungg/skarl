@@ -51,6 +51,97 @@ Additional runtime constraints: `requestId` matches `[a-zA-Z0-9_-]{1,100}`, prom
 
 **Deployment/source drift:** `submissions:evaluationRun` and the extra `getReport` fields `verificationOnly`/`evalRunId` are deployed but absent from this worktree's current `submissions.ts`. Validators were read from the main checkout's `convex/submissions.ts:245` and verified live. Coordinate the backend merge; do not deploy this older worktree to restore them. Controller dashboards should use `dashboard:submissions`/`getReport`; `evaluationRun` is a contributor evaluation-harness lookup.
 
+## Scenario lab — judge injections
+
+**Source handoff; deployment required.** Both endpoints require the persisted
+controller role and the selected order's organization. The existing
+`demoIdentity` selector is impersonable demo authentication. Buyer, contributor
+and finance-agent selectors cannot run scenarios or read the controller's lab
+history. Scenario artifacts are **SIMULATED CONTROL TEST — NO TRANSFER**; never
+render their synthetic chain hashes as evidence of a real transfer.
+
+| Function | Kind | Arguments and result |
+| --- | --- | --- |
+| `scenarios:run` | A | `{demoIdentity:"controller",scenario:ScenarioName,orderId?:Id<"orders">}` → one recorded `ScenarioRun` below. Call only from an explicit controller action. |
+| `scenarios:listRuns` | Q | `{demoIdentity:"controller",orderId?:Id<"orders">,limit?:number}` → newest-first `ScenarioRun[]`. `orderId` filters by source order. |
+
+```ts
+type ScenarioName =
+  | "wrong_amount_transfer"
+  | "unknown_transfer"
+  | "duplicate_submission"
+  | "agent_self_approval"
+  | "prompt_injection_narration"
+  | "bank_mismatch";
+
+type ScenarioRun = {
+  scenario: ScenarioName;
+  scenarioId: string;
+  runId: Id<"auditEvents">;
+  orderId: Id<"orders">;       // Selected source order
+  labOrderId: Id<"orders">;    // Isolated, labeled simulated artifacts
+  simulated: true;
+  expectedControl: string;
+  observedOutcome: string;
+  evidenceIds: string[];
+  passed: boolean;
+  createdAt: number;           // Unix milliseconds
+  agentEvidence?: {
+    status: string;
+    chatId?: string;
+    answer?: string;
+  };
+};
+```
+
+Use the generated API's actual return types when integrating. `passed` is
+computed from the real control's stored outcome and the protected state read
+back from Convex, rather than from the requested scenario name. A missing
+accepted original for the duplicate scenario is a failed prerequisite; do not
+display it as a caught duplicate. Self-approval requires an existing
+finance-agent-authored payout proposal; the lab never fabricates an obligation
+or creates a real payout proposal.
+The lab does not grant a synthetic submission
+license, create an unlicensed payable, approve an intent, sign, or send funds.
+History defaults to 20 rows; `limit` must be an integer from 1 through 100.
+Omitting `orderId` from `run` selects `skarl-red-cup-demo-v2`; omitting it from
+`listRuns` returns controller-visible runs across the organization.
+
+```tsx
+const runs = useQuery(api.scenarios.listRuns, {
+  demoIdentity: "controller", orderId, limit: 20,
+});
+const runScenario = useAction(api.scenarios.run);
+// In an explicit controller click handler:
+await runScenario({ demoIdentity: "controller", orderId,
+  scenario: "wrong_amount_transfer" });
+```
+
+Render the simulation label, scenario name, `expectedControl`,
+`observedOutcome`, pass/fail, timestamp and evidence links. `undefined` means
+loading; `[]` means no runs. Keep failed or prerequisite-blocked runs visible.
+Link to the returned lab order for its actual reconciliation/submission
+records; the source order remains the navigation context for run history.
+Self-approval exercises the existing source-order intent, so its refusal audit
+links to that intent rather than moving the obligation into the lab order.
+The run history is stored in existing audit events, requiring no new schema
+table. Input labels and event descriptions identify the scenario; synthetic
+evidence must retain that context wherever displayed. The bank scenario uses a
+lab-order snapshot rather than replacing the organization's bank snapshot. Its
+fourth column retains **simulated bank (Capital One Nessie mock)**.
+
+For narration injection, `agentEvidence` separately describes an optional
+read-only `agentChat.askAgent` call when `GEMINI_API_KEY` is configured.
+Display its status and answer as advisory evidence; deterministic detector and
+stored-report checks determine `passed`. A missing key records a `not_run`
+status, and an optional-agent failure does not invent a successful response.
+Input failures produce a durable `scenario_input_error` audit and a failed
+assessment; retain the failed result for the judge to inspect.
+
+See [judge commands and expected evidence](demo-script.md#if-a-judge-injects-a-scenario).
+This handoff documents the backend contract; no dashboard panel or deployed
+scenario success is claimed here.
+
 ## Per-take spoken liveness (source handoff; deployment required)
 
 `liveness:issueChallenge` is a contributor mutation with

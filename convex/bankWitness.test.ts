@@ -226,6 +226,44 @@ describe("Nessie durable simulated bank intent", () => {
 });
 
 describe("Nessie fourth witness projection", () => {
+  it("compares a labeled scenario snapshot through the real bank detector without replacing treasury evidence", async () => {
+    const f = await setup(); await prepared(f); await snapshot(f, [activity(f)]);
+    const beforeSnapshot = await f.t.run(ctx => ctx.db.query("bankSnapshots").collect());
+    const scenarioId = "bank-isolation-test";
+    const accountId = `SIMULATED:${scenarioId}:treasury`;
+    const lab = await f.t.run(async ctx => {
+      const source = await ctx.db.get(f.orderId);
+      if (!source) throw new Error("missing_source_order");
+      const {_id, _creationTime, ...fields} = source;
+      const orderId = await ctx.db.insert("orders", {...fields, publicId: `scenario:${scenarioId}`,
+        title: `SIMULATED ${scenarioId}`, status: "awaiting_funding", acceptedCount: 0n});
+      const {_id: sourceIntentId, _creationTime: intentTime, ...terms} = f.intent;
+      const intentId = `SIMULATED:${scenarioId}:funding`;
+      const paymentIntentId = await ctx.db.insert("paymentIntents", {...terms, orderId, intentId, status: "settlement_pending"});
+      await ctx.db.insert("bankOperations", {organizationId: f.organizationId, orderId, paymentIntentId, intentId,
+        kind: "deposit", amountAtomic: terms.amountAtomic, accountId, status: "submitted", createdAt: Date.now(), updatedAt: Date.now()});
+      return {orderId, intentId};
+    });
+    // A lab order never borrows an existing treasury snapshot, even before its own snapshot is stored.
+    const labScope = {...f.scope, orderId: lab.orderId};
+    expect((await f.t.query(ref("reconciliation4Way"), labScope)).bankAvailable).toBe(false);
+    await f.t.mutation(ref("storeSnapshot"), {organizationId: f.organizationId, accountId, status: "available",
+      scenarioOrderId: lab.orderId, scenarioId,
+      activitiesJson: JSON.stringify([activity(f, {id: `SIMULATED:${scenarioId}:row`, accountId,
+        description: lab.intentId, amountAtomic: "100000001"})])});
+    const read = await f.t.query(ref("reconciliation4Way"), labScope);
+    expect(read.rows[0]?.bank).toMatchObject({status: "mismatch", reason: "bank_binding_or_amount_mismatch", amountAtomic: "100000001"});
+    expect(read.exceptions).toContainEqual(expect.objectContaining({code: "bank_mismatch", eventKey: lab.intentId}));
+    expect(await f.t.run(ctx => ctx.db.query("bankSnapshots").collect())).toEqual(beforeSnapshot);
+    expect((await f.t.query(ref("reconciliation4Way"), f.scope)).rows[0]?.bank.status).toBe("match");
+    expect(await f.t.run(ctx => ctx.db.query("journalEntries").withIndex("by_order", q => q.eq("orderId", lab.orderId)).collect())).toEqual([]);
+    const event = await f.t.run(ctx => ctx.db.query("auditEvents").withIndex("by_event_key", q =>
+      q.eq("organizationId", f.organizationId).eq("eventKey", `scenario-bank:${scenarioId}`)).unique());
+    expect(JSON.parse(event!.reason)).toMatchObject({simulated: true, scenarioId, accountId});
+    await expect(f.t.mutation(ref("storeSnapshot"), {organizationId: f.organizationId, accountId, status: "available",
+      scenarioOrderId: f.orderId, scenarioId, activitiesJson: "[]"})).rejects.toThrow("scenario_bank_scope_invalid");
+  });
+
   it("reports match, missing, amount mismatch, pending, duplicate and stale bank evidence honestly", async () => {
     const f = await setup(); await prepared(f);
     const read = () => f.t.query(ref("reconciliation4Way"), f.scope);

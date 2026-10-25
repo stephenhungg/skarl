@@ -1,5 +1,5 @@
-import { v } from "convex/values";
-import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
+import { v, type Infer } from "convex/values";
+import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
@@ -166,10 +166,9 @@ export const copies = internalQuery({
  * This internal mutation fences scope, frozen criterion IDs, digests and licensing without runtime code generation.
  * It is not a public model-output API.
  */
-export const complete = internalMutation({
-  args: { jobId: v.id("jobs"), generation: v.number(), reportJson: v.string(), observationsJson: v.string(),
-    reportStorageId: v.id("_storage"), reportHash: v.string(), processingElapsedMs: v.number(), evidenceFrames: v.optional(v.array(evidenceFrame)), failureCode: v.optional(v.string()) },
-  handler: async (ctx, args) => {
+const completeArgs = v.object({ jobId: v.id("jobs"), generation: v.number(), reportJson: v.string(), observationsJson: v.string(),
+    reportStorageId: v.id("_storage"), reportHash: v.string(), processingElapsedMs: v.number(), evidenceFrames: v.optional(v.array(evidenceFrame)), failureCode: v.optional(v.string()) });
+export async function completeFor(ctx: MutationCtx, args: Infer<typeof completeArgs>, simulatedScenarioId?: string) {
     const principal = await requireRole(ctx, "contributor", "contributor");
     const job = await ctx.db.get(args.jobId);
     if (!job || job.organizationId !== principal.organizationId) throw new Error("job_not_found");
@@ -184,11 +183,15 @@ export const complete = internalMutation({
     if (args.failureCode && !/^[a-z0-9_]{1,80}$/.test(args.failureCode)) throw new Error("invalid_failure_code");
     const report = JSON.parse(args.reportJson);
     if (report.submissionId !== job.submissionId || report.taskVersionId !== job.taskVersionId || report.source.sha256 !== job.sourceHash ||
-      digest(report) !== args.reportHash || report.pipeline.version !== job.pipelineVersion || report.pipeline.implementation !== "inference") throw new Error("report_source_mismatch");
+      digest(report) !== args.reportHash || report.pipeline.version !== job.pipelineVersion || report.pipeline.implementation !== (simulatedScenarioId ? "scaffold" : "inference")) throw new Error("report_source_mismatch");
     if (interruptedFailure && (report.pipeline.status !== "failed" || report.recommendation !== "needs_review")) throw new Error("timeout_report_must_fail_closed");
     const submission = await ctx.db.get(job.submissionId);
     if (!submission || submission.status === "accepted" || submission.taskVersionId !== job.taskVersionId || submission.sourceHash !== job.sourceHash) throw new Error("submission_changed");
     validateEvaluationScope(submission.verificationOnly, submission.evalRunId);
+    if (simulatedScenarioId) {
+      const order = await ctx.db.get(submission.orderId);
+      if (order?.publicId !== `scenario:${simulatedScenarioId}` || !submission.verificationOnly) throw new Error("invalid_simulated_analysis_scope");
+    }
     const observations = JSON.parse(args.observationsJson);
     // Recompute from persisted challenge facts and transcript, never a model's
     // claimed pass flag. Legacy reports retain their original validation contract.
@@ -235,12 +238,12 @@ export const complete = internalMutation({
     }
     const context = { organizationId: job.organizationId, jobId: job._id, submissionId: job.submissionId, taskVersionId: job.taskVersionId,
       sourceHash: job.sourceHash, pipelineVersion: job.pipelineVersion, leaseGeneration: args.generation,
-      summary: `${report.recommendation}: ${report.criteria.map((c: {criterionId:string;status:string}) => `${c.criterionId}=${c.status}`).join(", ")}`,
+      summary: `${simulatedScenarioId ? `SIMULATED ${simulatedScenarioId}: ` : ""}${report.recommendation}: ${report.criteria.map((c: {criterionId:string;status:string}) => `${c.criterionId}=${c.status}`).join(", ")}`,
       reportStorageId: args.reportStorageId, reportHash: args.reportHash, evidenceAssetIds: [...(submission.originalAssetId ? [submission.originalAssetId] : []), ...frameAssetIds],
       ...(dHashFrameIndices.length ? { dHashFrameIndices } : {}),
       completedAt: Date.now(), reportJson: args.reportJson, observationsJson: args.observationsJson, processingElapsedMs: args.processingElapsedMs,
       ...(submission.perceptualHashSource ? { perceptualHashSource: submission.perceptualHashSource } : {}) };
-    const outcome = report.pipeline.status === "completed"
+    const outcome = simulatedScenarioId ? {implementation: "scaffold" as const, pipelineStatus: "needs_review" as const, recommendation: "needs_review" as const} : report.pipeline.status === "completed"
       ? { implementation: "inference" as const, pipelineStatus: "completed" as const, recommendation: report.recommendation as "accept"|"needs_review"|"request_correction" }
       : { implementation: "inference" as const, pipelineStatus: report.pipeline.status as "needs_review"|"failed"|"ml_unavailable", recommendation: "needs_review" as const };
     const analysisId = await ctx.db.insert("analysisResults", { ...context, ...outcome });
@@ -249,8 +252,8 @@ export const complete = internalMutation({
     await audit(ctx, { organizationId: job.organizationId, eventKey: `analysed:${job._id}:${args.generation}`, actor: {kind:"service",identity:"gemini-verifier"},
       action: "analysis_stored", entityType: "submissions", entityId: submission._id, reason: context.summary, evidenceReferences: [analysisId] });
     return analysisId;
-  },
-});
+}
+export const complete = internalMutation({args: completeArgs.fields, handler: (ctx, args) => completeFor(ctx, args)});
 
 export const expire = internalMutation({
   args: { jobId: v.id("jobs"), generation: v.number() },

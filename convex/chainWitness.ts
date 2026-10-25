@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { makeFunctionReference } from "convex/server";
-import { action, internalMutation, mutation, query, type QueryCtx } from "./_generated/server";
+import { action, internalMutation, mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
@@ -46,10 +46,7 @@ async function orderScope(ctx: QueryCtx, args: Scope) {
 }
 
 /** Service-only ingress: durable dedupe before any RPC work. No payment facts are trusted here. */
-export const receiveWebhook = mutation({
-  args: { serviceSecret: v.string(), treasury: v.string(), ...transfer },
-  handler: async (ctx, args) => {
-    service(args.serviceSecret);
+export async function receiveWebhookFor(ctx: MutationCtx, args: { treasury: string; eventId: string; network: string; tokenAddress: string; txHash: string; logIndex: number; fromAddress: string; toAddress: string; amountAtomic: string }) {
     const treasury = normalizeAddress(args.treasury), from = normalizeAddress(args.fromAddress), to = normalizeAddress(args.toAddress);
     if (args.network !== PAYMENT_NETWORK || args.tokenAddress.toLowerCase() !== USDC_ADDRESS.toLowerCase() ||
       ![from, to].includes(treasury) || !/^(0|[1-9]\d{0,77})$/.test(args.amountAtomic) ||
@@ -84,13 +81,13 @@ export const receiveWebhook = mutation({
       }
     }
     return { receiptId, replayed: !!prior, processed: false, candidates };
-  },
+}
+export const receiveWebhook = mutation({
+  args: { serviceSecret: v.string(), treasury: v.string(), ...transfer },
+  handler: async (ctx, args) => { service(args.serviceSecret); return receiveWebhookFor(ctx, args); },
 });
 
-export const finishWebhook = mutation({
-  args: { serviceSecret: v.string(), receiptId: v.id("cdpWebhookReceipts"), status: v.union(v.literal("processed"), v.literal("unknown_transfer")) },
-  handler: async (ctx, args) => {
-    service(args.serviceSecret);
+export async function finishWebhookFor(ctx: MutationCtx, args: {receiptId: Id<"cdpWebhookReceipts">; status: "processed" | "unknown_transfer"}) {
     const receipt = await ctx.db.get(args.receiptId);
     if (!receipt) throw new Error("webhook_receipt_not_found");
     const linked = await ctx.db.query("chainObservations").withIndex("by_transfer", q => q.eq("network", PAYMENT_NETWORK)
@@ -99,7 +96,10 @@ export const finishWebhook = mutation({
       linked.fromAddress.toLowerCase() !== receipt.fromAddress || linked.toAddress.toLowerCase() !== receipt.toAddress ||
       linked.amountAtomic.toString() !== receipt.amountAtomic)) throw new Error("webhook_not_reconciled");
     if (receipt.status !== "processed") await ctx.db.patch(receipt._id, { status: args.status, updatedAt: Date.now() });
-  },
+}
+export const finishWebhook = mutation({
+  args: { serviceSecret: v.string(), receiptId: v.id("cdpWebhookReceipts"), status: v.union(v.literal("processed"), v.literal("unknown_transfer")) },
+  handler: async (ctx, args) => { service(args.serviceSecret); return finishWebhookFor(ctx, args); },
 });
 
 /** Treasury-wide exceptions are visible only within the owning organization. */
@@ -115,7 +115,7 @@ export const webhookExceptions = query({
       const linked = await ctx.db.query("chainObservations").withIndex("by_transfer", q => q.eq("network", PAYMENT_NETWORK)
         .eq("txHash", row.txHash).eq("logIndex", row.logIndex)).unique();
       if (!linked) exceptions.push({ code: "unknown_transfer", chainIdentity: row.transferKey,
-        detail: "CDP reported a treasury USDC transfer without a reconciled business intent; treasury-wide advisory evidence, not posted cash." });
+        detail: `${order.publicId.startsWith("scenario:") ? `SIMULATED ${order.publicId.slice("scenario:".length)}: ` : ""}CDP reported a treasury USDC transfer without a reconciled business intent; treasury-wide advisory evidence, not posted cash.` });
     }
     return exceptions;
   },
