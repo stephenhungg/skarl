@@ -3,6 +3,7 @@ import { query, type QueryCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
 import { requireTenant } from "./lib/finance";
+import { checkSpokenLiveness } from "./lib/spokenLiveness";
 import { BANK_WITNESS_LABEL, compareBankWitness, type BankActivity } from "./lib/nessie";
 import { PAYMENT_NETWORK, PAYMENT_RAILS, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { validateTransfer } from "../packages/payments/src/reconciliation";
@@ -96,12 +97,22 @@ function workWitnesses(submission: Doc<"submissions">, analysis: Doc<"analysisRe
   rows.push(injectionFlag ? witness("prompt_injection", "Prompt-injection scan (heuristic)", "work", "disagree",
     "The stored comparator flagged instruction-like media content for human review. Narration and model output have no authority.")
     : absent("prompt_injection", "Prompt-injection scan (heuristic)", "work", "No explicit stored prompt-injection scan result. Absence of a warning is not a clean scan; treat narration and model output as untrusted data."));
-  // A concurrent capture implementation may add this field. Do not assume a
-  // schema, parse arbitrary objects as a pass, or expose the challenge itself.
+  // Legacy submissions have no challenge. The shared pure comparator validates
+  // the stored fields and timestamped audio; model-provided pass flags are ignored.
   const liveness = object(object(submission).liveness), livenessStatus = text(liveness.status);
-  rows.push(witness("spoken_liveness", "Spoken liveness", "work", Object.keys(liveness).length ? "pending" : "missing",
-    Object.keys(liveness).length ? `Stored liveness data present${livenessStatus ? ` (${livenessStatus})` : ""}; no compatible verified result is established by this projection.`
-      : "No stored spoken-liveness result on this submission."));
+  if ("words" in liveness) {
+    const result = checkSpokenLiveness(liveness as unknown as Parameters<typeof checkSpokenLiveness>[0],
+      audio as unknown as Parameters<typeof checkSpokenLiveness>[1],
+      typeof object(report.source).durationMs === "number" ? object(report.source).durationMs as number : 0);
+    rows.push(witness("spoken_liveness", "Spoken liveness (stored challenge + transcript)", "work",
+      result.status === "passed" ? "agree" : result.status === "missing_transcript" || result.status === "missing_challenge" ? "missing" : "disagree",
+      result.status === "passed" ? `Issued words match the stored transcript in order at ${result.evidence.startMs}–${result.evidence.endMs} ms (containing segment bounds). This deterministic comparison does not prove speaker identity or authorize acceptance.`
+        : result.warning));
+  } else {
+    rows.push(witness("spoken_liveness", "Spoken liveness", "work", Object.keys(liveness).length ? "pending" : "missing",
+      Object.keys(liveness).length ? `Stored liveness data present${livenessStatus ? ` (${livenessStatus})` : ""}; no compatible verified result is established by this projection.`
+        : "No stored spoken-liveness result on this submission."));
+  }
   return rows;
 }
 

@@ -229,6 +229,11 @@ witnesses into a single green fraud score. The list includes:
   and optional spoken liveness. A persisted instruction-like-content warning
   appears as a disagreeing heuristic scan witness. An absent explicit scan or
   liveness result stays missing; absence of a warning is not a clean scan.
+  When a stored per-take liveness challenge exists, the shared deterministic
+  comparator checks it against the stored timestamped transcript. Matching words
+  show agreement with segment bounds; missing transcript stays missing, and
+  invalid challenges, mismatched words or instruction-like narration disagree.
+  This performs no new inference and does not establish speaker identity.
 - Judgment: deterministic recommendation, human controller decision, and related
   finance-agent proposals/refusals. A proposal is not approval or payment.
 - Money: payable, related ledger journals, observed payout transfers and the
