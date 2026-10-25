@@ -358,6 +358,20 @@ describe("Nessie action guards and timeout recovery", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  // A 400 validation refusal proves Nessie created nothing, so it may be retried; a lost response may have committed, so it may not.
+  it("releases only provider-refused operations, never uncertain timeouts", async () => {
+    const f = await setup();
+    const org = await f.t.run(async ctx => (await ctx.db.query("organizations").first())!._id);
+    const base = await f.t.run(async ctx => (await ctx.db.query("paymentIntents").first())!);
+    const insert = (errorCode: string) => f.t.run(ctx => ctx.db.insert("bankOperations", {organizationId: org, orderId: base.orderId,
+      paymentIntentId: base._id, intentId: `${base.intentId}-${errorCode}`, kind: "deposit", amountAtomic: 10_000n, accountId: BANK_ACCOUNT,
+      status: "uncertain", errorCode, createdAt: Date.now(), updatedAt: Date.now()}));
+    await insert("nessie_http_400"); await insert("nessie_timeout"); await insert("nessie_request_or_response_failed");
+    expect(await f.t.mutation(ref("releaseRejectedOperations"), {organizationId: org})).toEqual({released: 1});
+    expect((await f.t.run(ctx => ctx.db.query("bankOperations").collect())).map(row => row.errorCode).sort())
+      .toEqual(["nessie_request_or_response_failed", "nessie_timeout"]);
+  });
+
   it("rejects a silent empty GET credential response before reading activity or sending money", async () => {
     const f = await setup(); await confirm(f); await treasury(f);
     const fetchMock = vi.fn(async () => response([])); vi.stubGlobal("fetch", fetchMock);

@@ -375,3 +375,12 @@ export const reconciliation4Way = query({args: scope, handler: async (ctx, args)
     bankScope: "confirmed order funding and contributor payouts only", bankAvailable: bank.available, bankFetchedAt: bank.fetchedAt,
     reconciliation: {...existing, matches: existing.matches.map(match => ({...match, amountAtomic: match.amountAtomic.toString()}))}};
 } });
+
+/** Operator-only. HTTP 400/422 is a provider validation refusal, which proves no bank record was created,
+ * so the intent may be attempted again. Timeouts and every other outcome stay uncertain. */
+export const releaseRejectedOperations = internalMutation({ args: { organizationId: v.id("organizations") }, handler: async (ctx, args) => {
+  const rows = await ctx.db.query("bankOperations").withIndex("by_org", q => q.eq("organizationId", args.organizationId)).collect();
+  const rejected = rows.filter(row => row.status === "uncertain" && !row.activityId && (row.errorCode === "nessie_http_400" || row.errorCode === "nessie_http_422"));
+  for (const row of rejected) await ctx.db.delete(row._id);
+  return { released: rejected.length };
+} });
