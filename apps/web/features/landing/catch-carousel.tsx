@@ -1,5 +1,5 @@
 import { SectionHeader } from "@/components/section-header";
-import { CatchCarousel } from "./catch/carousel";
+import { CheckConsole } from "./catch/check-console";
 
 const CARD_EASE = "cubic-bezier(.64,.39,.23,.88)";
 
@@ -58,7 +58,7 @@ export function CatchSection() {
       <div className="frame">
         <SectionHeader id="catch-title" eyebrow="Verification" title="How Skarl checks a clip" />
       </div>
-      <CatchCarousel />
+      <CheckConsole />
     </section>
   );
 }
