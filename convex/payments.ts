@@ -3,7 +3,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
-import { normalizeAddress, paymentBinding, recordJournal, requireTenant } from "./lib/finance";
+import { digest, normalizeAddress, paymentBinding, recordJournal, requireTenant } from "./lib/finance";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { createFundingJournal, createPayoutJournal } from "../packages/ledger/src/index";
 import { chainIdentity, validateTransfer, reconcilePayments, type TransferObservation, type PaymentObligation, type PaymentJournal } from "../packages/payments/src/reconciliation";
@@ -143,6 +143,19 @@ export const claimPayout = mutation({
       payable.status !== "payout_in_progress" || payable.amountAtomic !== intent.amountAtomic ||
       normalizeAddress(payable.recipientAddress) !== intent.recipientAddress || command.recipientAddress !== intent.recipientAddress ||
       command.amountAtomic !== intent.amountAtomic || command.network !== PAYMENT_NETWORK || command.tokenAddress !== USDC_ADDRESS) throw new Error("payout_not_executable");
+    // Recheck the approved source snapshot at dispatch, not just at approval time.
+    const currentSource = digest({ payableId: payable._id, orderId: payable.orderId, submissionId: payable.submissionId,
+      decisionId: payable.decisionId, contributor: payable.contributorTokenIdentifier,
+      recipientAddress: normalizeAddress(payable.recipientAddress), amountAtomic: payable.amountAtomic,
+      network: payable.network, tokenAddress: payable.tokenAddress, createdAt: payable.createdAt });
+    if (currentSource !== intent.sourceVersion || command.sourceVersion !== intent.sourceVersion ||
+      command.organizationId !== intent.organizationId || payable.organizationId !== intent.organizationId ||
+      command.payableId !== payable._id || command.orderId !== intent.orderId || payable.orderId !== intent.orderId ||
+      approval.paymentCommandId !== command._id || approval.expiresAt !== intent.expiresAt ||
+      approval.requestedBy.identity !== intent.requesterTokenIdentifier || command.requesterTokenIdentifier !== intent.requesterTokenIdentifier ||
+      command.requestedBy.identity !== intent.requesterTokenIdentifier || intent.network !== PAYMENT_NETWORK || intent.tokenAddress !== USDC_ADDRESS) {
+      throw new Error("approved_source_changed");
+    }
     const approver = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", approval.approverTokenIdentifier)).unique();
     if (!approver || approver.status !== "active" || approver.organizationId !== intent.organizationId || !approver.roles.includes("controller") ||
       approver.roles.includes("finance-agent") || approver.roles.includes("contributor")) throw new Error("approval_invalidated");
