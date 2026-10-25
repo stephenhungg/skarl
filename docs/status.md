@@ -1004,9 +1004,56 @@ confirmed public fields and explorer links. Nothing here grants acceptance,
 licensing, delivery or payment authority. Failed finalized reports retain their
 stored recommendation; verification-only reports always attest `licensed=false`.
 
-**Rollout at this snapshot:** schema, attestor, policy and Convex environment
-configuration are live. The new Convex functions/table/cron still require the
-deployment owner's deploy of `origin/main`; no Convex deployment was performed
-by this task. Report backfill and individual attestation links are not yet
-observed. Run `attestations:sweep` after that deploy and inspect
-`attestations:inventory`. Mocked tests do not establish live attestation success.
+### Live backfill and automatic sweep — October 25, 2026, 03:53 PDT
+
+The deployment owner deployed `1789763` (including EAS commit `5cff95a`) to
+`keen-marmot-986` at 03:50 PDT. All **11 finalized reports have confirmed
+attestations**: six completed jobs with review-only reports and five failed jobs
+with finalized failure reports. Every stored recommendation is `needs_review`;
+none of these commitments establishes acceptance, model accuracy or payment.
+Ten attestations have `licensed=false`; the one `licensed=true` records validated
+consent metadata, not acceptance or delivery.
+
+Live Convex execution history shows `attestations:sweep` invoked by **Cron** at
+03:50:13 PDT (execution `2c2fb5d7-cf4f-4b7d-a820-ad2798040b0f`), followed by 11
+scheduler-invoked `attestationsNode:run` actions. All 11 intents reached
+`confirmed` on their first generation by 03:50:25 PDT. The operator's explicit
+backfill sweep at 03:50:46 returned `{ "more": false, "scheduled": 0 }`: the cron
+had already completed the backfill. Another successful **Cron** invocation at
+03:52:12 PDT (`640c5a15-f948-4a6f-8da5-1f6e0f26aaed`) confirms the two-minute
+schedule remains active. A fresh complete inventory found 11 reports, 11
+attestations and zero missing confirmations.
+
+This is live evidence of automatic discovery and attestation of previously
+unattested stored reports. No new report arrived during this observation window
+and no media was uploaded for this check; a post-deployment new-upload example
+has therefore not been observed separately. The sweep scans all report pages,
+so newly stored reports use the same demonstrated discovery path.
+
+**Explorer and chain verification:** each EASScan page returned its indexed
+on-chain attestation, matching the UID, transaction, attestor and all eight
+public fields exactly. Independently, Base Sepolia RPC confirmed all 11
+successful receipts, matching `Attested` events and stored EAS payloads, schema,
+recipient, revocability and unrevoked/non-expiring state. Block numbers and log
+indices below come from those receipts. All BaseScan links were requested but
+returned HTTP 403; Chrome also stopped at a Cloudflare CAPTCHA. BaseScan page
+contents remain **unverified**, rather than being inferred from RPC success.
+
+| Analysis ID | Licensed | Verify on-chain | Transaction | Block / log index |
+| --- | --- | --- | --- | --- |
+| `j571t3ahsx4y2hs1j6dh0ggc858gzsqx` | `false` | [EASScan](https://base-sepolia.easscan.org/attestation/view/0x83f97276ee0e7424837e9086c4224ac08bfe0f0e4ca753963f60622c9fdb386d) | [BaseScan](https://sepolia.basescan.org/tx/0xd4aa2b01d0daf64ba9f5b1634bed9bb1dda11f3a1a9577a18fb0ae2e0dd6e5cb) | `50017777 / 10` |
+| `j5773p3t4ah0vaentc3hsed0k18gye63` | `false` | [EASScan](https://base-sepolia.easscan.org/attestation/view/0x30f5c683a4ebf25c6c3ad96c1fd68e41bd2d7b3f3d17572b9b2f7b3f0aa59b2b) | [BaseScan](https://sepolia.basescan.org/tx/0x0098374f2ecf076375ebf60f090c37e16bc2b28f8465eb6ee3d3d4f033c0022a) | `50017775 / 10` |
+| `j57btg8018nzpzbqhv416gd0g18gyaxf` | `true` | [EASScan](https://base-sepolia.easscan.org/attestation/view/0xa04e3457c8d303421a39be2445da72a0e5c5c76214558e73681363916ad93de1) | [BaseScan](https://sepolia.basescan.org/tx/0x7c308886b6eb1d5b6a31d442aea6b1ee4a1097cdfad38bc3a8051043e012092c) | `50017759 / 13` |
+| `j5736zsn81zfksy5bg73f1cs0d8gyjzr` | `false` | [EASScan](https://base-sepolia.easscan.org/attestation/view/0x313d20ea10d97ca561a215e0a52d81a0bdf7bc968af578aeda45f5a50c92a6f4) | [BaseScan](https://sepolia.basescan.org/tx/0x5a7377f564e2c6e5485fa0a41a3c5b3bef9d0cc14c1f60f06e0cdcbbb03bbcc9) | `50017761 / 20` |
+| `j571a5jzm5wvp0yn1ykngkcj518gz2xm` | `false` | [EASScan](https://base-sepolia.easscan.org/attestation/view/0x2229476b782a01ec2904df1c8c172f5f9d06721f9a6b43a16af50f50e2602a74) | [BaseScan](https://sepolia.basescan.org/tx/0x514529b21456f6404031117bd32d9adbb85767994f3ce61de7e1141d9005e1bf) | `50017776 / 10` |
+| `j571jkt4m2qnvw7j0nzz10rca98gzkh5` | `false` | [EASScan](https://base-sepolia.easscan.org/attestation/view/0x211516c9da4ed275090a82ab606998b40fd2223a1d04a087237171eedf2aee20) | [BaseScan](https://sepolia.basescan.org/tx/0x7c6fdcff4b55bd48e00716456fe0cd9d1abbeb1eb5e10af6eacd7865d70b9711) | `50017764 / 0` |
+| `j576ngxsaakcgvcd84dcvayp798gzgq6` | `false` | [EASScan](https://base-sepolia.easscan.org/attestation/view/0x2292b7489d6fc2b055d0c57b46fd287b54904abc5f834b8dea3f1d1358caafa0) | [BaseScan](https://sepolia.basescan.org/tx/0x6b606c178b8c14bd93d31e4195baaf48d7adb024e14b1eba3c75c2afaeb98cd7) | `50017776 / 17` |
+| `j578spxhtctqc0masn3k2f82kx8gz10w` | `false` | [EASScan](https://base-sepolia.easscan.org/attestation/view/0x134f7c55964a06146a5b3e7b0ebd92e99316e70c13aa933fcb2e084932ae5c28) | [BaseScan](https://sepolia.basescan.org/tx/0x21c154448e620acbbdfc930afecd1f5a8bdb85cade19cc7ceadd4f3802d716b0) | `50017727 / 0` |
+| `j57dbaxpz3rs6fbgew0q6vger98gzhzp` | `false` | [EASScan](https://base-sepolia.easscan.org/attestation/view/0x19210398d31e0a1dcaeb7dada8de74a33892a2a861a1bb7cccc4acb366463771) | [BaseScan](https://sepolia.basescan.org/tx/0x3a09ba3650a6bd043c3cbb3840c61389c73866cf275f63a0cd54c601d9747266) | `50017735 / 4` |
+| `j57f76tvbef3t2g0tyx667r1g98gzzmz` | `false` | [EASScan](https://base-sepolia.easscan.org/attestation/view/0x3d8288b740c353196046618d3481ed9e9120e53ea906ad624df21a26a9c9c8e0) | [BaseScan](https://sepolia.basescan.org/tx/0x5ce628d64f69c42347dde3f1dd6ea8dc0da42ed6317dda16668d70862a269c33) | `50017744 / 0` |
+| `j5793b275cgcb55fwnxsrh1wgh8gy5h9` | `false` | [EASScan](https://base-sepolia.easscan.org/attestation/view/0x935c09143c1ddb059ca62429a6623b42b3110dc589cdc45031eaa8c6c5e863e4) | [BaseScan](https://sepolia.basescan.org/tx/0x04319bde242f2660f14a29c0fdbb4cf853f8e9aa797d0ca3ae0f3afa67fb212b) | `50017754 / 1` |
+
+Validation: `pnpm check` passed (TypeScript, Node/Convex/payment tests,
+documentation links and production build). Live evidence above comes from
+Convex, EASScan and Base Sepolia RPC, not fixtures. This follow-up made no
+Convex deployment or environment change and uploaded no media.

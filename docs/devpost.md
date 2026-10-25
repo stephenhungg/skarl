@@ -99,7 +99,17 @@ available.
 
 The commitment also covers finalized failed reports: it proves what Skarl
 recorded, not model accuracy, acceptance or payment. Verification-only clips are
-marked `licensed: false`. Schema registration and wallet-policy setup have live
-evidence; backend rollout and per-report backfill are tracked separately in
-[build status](status.md). See [Coinbase controls and provenance](coinbase-submission.md#verify-on-chain)
+marked `licensed: false`. All 11 finalized reports now have confirmed
+attestations, automatically backfilled by the deployed two-minute Convex cron.
+Every recommendation remains `needs_review`.
+
+**Verify on-chain:** [Latest report on EASScan](https://base-sepolia.easscan.org/attestation/view/0x935c09143c1ddb059ca62429a6623b42b3110dc589cdc45031eaa8c6c5e863e4)
+and [its Base Sepolia transaction](https://sepolia.basescan.org/tx/0x04319bde242f2660f14a29c0fdbb4cf853f8e9aa797d0ca3ae0f3afa67fb212b).
+The [complete attestation inventory](status.md#live-backfill-and-automatic-sweep--october-25-2026-0353-pdt)
+includes all 11 EASScan and BaseScan links, receipt block/log identities and the
+observed cron executions. EASScan fields and direct RPC receipts/payloads were
+verified; BaseScan page inspection was blocked by its CAPTCHA. No new upload was
+created to test the cron.
+
+See [Coinbase controls and provenance](coinbase-submission.md#verify-on-chain)
 and the [official EAS deployments](https://docs.attest.org/docs/quick--start/contracts).
