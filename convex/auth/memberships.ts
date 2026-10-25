@@ -20,7 +20,7 @@ export const claimRole = mutation({
     const org = await ctx.db.get(member.organizationId);
     if (!org || org.status !== "active") throw new ConvexError("inactive_organization");
     const roles = [...new Set([...member.roles, role])];
-    if (roles.includes("finance-agent") || (roles.includes("controller") && roles.includes("contributor"))) {
+    if (roles.includes("finance-agent") || (roles.includes("contributor") && (roles.includes("buyer") || roles.includes("controller")))) {
       throw new ConvexError("conflicting_roles");
     }
     await ctx.db.patch(member._id, { roles });

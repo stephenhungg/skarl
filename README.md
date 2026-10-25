@@ -2,6 +2,8 @@
 
 **Evidence-backed settlement for human-data companies.** Skarl fills two finance seats: settlement accountant and accounts-payable clerk. It connects multimodal work evidence to exact USDC obligations, buyer-authorized policy, exception review and observed settlement.
 
+The agent proposes; the buyer-signed policy (or the buyer in review) approves; an independent CDP cap guards execution. The AI never approves itself. Buyer and contributor are the only human roles.
+
 **[Open the live demo](https://skarl.devshardat.work)** · [Coinbase submission](docs/coinbase-submission.md) · [Devpost text](docs/devpost.md) · [Two-minute demo and judging runbook](docs/demo-script.md) · [Architecture SVG](docs/architecture.svg)
 
 The demo moment: an accepted original earns a payable; a copied submission cannot earn a second one; the finance agent can propose payment but cannot approve its own request. Required source, consent, duplicate and financial controls gate progress. Optional witnesses expose disagreements without granting authority.

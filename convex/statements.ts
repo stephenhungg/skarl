@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { requireRole } from "./lib/demoAuth";
-import { requireTenant } from "./lib/finance";
+import { requireBuyerOrder } from "./lib/finance";
 import { trialBalance } from "./lib/financeAgentLoop";
 
 /** Principal-model statements from posted journals; stored payables are not an accounting source. */
@@ -11,8 +11,7 @@ export const forOrder = query({
     const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
-    requireTenant(principal, order);
-    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+    requireBuyerOrder(principal, order);
     const entries = await ctx.db.query("journalEntries").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
     const contributorBalances = new Map<string, bigint>();
     const journals = [];

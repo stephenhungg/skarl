@@ -8,14 +8,14 @@ const input = () => ({ demoIdentity: "buyer", requestId: "new-order", title: "Re
   quantityRequested: "3", pricePerSampleAtomic: "9007199254740993", contributorRateAtomic: "1000000", deadlineAt: Date.now() + 3600000,
   taskPrompt: "Place the cup upright", criteria: [{ criterionId: "cup", description: "Cup is upright", modality: "visual" as const }] });
 describe("buyer orders", () => {
-  it("discovers an owning buyer's order instead of sending them to a foreign demo order", async () => {
+  it("discovers orders owned by the buyer organization regardless of the creating buyer", async () => {
     const t = await setup();
     await t.run(async ctx => {
       for (const order of await ctx.db.query("orders").collect()) await ctx.db.patch(order._id, { buyerTokenIdentifier: "another-buyer" });
     });
-    expect(await t.query(api.dashboard.demoContext, { demoIdentity: "buyer" })).toBeNull();
+    expect(await t.query(api.dashboard.demoContext, { demoIdentity: "buyer" })).not.toBeNull();
     const created = await t.mutation(api.orders.createOrder, input());
-    expect(await t.query(api.dashboard.demoContext, { demoIdentity: "buyer" })).toMatchObject({ orderId: created.orderId });
+    expect(await t.query(api.orders.listOrders, { demoIdentity: "buyer", paginationOpts: { numItems: 100, cursor: null } })).toMatchObject({ page: expect.arrayContaining([expect.objectContaining({ _id: created.orderId })]) });
   });
 
   it("freezes optional diversity terms in the replay binding so funding cannot buy silently changed coverage", async () => {
@@ -31,8 +31,12 @@ describe("buyer orders", () => {
     expect(coverage).toMatchObject({ acceptedCount: "0", missingVariants: ["left-hand", "low-light"], environments: [] });
     await expect(t.query(api.orders.diversityCoverage, { demoIdentity: "contributor", orderId: created.orderId })).rejects.toThrow("forbidden");
     await t.run(ctx => ctx.db.patch(created.orderId, { buyerTokenIdentifier: "another-buyer" }));
-    await expect(t.query(api.orders.diversityCoverage, { demoIdentity: "buyer", orderId: created.orderId })).rejects.toThrow("order_not_owned");
-    expect(await t.query(api.orders.diversityCoverage, { demoIdentity: "controller", orderId: created.orderId })).toBeDefined();
+    expect(await t.query(api.orders.diversityCoverage, { demoIdentity: "buyer", orderId: created.orderId })).toEqual(coverage);
+    await t.run(async ctx => {
+      const organizationId = await ctx.db.insert("organizations", { name: "Other tenant", createdByTokenIdentifier: "other", status: "active" });
+      await ctx.db.patch(created.orderId, { organizationId });
+    });
+    await expect(t.query(api.orders.diversityCoverage, { demoIdentity: "buyer", orderId: created.orderId })).rejects.toThrow("cross_organization_access");
   });
 
   it("rejects impossible or ambiguous quotas before freezing terms", async () => {
@@ -70,7 +74,7 @@ describe("buyer orders", () => {
       await expect(t.mutation(api.orders.createOrder, { ...args, ...change })).rejects.toThrow();
     }
   });
-  it("paginates only the buyer's orders and refuses contributors", async () => {
+  it("paginates only the buyer organization's orders and refuses contributors", async () => {
     const t = await setup(), created = await t.mutation(api.orders.createOrder, input());
     await t.run(async ctx => {
       const order = (await ctx.db.get(created.orderId))!;
@@ -83,7 +87,8 @@ describe("buyer orders", () => {
     expect(page.page.some(o => o._id === created.orderId)).toBe(true);
     expect(page.page.find(o => o._id === created.orderId)?.autoPay?.maxPerClipAtomic).toBe("9007199254740993");
     expect(() => JSON.stringify(page)).not.toThrow();
-    expect(page.page.every(o => o.buyerTokenIdentifier === "demo:skarl:buyer")).toBe(true);
+    expect(page.page.some(o => o.publicId === "another-buyer")).toBe(true);
+    expect(page.page.some(o => o.publicId === "another-tenant")).toBe(false);
     expect(page.page.every(o => typeof o.budgetAtomic === "string")).toBe(true);
     await expect(t.query(api.orders.listOrders, { demoIdentity: "contributor", paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow();
   });

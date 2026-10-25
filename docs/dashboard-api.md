@@ -11,7 +11,7 @@ Handoff for MatthewKim323. Snapshot queried with `pnpm exec convex run` on Octob
 
 ## Buyer-signed policy and Review
 
-Current source changes require operator deployment; dated live examples below do not establish that auto-pay has run. The product has a buyer and contributor. The buyer’s **Review** queue contains exceptions only: failed clip checks, duplicates, over-cap payouts and bank/chain mismatches. Keep the exact reason and supporting evidence visible. Legacy `controller` selectors and routes remain compatibility APIs.
+Current source changes require operator deployment; dated live examples below do not establish that auto-pay has run. The product has two humans: buyer and contributor. The agent proposes; the buyer-signed policy (or the buyer in review) approves; an independent CDP cap guards execution. The buyer’s **Review** queue contains exceptions only: failed clip checks, duplicates, over-cap payouts and bank/chain mismatches. Keep the exact reason and supporting evidence visible. Legacy `controller` selectors and routes remain compatibility APIs. Order review and financial reads use owning-organization buyer authority; creation and auto-pay policy changes still bind to the individual order buyer.
 
 Orders store optional `autoPay: {enabled, maxPerClipAtomic, requireAllChecks: true, setBy, setAt}`. Amounts are Int64 internally and decimal integer strings over JSON. New buyer orders default to enabled with the cap equal to the per-clip price. An old order without `autoPay` stays manual; its buyer must explicitly enable it. Every set/change is audited.
 
@@ -32,7 +32,7 @@ Internal `policy.evaluateSubmission` reuses `acceptAndPublishFor`; internal `pol
 - Funding is reconciled at [BaseScan](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757), Transfer log `18`. One funding journal, no reconciliation exceptions.
 - One stored submission, `mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j`, is a **synthetic verification-only upload**, not a licensed contributor sample. Real inference ran; all three criteria are `unobservable`, recommendation/pipeline `needs_review`. No accept-eligible submission exists. Never turn its evaluation projection into payment authority.
 - Payables, deliveries and payment approvals are empty. Four finance-agent runs exist: one completed read-only trial-balance call, two `gemini_timeout`, one `gemini_incomplete`; no money proposed. No live payout or approval-refusal example exists yet.
-- Use `demoIdentity: "buyer"` for the buyer’s own order Review. Legacy examples below use `demoIdentity: "controller"` for compatibility dashboard reads, acceptance and approval; `"finance-agent"` for proposal and refusal demo. For unsigned calls with demo mode enabled, these remain impersonable demo selectors. Signed-in calls use their own membership and ignore this argument; see [authentication](#authentication). Exceptions below: funding service uses `"buyer"`; evaluation-run lookup uses `"contributor"`.
+- Use `demoIdentity: "buyer"` for the buyer’s own order Review. Examples below use `demoIdentity: "buyer"` for dashboard reads, acceptance and approval; `"finance-agent"` for proposal and refusal demo. For unsigned calls with demo mode enabled, these remain impersonable demo selectors. Signed-in calls use their own membership and ignore this argument; see [authentication](#authentication). Exceptions below: funding service uses `"buyer"`; evaluation-run lookup uses `"contributor"`.
 
 Source: [dashboard](../convex/dashboard.ts), [finance](../convex/finance.ts), [payments](../convex/payments.ts), [agent](../convex/financeAgent.ts), [agent runs](../convex/financeAgentData.ts), [statements](../convex/statements.ts), [submissions](../convex/submissions.ts).
 
@@ -50,14 +50,14 @@ identity through `ctx.runQuery` and `ctx.runMutation`.
 `canClaimController`. Signed-in users can call
 `auth/memberships:claimRole({role})` to claim buyer/contributor in the demo
 organization. A controller claim requires a verified email on the
-`SKARL_CONTROLLER_EMAILS` allowlist. Humans cannot claim finance-agent, and a
-contributor cannot also become controller. Role checks still enforce independent
+`SKARL_CONTROLLER_EMAILS` allowlist. This legacy API is hidden from the UI; account roles display Buyer and Contributor only. Humans cannot claim finance-agent, and a
+contributor cannot also become buyer or a legacy controller. Role checks still enforce independent
 review and refuse self-approval.
 
 Unsigned callers retain labeled demo identities by default. Setting
 `SKARL_DEMO_IDENTITIES=off` rejects anonymous role-gated calls, including existing
 unsigned scripts/mobile/MCP demo calls. With demo mode on, `/dashboard` visibly
-labels anonymous access “Demo identity”. Buyer Review requires ownership of the selected order. Real sign-in does not remove the
+labels anonymous access “Demo identity”. Buyer Review requires membership in the selected order’s owning organization. Real sign-in does not remove the
 impersonable anonymous demo path while demo mode remains enabled.
 
 ## Exact arguments
@@ -66,24 +66,24 @@ impersonable anonymous demo path while demo mode remains enabled.
 
 | Function | Kind | Exact args / identity |
 | --- | --- | --- |
-| `dashboard:demoContext` | Q | `{demoIdentity: string}`; controller |
-| `dashboard:orderSummary` | Q | Order-scoped; controller |
-| `dashboard:submissions` | Q | Order-scoped; controller |
-| `dashboard:payables` | Q | Order-scoped; controller |
-| `dashboard:journal` | Q | Order-scoped; controller |
-| `dashboard:auditEvents` | Q | Order-scoped; controller |
-| `financeAgentData:runs` | Q | Order-scoped; controller |
-| `statements:forOrder` | Q | Order-scoped; controller |
-| `payments:reconciliation` | Q | Order-scoped; controller |
-| `submissions:getReport` | Q | `{demoIdentity: string, submissionId: Id<"submissions">}`; controller |
-| `submissions:evaluationRun` | Q | `{demoIdentity: string, orderId: Id<"orders">, evalRunId: string}`; **contributor only**, controller gets `forbidden` |
-| `finance:acceptAndPublish` | M | `{demoIdentity: string, submissionId: Id<"submissions">}`; controller |
+| `dashboard:demoContext` | Q | `{demoIdentity: string}`; owning-organization buyer |
+| `dashboard:orderSummary` | Q | Order-scoped; owning-organization buyer |
+| `dashboard:submissions` | Q | Order-scoped; owning-organization buyer |
+| `dashboard:payables` | Q | Order-scoped; owning-organization buyer |
+| `dashboard:journal` | Q | Order-scoped; owning-organization buyer |
+| `dashboard:auditEvents` | Q | Order-scoped; owning-organization buyer |
+| `financeAgentData:runs` | Q | Order-scoped; owning-organization buyer |
+| `statements:forOrder` | Q | Order-scoped; owning-organization buyer |
+| `payments:reconciliation` | Q | Order-scoped; owning-organization buyer |
+| `submissions:getReport` | Q | `{demoIdentity: string, submissionId: Id<"submissions">}`; owning-organization buyer |
+| `submissions:evaluationRun` | Q | `{demoIdentity: string, orderId: Id<"orders">, evalRunId: string}`; **contributor only**, buyer gets `forbidden` |
+| `finance:acceptAndPublish` | M | `{demoIdentity: string, submissionId: Id<"submissions">}`; owning-organization buyer |
 | `finance:proposePayment` | M | `{demoIdentity: string, payableId: Id<"payables">}`; finance-agent |
-| `finance:approve` | M | `{demoIdentity: string, intentId: Id<"paymentIntents">}`; independent controller |
-| `financeAgent:run` | A | `{demoIdentity: string, orderId: Id<"orders">, requestId: string, prompt: string}`; controller or finance-agent |
+| `finance:approve` | M | `{demoIdentity: string, intentId: Id<"paymentIntents">}`; independent owning-organization buyer |
+| `financeAgent:run` | A | `{demoIdentity: string, orderId: Id<"orders">, requestId: string, prompt: string}`; owning-organization buyer or finance-agent |
 | `payments:fundingStatus` | Q | `{serviceSecret: string, orderId: string, demoIdentity: string}`; buyer; ID or public order ID |
-| `payments:payoutAttempt` | Q | `{serviceSecret: string, intentId: Id<"paymentIntents">, demoIdentity: string, claimId: string}`; controller or finance-agent |
-| `payments:claimPayout` | M | `{serviceSecret: string, intentId: Id<"paymentIntents">, demoIdentity: string, senderAddress: string, treasuryAddress: string, claimId: string}`; controller or finance-agent |
+| `payments:payoutAttempt` | Q | `{serviceSecret: string, intentId: Id<"paymentIntents">, demoIdentity: string, claimId: string}`; owning-organization buyer or finance-agent |
+| `payments:claimPayout` | M | `{serviceSecret: string, intentId: Id<"paymentIntents">, demoIdentity: string, senderAddress: string, treasuryAddress: string, claimId: string}`; owning-organization buyer or finance-agent |
 | `payments:recordPayoutObservation` | M | `{serviceSecret: string, attemptId: Id<"paymentAttempts">, observation: Observation}`; service, **no demoIdentity** |
 
 `Observation` is exactly `v.object({network:v.string(), tokenAddress:v.string(), txHash:v.string(), logIndex:v.number(), blockNumber:v.int64(), blockHash:v.string(), fromAddress:v.string(), toAddress:v.string(), amountAtomic:v.int64(), confirmations:v.number(), succeeded:v.boolean(), observedAt:v.number()})`.
@@ -103,7 +103,7 @@ The clip review screen renders `witnessReceipt.forSubmission` below the video an
 
 ## Scenario lab — judge injections
 
-**Source handoff; deployment required.** Both endpoints require the buyer’s ownership of the selected order or the legacy controller role and organization. The existing
+**Source handoff; deployment required.** Both endpoints require buyer authority in the selected order’s owning organization. The existing
 `demoIdentity` selector remains impersonable for unsigned callers while demo
 mode is enabled; signed-in callers use their own membership. Contributor and finance-agent principals cannot run scenarios or read buyer lab history. Scenario artifacts are **SIMULATED CONTROL TEST — NO TRANSFER**; never
 render their synthetic chain hashes as evidence of a real transfer.
@@ -158,11 +158,11 @@ Omitting `orderId` from `run` selects `skarl-red-cup-demo-v2`; omitting it from
 
 ```tsx
 const runs = useQuery(api.scenarios.listRuns, {
-  demoIdentity: "controller", orderId, limit: 20,
+  demoIdentity: "buyer", orderId, limit: 20,
 });
 const runScenario = useAction(api.scenarios.run);
 // In an explicit buyer click handler:
-await runScenario({ demoIdentity: "controller", orderId,
+await runScenario({ demoIdentity: "buyer", orderId,
   scenario: "wrong_amount_transfer" });
 ```
 
@@ -267,7 +267,7 @@ Report criterion evidence uses `{modality,startMs,endMs,claim,sourceId?}`; seek 
 Reproduce a read without changing deployment:
 
 ```sh
-pnpm exec convex run dashboard:orderSummary '{"demoIdentity":"controller","orderId":"kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg"}'
+pnpm exec convex run dashboard:orderSummary '{"demoIdentity":"buyer","orderId":"kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg"}'
 pnpm exec convex run submissions:evaluationRun '{"demoIdentity":"contributor","orderId":"kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg","evalRunId":"eval-dcf1ae08-f3c5-4afb-a196-6216414fd712"}'
 ```
 
@@ -277,22 +277,22 @@ pnpm exec convex run submissions:evaluationRun '{"demoIdentity":"contributor","o
 `witnessReceipt.forSubmission({demoIdentity, submissionId})` is one read-only
 projection of the stored witnesses behind a submission. It neither runs new
 inference nor creates an attestation, decision, proposal, journal or payment.
-Controllers in the organization, the order's buyer and the owning contributor
+Buyers in the order's organization and the owning contributor
 can read it. A finance-agent identity cannot read this endpoint. The
 [authentication rules](#authentication) apply; unsigned demo selectors remain
 impersonable while demo mode is enabled.
 
 For Matthew's dashboard, subscribe with
-`useQuery(api.witnessReceipt.forSubmission, {demoIdentity: "controller", submissionId})`.
+`useQuery(api.witnessReceipt.forSubmission, {demoIdentity: "buyer", submissionId})`.
 `undefined` means loading. The HTTP equivalent is
 `GET /api/samples/<submissionId>/witnesses` with the explicit header
-`x-skarl-demo-identity: controller` (or `buyer` / `contributor`). The route also
+`x-skarl-demo-identity: buyer` (or `contributor`). The route also
 accepts `sample-<submissionId>`, matching the other sample routes. Responses use
 `Cache-Control: private, no-store`; any bigint values become decimal integer
 strings. This read does not require the payment service secret or an x402 charge.
 
 ```sh
-curl -H 'x-skarl-demo-identity: controller' \
+curl -H 'x-skarl-demo-identity: buyer' \
   https://skarl.vercel.app/api/samples/mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j/witnesses
 ```
 
@@ -354,7 +354,7 @@ analysis cannot project an `accept` recommendation. Each witness has exactly
 is not a paid claim. These rows do not grant acceptance or payment authority.
 
 `agree` is specific to each witness's claim: audio means a stored transcription
-exists, a human decision means the buyer or legacy controller recorded acceptance, and a bank
+exists, a human decision means the buyer recorded acceptance, and a bank
 row means simulated activity matches the payout bindings. Those are different
 claims; they do not all corroborate the filmed action. Keep the detail visible
 so a checked row cannot imply more than its source establishes.
@@ -407,8 +407,8 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
 export function useReviewData(submissionId?: Id<"submissions">) {
-  const context = useQuery(api.dashboard.demoContext, { demoIdentity: "controller" });
-  const args = context ? { demoIdentity: "controller", orderId: context.orderId } : "skip";
+  const context = useQuery(api.dashboard.demoContext, { demoIdentity: "buyer" });
+  const args = context ? { demoIdentity: "buyer", orderId: context.orderId } : "skip";
   const summary = useQuery(api.dashboard.orderSummary, args);
   const submissions = useQuery(api.dashboard.submissions, args);
   const payables = useQuery(api.dashboard.payables, args);
@@ -418,7 +418,7 @@ export function useReviewData(submissionId?: Id<"submissions">) {
   const statements = useQuery(api.statements.forOrder, args);
   const reconciliation = useQuery(api.payments.reconciliation, args);
   const report = useQuery(api.submissions.getReport, submissionId
-    ? { demoIdentity: "controller", submissionId } : "skip");
+    ? { demoIdentity: "buyer", submissionId } : "skip");
   const accept = useMutation(api.finance.acceptAndPublish);
   const propose = useMutation(api.finance.proposePayment);
   const approve = useMutation(api.finance.approve);
@@ -427,10 +427,10 @@ export function useReviewData(submissionId?: Id<"submissions">) {
     statements, reconciliation, report, accept, propose, approve, runAgent };
 }
 // In an event handler; always check result.ok before advancing:
-// const result = await accept({ demoIdentity: "controller", submissionId });
+// const result = await accept({ demoIdentity: "buyer", submissionId });
 // if (!result.ok) { setError(result.code); return; }
 // await propose({ demoIdentity: "finance-agent", payableId: result.payableId });
-// await runAgent({ demoIdentity: "controller", orderId, requestId,
+// await runAgent({ demoIdentity: "buyer", orderId, requestId,
 //   prompt: "Inspect this order and propose eligible payables; request independent approval." });
 ```
 
@@ -470,7 +470,7 @@ import type { EIP1193Provider } from "viem";
 export function SignPayout({ intentId, dispatchReady, provider }: {
   intentId: string; dispatchReady: boolean; provider: EIP1193Provider | null;
 }) {
-  const payout = usePayout({ demoIdentity: "controller", provider });
+  const payout = usePayout({ demoIdentity: "buyer", provider });
   async function sign() {
     try { await payout.execute(intentId); } catch { /* rendered below */ }
   }
@@ -513,7 +513,7 @@ The local payment HTTP adapter preserves `dispatch_not_ready`, `approved_source_
 
 ## Re-running the live demo
 
-Run `pnpm demo:e2e` from the repo root. It discovers the staged default order, reuses an accepted eligible path when available, accepts eligible licensed evidence, proposes via deterministic `finance:proposePayment` as `finance-agent`, proves an agent approval refusal with its durable audit, approves as controller, then prints the exact intent once workflow dispatch is ready. This is **not a Gemini finance-agent inference run** and does not claim/sign/send a payout. Acceptance, proposal and approval replay stored business identities; an existing execution attempt stops for reconciliation.
+Run `pnpm demo:e2e` from the repo root. It discovers the staged default order, reuses an accepted eligible path when available, accepts eligible licensed evidence, proposes via deterministic `finance:proposePayment` as `finance-agent`, proves an agent approval refusal with its durable audit, approves as the buyer, then prints the exact intent once workflow dispatch is ready. This is **not a Gemini finance-agent inference run** and does not claim/sign/send a payout. Acceptance, proposal and approval replay stored business identities; an existing execution attempt stops for reconciliation.
 
 Exit `0`: ready for wallet signing or already paid. Exit `2`: expected blocked/refused step (including missing seed or eligible evidence). Exit `1`: transport/unexpected error. Current live stop is before `acceptAndPublish`: the only submission is verification-only with `needs_review` evidence. The script does not fabricate media, reports or acceptability.
 
@@ -552,7 +552,7 @@ selectors remain impersonable while demo mode is enabled.
 `{demoIdentity, submissionId, decision, reasonCode, note}`. `decision` is
 `accept | reject | request_correction`; `reasonCode` is a lowercase identifier
 matching `[a-z][a-z0-9_]{0,79}`, and `note` is nonblank, at most 4,000 characters.
-The order’s buyer or a legacy independent human controller may review. The contributor, finance agent, conflicting memberships and other tenants are refused.
+An independent buyer in the order’s owning organization may review. The contributor, finance agent, conflicting memberships and other tenants are refused.
 
 A decision binds the current source, rubric and analysis evidence and is stored
 with an audit event. `accept` calls the same transactional acceptance helper as
@@ -574,7 +574,7 @@ returns `review_superseded`. Rejection sets `rejected`; correction sets
 | Function | Kind | Arguments and behavior |
 | --- | --- | --- |
 | `orders.createOrder` | M | Buyer only. `{demoIdentity,requestId,title,buyerWalletAddress,quantityRequested,pricePerSampleAtomic,contributorRateAtomic,deadlineAt,taskPrompt,criteria}`. Counts/prices are canonical decimal strings. `criteria` is 1–50 `{criterionId,description,modality}` rows; modalities are `visual`, `audio`, `cross_modal`, `temporal`. |
-| `orders.listOrders` | Q | `{demoIdentity,paginationOpts:{numItems,cursor}}`; use `cursor:null` first. Buyer sees owned orders; controller/finance-agent see their organization. At most 100 rows per page. Returns native `{page,isDone,continueCursor}` plus Convex pagination metadata. |
+| `orders.listOrders` | Q | `{demoIdentity,paginationOpts:{numItems,cursor}}`; use `cursor:null` first. Buyer and finance-agent see their organization’s orders. At most 100 rows per page. Returns native `{page,isDone,continueCursor}` plus Convex pagination metadata. |
 | `orders.cancelRemainder` | M | Buyer owner only. `{demoIdentity,orderId,reason}`; reason is nonblank, at most 2,000 characters. Atomically stops collection, reserves the unused funded quota and creates an approval-required refund proposal. |
 
 `createOrder` freezes rubric version 1 and computes
@@ -595,36 +595,36 @@ cash unchanged, and moves the order to `cancelling`. Acceptance and cancellation
 conflict on the order record so they cannot consume the same unit.
 
 Returns `{ok:true,paymentCommandId,fundingIntentId,journalEntryId,amountAtomic,
-controllerApprovalRequired:true,executionAvailable:false,replayed}`. This is
-**proposal-only**: it creates the existing `paymentCommands.kind="buyer_refund"`
+controllerApprovalRequired:true,executionAvailable:false,replayed}`. The `controllerApprovalRequired` field name is retained for compatibility and now means independent buyer approval. This is
+**proposal-only**: it records the buyer cancellation request and a distinct finance-service proposal, creates the existing `paymentCommands.kind="buyer_refund"`
 and links it through the original confirmed funding intent's optional
 `refundPaymentCommandId`. It does not create a new executable refund intent,
-controller approval, dispatch, signature or transfer. Continue with the refund-specific approval/execution flow below. Never pass the funding ID to a payout signing hook or display `refunded` before observation. Retry with the same reason; changed proposal bindings produce `refund_proposal_changed`.
+buyer approval, dispatch, signature or transfer. Continue with the refund-specific approval/execution flow below. Never pass the funding ID to a payout signing hook or display `refunded` before observation. Retry with the same reason; changed proposal bindings produce `refund_proposal_changed`.
 
 ### Execute an approved buyer refund
 
-This is an optional legacy compatibility path, separate from contributor auto-pay; its retained controller approval API is not a step in the buyer/contributor happy path.
+This is an optional legacy compatibility path, separate from contributor auto-pay; its buyer approval API is not a step in the contributor auto-pay happy path.
 
 Base-funded orders only; Solana funding does not yet support cancellation/refund.
 The original funding intent stays `confirmed`; refunds use its linked standalone
 `paymentCommands.kind="buyer_refund"` command. No new funding intent is created.
 
 1. Owning buyer calls `orders.cancelRemainder` and retains `paymentCommandId`.
-2. Query `refunds.forOrder({demoIdentity,orderId})` as controller or owning buyer.
+2. Query `refunds.forOrder({demoIdentity,orderId})` as an owning-organization buyer.
    It returns `{commandId,orderId,status,recipientAddress,amountAtomic,network,
    tokenAddress,controllerApprovalRequired,executionAvailable,approval,claimId,
    txHash,explorerUrl}`. `amountAtomic` is an integer string. Approval includes
    status, approver identity, expiry and reason. Proposed refunds are not executable.
-3. Independent controller calls `refunds.approve({demoIdentity,commandId,reason})`.
-   Buyer self-approval and finance-agent approval return audited refusals. Current
-   controller membership, expiry, source and exact amount/recipient bindings are
+3. The buyer reviews the finance-service proposal and calls `refunds.approve({demoIdentity,commandId,reason})`.
+   Finance-agent approval and approval by the command's own proposer return audited refusals. Legacy buyer-proposed commands still need a different owning-organization buyer. Current
+   buyer authority, expiry, source and exact amount/recipient bindings are
    revalidated before execution. `forOrder.executionAvailable` becomes true only
    for a valid approved, unclaimed command.
 4. Browser imports `executeApprovedRefund` from `apps/web/lib/payments/refund.ts`
    and calls `{commandId,demoIdentity,provider,onProgress?}`. It reuses the existing
    treasury-wallet USDC transfer client with the allowlisted refund endpoint.
    The server derives recipient/amount from the approved command. It creates
-   one execution attempt before any signature; the controller signs in the wallet.
+   one execution attempt before any signature; the buyer signs in the wallet.
 5. `POST /api/payments/refund` records the submitted hash before receipt observation.
    Pending RPC returns HTTP 202/reconciling, never paid. Recover with
    `getRefundRecovery(commandId)` and `reportRefundTransaction({commandId,claimId,
@@ -642,12 +642,12 @@ No live refund or wallet signature is claimed by the implementation tests.
 
 ### Reconciliation exceptions
 
-`exceptions.list({demoIdentity,orderId})` is available to the owning buyer and legacy controller/finance-agent principals. It includes policy-failure snapshots alongside reconciliation exceptions.
+`exceptions.list({demoIdentity,orderId})` is available to the owning-organization buyer and finance-agent principals. It includes policy-failure snapshots alongside reconciliation exceptions.
 It reuses `payments.reconciliation` and returns
 `[{exceptionKey,exception,stillDetected,disposition}]`. `exception` retains the
 existing `code`, `detail` and optional event/order/chain identities. A policy item has `code: "policy_review"`, `failures: string[]`, and either `submissionId` or `intentId`; render each failure separately. Policy snapshots persist in the existing `reconciliationDispositions` table. `disposition` is null or the durable handling record.
 
-Owning-buyer/legacy-controller mutations `exceptions.acknowledge` and `exceptions.resolve`
+Owning-organization-buyer mutations `exceptions.acknowledge` and `exceptions.resolve`
 take `{demoIdentity,orderId,exceptionKey,reason}` and return
 `{dispositionId,replayed}`. Obtain the key from `list`; a caller cannot invent an
 exception. Reasons must be nonblank and at most 2,000 characters. Exact retries
@@ -664,10 +664,9 @@ not a scan of every treasury transfer.
 | `media.submissionEvidence` | `{demoIdentity,submissionId}` | `{submissionId,analysisId,clip,frames,dHashFrames,dHashFrameIndices,framesAvailable,transcriptSegments,perceptualHashSource}`. Clip includes asset ID, MIME type, status, duration and URL. Visual `frames` (12) and `dHashFrames` (6) include asset ID, `timestampMs`, MIME type, URL, `kind`, `sampleIndex` and nullable `decodedFrameIndex`. `dHashFrameIndices` contains the six indices in the decoded 6-fps silent video. Segments contain `{startMs,endMs,text}`. |
 | `media.duplicatePair` | `{demoIdentity,submissionId,matchingSubmissionId}` | `{left,right,matchedFrames,score,exactSourceMatch,perceptualMatch,heuristicOnly:true}`. Each match includes `sampleIndex`, both hash timestamps, Hamming `distance`, and nullable `leftFrame`/`rightFrame` assets for the exact underlying fingerprint frames. |
 
-Controller access is organization-scoped; contributors can access only their
+Buyer access is organization-scoped; contributors can access only their
 own submissions. Both sides of a duplicate pair are authorized independently,
-so owning one clip does not reveal another contributor's clip. Buyer and
-finance-agent identities cannot obtain these original-media URLs.
+so owning one clip does not reveal another contributor's clip. Finance-agent identities cannot obtain these original-media URLs.
 
 These are native Convex **bearer storage URLs issued after role checks**, not a
 custom expiring signed-URL service. Do not publish or cache them. A deleted or
@@ -679,7 +678,7 @@ Perceptual matching is a bounded heuristic, not proof of robust copy detection.
 ### Ask the finance agent
 
 `agentChat.askAgent({demoIdentity,question,orderId?,requestId?})` is an action for
-controller/finance-agent identities. `question` is nonblank and at most 2,000
+owning-organization buyer/finance-agent identities. `question` is nonblank and at most 2,000
 characters. Omitted `orderId` discovers the default demo order. Supply a stable
 `requestId` (`[a-zA-Z0-9_-]{1,100}`) for uncertain retries; omission starts a new
 request. Returns `{chatId,replayed}`, not a guarantee that inference completed.
@@ -696,7 +695,7 @@ provider failures and interrupted runs are persisted without inventing results.
 
 ### Analytics and paginated lists
 
-All functions in this table require controller/finance-agent membership and
+All functions in this table require buyer/finance-agent membership and
 accept `{demoIdentity,orderId?}`. Omitting the order scopes to the organization.
 
 | Query | Additional arguments | Result |
@@ -740,7 +739,7 @@ These endpoints add independent evidence without changing payment authority.
 | `chainWitness.refresh` | A | `{demoIdentity,orderId}` | `{status:"available" \| "witness_unavailable" \| "cached_or_rate_limited"}`. Refreshes the stored SQL snapshot; never pays or posts journals. |
 | `chainWitness.webhookExceptions` | Q | `{demoIdentity,orderId}` | Treasury-wide `unknown_transfer` exceptions, also included in `exceptions.list` and the witness reconciliation query. |
 
-All three require controller or finance-agent membership and enforce organization
+All three require owning-organization buyer or finance-agent membership and enforce organization
 scope. The underlying `payments.reconciliation` remains available unchanged.
 Use `useQuery` for the witness query and call the refresh action on opening the
 reconciliation view or clicking refresh. Do not call the action every render.
@@ -860,7 +859,7 @@ Stable fingerprints and durable request IDs suppress unchanged repeat runs;
 interrupted pre-action reservations reuse the same request ID. A proposal may
 create a new missing-transfer exception and trigger one explanatory follow-up.
 
-`scheduledData.snapshots({demoIdentity,orderId})` is available to controllers and
+`scheduledData.snapshots({demoIdentity,orderId})` is available to buyers and
 finance agents in their organization. It returns checkpoint metadata (kind,
 status, generation, request/run IDs, nextAt/leaseUntil/fingerprint) plus parsed
 `snapshot`: accrued obligations/current exceptions for finance, or exception
@@ -887,7 +886,7 @@ the mobile work. See [mobile capture](mobile.md) and the [phone quickstart](../a
 | --- | --- | --- |
 | `submissions:generateUploadUrl` | M | `{demoIdentity: "contributor"}`; obtain a separate URL for video and JSON |
 | `sensorTraces:attachSensorTrace` | A | `{demoIdentity: "contributor", submissionId: Id<"submissions">, storageId: Id<"_storage">}` |
-| `media:submissionEvidence` | Q | Existing `{demoIdentity: "controller" \| "contributor", submissionId: Id<"submissions">}`; contributors must own the submission |
+| `media:submissionEvidence` | Q | Existing `{demoIdentity: "buyer" \| "contributor", submissionId: Id<"submissions">}`; contributors must own the submission |
 
 POST the JSON with `Content-Type: application/json`, maximum 2 MiB. Create the
 video submission normally, with acknowledged consent and a stable request UUID;
@@ -1026,7 +1025,7 @@ request ID returns its original run; switching providers does not rerun it.
 ### Contributor Coach for web and iOS
 
 Both endpoints require the stored contributor role, active organization and
-ownership of the submission. Controller, buyer and finance-agent selectors do
+ownership of the submission. Buyer and finance-agent selectors do
 not gain access to the contributor's coach response. The
 [authentication rules](#authentication) apply; unsigned demo selectors remain
 impersonable while demo mode is enabled.
@@ -1095,8 +1094,8 @@ an unavailable coach as successful inference.
 
 **Source implementation; deployment required.** `datasets.forOrder({demoIdentity,
 orderId})` returns the buyer's versioned dataset, rather than the review queue.
-The order's buyer and an active controller in its organization may export it.
-Other buyers, contributors, and finance agents are refused. The
+An active buyer in the order's organization may export it.
+Buyers in other organizations, contributors, and finance agents are refused. The
 [authentication rules](#authentication) apply; unsigned demo selectors remain
 impersonable while demo mode is enabled.
 
@@ -1142,7 +1141,7 @@ Only accepted, licensed submissions with a valid published delivery are included
 Verification-only and evaluation recordings, review/correction/rejected rows,
 quarantined or swapped originals, and invalid consent/delivery bindings are
 excluded. A report alone never grants delivery. `acceptance.basis` distinguishes
-`machine` (controller acceptance of completed machine evidence) from
+`machine` (buyer acceptance of completed machine evidence) from
 `human_controller` (explicit human review). Evidence comes from the analysis
 bound to that delivery, preserving the accepted snapshot after a later rerun.
 Missing findings remain `unobservable` with empty evidence; they are never
@@ -1237,7 +1236,7 @@ or a witnessed jury disagreement. A human override does not erase these limits.
 This score is advisory and cannot authorize acceptance or payment.
 
 `datasets.sampleQuality({demoIdentity, submissionId})` is a separate query for
-the owner contributor, order buyer, or organization controller. Finance agents,
+the owner contributor or owning-organization buyer. Finance agents,
 foreign tenants and unrelated owners are refused. It returns:
 
 ```ts
@@ -1294,8 +1293,8 @@ or `requiredVariants`) as evidence. It creates no delivery, payable or journal;
 the candidate is not silently discarded. A prior successful acceptance replays
 its original result. Concurrent accepts share the order/capacity transaction.
 
-`orders.diversityCoverage({demoIdentity, orderId})` is available to the order's
-buyer, organization controller, or finance agent. It reports:
+`orders.diversityCoverage({demoIdentity, orderId})` is available to the order’s
+owning-organization buyer or finance agent. It reports:
 
 ```ts
 {
@@ -1319,7 +1318,7 @@ secret is needed. The existing dataset media secret remains required.
 ### Contributor earnings
 
 `datasets.contributorEarnings({demoIdentity: "contributor"})` returns only that
-contributor's submissions in their active organization. Buyers, controllers and
+contributor's submissions in their active organization. Buyers and
 finance agents are refused; there is no HTTP route. Each row has `submissionId`,
 `orderId`, submission `status`, exact decimal-string `amountAtomic`,
 `payableStatus` (`accrued`, `payout_in_progress`, `paid`, `reversed`, or null),
@@ -1336,7 +1335,7 @@ or another contributor's rows are returned.
 ## Bank witness — Capital One Nessie
 
 **Deployment required.** The additive bank witness exposes
-`bankWitness.reconciliation4Way({demoIdentity, orderId})` to `controller` and
+`bankWitness.reconciliation4Way({demoIdentity, orderId})` to `buyer` and
 `finance-agent` identities in the order's organization. All bank evidence must
 carry the label **simulated bank (Capital One Nessie mock)**, including when
 requests reach Nessie's hosted API. Nessie models a bank; it does not establish
@@ -1359,7 +1358,7 @@ checks the canonical receipt; `reconciliation.witnesses` retains the separate
 CDP SQL witness results. `reconciliation.matches[].amountAtomic` is serialized
 as a decimal integer string. A bank snapshot expires after five minutes.
 `bank_mismatch` items also appear in `exceptions.list` and use the existing
-buyer/legacy-controller acknowledgment/resolution APIs. Unmatched Treasury activity is
+buyer acknowledgment/resolution APIs. Unmatched Treasury activity is
 explicitly Treasury-wide and is not assigned to an arbitrary order.
 
 A confirmed x402 funding intent produces a simulated Treasury deposit; an
@@ -1414,9 +1413,9 @@ validation and summary recomputation do not attest that inference occurred.
 
 | Function | Arguments in addition to `demoIdentity` | Result / permission |
 | --- | --- | --- |
-| `annotations.generateUploadUrl` (mutation) | `submissionId` | Native upload URL; controller or owning contributor |
-| `annotations.saveDerived` (mutation) | `submissionId`, `storageId`, `summary` | Stored annotation ID; controller or owning contributor; replaying the same upload returns the existing ID |
-| `annotations.forSubmission` (query) | `submissionId` | Newest-first `[{_id, kind, model, createdAt, createdBy, url, summary}]`; controller, order's buyer, or owning contributor |
+| `annotations.generateUploadUrl` (mutation) | `submissionId` | Native upload URL; owning-organization buyer or owning contributor |
+| `annotations.saveDerived` (mutation) | `submissionId`, `storageId`, `summary` | Stored annotation ID; owning-organization buyer or owning contributor; replaying the same upload returns the existing ID |
+| `annotations.forSubmission` (query) | `submissionId` | Newest-first `[{_id, kind, model, createdAt, createdBy, url, summary}]`; order's owning-organization buyer or owning contributor |
 
 All calls check active roles and the submission's organization. An authenticated
 session supplies the principal; `demoIdentity` does not override it. Finance agents,

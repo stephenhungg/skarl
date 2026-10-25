@@ -20,7 +20,7 @@ Keep an already analysed consented clip ready in case inference is slower than t
 
 ## Buyer-signed auto-pay
 
-Agents propose, a rule the buyer signed approves, the AI never approves itself. The buyer sets the rule when creating/funding the order: on by default, capped at the order’s per-clip price, and requiring every check. The buyer can change or disable it. The internal `policy-engine` accepts eligible clips and approves bound payout intents; the finance agent still proposes. Failed evidence, disabled policy, an over-cap amount or an unverified wallet goes to the buyer’s Review queue with exact reasons. The buyer can approve or reject exceptions. A CDP wallet cap is a second, independent guard.
+The agent proposes; the buyer-signed policy (or the buyer in review) approves; an independent CDP cap guards execution. The AI never approves itself. The buyer sets the rule when creating/funding the order: on by default, capped at the order’s per-clip price, and requiring every check. The buyer can change or disable it. The internal `policy-engine` accepts eligible clips and approves bound payout intents; the finance agent still proposes. Failed evidence, disabled policy, an over-cap amount or an unverified wallet goes to the buyer’s Review queue with exact reasons. The buyer can approve or reject exceptions. A CDP wallet cap is a second, independent guard.
 
 Set `PAYOUT_EXECUTOR=cdp_agent` in Convex through the operator workflow before demonstrating automatic execution. Deployment, policy configuration and a live all-checks-pass payout must be verified separately; local tests are not a transfer.
 

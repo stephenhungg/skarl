@@ -4,7 +4,7 @@ import { mutation, query, internalMutation, internalQuery, type MutationCtx } fr
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isFinanceAgent, requireRole } from "./lib/demoAuth";
-import { audit, actorFor, digest, requireTenant } from "./lib/finance";
+import { requireBuyerOrder, audit, actorFor, digest, requireTenant } from "./lib/finance";
 import { validateFrameHashes, compareFrameHashes } from "./lib/copyDetection";
 import { PIPELINE_VERSION, validateEvaluationScope, applyVerificationOnlyGuard, applyContentEvaluationGuard, EVALUATION_PROJECTION_VERSION, CONTENT_EVALUATION_PROJECTION_VERSION } from "./lib/verificationReport";
 import { evaluationVideoModel } from "./validators";
@@ -308,7 +308,8 @@ export const getReport = query({
     if (principal.roles.includes("contributor") && submission.contributorTokenIdentifier !== principal.tokenIdentifier) throw new Error("submission_not_owned");
     if (principal.roles.includes("buyer")) {
       const order = await ctx.db.get(submission.orderId);
-      if (!order || order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+      if (!order) throw new Error("order_not_found");
+      requireBuyerOrder(principal, order);
     }
     const analysis = submission.currentAnalysisId ? await ctx.db.get(submission.currentAnalysisId) : null;
     if (analysis && (analysis.organizationId !== submission.organizationId || analysis.submissionId !== submission._id)) throw new Error("analysis_reference_mismatch");

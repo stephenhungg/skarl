@@ -9,8 +9,7 @@ export { api };
 export type { Id };
 
 /** Demo selector from docs/dashboard-api.md. Impersonable on purpose; this is not authentication. */
-// Keep the old symbol for route compatibility; the happy-path persona is the buyer.
-export const CONTROLLER = "buyer" as const;
+export const BUYER = "buyer" as const;
 export const FINANCE_AGENT = "finance-agent" as const;
 
 export type OrderSummary = FunctionReturnType<typeof api.dashboard.orderSummary>;
@@ -45,7 +44,7 @@ const subscribe = (listener: () => void) => { listeners.add(listener); return ()
 /** The order in view: the one the controller picked, else the staged demo order. `undefined` while loading. */
 export function useOrderId(): Id<"orders"> | null | undefined {
   const picked = useSyncExternalStore(subscribe, readChosen, () => null);
-  const context = useQuery(api.dashboard.demoContext, { demoIdentity: CONTROLLER });
+  const context = useQuery(api.dashboard.demoContext, { demoIdentity: BUYER });
   if (picked) return picked as Id<"orders">;
   return context === undefined ? undefined : context?.orderId ?? null;
 }
@@ -53,11 +52,11 @@ export function useOrderId(): Id<"orders"> | null | undefined {
 export type OrderRow = FunctionReturnType<typeof api.orders.listOrders>["page"][number];
 /** Real orders only; scenario-lab orders are simulated artifacts and live on the lab page. */
 export function useOrders() {
-  const result = useQuery(api.orders.listOrders, { demoIdentity: CONTROLLER, paginationOpts: { numItems: 50, cursor: null } });
+  const result = useQuery(api.orders.listOrders, { demoIdentity: BUYER, paginationOpts: { numItems: 50, cursor: null } });
   return result?.page.filter(order => !order.publicId.startsWith("scenario:"));
 }
 
-const scoped = (orderId: Id<"orders"> | null | undefined) => (orderId ? { demoIdentity: CONTROLLER, orderId } : "skip" as const);
+const scoped = (orderId: Id<"orders"> | null | undefined) => (orderId ? { demoIdentity: BUYER, orderId } : "skip" as const);
 
 export function useOrderData(orderId: Id<"orders"> | null | undefined) {
   const args = scoped(orderId);

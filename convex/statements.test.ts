@@ -116,11 +116,11 @@ describe("ledger-derived order statements", () => {
     await expect(statements(f)).rejects.toThrow("unbalanced_journal");
   });
 
-  it("refuses contributors, another buyer’s order and cross-tenant statement access", async () => {
+  it("permits organization peers and refuses contributors and cross-tenant statement access", async () => {
     const f = await setup();
     await expect(statements(f, "contributor")).rejects.toThrow("forbidden");
     await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
-    await expect(statements(f, "buyer")).rejects.toThrow("order_not_owned");
+    expect(await statements(f, "buyer")).toEqual(await statements(f, "controller"));
     const organizationId = await foreignOrganization(f);
     await f.t.run(ctx => ctx.db.patch(f.orderId, { organizationId }));
     for (const identity of ["buyer", "controller", "finance-agent"]) await expect(statements(f, identity)).rejects.toThrow("cross_organization_access");

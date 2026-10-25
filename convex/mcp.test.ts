@@ -321,9 +321,9 @@ describe("MCP transport and bearer boundary", () => {
 
 describe("MCP role-scoped tools and human authority", () => {
   const expected = {
-    buyer: ["skarl_list_tasks", "skarl_create_order", "skarl_order_status", "skarl_get_dataset", "skarl_witness_receipt"],
+    buyer: ["skarl_list_tasks", "skarl_create_order", "skarl_order_status", "skarl_get_dataset", "skarl_witness_receipt", "skarl_reconciliation", "skarl_exceptions"],
     contributor: ["skarl_open_tasks", "skarl_liveness_challenge", "skarl_my_submissions_and_earnings", "skarl_explain_outcome"],
-    controller: ["skarl_reconciliation", "skarl_exceptions"],
+    controller: ["skarl_list_tasks", "skarl_create_order", "skarl_order_status", "skarl_get_dataset", "skarl_witness_receipt", "skarl_reconciliation", "skarl_exceptions"],
   };
 
   it.each(identities)("lists only %s tools with strict schemas, so a key never grants another persona's capabilities", async identity => {
@@ -348,13 +348,40 @@ describe("MCP role-scoped tools and human authority", () => {
       expect(tool.description).not.toMatch(/\b(?:approve|accept|sign|pay[\s_-]?out)\b/i);
     }
     // The existing finance action can propose payments, so it is deliberately
-    // omitted instead of being mislabeled as a read-only controller tool.
+    // omitted instead of being mislabeled as a read-only buyer tool.
     expect(body.result.tools.some((tool: { name: string }) => tool.name === "skarl_ask_finance_agent")).toBe(false);
+  });
+
+  it("normalizes legacy controller keys to the buyer membership and its order scope", async () => {
+    const { t, orderId } = await setup();
+    const buyerTools = await (await request(t, rpc("tools/list"), "buyer")).json();
+    expect(await (await request(t, rpc("tools/list"), "controller")).json()).toEqual(buyerTools);
+    await t.run(async ctx => {
+      const member = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", "demo:skarl:buyer")).unique();
+      await ctx.db.patch(member!._id, { status: "revoked" });
+    });
+    // An active legacy controller membership cannot bypass a revoked buyer.
+    const result = await call(t, "skarl_reconciliation", { orderId }, "controller");
+    expect(result.result.isError).toBe(true);
+    expect(toolValue(result)).toMatchObject({ ok: false, code: "inactive_demo_identity" });
+  });
+
+  it.each(["buyer", "controller"] as const)("keeps %s keys out of another organization’s financial views", async identity => {
+    const { t, orderId } = await setup();
+    await t.run(async ctx => {
+      const organizationId = await ctx.db.insert("organizations", { name: "Foreign private tenant", status: "active", createdByTokenIdentifier: "private:foreign-buyer" });
+      await ctx.db.patch(orderId, { organizationId });
+    });
+    for (const name of ["skarl_reconciliation", "skarl_exceptions"]) {
+      const result = await call(t, name, { orderId }, identity);
+      expect(result.result.isError).toBe(true);
+      expect(toolValue(result)).toMatchObject({ ok: false, code: "cross_organization_access" });
+    }
   });
 
   it("refuses cross-role and invented privileged tools before reaching any mutation", async () => {
     const { t } = await setup();
-    for (const name of ["skarl_liveness_challenge", "skarl_reconciliation", "skarl_approve", "finance.approve", "skarl_accept", "skarl_sign", "skarl_payout"]) {
+    for (const name of ["skarl_liveness_challenge", "skarl_approve", "finance.approve", "skarl_accept", "skarl_sign", "skarl_payout"]) {
       const response = await call(t, name);
       expect(response).toMatchObject({ jsonrpc: "2.0", id: 1, result: { isError: true } });
       expect(toolValue(response)).toMatchObject({ ok: false, code: "tool_not_allowed" });
@@ -392,10 +419,13 @@ describe("MCP role-scoped tools and human authority", () => {
 
   it("maps domain ownership errors to refusal codes without disclosing another buyer's data", async () => {
     const { t, orderId } = await setup();
-    await t.run(ctx => ctx.db.patch(orderId, { buyerTokenIdentifier: "private:other-buyer", title: "PRIVATE_FOREIGN_ORDER" }));
+    await t.run(async ctx => {
+      const organizationId = await ctx.db.insert("organizations", { name: "Private foreign buyer", status: "active", createdByTokenIdentifier: "private:other-buyer" });
+      await ctx.db.patch(orderId, { organizationId, buyerTokenIdentifier: "private:other-buyer", title: "PRIVATE_FOREIGN_ORDER" });
+    });
     const response = await call(t, "skarl_order_status", { orderId });
     expect(response.result.isError).toBe(true);
-    expect(toolValue(response)).toMatchObject({ ok: false, code: "order_not_owned" });
+    expect(toolValue(response)).toMatchObject({ ok: false, code: "cross_organization_access" });
     expect(JSON.stringify(response)).not.toContain("PRIVATE_FOREIGN_ORDER");
   });
 
@@ -437,7 +467,7 @@ describe("MCP role-scoped tools and human authority", () => {
     expect(await t.run(ctx => ctx.db.query("paymentIntents").collect())).toHaveLength(0);
   });
 
-  it("lets a controller agent inspect reconciliation and exceptions without writing financial state or resolving discrepancies", async () => {
+  it.each(["buyer", "controller"] as const)("lets a %s agent inspect reconciliation and exceptions without writing financial state or resolving discrepancies", async identity => {
     const { t, orderId } = await setup();
     const snapshot = () => t.run(async ctx => ({
       audit: await ctx.db.query("auditEvents").collect(),
@@ -448,10 +478,10 @@ describe("MCP role-scoped tools and human authority", () => {
       journals: await ctx.db.query("journalEntries").collect(),
     }));
     const before = await snapshot();
-    const reconciliation = await call(t, "skarl_reconciliation", { orderId }, "controller");
+    const reconciliation = await call(t, "skarl_reconciliation", { orderId }, identity);
     expect(reconciliation.result.isError).toBe(false);
     expect(toolValue(reconciliation)).toMatchObject({ simulated: true, rows: expect.any(Array), exceptions: expect.any(Array) });
-    const exceptions = await call(t, "skarl_exceptions", { orderId }, "controller");
+    const exceptions = await call(t, "skarl_exceptions", { orderId }, identity);
     expect(exceptions.result.isError).toBe(false);
     expect(Array.isArray(toolValue(exceptions))).toBe(true);
     expect(await snapshot()).toEqual(before);

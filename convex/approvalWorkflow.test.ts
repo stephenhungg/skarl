@@ -100,7 +100,7 @@ describe("approved workflow dispatch boundary", () => {
     const f = await setup();
     await f.t.run(async ctx => {
       if (kind === "inactive") await ctx.db.patch(f.controllerId, { status: "revoked" });
-      else await ctx.db.patch(f.controllerId, { roles: kind === "wrong-role" ? ["buyer"]
+      else await ctx.db.patch(f.controllerId, { roles: kind === "wrong-role" ? []
         : kind === "agent-role" ? ["controller", "finance-agent"] : ["controller", "contributor"] });
     });
     await expect(f.t.mutation(internal.approvalWorkflow.queueApprovedDispatch, f.args)).rejects.toThrow("independent_controller_required");

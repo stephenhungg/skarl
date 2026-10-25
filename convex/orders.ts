@@ -1,10 +1,11 @@
+import { requireFinanceService } from "./lib/serviceAuth";
 import { makeFunctionReference, paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { requireRole } from "./lib/demoAuth";
-import { actorFor, audit, digest, normalizeAddress, loadLedger, paymentBinding, recordJournal, requireTenant } from "./lib/finance";
+import { requireBuyerOrder, actorFor, audit, digest, normalizeAddress, loadLedger, paymentBinding, recordJournal, requireTenant } from "./lib/finance";
 import { MAX_ATOMIC_USDC, parseAtomicUsdc, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
 
 import { accountBalance, createRefundReservedJournal } from "../packages/ledger/src/index";
@@ -72,9 +73,7 @@ export const diversityCoverage = query({
     const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
-    requireTenant(principal, order);
-    if (!principal.roles.includes("controller") && !principal.roles.includes("finance-agent") &&
-      order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+    requireBuyerOrder(principal, order);
     const accepted = (await ctx.db.query("submissions").withIndex("by_order_status", q =>
       q.eq("orderId", order._id).eq("status", "accepted")).collect())
       .filter(sample => sample.organizationId === order.organizationId);
@@ -102,10 +101,7 @@ export const listOrders = query({
   args: { demoIdentity: v.string(), paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
-    const allOrders = principal.roles.includes("controller") || principal.roles.includes("finance-agent");
-    const rows = await ctx.db.query("orders").withIndex("by_org_buyer", q => allOrders
-      ? q.eq("organizationId", principal.organizationId)
-      : q.eq("organizationId", principal.organizationId).eq("buyerTokenIdentifier", principal.tokenIdentifier))
+    const rows = await ctx.db.query("orders").withIndex("by_org_buyer", q => q.eq("organizationId", principal.organizationId))
       .order("desc").paginate({ ...args.paginationOpts, numItems: Math.min(100, args.paginationOpts.numItems) });
     return { ...rows, page: rows.page.map(order => ({ ...order,
       autoPay: order.autoPay ? { ...order.autoPay, maxPerClipAtomic: order.autoPay.maxPerClipAtomic.toString() } : undefined, quantityRequested: order.quantityRequested.toString(),
@@ -115,7 +111,7 @@ export const listOrders = query({
   },
 });
 
-/** Reserves unused funds; execution requires separate independent controller approval. */
+/** Buyer requests cancellation; finance service proposes exact refund for buyer review. */
 export const cancelRemainder = mutation({
   args: { demoIdentity: v.string(), orderId: v.id("orders"), reason: v.string() },
   handler: async (ctx, args): Promise<{ ok: true; paymentCommandId: Id<"paymentCommands">;
@@ -124,8 +120,10 @@ export const cancelRemainder = mutation({
     const principal = await requireRole(ctx, args.demoIdentity, "buyer");
     if (principal.roles.includes("finance-agent")) throw new Error("human_buyer_required");
     const order = await ctx.db.get(args.orderId);
-    if (!order || order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_found");
-    requireTenant(principal, order);
+    if (!order) throw new Error("order_not_found");
+    requireBuyerOrder(principal, order);
+    const proposer = await requireFinanceService(ctx);
+    requireTenant(proposer, order);
     const reason = args.reason.trim();
     if (!reason || reason.length > 2000) throw new Error("invalid_cancellation_reason");
     const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
@@ -144,7 +142,7 @@ export const cancelRemainder = mutation({
       quantityRequested: order.quantityRequested, acceptedCount: order.acceptedCount, pricePerSampleAtomic: order.pricePerSampleAtomic,
       budgetAtomic: order.budgetAtomic, fundingIntentId: funding._id, recipientAddress, amountAtomic, reason });
     const binding = { organizationId: order.organizationId, orderId: order._id, network: PAYMENT_NETWORK,
-      tokenAddress: USDC_ADDRESS, recipientAddress, amountAtomic, sourceVersion, requesterTokenIdentifier: principal.tokenIdentifier };
+      tokenAddress: USDC_ADDRESS, recipientAddress, amountAtomic, sourceVersion, requesterTokenIdentifier: proposer.tokenIdentifier };
     const bindingHash = paymentBinding(binding);
     const previous = await ctx.db.query("paymentCommands").withIndex("by_order_kind", q => q.eq("orderId", order._id).eq("kind", "buyer_refund")).unique();
     const journal = createRefundReservedJournal({ eventId: `refund_reserved:${order._id}`, orderId: order._id, amountMicroUsdc: amountAtomic });
@@ -154,7 +152,7 @@ export const cancelRemainder = mutation({
         q.eq("organizationId", order.organizationId).eq("eventKey", journal.eventId)).unique();
       if (order.status !== "cancelling" || funding.refundPaymentCommandId !== previous._id || previous.organizationId !== order.organizationId ||
         previous.payableId !== undefined || previous.sourceVersion !== sourceVersion || previous.bindingHash !== bindingHash ||
-        paymentBinding(previous) !== bindingHash || previous.requestedBy.identity !== principal.tokenIdentifier ||
+        paymentBinding(previous) !== bindingHash || previous.requestedBy.identity !== proposer.tokenIdentifier ||
         !reserved || reserved.fingerprint !== digest(journal)) throw new Error("refund_proposal_changed");
       return { ok: true, paymentCommandId: previous._id, fundingIntentId: funding._id, journalEntryId: reserved._id,
         amountAtomic: amountAtomic.toString(), controllerApprovalRequired: true, executionAvailable: false, replayed: true };
@@ -166,11 +164,14 @@ export const cancelRemainder = mutation({
       accountBalance(ledger, "liability:customer_refunds", { orderId: order._id }) !== 0n) throw new Error("refund_balance_mismatch");
     const journalEntryId = await recordJournal(ctx, order.organizationId, journal);
     const paymentCommandId = await ctx.db.insert("paymentCommands", { ...binding, kind: "buyer_refund", commandId: `refund:${order._id}`,
-      requestedBy: actorFor(principal), bindingHash, status: "proposed", attemptCount: 0, leaseGeneration: 0, updatedAt: Date.now() });
+      requestedBy: actorFor(proposer), bindingHash, status: "proposed", attemptCount: 0, leaseGeneration: 0, updatedAt: Date.now() });
     await ctx.db.patch(funding._id, { refundPaymentCommandId: paymentCommandId });
     // Conflicts with acceptance on this order record: a unit cannot be fulfilled and refunded concurrently.
     await ctx.db.patch(order._id, { status: "cancelling", updatedAt: Date.now() });
-    await audit(ctx, { organizationId: order.organizationId, eventKey: `refund_proposed:${order._id}`, actor: actorFor(principal),
+    await audit(ctx, { organizationId: order.organizationId, eventKey: `cancellation_requested:${order._id}`, actor: actorFor(principal),
+      action: "buyer_cancellation_requested", entityType: "orders", entityId: order._id, reason,
+      evidenceReferences: [funding._id, paymentCommandId, journalEntryId] });
+    await audit(ctx, { organizationId: order.organizationId, eventKey: `refund_proposed:${order._id}`, actor: actorFor(proposer),
       action: "buyer_refund_proposed", entityType: "orders", entityId: order._id, reason,
       evidenceReferences: [funding._id, paymentCommandId, journalEntryId] });
     return { ok: true, paymentCommandId, fundingIntentId: funding._id, journalEntryId, amountAtomic: amountAtomic.toString(),

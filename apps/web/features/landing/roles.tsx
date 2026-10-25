@@ -8,7 +8,7 @@ type Node = { id: string; label: string; tag?: string; x: number; y: number; kin
 const W = 1200, H = 540, NW = 190, NH = 60;
 
 const NODES: Node[] = [
-  { id: "buyer", label: "Buyer", tag: "AI team", x: 150, y: 80, kind: "person" },
+  { id: "buyer", label: "Buyer", tag: "Person", x: 150, y: 80, kind: "person" },
   { id: "task", label: "Task", x: 600, y: 80, kind: "thing" },
   { id: "contributor", label: "Contributor", tag: "Person", x: 1050, y: 80, kind: "person" },
   { id: "verifier", label: "Verifier", tag: "AI", x: 600, y: 240, kind: "ai" },
@@ -73,6 +73,7 @@ export function Roles() {
     <section id="roles" aria-labelledby="roles-title" className="py-[72px] xl:py-[108px]">
       <div className="frame">
         <SectionHeader id="roles-title" eyebrow="Roles" title="Who can do what on Skarl" />
+        <p className="mt-4 max-w-3xl leading-relaxed text-slate-700">Two people: buyer and contributor. The agent proposes; the buyer-signed policy or the buyer in review approves; an independent CDP cap guards execution.</p>
         <div ref={root} className="mt-10 overflow-x-auto">
           <svg viewBox={`0 0 ${W} ${H}`} className="block w-full min-w-[720px]" role="img"
             aria-label="Buyer funds a task, a contributor records a clip, the AI verifier supplies evidence, the finance agent drafts a payout, the buyer-signed deterministic rule approves it within its cap and the contributor is paid. The finance agent can't approve its own payout.">

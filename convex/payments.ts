@@ -276,7 +276,7 @@ export const claimPayout = mutation({
     const order = await ctx.db.get(intent.orderId);
     if (!order || order.publicId.startsWith("scenario:")) throw new Error("simulated_payout_not_executable");
     requireBuyerOrder(member, order);
-    if (!isOrderApprover(approver, order)) throw new Error("approval_invalidated");
+    if (!isOrderApprover(approver, order, payable.contributorTokenIdentifier)) throw new Error("approval_invalidated");
     const dispatch = await ctx.db.query("outboxEvents").withIndex("by_event_key", q =>
       q.eq("organizationId", intent.organizationId).eq("eventKey", `dispatch:${command._id}`)).unique();
     if (!dispatch || dispatch.kind !== "dispatch_settlement" || dispatch.paymentCommandId !== command._id ||
@@ -345,7 +345,7 @@ export const reconciliation = query({
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
     requireTenant(member, order);
-    if (member.roles.includes("buyer") && order.buyerTokenIdentifier !== member.tokenIdentifier) throw new Error("order_not_found");
+    requireBuyerOrder(member, order);
     const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
     const obligations: PaymentObligation[] = [];
     const observations: (TransferObservation & { eventKey: string; orderId: string })[] = [];

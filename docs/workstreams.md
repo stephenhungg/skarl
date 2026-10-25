@@ -6,17 +6,17 @@ Submission closes **October 25, 2026, 9:00 AM PDT** and teams must be at the ven
 
 Buyer posts/funds an order and signs an auto-pay rule → contributor records the red-cup task → Gemini returns timestamped evidence → deterministic `policy-engine` accepts only when all checks pass → payable and balanced journal are created → **a duplicate (re-encoded) clip arrives, its second payable is blocked and the buyer sees the reasons in Review** → the finance agent proposes the payout but **cannot approve its own proposal** → the buyer-signed policy approves within the buyer’s cap → the independent CDP wallet cap guards execution → the USDC transfer is reconciled by network, tx hash and log index. See [demo](demo.md).
 
-Named Hyphenate seats: **settlement accountant + AP clerk**, performed by the agent and buyer-signed policy. Agents propose, a rule the buyer signed approves, the AI never approves itself.
+Named Hyphenate seats: **settlement accountant + AP clerk**, performed by the agent and buyer-signed policy. The agent proposes; the buyer-signed policy (or the buyer in review) approves; an independent CDP cap guards execution. The AI never approves itself.
 
 ## Buyer-signed policy handoff
 
-The order’s auto-pay rule defaults on with a cap equal to its per-clip price and `requireAllChecks: true`. The buyer can update/disable it; every set/change is audited. `policy-engine` is internal-only and distinct from the proposing finance agent. Failed evidence or financial checks become buyer review exceptions with exact reasons. Keep the legacy `controller` role and demo selector for API compatibility; no product flow requires another human. Source implementation is not live proof: deploy Convex separately, configure `PAYOUT_EXECUTOR=cdp_agent`, and verify an eligible payout before claiming it ran.
+The order’s auto-pay rule defaults on with a cap equal to its per-clip price and `requireAllChecks: true`. The buyer can update/disable it; every set/change is audited. `policy-engine` is internal-only and distinct from the proposing finance agent. Failed evidence or financial checks become buyer review exceptions with exact reasons. The legacy `controller` role and demo identity remain hidden compatibility APIs; the UI shows Buyer and Contributor only. Source implementation is not live proof: deploy Convex separately, configure `PAYOUT_EXECUTOR=cdp_agent`, and verify an eligible payout before claiming it ran.
 
 ## Schedule
 
 | Time (PDT) | Everyone |
 | --- | --- |
-| 00:30–01:30 | Hour 0–1: deploy Convex, seed demo identities (buyer, contributor, finance agent; retain controller for compatibility) with roles, one order and the rubric. Stephen (Codex) installs `@x402/evm`, `@x402/next` and `@x402/paywall`, then typechecks. **Every member confirms Coinbase eligibility and a verified Coinbase account** ([checklist](sponsor-tracks.md#team-eligibility-checklist)). Get a CDP API key and Base Sepolia ETH/USDC from the faucet. |
+| 00:30–01:30 | Hour 0–1: deploy Convex, seed demo identities (buyer, contributor and finance-agent service; retain the hidden legacy identity for compatibility) with roles, one order and the rubric. Stephen (Codex) installs `@x402/evm`, `@x402/next` and `@x402/paywall`, then typechecks. **Every member confirms Coinbase eligibility and a verified Coinbase account** ([checklist](sponsor-tracks.md#team-eligibility-checklist)). Get a CDP API key and Base Sepolia ETH/USDC from the faucet. |
 | 01:30–05:00 | Parallel build against the seeded deployment (sections below). Merge to `main` small and often. |
 | 05:00–06:30 | Integrate the full path end to end; stage the three clips (valid, duplicate re-encode, narration mismatch). |
 | 06:30–07:00 | **Record the fallback demo video** (opens with the duplicate moment). Write the real-vs-simulated inventory. |

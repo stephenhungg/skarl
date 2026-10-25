@@ -4,7 +4,7 @@ import { action, internalMutation, mutation, query, type QueryCtx, type Mutation
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
-import { normalizeAddress, requireTenant } from "./lib/finance";
+import { requireBuyerOrder, normalizeAddress } from "./lib/finance";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { chainIdentity, type ReconciliationException, type reconcilePayments } from "../packages/payments/src/reconciliation";
 import { compareCdpWitness, fetchCdpTransfers } from "./lib/cdpSql";
@@ -33,8 +33,7 @@ async function orderScope(ctx: QueryCtx, args: Scope) {
   const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
   const order = await ctx.db.get(args.orderId);
   if (!order) throw new Error("order_not_found");
-  requireTenant(principal, order);
-    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+  requireBuyerOrder(principal, order);
   const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
   const observations: Doc<"chainObservations">[] = [];
   for (const intent of intents) {

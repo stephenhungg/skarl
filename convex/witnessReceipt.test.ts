@@ -286,7 +286,7 @@ describe("witness receipt: every claim preserves its independent evidence", () =
     await expect(read(f, "contributor")).rejects.toThrow();
     expect((await read(f, "controller")).submissionId).toBe(f.submissionId);
     await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerTokenIdentifier: "demo:another-buyer" }));
-    await expect(read(f, "buyer")).rejects.toThrow();
+    expect((await read(f, "buyer")).submissionId).toBe(f.submissionId);
   });
 
   it("does not grant the finance agent access even when misprovisioned with a human role", async () => {

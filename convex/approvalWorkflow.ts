@@ -72,7 +72,7 @@ export const queueApprovedDispatch = internalMutation({
     const approver = await ctx.db.query("memberships").withIndex("by_token_identifier", (q) =>
       q.eq("tokenIdentifier", approval.approverTokenIdentifier)).unique();
     const order = await ctx.db.get(intent.orderId);
-    if (!order || !isOrderApprover(approver, order)) {
+    if (!order || !isOrderApprover(approver, order, payable.contributorTokenIdentifier)) {
       throw new Error("independent_controller_required");
     }
 

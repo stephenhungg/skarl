@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/glaze/ui/textarea";
 import { toast } from "@/components/glaze/ui/toast";
 import { cn } from "@/lib/glaze/utils";
-import { api, CONTROLLER, useExceptions, useOrderId, type ExceptionItem, type Id } from "./data";
+import { api, BUYER, useExceptions, useOrderId, type ExceptionItem, type Id } from "./data";
 import { basescanTx, formatTime, humanize, shortHash } from "./format";
 import { Amount, ConfirmDialog, Loading, PageHeader, Section, Unavailable } from "./ui";
 
@@ -49,7 +49,7 @@ const errorCode = (error: unknown) => {
 
 export function Reconciliation() {
   const orderId = useOrderId();
-  const fourWay = useQuery(api.bankWitness.reconciliation4Way, orderId ? { demoIdentity: CONTROLLER, orderId } : "skip");
+  const fourWay = useQuery(api.bankWitness.reconciliation4Way, orderId ? { demoIdentity: BUYER, orderId } : "skip");
   const exceptions = useExceptions(orderId);
   const refresh = useAction(api.chainWitness.refresh);
   const [refreshing, setRefreshing] = useState(false);
@@ -59,14 +59,14 @@ export function Reconciliation() {
   useEffect(() => {
     if (!orderId || opened.current === orderId) return;
     opened.current = orderId;
-    refresh({ demoIdentity: CONTROLLER, orderId }).catch(() => { /* the witness strip shows unavailable */ });
+    refresh({ demoIdentity: BUYER, orderId }).catch(() => { /* the witness strip shows unavailable */ });
   }, [orderId, refresh]);
 
   async function refreshWitness() {
     if (!orderId) return;
     setRefreshing(true);
     try {
-      const { status } = await refresh({ demoIdentity: CONTROLLER, orderId });
+      const { status } = await refresh({ demoIdentity: BUYER, orderId });
       if (status === "available") toast.success("CDP witness refreshed");
       else if (status === "cached_or_rate_limited") toast("CDP witness is recent", { description: "Snapshots are reused for 30 seconds." });
       else toast.warn("CDP witness unavailable", { description: "Order, ledger, chain and bank results above still stand." });
@@ -265,7 +265,7 @@ function ExceptionRow({ orderId, item }: { orderId: Id<"orders">; item: Exceptio
     if (!text) throw new Error("Write a reason first.");
     const run = action === "resolve" ? resolve : acknowledge;
     try {
-      const result = await run({ demoIdentity: CONTROLLER, orderId, exceptionKey: item.exceptionKey, reason: text });
+      const result = await run({ demoIdentity: BUYER, orderId, exceptionKey: item.exceptionKey, reason: text });
       toast.success(action === "resolve" ? "Exception resolved" : "Exception acknowledged",
         { description: result.replayed ? "Already recorded with this reason." : humanize(item.exception.code) });
       setReason("");

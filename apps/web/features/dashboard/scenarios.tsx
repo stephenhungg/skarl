@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/glaze/ui/skeleton";
 import { Status, StatusMark } from "@/components/glaze/ui/status";
 import { toast, toastManager } from "@/components/glaze/ui/toast";
 import { cn } from "@/lib/glaze/utils";
-import { api, CONTROLLER, useOrderId, type Id } from "./data";
+import { api, BUYER, useOrderId, type Id } from "./data";
 import { humanize } from "./format";
 import { Loading, PageHeader, Unavailable } from "./ui";
 
@@ -70,7 +70,7 @@ export function Scenarios() {
 }
 
 function Lab({ orderId }: { orderId: Id<"orders"> }) {
-  const runs = useQuery(api.scenarios.listRuns, { demoIdentity: CONTROLLER, orderId, limit: 20 });
+  const runs = useQuery(api.scenarios.listRuns, { demoIdentity: BUYER, orderId, limit: 20 });
   const runScenario = useAction(api.scenarios.run);
   const [running, setRunning] = useState<ScenarioName | null>(null);
   const [picked, setPicked] = useState<ScenarioName | null>(null);
@@ -86,7 +86,7 @@ function Lab({ orderId }: { orderId: Id<"orders"> }) {
     setRunning(name);
     const pending = toast.loading(`Running ${TITLE[name].toLowerCase()}`);
     try {
-      const result = await runScenario({ demoIdentity: CONTROLLER, orderId, scenario: name });
+      const result = await runScenario({ demoIdentity: BUYER, orderId, scenario: name });
       toastManager.close(pending);
       if (result.passed) toast.success(`Caught: ${TITLE[name]}`);
       else if (blocked(result)) toast.warn(`Blocked: ${TITLE[name]}`, { description: readable(result.observedOutcome) });

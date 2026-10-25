@@ -4,7 +4,7 @@ import { assertBalanced, postJournal, type Journal, type LedgerState } from "../
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../../packages/contracts/src/chain";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { isPolicyEngine, isFinanceAgent, type DemoPrincipal } from "./demoAuth";
+import { hasOrderAuthority, isPolicyEngine, isFinanceAgent, type DemoPrincipal } from "./demoAuth";
 
 export function canonical(value: unknown): string {
   if (typeof value === "bigint") return JSON.stringify(value.toString());
@@ -102,13 +102,11 @@ export const sourceVersion = (payable: Doc<"payables">) => digest({
 /** Buyer review access is always scoped to the order they own. */
 export function requireBuyerOrder(principal: DemoPrincipal, order: Doc<"orders">) {
   requireTenant(principal, order);
-  if (!principal.roles.includes("controller") && !isFinanceAgent(principal) && !isPolicyEngine(principal) &&
-    order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+  if (!hasOrderAuthority(principal, order) && !isFinanceAgent(principal) && !isPolicyEngine(principal)) throw new Error("order_not_owned");
 }
-export function isOrderApprover(member: DemoPrincipal | null, order: Doc<"orders">) {
+export function isOrderApprover(member: DemoPrincipal | null, order: Doc<"orders">, contributorTokenIdentifier?: string) {
   return !!member && member.organizationId === order.organizationId && member.status === "active" &&
-    !isFinanceAgent(member) && !member.roles.includes("contributor") &&
+    !isFinanceAgent(member) && !member.roles.includes("contributor") && member.tokenIdentifier !== contributorTokenIdentifier &&
     (isPolicyEngine(member) && member.tokenIdentifier === "service:skarl:policy-engine" && member.roles.length === 1 ||
-      !isPolicyEngine(member) && (member.roles.includes("controller") ||
-        member.roles.includes("buyer") && member.tokenIdentifier === order.buyerTokenIdentifier));
+      !isPolicyEngine(member) && hasOrderAuthority(member, order));
 }

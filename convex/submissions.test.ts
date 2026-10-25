@@ -336,12 +336,12 @@ describe("submission lifecycle and evidence boundaries", () => {
       expect(result).toMatchObject({ status: "needs_review", report: value.report, observations: { fixtureOnly: true }, processingElapsedMs: 123 });
     }
     await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
-    await expect(f.t.query(api.submissions.getReport, { demoIdentity: "buyer", submissionId: item.submissionId })).rejects.toThrow("order_not_owned");
+    expect(await f.t.query(api.submissions.getReport, { demoIdentity: "buyer", submissionId: item.submissionId })).toMatchObject({ report: value.report });
     await f.t.run(ctx => ctx.db.patch(item.submissionId, { contributorTokenIdentifier: "demo:other:contributor" }));
     await expect(f.t.query(api.submissions.getReport, { demoIdentity: "contributor", submissionId: item.submissionId })).rejects.toThrow("submission_not_owned");
     await f.t.run(async ctx => { const organizationId = await ctx.db.insert("organizations", { name: "Foreign tenant", status: "active", createdByTokenIdentifier: "demo:other" });
       await ctx.db.patch(item.submissionId, { organizationId }); });
-    await expect(f.t.query(api.submissions.getReport, { demoIdentity: "controller", submissionId: item.submissionId })).rejects.toThrow("cross_organization_access");
+    for (const demoIdentity of ["buyer", "controller"]) await expect(f.t.query(api.submissions.getReport, { demoIdentity, submissionId: item.submissionId })).rejects.toThrow("cross_organization_access");
   });
 
   it("refuses verification-only licensing and a near-frame copy without another payable or fulfillment", async () => {

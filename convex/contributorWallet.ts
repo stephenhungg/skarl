@@ -5,7 +5,7 @@ import { publicKeyToAddress } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import { PAYMENT_CHAIN_ID } from "../packages/contracts/src/chain";
-import { requireRole } from "./lib/demoAuth";
+import { requireDemoOrganizationAuthority, requireRole } from "./lib/demoAuth";
 import { actorFor, audit, digest, normalizeAddress, requireTenant } from "./lib/finance";
 
 const DEFAULT_ORIGIN = "https://skarl.devshardat.work";
@@ -19,17 +19,20 @@ function walletOrigin(origin: string = DEFAULT_ORIGIN) {
 const CHALLENGE_TTL_MS = 5 * 60_000;
 
 async function contributorFor(ctx: MutationCtx, demoIdentity: string, tokenIdentifier: string) {
-  const controller = await requireRole(ctx, demoIdentity, ["controller", "contributor"]);
+  const principal = await requireRole(ctx, demoIdentity, ["buyer", "controller", "contributor"]);
   const contributor = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
     q.eq("tokenIdentifier", tokenIdentifier)).unique();
   if (!contributor) throw new Error("contributor_not_found");
-  requireTenant(controller, contributor);
-  if (!controller.roles.includes("controller") && controller.tokenIdentifier !== contributor.tokenIdentifier) throw new Error("contributor_not_owned");
+  requireTenant(principal, contributor);
+  if (principal.tokenIdentifier !== contributor.tokenIdentifier) {
+    if (principal.roles.includes("contributor")) throw new Error("contributor_not_owned");
+    await requireDemoOrganizationAuthority(ctx, demoIdentity);
+  }
   if (contributor.status !== "active" || !contributor.roles.includes("contributor") ||
     contributor.roles.includes("controller") || contributor.roles.includes("finance-agent")) {
     throw new Error("active_contributor_required");
   }
-  return { controller, contributor };
+  return { principal, contributor };
 }
 
 /** A contributor reads only its own payout wallet; the address is never secret, the key never leaves the device. */
@@ -42,7 +45,7 @@ export const mine = query({
   },
 });
 
-/** Contributors verify their own wallet; the legacy operator selector remains compatible. */
+/** Contributors verify their own wallet; the demo-organization buyer may assist after the same signature proof. */
 export const challenge = mutation({
   args: { demoIdentity: v.string(), contributorTokenIdentifier: v.string(), walletAddress: v.string(), origin: v.optional(v.string()) },
   handler: async (ctx, args) => {
@@ -70,7 +73,7 @@ export const challenge = mutation({
 export const verify = mutation({
   args: { demoIdentity: v.string(), contributorTokenIdentifier: v.string(), nonce: v.string(), signature: v.string() },
   handler: async (ctx, args) => {
-    const { controller, contributor } = await contributorFor(ctx, args.demoIdentity, args.contributorTokenIdentifier);
+    const { principal, contributor } = await contributorFor(ctx, args.demoIdentity, args.contributorTokenIdentifier);
     const existing = contributor.walletVerification;
     if (existing) {
       if (existing.nonce !== args.nonce || existing.signature !== args.signature) throw new Error("wallet_already_verified");
@@ -100,8 +103,8 @@ export const verify = mutation({
         signature: args.signature, chainId: PAYMENT_CHAIN_ID, verifiedAt },
     });
     await audit(ctx, { organizationId: contributor.organizationId, eventKey: `wallet-verified:${contributor._id}:${challenge.nonce}`,
-      actor: actorFor(controller), action: "contributor_wallet_verified", entityType: "memberships", entityId: contributor._id,
-      reason: "Contributor or legacy operator registered a Base Sepolia contributor payout wallet after EIP-191 verification of a one-use SIWE challenge.",
+      actor: actorFor(principal), action: "contributor_wallet_verified", entityType: "memberships", entityId: contributor._id,
+      reason: "Contributor or demo-organization buyer registered a Base Sepolia contributor payout wallet after EIP-191 verification of a one-use SIWE challenge.",
       evidenceReferences: [hashMessage(challenge.message)] });
     return { verified: true as const, replayed: false, walletAddress: challenge.walletAddress, chainId: PAYMENT_CHAIN_ID, verifiedAt };
   },

@@ -27,7 +27,7 @@ export function SubmissionScreen({ navigation, route }: RootProps<'Submission'>)
     </Animated.View>
     {!result && <ActivityIndicator color={c.slate500} style={{ marginTop: 30 }} />}
     {result && <Animated.View entering={enter(80, 400)} style={{ gap: 12, marginTop: 16 }}>
-      {result.status === 'accepted' && <Card tone="mist" style={{ padding: 14 }}><Text style={t.bodyInk}>Accepted. Payout follows controller approval.</Text></Card>}
+      {result.status === 'accepted' && <Card tone="mist" style={{ padding: 14 }}><Text style={t.bodyInk}>Accepted. Payout follows buyer-policy or buyer-review approval.</Text></Card>}
       {result.report ? <Card style={{ gap: 14 }}>
         <Text style={s.advice}>{ADVICE[result.report.recommendation] ?? 'Waiting on a person'}</Text>
         <EvidenceTimeline criteria={result.report.criteria} />

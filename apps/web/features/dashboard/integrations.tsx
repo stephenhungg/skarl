@@ -9,7 +9,7 @@ import { RelativeTime } from "@/components/glaze/ui/relative-time";
 import { Status, StatusMark, type StatusValue } from "@/components/glaze/ui/status";
 import { toast } from "@/components/glaze/ui/toast";
 import { cn } from "@/lib/glaze/utils";
-import { api, CONTROLLER, useOrderId, type Id } from "./data";
+import { api, BUYER, useOrderId, type Id } from "./data";
 import { basescanAddress, basescanTx, formatUsdc, humanize } from "./format";
 import { Lordicon } from "./lordicon";
 import { Loading, PageHeader, QueryBoundary, Section } from "./ui";
@@ -292,7 +292,7 @@ const FEATURES: { name: string; use: string; href: string; page: string }[] = [
 
 /** Convex: scheduled job checkpoints for the order in view, plus the platform features in use. */
 function ConvexSystem({ orderId }: { orderId: Id<"orders"> | null }) {
-  const rows = useQuery(api.scheduledData.snapshots, orderId ? { demoIdentity: CONTROLLER, orderId } : "skip");
+  const rows = useQuery(api.scheduledData.snapshots, orderId ? { demoIdentity: BUYER, orderId } : "skip");
   return (
     <Section title="Convex jobs">
       {orderId === null ? <p className="type-body-sm text-text-2">No staged order, so no job checkpoints.</p>
@@ -333,7 +333,7 @@ function download(name: string, text: string, type: string) {
 
 /** Buyers: the licensed dataset for the order in view, exactly as datasets.forOrder returns it. */
 function DatasetExport({ orderId }: { orderId: Id<"orders"> }) {
-  const dataset = useQuery(api.datasets.forOrder, { demoIdentity: CONTROLLER, orderId });
+  const dataset = useQuery(api.datasets.forOrder, { demoIdentity: BUYER, orderId });
   const count = dataset?.samples.length ?? 0;
   const base = `skarl-dataset-${orderId}`;
   const disabled = !dataset || count === 0;

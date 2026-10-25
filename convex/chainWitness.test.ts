@@ -155,13 +155,13 @@ describe("CDP witness projections", () => {
     expect(await f.t.run(ctx => ctx.db.query("journalEntries").collect())).toHaveLength(1);
   });
 
-  it("lets the owning buyer inspect chain witnesses while refusing contributors, other buyers and tenants", async () => {
+  it("lets the owning buyer inspect chain witnesses for organization peers while refusing contributors and foreign tenants", async () => {
     const f = await setup();
     expect(await f.t.query(ref("reconciliationWithWitness"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("reconciliationWithWitness"), f.scope));
     expect(await f.t.query(ref("webhookExceptions"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("webhookExceptions"), f.scope));
     await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
-    await expect(f.t.query(ref("reconciliationWithWitness"), {...f.scope, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
-    await expect(f.t.query(ref("webhookExceptions"), {...f.scope, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
+    expect(await f.t.query(ref("reconciliationWithWitness"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("reconciliationWithWitness"), f.scope));
+    expect(await f.t.query(ref("webhookExceptions"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("webhookExceptions"), f.scope));
     for (const demoIdentity of ["contributor"]) {
       await expect(f.t.query(ref("reconciliationWithWitness"), { ...f.scope, demoIdentity })).rejects.toThrow("forbidden");
       await expect(f.t.query(ref("webhookExceptions"), { ...f.scope, demoIdentity })).rejects.toThrow("forbidden");
@@ -174,8 +174,8 @@ describe("CDP witness projections", () => {
       const { _id, _creationTime, ...orderFields } = order;
       return ctx.db.insert("orders", { ...orderFields, organizationId: foreignId, publicId: "synthetic-foreign-order" });
     });
-    await expect(f.t.query(ref("reconciliationWithWitness"), { ...f.scope, orderId: foreignOrder })).rejects.toThrow();
-    await expect(f.t.query(ref("webhookExceptions"), { ...f.scope, orderId: foreignOrder })).rejects.toThrow();
+    for (const demoIdentity of ["buyer", "controller", "finance-agent"]) await expect(f.t.query(ref("reconciliationWithWitness"), {...f.scope, demoIdentity, orderId: foreignOrder})).rejects.toThrow("cross_organization_access");
+    for (const demoIdentity of ["buyer", "controller", "finance-agent"]) await expect(f.t.query(ref("webhookExceptions"), {...f.scope, demoIdentity, orderId: foreignOrder})).rejects.toThrow("cross_organization_access");
     expect(await f.t.query(ref("witnessInputs"), { ...f.scope, demoIdentity: "finance-agent" })).toEqual({ treasury: TREASURY, txHashes: [] });
   });
 

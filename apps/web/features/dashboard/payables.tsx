@@ -9,7 +9,7 @@ import { Status } from "@/components/glaze/ui/status";
 import { cn } from "@/lib/glaze/utils";
 import { usePayout } from "@/lib/payments/use-payout";
 import { executePayablePayout, getPayablePayoutRecovery } from "./payable-payout";
-import { api, CONTROLLER, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type Id, type PayableRow } from "./data";
+import { api, BUYER, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type Id, type PayableRow } from "./data";
 import { basescanAddress, basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
 import { actorName } from "./activity";
 import { executeApprovedRefund } from "@/lib/payments/refund";
@@ -116,7 +116,7 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   const reject = useMutation(api.finance.reject);
   const approve = useMutation(api.finance.approve);
   const provider = useInjectedWallet();
-  const payout = usePayout({ demoIdentity: CONTROLLER, provider });
+  const payout = usePayout({ demoIdentity: BUYER, provider });
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -145,12 +145,12 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   </>;
   else if (step === 1 && intentId) buttons = <>
     <Button variant="secondary" size="sm" className="me-auto" disabled={busy}
-      onClick={() => act(() => reject({ demoIdentity: CONTROLLER, intentId, reason: "Buyer rejected the payout exception." }), "Payout rejected.")}>Reject payout</Button>
+      onClick={() => act(() => reject({ demoIdentity: BUYER, intentId, reason: "Buyer rejected the payout exception." }), "Payout rejected.")}>Reject payout</Button>
     <Button size="sm" disabled={busy} onClick={() => setConfirming(true)}>Approve payout</Button>
     <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Approve this payout?" actionLabel="Approve payout"
       description="The configured executor sends it after workflow validation."
       onConfirm={async () => {
-        const result = await act(() => approve({ demoIdentity: CONTROLLER, intentId }), "Approved. Waiting for the workflow and executor.", "Approval refused");
+        const result = await act(() => approve({ demoIdentity: BUYER, intentId }), "Approved. Waiting for the workflow and executor.", "Approval refused");
         if (!result.ok) throw new Error(`Refused: ${humanize(result.code ?? "refused")}.`);
       }}>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 type-body-sm">
@@ -207,7 +207,7 @@ function RefusalHero({ audit }: { audit: AuditEvent[] }) {
 
 /** A buyer's cancelled remainder: refund proposal, independent approval, wallet signature, observed transfer. */
 function Refund({ orderId }: { orderId: Id<"orders"> }) {
-  const refund = useQuery(api.refunds.forOrder, { demoIdentity: CONTROLLER, orderId });
+  const refund = useQuery(api.refunds.forOrder, { demoIdentity: BUYER, orderId });
   const approve = useMutation(api.refunds.approve);
   const provider = useInjectedWallet();
   const [open, setOpen] = useState(false);
@@ -219,7 +219,7 @@ function Refund({ orderId }: { orderId: Id<"orders"> }) {
     if (!provider || !refund) return;
     setSigning(true);
     try {
-      await executeApprovedRefund({ commandId: refund.commandId, demoIdentity: CONTROLLER, provider });
+      await executeApprovedRefund({ commandId: refund.commandId, demoIdentity: BUYER, provider });
       toast.success("Refund submitted", { description: "Waiting for confirmations." });
     } catch (error) {
       toast.fail("Refund not sent", { description: error instanceof Error ? error.message : "Check the wallet before trying again." });
@@ -250,7 +250,7 @@ function Refund({ orderId }: { orderId: Id<"orders"> }) {
         description="The configured executor sends it after workflow validation."
         onConfirm={async () => {
           if (!reason.trim()) throw new Error("Add a reason first.");
-          const result = await approve({ demoIdentity: CONTROLLER, commandId: refund.commandId as Id<"paymentCommands">, reason: reason.trim() });
+          const result = await approve({ demoIdentity: BUYER, commandId: refund.commandId as Id<"paymentCommands">, reason: reason.trim() });
           if (result && typeof result === "object" && "ok" in result && !result.ok) throw new Error(`Refused: ${humanize(String((result as { code?: string }).code ?? "refused"))}.`);
           toast.success("Refund approved");
         }}>

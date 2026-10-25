@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { query, type QueryCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
-import { isFinanceAgent, requireRole } from "./lib/demoAuth";
+import { hasOrderAuthority, isFinanceAgent, requireRole } from "./lib/demoAuth";
 import { requireTenant } from "./lib/finance";
 import { checkSpokenLiveness } from "./lib/spokenLiveness";
 import { BANK_WITNESS_LABEL, compareBankWitness, type BankActivity } from "./lib/nessie";
@@ -209,9 +209,9 @@ export const forSubmission = query({
     const order = await ctx.db.get(submission.orderId);
     if (!order) throw new Error("order_not_found");
     requireTenant(principal, order);
-    if (!principal.roles.includes("controller")) {
+    if (!hasOrderAuthority(principal, order)) {
       const ownsSubmission = principal.roles.includes("contributor") && submission.contributorTokenIdentifier === principal.tokenIdentifier;
-      const ownsOrder = principal.roles.includes("buyer") && order.buyerTokenIdentifier === principal.tokenIdentifier;
+      const ownsOrder = hasOrderAuthority(principal, order);
       if (!ownsSubmission && !ownsOrder) throw new Error(principal.roles.includes("contributor") ? "submission_not_owned" : "order_not_owned");
     }
     const [analysis, decision, orderPayables] = await Promise.all([
@@ -243,9 +243,9 @@ export const forSubmission = query({
       recommendation === "accept" ? "agree" : recommendation === "request_correction" ? "disagree" : "pending",
       `Stored recommendation: ${recommendation}; implementation: ${analysis.implementation}; pipeline: ${analysis.pipelineStatus}. Advisory; does not authorize payment.`)
       : absent("deterministic_judge", "Deterministic judge recommendation", "judgment", "No stored analysis recommendation."));
-    witnesses.push(decision ? witness("human_controller", "Human controller decision", "judgment",
+    witnesses.push(decision ? witness("human_controller", "Buyer decision", "judgment",
       decision.decision === "accepted" ? "agree" : "disagree", `Recorded decision: ${decision.decision}; reason: ${decision.reason.slice(0, 1000)}.`)
-      : absent("human_controller", "Human controller decision", "judgment", "No recorded human controller decision."));
+      : absent("human_controller", "Buyer decision", "judgment", "No recorded buyer decision."));
     const payables = orderPayables.filter(row => row.submissionId === submission._id);
     if (payables.length > 1) throw new Error("duplicate_payable_reference");
     const payable = payables[0];

@@ -89,7 +89,7 @@ async function licensedInference(f: Fixture, accept = false) {
     }
     return submissionId;
   });
-  if (accept) expect((await f.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "controller", submissionId })).ok).toBe(true);
+  if (accept) expect((await f.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "buyer", submissionId })).ok).toBe(true);
   return submissionId;
 }
 async function acceptedOriginal(f: Fixture) {
@@ -130,7 +130,7 @@ async function agentProposal(f: Fixture) {
   });
 }
 async function run(f: Fixture, scenario: typeof SCENARIOS[number]) {
-  return f.t.action(api.scenarios.run, { demoIdentity: "controller", orderId: f.orderId, scenario });
+  return f.t.action(api.scenarios.run, { demoIdentity: "buyer", orderId: f.orderId, scenario });
 }
 async function lab(f: Fixture, result: ScenarioRun) {
   return f.t.run(async ctx => ({
@@ -152,7 +152,7 @@ async function expectRecorded(f: Fixture, result: ScenarioRun) {
   expect(state.payables).toEqual([]);
   expect(state.audits.some(row => row.action === "scenario_finished" && row.entityId === f.orderId &&
     JSON.parse(row.reason).passed === true && JSON.parse(row.reason).simulated === true)).toBe(true);
-  expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "controller", orderId: f.orderId })).toContainEqual(result);
+  expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer", orderId: f.orderId })).toContainEqual(result);
   expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
   expect(await f.t.run(ctx => ctx.db.query("outboxEvents").collect())).toEqual([]);
   expect(await f.t.run(ctx => ctx.db.system.query("_scheduled_functions").collect())).toEqual([]);
@@ -169,7 +169,7 @@ describe("scenario lab invokes real controls and reads persisted evidence", () =
     expect(observations[0]?.amountAtomic).toBe(intent.amountAtomic + 1n);
     expect(intent.status).toBe("settlement_pending");
     expect(state.order?.status).toBe("awaiting_funding");
-    const reconciliation = await f.t.query(api.payments.reconciliation, { demoIdentity: "controller", orderId: result.labOrderId });
+    const reconciliation = await f.t.query(api.payments.reconciliation, { demoIdentity: "buyer", orderId: result.labOrderId });
     expect(reconciliation.exceptions).toContainEqual(expect.objectContaining({ code: "wrong_amount", eventKey: intent.intentId }));
   });
 
@@ -179,7 +179,7 @@ describe("scenario lab invokes real controls and reads persisted evidence", () =
     const receipts = await f.t.run(ctx => ctx.db.query("cdpWebhookReceipts").collect());
     expect(receipts).toHaveLength(1);
     expect(receipts[0]).toMatchObject({ eventId: `SIMULATED ${result.scenarioId}`, status: "unknown_transfer", amountAtomic: "7" });
-    const exceptions = await f.t.query(api.chainWitness.webhookExceptions, { demoIdentity: "controller", orderId: result.labOrderId });
+    const exceptions = await f.t.query(api.chainWitness.webhookExceptions, { demoIdentity: "buyer", orderId: result.labOrderId });
     expect(exceptions).toContainEqual(expect.objectContaining({ code: "unknown_transfer", chainIdentity: receipts[0]?.transferKey }));
   });
 
@@ -222,7 +222,7 @@ describe("scenario lab invokes real controls and reads persisted evidence", () =
 
   it("stores synthetic bank activity and shows its wrong amount in four-way reconciliation", async () => {
     const f = await setup(), result = await run(f, "bank_mismatch"), state = await expectRecorded(f, result);
-    const reconciliation = await f.t.query(api.bankWitness.reconciliation4Way, { demoIdentity: "controller", orderId: result.labOrderId });
+    const reconciliation = await f.t.query(api.bankWitness.reconciliation4Way, { demoIdentity: "buyer", orderId: result.labOrderId });
     const intent = state.intents[0]!;
     expect(reconciliation.simulated).toBe(true);
     expect(reconciliation.rows).toContainEqual(expect.objectContaining({ intentId: intent.intentId,
@@ -302,7 +302,7 @@ describe("buyer-signed policy scenarios retain separation of duties", () => {
     expect(intent.status).toBe("proposed");
     expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
     expect(state.audits.some(row => row.entityId === intent._id && row.actor.identity === "service:skarl:policy-engine" && /cap/.test(row.reason))).toBe(true);
-    const exceptions = await f.t.query(api.exceptions.list, { demoIdentity: "controller", orderId: result.labOrderId });
+    const exceptions = await f.t.query(api.exceptions.list, { demoIdentity: "buyer", orderId: result.labOrderId });
     expect(exceptions.some(row => row.exception.code === "policy_review" && /cap/.test(JSON.stringify(row.exception)))).toBe(true);
     expect(await f.t.run(ctx => ctx.db.query("paymentAttempts").collect())).toEqual([]);
     expect(fetch).not.toHaveBeenCalled();
@@ -380,7 +380,7 @@ describe("scenario passes require actual control records", () => {
     expect(bypassed.passed).toBe(false);
     expect(bypassed.runId).not.toBe(first.runId);
     expect(spy).toHaveBeenCalledOnce();
-    expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "controller", orderId: f.orderId })).toEqual(expect.arrayContaining([first, bypassed]));
+    expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer", orderId: f.orderId })).toEqual(expect.arrayContaining([first, bypassed]));
   });
   it("can repeat the real self-approval refusal with a distinct recorded run", async () => {
     const f = await setup(); await agentProposal(f);
@@ -412,7 +412,7 @@ describe("scenario passes require actual control records", () => {
     expect(state.submissions[0]?.currentAnalysisId).toBeUndefined();
     expect(state.payables).toEqual([]); expect(state.journals).toEqual([]);
     expect(await f.t.run(ctx => ctx.db.query("analysisResults").collect())).toEqual([]);
-    expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "controller", orderId: f.orderId })).toContainEqual(result);
+    expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer", orderId: f.orderId })).toContainEqual(result);
     expect(fetch).not.toHaveBeenCalled();
   });
   it("fails bank_mismatch when the bank comparator incorrectly reports a match", async () => {
@@ -423,7 +423,7 @@ describe("scenario passes require actual control records", () => {
   });
 });
 
-describe("controller authorization and honest prerequisites", () => {
+describe("buyer authorization and honest prerequisites", () => {
   for (const demoIdentity of ["contributor", "finance-agent"]) {
     it(`refuses ${demoIdentity} on both run and history`, async () => {
       const f = await setup();
@@ -433,16 +433,26 @@ describe("controller authorization and honest prerequisites", () => {
       expect(await f.t.run(ctx => ctx.db.query("cdpWebhookReceipts").collect())).toEqual([]);
     });
   }
+  it("runs buyer scenarios after legacy controller access is revoked", async () => {
+    const f = await setup();
+    await f.t.run(async ctx => {
+      const legacy = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", "demo:skarl:controller")).unique();
+      await ctx.db.patch(legacy!._id, { status: "revoked" });
+    });
+    const result = await run(f, "unknown_transfer");
+    expect(result.passed, result.observedOutcome).toBe(true);
+    expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer" })).toContainEqual(result);
+  });
+
   it("allows a buyer to run and read scenarios only on owned source orders", async () => {
     const f = await setup();
     const result = await f.t.action(api.scenarios.run, { demoIdentity: "buyer", orderId: f.orderId, scenario: "unknown_transfer" });
     expect(result.passed, result.observedOutcome).toBe(true);
     expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer", orderId: f.orderId })).toContainEqual(result);
     expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer" })).toContainEqual(result);
+    // Buyers act for the owning organization, including a colleague’s order.
     await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerTokenIdentifier: "other-buyer" }));
-    await expect(f.t.action(api.scenarios.run, { demoIdentity: "buyer", orderId: f.orderId, scenario: "unknown_transfer" })).rejects.toThrow("order_not_owned");
-    await expect(f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer", orderId: f.orderId })).rejects.toThrow("order_not_owned");
-    expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer" })).toEqual([]);
+    expect((await f.t.action(api.scenarios.run, { demoIdentity: "buyer", orderId: f.orderId, scenario: "unknown_transfer" })).passed).toBe(true);
   });
   it("propagates a signed buyer through the internal scenario operator without requiring a controller session", async () => {
     const f = await setup();
@@ -457,9 +467,9 @@ describe("controller authorization and honest prerequisites", () => {
     await licensedInference(f);
     const signed = f.t.withIdentity({ subject: `${userId}|synthetic`, issuer: "https://auth.example.test" });
     for (const scenario of ["unknown_transfer", "bank_mismatch", "prompt_injection_narration", "policy_auto_pay"] as const) {
-      const result = await signed.action(api.scenarios.run, { demoIdentity: "controller", orderId: f.orderId, scenario });
+      const result = await signed.action(api.scenarios.run, { demoIdentity: "buyer", orderId: f.orderId, scenario });
       expect(result.passed, `${scenario}: ${result.observedOutcome}`).toBe(true);
-      expect(await signed.query(api.scenarios.listRuns, { demoIdentity: "controller", orderId: f.orderId })).toContainEqual(result);
+      expect(await signed.query(api.scenarios.listRuns, { demoIdentity: "buyer", orderId: f.orderId })).toContainEqual(result);
     }
   });
   for (const scenario of ["duplicate_submission", "agent_self_approval"] as const) {
@@ -469,19 +479,19 @@ describe("controller authorization and honest prerequisites", () => {
       expect(result.observedOutcome).toContain("requires an existing");
       expect(state.submissions).toEqual([]); expect(state.payables).toEqual([]); expect(state.journals).toEqual([]);
       expect(await f.t.run(ctx => ctx.db.query("paymentCommands").collect())).toEqual([]);
-      expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "controller", orderId: f.orderId })).toContainEqual(result);
+      expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer", orderId: f.orderId })).toContainEqual(result);
     });
   }
   it("defaults to v2 and bounds history limits", async () => {
     const f = await setup();
-    const result = await f.t.action(api.scenarios.run, { demoIdentity: "controller", scenario: "unknown_transfer" });
+    const result = await f.t.action(api.scenarios.run, { demoIdentity: "buyer", scenario: "unknown_transfer" });
     expect(result.orderId).toBe(f.orderId);
-    expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "controller", limit: 1 })).toEqual([result]);
-    for (const limit of [0, -1, 101, 1.5]) await expect(f.t.query(api.scenarios.listRuns, { demoIdentity: "controller", limit })).rejects.toThrow("invalid_limit");
+    expect(await f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer", limit: 1 })).toEqual([result]);
+    for (const limit of [0, -1, 101, 1.5]) await expect(f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer", limit })).rejects.toThrow("invalid_limit");
   });
   it("keeps the normal report-completion entry point closed to scaffold reports", async () => {
     const f = await setup();
-    const prepared = await f.t.mutation(internal.scenarios.prepare, { demoIdentity: "controller", orderId: f.orderId,
+    const prepared = await f.t.mutation(internal.scenarios.prepare, { demoIdentity: "buyer", orderId: f.orderId,
       scenario: "prompt_injection_narration", scenarioId: "synthetic-scaffold-boundary-test" });
     const report = await f.t.query(internal.scenarios.injectionReport, { runId: prepared.runId });
     const reportStorageId = await f.t.run(ctx => ctx.storage.store(new Blob([report.reportJson], { type: "application/json" })));
@@ -498,7 +508,7 @@ describe("controller authorization and honest prerequisites", () => {
       const { _id, _creationTime, ...terms } = source;
       return ctx.db.insert("orders", { ...terms, organizationId, publicId: "foreign-scenario-test-source" });
     });
-    await expect(f.t.action(api.scenarios.run, { demoIdentity: "controller", orderId: foreignId, scenario: "unknown_transfer" })).rejects.toThrow("cross_organization_access");
-    await expect(f.t.query(api.scenarios.listRuns, { demoIdentity: "controller", orderId: foreignId })).rejects.toThrow("cross_organization_access");
+    await expect(f.t.action(api.scenarios.run, { demoIdentity: "buyer", orderId: foreignId, scenario: "unknown_transfer" })).rejects.toThrow("cross_organization_access");
+    await expect(f.t.query(api.scenarios.listRuns, { demoIdentity: "buyer", orderId: foreignId })).rejects.toThrow("cross_organization_access");
   });
 });

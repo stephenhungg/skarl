@@ -3,7 +3,7 @@ import { useQuery } from "convex/react";
 import { useState } from "react";
 import { Status } from "@/components/glaze/ui/status";
 import { cn } from "@/lib/glaze/utils";
-import { api, CONTROLLER, type Id } from "./data";
+import { api, BUYER, type Id } from "./data";
 import { publicEvidenceUrl, witnessPresentation } from "./witness-presentation";
 
 const GROUPS = [
@@ -14,7 +14,7 @@ const GROUPS = [
 
 /** Every independent source behind a clip's outcome, grouped, with the disagreements first. */
 export function WitnessReceipt({ submissionId }: { submissionId: Id<"submissions"> }) {
-  const receipt = useQuery(api.witnessReceipt.forSubmission, { demoIdentity: CONTROLLER, submissionId });
+  const receipt = useQuery(api.witnessReceipt.forSubmission, { demoIdentity: BUYER, submissionId });
   const [open, setOpen] = useState<string | null>(null);
   if (!receipt) return null;
   const counts = receipt.witnesses.reduce<Record<string, number>>((acc, w) => ({ ...acc, [w.status]: (acc[w.status] ?? 0) + 1 }), {});

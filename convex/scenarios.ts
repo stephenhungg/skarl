@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { action, internalMutation, internalQuery, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { requireRole, demoToken } from "./lib/demoAuth";
+import { requireDemoOrganizationAuthority, demoToken, isFinanceAgent, isPolicyEngine } from "./lib/demoAuth";
 import { actorFor, audit, canonical, digest, recordJournal, requireBuyerOrder, requireTenant } from "./lib/finance";
 import { confirmFundingFor } from "./payments";
 import { receiveWebhookFor, finishWebhookFor } from "./chainWitness";
@@ -42,11 +42,11 @@ const idArgs = { runId: v.id("auditEvents") };
  * User sessions propagate through actions, so a legacy selector cannot authorize this lookup.
  */
 async function scenarioPrincipal(ctx: Pick<QueryCtx | MutationCtx, "db">) {
-  const principal = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", demoToken("controller"))).unique();
-  if (!principal || principal.status !== "active" || !principal.roles.includes("controller") ||
-    principal.roles.includes("finance-agent") || principal.roles.includes("contributor")) throw new Error("inactive_scenario_operator");
+  const principal = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", demoToken("buyer"))).unique();
+  if (!principal || principal.status !== "active" || !principal.roles.includes("buyer") ||
+    isFinanceAgent(principal) || isPolicyEngine(principal) || principal.roles.includes("contributor")) throw new Error("inactive_scenario_operator");
   const organization = await ctx.db.get(principal.organizationId);
-  if (!organization || organization.status !== "active") throw new Error("inactive_organization");
+  if (!organization || organization.status !== "active" || organization.demoKey !== "skarl-demo-v1") throw new Error("inactive_organization");
   return principal;
 }
 async function load(ctx: QueryCtx | MutationCtx, runId: Id<"auditEvents">) {
@@ -59,7 +59,7 @@ async function load(ctx: QueryCtx | MutationCtx, runId: Id<"auditEvents">) {
 
 /** No schema changes: durable intent and results live in the existing audit trail. */
 export const prepare = internalMutation({ args: { ...runArgs, scenarioId: v.string() }, handler: async (ctx, args) => {
-  const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller"]);
+  const principal = await requireDemoOrganizationAuthority(ctx, args.demoIdentity);
   const source = args.orderId ? await ctx.db.get(args.orderId) : await ctx.db.query("orders")
     .withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
   if (!source) throw new Error("demo_order_required");
@@ -282,13 +282,13 @@ export const inject = internalMutation({ args: {...idArgs, reportStorageId: v.op
       } else controlResult = proposed;
     } else controlResult = accepted;
   } else if (state.scenario === "duplicate_submission") {
-    controlResult = await acceptAndPublishFor(ctx, { demoIdentity: "controller", submissionId: state.submissionId! });
+    controlResult = await acceptAndPublishFor(ctx, { demoIdentity: "buyer", submissionId: state.submissionId! });
   } else if (state.scenario === "agent_self_approval") {
     controlResult = await refuseAgentApprovalFor(ctx, state.intentId!);
   } else if (state.scenario === "prompt_injection_narration") {
     if (!args.reportStorageId) throw new Error("scenario_report_storage_required");
     artifacts.push(await completeFor(ctx, {...await narrationReport(ctx, state), reportStorageId: args.reportStorageId}, state.scenarioId), args.reportStorageId);
-    await acceptAndPublishFor(ctx, { demoIdentity: "controller", submissionId: state.submissionId! });
+    await acceptAndPublishFor(ctx, { demoIdentity: "buyer", submissionId: state.submissionId! });
   }
   // Keep machine-readable refusal codes intact while labeling their audit evidence.
   const entities = new Set<string>([state.labOrderId, ...(state.submissionId ? [state.submissionId] : []), ...(state.intentId ? [state.intentId] : [])]);
@@ -306,7 +306,7 @@ export const inject = internalMutation({ args: {...idArgs, reportStorageId: v.op
 /** Read back real records and live reconciliation projections. No expected result is asserted. */
 export const assess = internalQuery({ args: idArgs, handler: async (ctx, args): Promise<State & {runId: Id<"auditEvents">; passed: boolean; observedOutcome: string}> => {
   const { principal, state } = await load(ctx, args.runId);
-  const scope = { demoIdentity: "controller", orderId: state.labOrderId };
+  const scope = { demoIdentity: "buyer", orderId: state.labOrderId };
   const journals = await ctx.db.query("journalEntries").withIndex("by_order", q => q.eq("orderId", state.labOrderId)).collect();
   const payables = await ctx.db.query("payables").withIndex("by_order", q => q.eq("orderId", state.labOrderId)).collect();
   const audits = await ctx.db.query("auditEvents").withIndex("by_org_time", q => q.eq("organizationId", principal.organizationId)).collect();
@@ -459,13 +459,11 @@ export const inputError = internalMutation({args: {...idArgs, code: v.string()},
 
 export const listRuns = query({ args: {demoIdentity: v.string(), orderId: v.optional(v.id("orders")), limit: v.optional(v.number())},
   handler: async (ctx, args): Promise<ScenarioRun[]> => {
-    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller"]);
+    const principal = await requireDemoOrganizationAuthority(ctx, args.demoIdentity);
     if (args.orderId) { const order = await ctx.db.get(args.orderId); if (!order) throw new Error("order_not_found"); requireBuyerOrder(principal, order); }
-    const owned = principal.roles.includes("controller") ? null : new Set((await ctx.db.query("orders")
-      .withIndex("by_org_buyer", q => q.eq("organizationId", principal.organizationId).eq("buyerTokenIdentifier", principal.tokenIdentifier)).collect()).map(order => order._id.toString()));
     const limit = args.limit ?? 20;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Error("invalid_limit");
     return (await ctx.db.query("auditEvents").withIndex("by_org_time", q => q.eq("organizationId", principal.organizationId)).order("desc").collect())
-      .filter(row => row.action === "scenario_finished" && (!args.orderId || row.entityId === args.orderId) && (!owned || owned.has(row.entityId)))
+      .filter(row => row.action === "scenario_finished" && (!args.orderId || row.entityId === args.orderId))
       .slice(0, limit).map(row => JSON.parse(row.reason) as ScenarioRun);
   } });

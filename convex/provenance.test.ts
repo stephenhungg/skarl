@@ -95,11 +95,11 @@ describe("sample provenance witnesses (synthetic)", () => {
     }
   });
 
-  it("requires the actual buyer or contributor, not merely a matching role", async () => {
+  it("allows the organization buyer and requires contributor self-ownership", async () => {
     const f = await setup(), args = { demoIdentity: "buyer", submissionId: f.submissionId };
     await expect(f.t.query(forSubmission, { ...args, demoIdentity: "finance-agent" })).rejects.toThrow("forbidden");
     await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerTokenIdentifier: "synthetic:other-buyer" }));
-    await expect(f.t.query(forSubmission, args)).rejects.toThrow("submission_not_owned");
+    expect((await f.t.query(forSubmission, args)).consentRecordId).toBe(f.consentRecordId);
     await f.t.run(ctx => ctx.db.patch(f.submissionId, { contributorTokenIdentifier: "synthetic:other-contributor" }));
     await expect(f.t.query(forSubmission, { ...args, demoIdentity: "contributor" })).rejects.toThrow("submission_not_owned");
   });
@@ -111,7 +111,7 @@ describe("sample provenance witnesses (synthetic)", () => {
     await f.t.run(ctx => ctx.db.patch(f.consentRecordId, { organizationId: foreign }));
     await expect(f.t.query(forSubmission, args)).rejects.toThrow("consent_reference_mismatch");
     await f.t.run(ctx => ctx.db.patch(f.submissionId, { organizationId: foreign }));
-    await expect(f.t.query(forSubmission, args)).rejects.toThrow("cross_organization_access");
+    for (const demoIdentity of ["buyer", "controller"]) await expect(f.t.query(forSubmission, { ...args, demoIdentity })).rejects.toThrow("cross_organization_access");
   });
 
   it("does not promote a client-declared or quarantined source hash to verified provenance", async () => {

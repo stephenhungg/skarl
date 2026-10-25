@@ -51,23 +51,23 @@ for (const options of [{ verificationOnly: true }, { pipeline: "needs_review" },
   });
 }
 
-test("reuses one path on rerun, requires refused agent approval and audit before controller approval, never claims", async () => {
+test("reuses one path on rerun, requires refused agent approval and audit before buyer approval, never claims", async () => {
   const h = harness();
   assert.equal(await runDemo(h.api), 0);
   assert.equal(await runDemo(h.api), 0);
   assert.deepEqual(h.calls.map(call => [call.name, call.args.demoIdentity]), Array(2).fill([
-    ["finance:acceptAndPublish", "controller"], ["finance:proposePayment", "finance-agent"],
-    ["finance:approve", "finance-agent"], ["finance:approve", "controller"],
+    ["finance:acceptAndPublish", "buyer"], ["finance:proposePayment", "finance-agent"],
+    ["finance:approve", "finance-agent"], ["finance:approve", "buyer"],
   ]).flat());
   assert.equal(new Set(h.calls.filter(call => call.args.submissionId).map(call => call.args.submissionId)).size, 1);
   assert.ok(h.logs.some(line => line.includes('"replayed":true')));
 });
 
 for (const options of [{ auditMissing: true }, { refusal: "unexpected_success" }, { refusal: "not_found" }, { attemptCount: 1 }]) {
-  test(`stops before controller approval on unsafe state: ${JSON.stringify(options)}`, async () => {
+  test(`stops before buyer approval on unsafe state: ${JSON.stringify(options)}`, async () => {
     const h = harness(options);
     assert.equal(await runDemo(h.api), 2);
-    assert.ok(!h.calls.some(call => call.name === "finance:approve" && call.args.demoIdentity === "controller"));
+    assert.ok(!h.calls.some(call => call.name === "finance:approve" && call.args.demoIdentity === "buyer"));
   });
 }
 

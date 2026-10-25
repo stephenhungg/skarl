@@ -2,31 +2,28 @@ import { v } from "convex/values";
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { annotationSummary } from "./annotationValidators";
-import { isFinanceAgent, requireRole } from "./lib/demoAuth";
+import { hasOrderAuthority, isFinanceAgent, requireRole } from "./lib/demoAuth";
 import { requireTenant } from "./lib/finance";
 import { frameHasCupInHand, MAX_ANNOTATION_BYTES, summarizeAnnotations, validateAnnotationFile } from "./lib/derivedAnnotations";
 
-async function accessible(ctx: Pick<QueryCtx, "db" | "auth">, identity: string, submissionId: Id<"submissions">, write: boolean) {
-  const principal = await requireRole(ctx, identity, write ? ["controller", "contributor"] : ["controller", "buyer", "contributor"]);
+async function accessible(ctx: Pick<QueryCtx, "db" | "auth">, identity: string, submissionId: Id<"submissions">) {
+  const principal = await requireRole(ctx, identity, ["buyer", "controller", "contributor"]);
   if (isFinanceAgent(principal)) throw new Error("forbidden");
   const submission = await ctx.db.get(submissionId);
   if (!submission) throw new Error("submission_not_found");
   requireTenant(principal, submission);
-  if (!principal.roles.includes("controller")) {
-    const ownContribution = principal.roles.includes("contributor") && submission.contributorTokenIdentifier === principal.tokenIdentifier;
-    if (!ownContribution) {
-      if (write || !principal.roles.includes("buyer")) throw new Error("submission_not_owned");
-      const order = await ctx.db.get(submission.orderId);
-      if (!order || order.organizationId !== submission.organizationId || order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("forbidden");
-    }
-  }
+  const order = await ctx.db.get(submission.orderId);
+  if (!order) throw new Error("order_not_found");
+  requireTenant(principal, order);
+  const ownContribution = principal.roles.includes("contributor") && submission.contributorTokenIdentifier === principal.tokenIdentifier;
+  if (!hasOrderAuthority(principal, order) && !ownContribution) throw new Error("submission_not_owned");
   return { principal, submission };
 }
 
 export const generateUploadUrl = mutation({
   args: { demoIdentity: v.string(), submissionId: v.id("submissions") },
   handler: async (ctx, args) => {
-    await accessible(ctx, args.demoIdentity, args.submissionId, true);
+    await accessible(ctx, args.demoIdentity, args.submissionId);
     return ctx.storage.generateUploadUrl();
   },
 });
@@ -35,7 +32,7 @@ export const generateUploadUrl = mutation({
 export const saveDerived = mutation({
   args: { demoIdentity: v.string(), submissionId: v.id("submissions"), storageId: v.id("_storage"), summary: annotationSummary },
   handler: async (ctx, args) => {
-    const { principal, submission } = await accessible(ctx, args.demoIdentity, args.submissionId, true);
+    const { principal, submission } = await accessible(ctx, args.demoIdentity, args.submissionId);
     const existing = await ctx.db.query("derivedAnnotations").withIndex("by_storage", q => q.eq("storageId", args.storageId)).unique();
     if (existing) {
       if (existing.submissionId !== submission._id || existing.organizationId !== submission.organizationId) throw new Error("annotation_upload_already_attached");
@@ -67,7 +64,7 @@ export const saveDerived = mutation({
 export const forSubmission = query({
   args: { demoIdentity: v.string(), submissionId: v.id("submissions") },
   handler: async (ctx, args) => {
-    const { submission } = await accessible(ctx, args.demoIdentity, args.submissionId, false);
+    const { submission } = await accessible(ctx, args.demoIdentity, args.submissionId);
     const rows = await ctx.db.query("derivedAnnotations").withIndex("by_submission", q => q.eq("submissionId", submission._id)).order("desc").collect();
     return Promise.all(rows.filter(row => row.organizationId === submission.organizationId && row.advisory === true)
       .sort((a, b) => b.createdAt - a.createdAt || b._creationTime - a._creationTime)

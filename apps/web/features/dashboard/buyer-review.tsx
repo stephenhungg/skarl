@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useMutation } from "convex/react";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/glaze/ui/button";
-import { api, CONTROLLER, useExceptions, useOrderData, useOrderId, type ExceptionItem, type Id } from "./data";
+import { api, BUYER, useExceptions, useOrderData, useOrderId, type ExceptionItem, type Id } from "./data";
 import { humanize } from "./format";
 import { Loading, PageHeader, Unavailable } from "./ui";
 
@@ -49,7 +49,7 @@ function PolicyEditor({ orderId, enabled: initialEnabled, cap: initialCap }: {
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setMessage("");
     try {
-      await setAutoPay({ demoIdentity: CONTROLLER, orderId, enabled, maxPerClipAtomic: cap });
+      await setAutoPay({ demoIdentity: BUYER, orderId, enabled, maxPerClipAtomic: cap });
       setMessage("Rule saved in the audit trail.");
     } catch { setMessage("Rule change refused. Check the cap and that you own this order."); }
     finally { setBusy(false); }
@@ -77,11 +77,11 @@ function ExceptionCard({ orderId, item }: { orderId: Id<"orders">; item: Excepti
     if (!reason.trim()) { setMessage("Write a reason for the audit trail."); return; }
     setBusy(true); setMessage("");
     try {
-      if (decision === "resolve") await resolve({ demoIdentity: CONTROLLER, orderId, exceptionKey: item.exceptionKey, reason: reason.trim() });
+      if (decision === "resolve") await resolve({ demoIdentity: BUYER, orderId, exceptionKey: item.exceptionKey, reason: reason.trim() });
       else if (evidence.intentId) {
         const result = decision === "approve"
-          ? await approve({ demoIdentity: CONTROLLER, intentId: evidence.intentId, reason: reason.trim() })
-          : await reject({ demoIdentity: CONTROLLER, intentId: evidence.intentId, reason: reason.trim() });
+          ? await approve({ demoIdentity: BUYER, intentId: evidence.intentId, reason: reason.trim() })
+          : await reject({ demoIdentity: BUYER, intentId: evidence.intentId, reason: reason.trim() });
         if (!result.ok) { setMessage(`Refused: ${humanize("code" in result ? String(result.code) : "review_refused")}.`); return; }
       }
       setMessage(decision === "approve" ? "Approved for execution; payment still requires observed settlement." : decision === "reject" ? "Payout rejected." : "Review recorded; detected discrepancies remain visible in reconciliation.");

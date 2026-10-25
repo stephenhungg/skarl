@@ -6,7 +6,7 @@ import { VoiceBeam, useMicrophone } from "voice-glow";
 import { StatusMark } from "@/components/glaze/ui/status";
 import { toast } from "@/components/glaze/ui/toast";
 import { SendButton } from "@/components/glaze/ai/send-button";
-import { api, CONTROLLER, useOrderId, useRuns, type AgentRun } from "./data";
+import { api, BUYER, useOrderId, useRuns, type AgentRun } from "./data";
 import { formatMs, formatUsdc, humanize } from "./format";
 import { Amount, Loading, Unavailable } from "./ui";
 import { cn } from "@/lib/glaze/utils";
@@ -197,7 +197,7 @@ export function Agent() {
     setPending(text.trim()); setPrompt(""); setBusy(true);
     try {
       // One stable id per deliberate request, so a retry replays instead of running twice.
-      await run({ demoIdentity: CONTROLLER, orderId, requestId: `ui-${crypto.randomUUID()}`, prompt: text.trim() });
+      await run({ demoIdentity: BUYER, orderId, requestId: `ui-${crypto.randomUUID()}`, prompt: text.trim() });
     } catch (error) {
       toast.fail("The agent could not answer", { description: error instanceof Error ? error.message : undefined });
       setPrompt(text);

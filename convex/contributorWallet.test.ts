@@ -13,7 +13,7 @@ const challenge = makeFunctionReference<"mutation">("contributorWallet:challenge
 const verify = makeFunctionReference<"mutation">("contributorWallet:verify");
 const account = privateKeyToAccount(`0x${"1".repeat(64)}`);
 const wrongAccount = privateKeyToAccount(`0x${"2".repeat(64)}`);
-const common = { demoIdentity: "controller", contributorTokenIdentifier: "demo:skarl:contributor" };
+const common = { demoIdentity: "buyer", contributorTokenIdentifier: "demo:skarl:contributor" };
 afterEach(() => vi.useRealTimers());
 
 async function setup() {
@@ -68,6 +68,13 @@ describe("contributor wallet registration with real local signatures (no chain t
     });
   });
 
+  it("keeps the legacy controller alias compatible", async () => {
+    const t = await setup();
+    const issued = await t.mutation(challenge, { ...common, demoIdentity: "controller", walletAddress: account.address });
+    expect(await t.mutation(verify, { ...common, demoIdentity: "controller", nonce: issued.nonce,
+      signature: await account.signMessage({ message: issued.message }) })).toMatchObject({ verified: true });
+  });
+
   it("lets a contributor verify their own wallet without a separate operator", async () => {
     const t = await setup(), own = { ...common, demoIdentity: "contributor" };
     const issued = await t.mutation(challenge, { ...own, walletAddress: account.address });
@@ -82,7 +89,7 @@ describe("contributor wallet registration with real local signatures (no chain t
     await expect(t.mutation(challenge, { ...own, contributorTokenIdentifier: otherToken, walletAddress: wrongAccount.address })).rejects.toThrow("contributor_not_owned");
   });
 
-  it.each(["buyer", "finance-agent"])("refuses %s for issuing and verifying", async demoIdentity => {
+  it.each(["finance-agent"])("refuses %s for issuing and verifying", async demoIdentity => {
     const t = await setup();
     await expect(t.mutation(challenge, { ...common, demoIdentity, walletAddress: account.address })).rejects.toThrow();
     const issued = await t.mutation(challenge, { ...common, walletAddress: account.address });

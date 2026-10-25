@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Status } from "@/components/glaze/ui/status";
 import { Badge } from "@/components/glaze/ui/badge";
 import { cn } from "@/lib/glaze/utils";
-import { api, CONTROLLER, needsYou, useAudit, useExceptions, useOrderData, useOrderId, useReconciliation, type Id, type PayableRow, type SubmissionRow } from "./data";
+import { api, BUYER, needsYou, useAudit, useExceptions, useOrderData, useOrderId, useReconciliation, type Id, type PayableRow, type SubmissionRow } from "./data";
 import { rail, formatMs, basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
 import { Lordicon } from "./lordicon";
 import { ActivityFeed } from "./activity";
@@ -106,7 +106,7 @@ function RecentActivity({ orderId }: { orderId: Id<"orders"> }) {
 
 /** One strip, four questions: how much cash, what we owe, how the work is going, how fast the AI is. Zeros that ask nothing stay hidden. */
 function AtAGlance({ orderId, budget, funded, balances }: { orderId: Id<"orders">; budget: string; funded: boolean; balances: Record<string, string> }) {
-  const stats = useQuery(api.analytics.overview, { demoIdentity: CONTROLLER, orderId });
+  const stats = useQuery(api.analytics.overview, { demoIdentity: BUYER, orderId });
   const p = stats?.verificationLatencyMs;
   const cells: { label: string; value: React.ReactNode; sub: React.ReactNode }[] = [
     { label: "Treasury", value: <Amount value={balances["asset:usdc"]} className="type-heading" />,
