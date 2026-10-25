@@ -1,6 +1,5 @@
 import { SiteNav } from "@/components/site-nav";
 import { Hero } from "@/features/landing/hero";
-import { BuiltOn } from "@/features/landing/built-on";
 import { HowItWorks } from "@/features/landing/how-it-works";
 import { CatchSection } from "@/features/landing/catch-carousel";
 import { Money } from "@/features/landing/money";
@@ -12,7 +11,6 @@ export default function Home() {
       <SiteNav />
       <main>
         <Hero />
-        <BuiltOn />
         <HowItWorks />
         <CatchSection />
         <Money />

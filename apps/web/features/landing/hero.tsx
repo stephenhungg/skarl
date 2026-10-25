@@ -3,7 +3,8 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/button";
-import { ContourTide } from "@/components/react-bits/contour-tide";
+import { SpectralDrape } from "@/components/react-bits/spectral-drape";
+import { BuiltOn } from "./built-on";
 import { DEMO_VIDEO_URL } from "./evidence";
 
 const SETTLE = [0.43, 0.42, 0.37, 0.97] as const;
@@ -18,9 +19,9 @@ function Rise({ delay, duration, children, className }: { delay: number; duratio
 
 export function Hero() {
   return (
-    <section id="hero" className="relative flex min-h-[860px] flex-col items-center justify-center overflow-clip bg-ink pt-16" aria-labelledby="hero-title">
+    <section id="hero" className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-clip bg-ink pb-[180px] pt-24" aria-labelledby="hero-title">
       <motion.div className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.25, duration: 0.65, ease: SETTLE }}>
-        <ContourTide className="h-full w-full" colors={["#4f5a4b", "#c7f18e"]} backgroundColor="#10120e" horizon={0.12} />
+        <SpectralDrape className="h-full w-full" colors={["#c7f18e", "#8fe3b4", "#5f7d6a", "#e9f9cf"]} backgroundColor="#10120e" />
       </motion.div>
 
       <div className="pointer-events-none relative z-10 flex w-full max-w-[800px] flex-col items-center px-[18px] text-center [&_a]:pointer-events-auto">
@@ -43,6 +44,10 @@ export function Hero() {
             <Link href={DEMO_VIDEO_URL} target="_blank" rel="noopener noreferrer" className="text-[14px] text-fog underline decoration-slate-500 underline-offset-4 hover:text-paper">Watch a 3 min demo</Link>
           </Rise>
         )}
+      </div>
+
+      <div className="absolute inset-x-0 bottom-0 z-10">
+        <BuiltOn onDark />
       </div>
     </section>
   );

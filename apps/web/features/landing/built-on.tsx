@@ -12,7 +12,7 @@ const RATE_MS = 400;
 const LOGO_H = 34;
 
 // Logos only, through a CSS mask so every mark takes the same ink colour.
-function Item({ item }: { item: BuiltOnItem }) {
+function Item({ item, onDark = false }: { item: BuiltOnItem; onDark?: boolean }) {
   if (!item.logo) return null;
   const wide = item.logo.ratio > 1.5;
   const h = (wide ? LOGO_H : LOGO_H * 1.15) * (item.logo.scale ?? 1);
@@ -21,7 +21,7 @@ function Item({ item }: { item: BuiltOnItem }) {
       role="img"
       aria-label={item.name}
       title={item.name}
-      className="inline-block flex-none bg-ink"
+      className={`inline-block flex-none ${onDark ? "bg-paper" : "bg-ink"}`}
       style={{
         width: h * item.logo.ratio,
         height: h,
@@ -38,7 +38,7 @@ function Item({ item }: { item: BuiltOnItem }) {
   );
 }
 
-export function BuiltOn() {
+export function BuiltOn({ onDark = false }: { onDark?: boolean }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const setRef = useRef<HTMLDivElement>(null);
@@ -110,11 +110,11 @@ export function BuiltOn() {
 
   return (
     <section className="flex w-full flex-col items-center gap-6 py-12" aria-labelledby="built-on-title">
-      <p id="built-on-title" className="cut-book m-0 text-[14px] leading-[1.2] tracking-[0.01em] text-slate-300">Skarl is built on</p>
+      <p id="built-on-title" className={`cut-book m-0 text-[14px] leading-[1.2] tracking-[0.01em] ${onDark ? "text-fog" : "text-slate-300"}`}>Skarl is built on</p>
       {still ? (
         <ul className="frame m-0 flex list-none flex-wrap items-center justify-center gap-x-12 gap-y-4 p-0">
           {BUILT_ON.map(item => (
-            <li key={item.name}><Item item={item} /></li>
+            <li key={item.name}><Item item={item} onDark={onDark} /></li>
           ))}
         </ul>
       ) : (
@@ -130,10 +130,10 @@ export function BuiltOn() {
               <div key={c} ref={c === 0 ? setRef : undefined} aria-hidden={c > 0 ? true : undefined} className="flex flex-none items-center" style={{ gap: GAP }}>
                 {c === 0 ? (
                   <ul className="m-0 flex list-none items-center p-0" style={{ gap: GAP }}>
-                    {BUILT_ON.map(item => <li key={item.name}><Item item={item} /></li>)}
+                    {BUILT_ON.map(item => <li key={item.name}><Item item={item} onDark={onDark} /></li>)}
                   </ul>
                 ) : (
-                  BUILT_ON.map(item => <Item key={item.name} item={item} />)
+                  BUILT_ON.map(item => <Item key={item.name} item={item} onDark={onDark} />)
                 )}
               </div>
             ))}
