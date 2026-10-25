@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 import { PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK, SOLANA_USDC_MINT, USDC_ADDRESS } from "@skarl/contracts/chain";
+import { fundingTermsHash } from "../src/funding-terms";
 import { GET, POST } from "../../../apps/web/app/api/orders/[id]/fund/route";
 
 // Exercises the actual dynamic Next route and real @x402/next/core middleware.
@@ -27,15 +28,15 @@ const URL = `http://localhost:3000/api/orders/${ORDER_ID}/fund`;
 const context = { params: Promise.resolve({ id: ORDER_ID }) };
 const events: string[] = [];
 let stored: {
-  order: { _id: string; status: string; budgetAtomic: bigint; deadlineAt: number };
+  order: { _id: string; status: string; budgetAtomic: bigint; deadlineAt: number; fundingPayTo?: string; autoPay?: {enabled:boolean;maxPerClipAtomic:bigint;requireAllChecks:true} };
   intent: null | { network: string; status: string; buyerWalletAddress: string; recipientAddress: string; amountAtomic: bigint };
   attempt: null | { _id: string; txHash?: string };
 };
 
-function request(payment?: unknown) {
+function request(payment?: unknown, termsHash?: string) {
   // NextAdapter uses the standard Request surface plus NextRequest.nextUrl.
   // Route execution and the NextResponse implementation remain real.
-  const value = new Request(URL, { method: "POST", headers: { Accept: "application/json",
+  const value = new Request(URL, { method: "POST", headers: { Accept: "application/json", ...(termsHash ? { "X-Skarl-Funding-Terms": termsHash } : {}),
     ...(payment ? { "PAYMENT-SIGNATURE": Buffer.from(JSON.stringify(payment)).toString("base64") } : {}) } });
   return Object.assign(value, { nextUrl: new globalThis.URL(URL) }) as Parameters<typeof POST>[0];
 }
@@ -137,6 +138,40 @@ describe("actual POST /api/orders/[id]/fund x402 adapter", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ amountAtomic: "10000000", recipientAddress: TREASURY });
     expect((await requirement()).accepts[0]).toMatchObject({ amount: "10000000", payTo: TREASURY });
+  });
+
+  it("discloses the stored auto-pay rule and versioned funding commitment without changing its amount", async () => {
+    stored.order.autoPay = {enabled:true,maxPerClipAtomic:750000n,requireAllChecks:true};
+    const body = await (await GET(request(), context)).json();
+    expect(body.autoPay).toEqual({enabled:true,maxPerClipAtomic:"750000",requireAllChecks:true});
+    expect(body.fundingTermsHash).toBe(fundingTermsHash({orderId:ORDER_ID,amountAtomic:"100000000",payTo:TREASURY,autoPay:body.autoPay}));
+    expect(mocks.mutation).not.toHaveBeenCalled();
+  });
+
+  it("refuses a stale buyer-rule commitment before any facilitator or payment claim", async () => {
+    const before = fundingTermsHash({orderId:ORDER_ID,amountAtomic:"100000000",payTo:TREASURY,autoPay:null});
+    stored.order.autoPay = {enabled:true,maxPerClipAtomic:750000n,requireAllChecks:true};
+    const response = await POST(request(undefined, before), context);
+    expect(response.status).toBe(409); expect(await response.json()).toMatchObject({error:"funding_terms_changed"});
+    expect(mocks.fetch).not.toHaveBeenCalled(); expect(mocks.mutation).not.toHaveBeenCalled();
+  });
+
+  it("passes a reviewed funding commitment into the atomic claim before settlement", async () => {
+    const commitment = fundingTermsHash({orderId:ORDER_ID,amountAtomic:"100000000",payTo:TREASURY,autoPay:null});
+    await POST(request(await signedPayload(), commitment), context);
+    expect(mocks.mutation.mock.calls.find(([ref]) => getFunctionName(ref) === "payments:recordFundingAttempt")?.[1]).toMatchObject({expectedFundingTermsHash:commitment});
+  });
+
+  it("quotes the frozen agent treasury for one order while leaving the global treasury unchanged", async () => {
+    const agent = `0x${"77".repeat(20)}`;
+    stored.order.fundingPayTo = agent;
+    vi.stubEnv("SKARL_SOLANA_TREASURY_ADDRESS", SOLANA_TREASURY);
+    const body = await (await GET(request(), context)).json();
+    expect(body.recipientAddress).toBe(agent); expect(body.rails).toHaveLength(1);
+    expect(body.rails[0]).toMatchObject({network:PAYMENT_NETWORK,recipientAddress:agent});
+    const quote = await requirement();
+    expect(quote.accepts).toHaveLength(1); expect(quote.accepts[0].payTo).toBe(agent);
+    expect(process.env.SKARL_TREASURY_ADDRESS).toBe(TREASURY); expect(mocks.mutation).not.toHaveBeenCalled();
   });
 
   it("protects the dynamic route with exact stored micro-USDC requirements", async () => {

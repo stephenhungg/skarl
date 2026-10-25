@@ -156,6 +156,8 @@ export default defineSchema({
     publicId: v.string(),
     buyerTokenIdentifier: tokenIdentifier,
     buyerWalletAddress: evmAddress,
+    // Optional operator-selected treasury, frozen at order creation (Base only).
+    fundingPayTo: v.optional(v.string()),
     title: v.string(),
     autoPay: v.optional(v.object({ enabled: v.boolean(), maxPerClipAtomic: amountAtomic,
       requireAllChecks: v.literal(true), setBy: tokenIdentifier, setAt: v.number() })),

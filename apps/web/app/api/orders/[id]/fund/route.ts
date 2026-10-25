@@ -1,6 +1,7 @@
 import { authenticateConvexRequest } from "../../../../../lib/auth/server";
 import { type NextRequest, NextResponse } from "next/server";
 import { withX402 } from "@x402/next";
+import { fundingTermsHash, type FundingAutoPayRule } from "../../../../../../../packages/payments/src/funding-terms";
 import { FundingResourceServer } from "../../../../../../../packages/payments/src/funding-server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { parseSolanaFundingAuthorization, observeSolanaTransfer } from "../../../../../../../packages/payments/src/solana";
@@ -14,6 +15,10 @@ import type { Hash } from "viem";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 type Context = { params: Promise<{ id: string }> };
+function fundingTerms(order: { _id: string; budgetAtomic: bigint; autoPay?: Omit<FundingAutoPayRule, "maxPerClipAtomic"> & { maxPerClipAtomic: bigint } }, payTo: string) {
+  return { orderId: order._id, amountAtomic: order.budgetAtomic.toString(), payTo,
+    autoPay: order.autoPay ? { enabled: order.autoPay.enabled, maxPerClipAtomic: order.autoPay.maxPerClipAtomic.toString(), requireAllChecks: order.autoPay.requireAllChecks } : null };
+}
 
 export async function GET(request: NextRequest, context: Context) {
   try {
@@ -23,16 +28,21 @@ export async function GET(request: NextRequest, context: Context) {
     await authenticateConvexRequest(db, request);
     const result = await db.query(api.payments.fundingStatus, { serviceSecret, orderId: (await context.params).id,
       demoIdentity: request.headers.get("x-skarl-demo-identity") || "buyer" });
-    return paymentJson({ recipientAddress: result.intent?.recipientAddress ?? treasury, orderId: result.order._id, status: result.order.status, amountAtomic: result.order.budgetAtomic,
+    const baseTreasury = result.order.fundingPayTo ?? treasury;
+    const terms = fundingTerms(result.order, result.intent?.recipientAddress ?? baseTreasury);
+    return paymentJson({ recipientAddress: result.intent?.recipientAddress ?? baseTreasury, orderId: result.order._id, status: result.order.status, amountAtomic: result.order.budgetAtomic,
+      autoPay: terms.autoPay, fundingTermsHash: fundingTermsHash(terms),
       fundingStatus: result.intent?.status ?? "awaiting_payment", txHash: result.attempt?.txHash ?? null,
       attemptId: result.attempt?._id ?? null, network: result.intent?.network ?? PAYMENT_NETWORK,
       explorerUrl: result.attempt?.txHash ? paymentRail(result.intent?.network ?? PAYMENT_NETWORK).explorerTx(result.attempt.txHash) : null,
-      rails: [{ network: PAYMENT_NETWORK, recipientAddress: treasury, asset: paymentRail(PAYMENT_NETWORK).token },
-        ...(solanaTreasury ? [{ network: SOLANA_PAYMENT_NETWORK, recipientAddress: solanaTreasury, asset: paymentRail(SOLANA_PAYMENT_NETWORK).token }] : [])] });
+      rails: [{ network: PAYMENT_NETWORK, recipientAddress: baseTreasury, asset: paymentRail(PAYMENT_NETWORK).token },
+        ...(solanaTreasury && !result.order.fundingPayTo ? [{ network: SOLANA_PAYMENT_NETWORK, recipientAddress: solanaTreasury, asset: paymentRail(SOLANA_PAYMENT_NETWORK).token }] : [])] });
   } catch (error) { return paymentError(error); }
 }
 export async function POST(request: NextRequest, context: Context) {
   const idempotencyKey = request.headers.get("Idempotency-Key") ?? undefined;
+  const expectedFundingTermsHash = request.headers.get("X-Skarl-Funding-Terms") ?? undefined;
+  if (expectedFundingTermsHash !== undefined && !/^[0-9a-f]{64}$/.test(expectedFundingTermsHash)) return paymentJson({ error: "invalid_funding_terms_hash" }, 400);
   if (idempotencyKey !== undefined && !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
     return paymentJson({ error: "invalid_idempotency_key" }, 400);
   }
@@ -44,14 +54,17 @@ export async function POST(request: NextRequest, context: Context) {
     const orderId = (await context.params).id;
     const demoIdentity = request.headers.get("x-skarl-demo-identity") || "buyer";
     const { order, intent, attempt } = await db.query(api.payments.fundingStatus, { serviceSecret, orderId, demoIdentity });
+    const orderTreasury = order.fundingPayTo ?? treasury;
+    const orderSolanaTreasury = order.fundingPayTo ? undefined : solanaTreasury;
     // An interrupted attempt is a status/reconciliation operation, never a new charge.
     if (intent) return paymentJson({ orderId: order._id, status: order.status, fundingStatus: intent.status,
       network: intent.network, explorerUrl: attempt?.txHash ? paymentRail(intent.network).explorerTx(attempt.txHash) : null,
       txHash: attempt?.txHash ?? null, attemptId: attempt?._id, reconcileUrl: "/api/payments/reconcile" }, intent.status === "confirmed" ? 200 : 202);
+    if (expectedFundingTermsHash !== undefined && fundingTermsHash(fundingTerms(order, orderTreasury)) !== expectedFundingTermsHash) return paymentJson({ error: "funding_terms_changed", message: "Review the stored buyer rule and original request; do not authorize a replacement automatically." }, 409);
     if (!["draft", "awaiting_funding"].includes(order.status) || Date.now() > order.deadlineAt) throw new Error("order_not_fundable");
     const facilitator = paymentFacilitator();
     const server = new FundingResourceServer(facilitator.client).register(PAYMENT_NETWORK, new ExactEvmScheme());
-    if (solanaTreasury) server.register(SOLANA_PAYMENT_NETWORK, new ExactSvmScheme());
+    if (orderSolanaTreasury) server.register(SOLANA_PAYMENT_NETWORK, new ExactSvmScheme());
     let claimedNetwork: string = PAYMENT_NETWORK;
     let settledBy: string | null = null;
     let attemptId: Id<"paymentAttempts"> | undefined;
@@ -59,18 +72,19 @@ export async function POST(request: NextRequest, context: Context) {
     server.onBeforeSettle(async ({ paymentPayload }) => {
       try {
         const network = paymentPayload.accepted.network;
-        if (network !== PAYMENT_NETWORK && (network !== SOLANA_PAYMENT_NETWORK || !solanaTreasury)) return { abort: true, reason: "unsupported_payment_network" };
+        if (expectedFundingTermsHash && network !== PAYMENT_NETWORK) return { abort: true, reason: "funding_terms_network_changed" };
+        if (network !== PAYMENT_NETWORK && (network !== SOLANA_PAYMENT_NETWORK || !orderSolanaTreasury)) return { abort: true, reason: "unsupported_payment_network" };
         const parsed = network === SOLANA_PAYMENT_NETWORK
-          ? await parseSolanaFundingAuthorization(paymentPayload.payload, { treasuryAddress: solanaTreasury!, amountAtomic: order.budgetAtomic, orderId: order._id,
+          ? await parseSolanaFundingAuthorization(paymentPayload.payload, { treasuryAddress: orderSolanaTreasury!, amountAtomic: order.budgetAtomic, orderId: order._id,
             feePayer: paymentPayload.accepted.extra.feePayer as string })
           : parseFundingAuthorization(paymentPayload.payload);
         const { payerAddress, recipientAddress, authorizationNonce: nonce, amountAtomic, validBefore } = parsed;
         const authorization = { payerAddress, recipientAddress, authorizationNonce: nonce, amountAtomic, validBefore };
-        if ((network === PAYMENT_NETWORK && authorization.recipientAddress.toLowerCase() !== treasury.toLowerCase()) || authorization.amountAtomic !== order.budgetAtomic) {
+        if ((network === PAYMENT_NETWORK && authorization.recipientAddress.toLowerCase() !== orderTreasury.toLowerCase()) || authorization.amountAtomic !== order.budgetAtomic) {
           return { abort: true, reason: "quote_changed" };
         }
         const recorded = await db.mutation(api.payments.recordFundingAttempt, { serviceSecret, orderId, demoIdentity, ...authorization,
-          ...(network === SOLANA_PAYMENT_NETWORK ? { network } : {}), ...(idempotencyKey ? { idempotencyKey } : {}) });
+          ...(network === SOLANA_PAYMENT_NETWORK ? { network } : {}), ...(idempotencyKey ? { idempotencyKey } : {}), ...(expectedFundingTermsHash ? { expectedFundingTermsHash } : {}) });
         if (recorded.replayed) return { abort: true, reason: "authorization_already_claimed_reconcile" };
         claimedNetwork = network;
         attemptId = recorded.attemptId; authorizationNonce = authorization.authorizationNonce;
@@ -89,7 +103,7 @@ export async function POST(request: NextRequest, context: Context) {
     });
     // Bare config intentionally protects every path passed into this single POST route.
     const response = await withX402(async () => NextResponse.json({ orderId: order._id, fundingStatus: "settlement_pending" }),
-      fundingRouteConfig(order.budgetAtomic, treasury, solanaTreasury ? { treasuryAddress: solanaTreasury, orderId: order._id } : undefined), server)(request);
+      fundingRouteConfig(order.budgetAtomic, orderTreasury, orderSolanaTreasury ? { treasuryAddress: orderSolanaTreasury, orderId: order._id } : undefined), server)(request);
     response.headers.set("X-Skarl-Facilitator", facilitator.id);
     if (!attemptId) return response;
     const current = await db.query(api.payments.fundingStatus, { serviceSecret, orderId, demoIdentity });

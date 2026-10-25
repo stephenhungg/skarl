@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { makeFunctionReference } from "convex/server";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { mutation, internalMutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { fundingNetwork } from "./validators";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -14,6 +14,7 @@ import { DEMO_ORDER_BUDGET, DEMO_ORDER_CONTRIBUTOR_RATE, DEMO_ORDER_GLOBAL_LIMIT
 import { audit } from "./lib/finance";
 import { parseAtomicUsdc } from "../packages/contracts/src/index";
 import { validateIdempotencyKey, idempotencyKeyHash, readIdempotentResult, saveIdempotentResult } from "./lib/requestIdempotency";
+import { fundingTermsHash } from "../packages/payments/src/funding-terms";
 
 // Trusted Next server reads RPC receipts; browsers cannot submit settlement facts directly.
 export function service(secret: string) {
@@ -25,11 +26,13 @@ export function service(secret: string) {
 }
 const secretArg = { serviceSecret: v.string() };
 
-/** Public HTTP entry point: fixed commercial terms, buyer-selected auto-pay rule. */
-export const createDemoOrder = mutation({
-  args: { ...secretArg, ipDigest: v.string(), requestId: v.string(), idempotencyKey: v.optional(v.string()),
-    autoPay: v.optional(v.object({ enabled: v.boolean(), maxPerClipAtomic: v.string(), requireAllChecks: v.literal(true) })) },
-  handler: async (ctx, args) => {
+type DemoOrderArgs = { serviceSecret: string; ipDigest: string; requestId: string; idempotencyKey?: string;
+  autoPay?: { enabled: boolean; maxPerClipAtomic: string; requireAllChecks: true }; fundingProfile?: "agent" };
+const demoOrderArgs = { ...secretArg, ipDigest: v.string(), requestId: v.string(), idempotencyKey: v.optional(v.string()),
+  autoPay: v.optional(v.object({ enabled: v.boolean(), maxPerClipAtomic: v.string(), requireAllChecks: v.literal(true) })),
+  // Trusted payment service only. Public HTTP does not forward this field or a payee address.
+  fundingProfile: v.optional(v.literal("agent")) };
+async function createDemoOrderFor(ctx: MutationCtx, args: DemoOrderArgs) {
     service(args.serviceSecret);
     if (!/^[a-f0-9]{64}$/.test(args.ipDigest) || !/^[a-f0-9-]{36}$/.test(args.requestId)) throw new Error("invalid_demo_request");
     if (args.idempotencyKey !== undefined) validateIdempotencyKey(args.idempotencyKey);
@@ -39,13 +42,23 @@ export const createDemoOrder = mutation({
     if (maxPerClipAtomic <= 0n) throw new Error("invalid_auto_pay_policy");
     const keyHash = idempotencyKeyHash(args.idempotencyKey ?? args.requestId);
     const requestHash = digest({ organizationId: buyer.organizationId, buyer: buyer.tokenIdentifier,
-      enabled: args.autoPay?.enabled ?? true, maxPerClipAtomic, requireAllChecks: true });
+      enabled: args.autoPay?.enabled ?? true, maxPerClipAtomic, requireAllChecks: true, fundingProfile: args.fundingProfile });
     type Created = { ok: true; orderId: Id<"orders">; publicId: string; deadlineAt: number;
-      autoPay: { enabled: boolean; maxPerClipAtomic: string; requireAllChecks: true; setBy: string; setAt: number } };
+      autoPay: { enabled: boolean; maxPerClipAtomic: string; requireAllChecks: true; setBy: string; setAt: number }; fundingPayTo?: string };
     const previous = await readIdempotentResult<Created>(ctx, "public_order", keyHash, requestHash);
     // A lost creation response must not create another obligation or consume the
     // demo's spend capacity, including when the caller has reached its cap.
     if (previous) return previous;
+    // Resolve only after replay: environment changes never rewrite an existing
+    // order's recipient, and a caller cannot provide an arbitrary destination.
+    let fundingPayTo: string | undefined;
+    if (args.fundingProfile === "agent") {
+      const configured = process.env.CDP_AGENT_ADDRESS;
+      if (!configured || !/^0x[0-9a-fA-F]{40}$/.test(configured) || /^0x0{40}$/i.test(configured)) {
+        throw new Error("cdp_agent_not_configured");
+      }
+      fundingPayTo = configured.toLowerCase();
+    }
     const source = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
     const rubric = source?.taskVersionId ? await ctx.db.get(source.taskVersionId) : null;
     if (!source || !rubric || source.organizationId !== buyer.organizationId || rubric.orderId !== source._id) throw new Error("demo_seed_required");
@@ -69,10 +82,11 @@ export const createDemoOrder = mutation({
     const publicId = `skarl-outsider-demo-${keyHash}`;
     const termsHash = digest({ contentHash: rubric.contentHash, quantityRequested: 1n, pricePerSampleAtomic: DEMO_ORDER_BUDGET,
       contributorRateAtomic: DEMO_ORDER_CONTRIBUTOR_RATE, licenseVersion: "demo-consent-v1",
-      autoPay: { enabled: autoPay.enabled, maxPerClipAtomic, requireAllChecks: true } });
+      autoPay: { enabled: autoPay.enabled, maxPerClipAtomic, requireAllChecks: true }, fundingPayTo });
     const orderId = await ctx.db.insert("orders", {
       organizationId: buyer.organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS, publicId,
       buyerTokenIdentifier: buyer.tokenIdentifier, buyerWalletAddress: "0x0000000000000000000000000000000000000001",
+      ...(fundingPayTo ? { fundingPayTo } : {}),
       title: "DEMO / TESTNET — red-cup narrated demonstration", status: "awaiting_funding", quantityRequested: 1n,
       pricePerSampleAtomic: DEMO_ORDER_BUDGET, contributorRateAtomic: DEMO_ORDER_CONTRIBUTOR_RATE,
       budgetAtomic: DEMO_ORDER_BUDGET, autoPay, acceptedCount: 0n, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS, termsHash, updatedAt: now,
@@ -90,10 +104,24 @@ export const createDemoOrder = mutation({
       reason: `Buyer selected auto-pay ${autoPay.enabled ? "enabled" : "disabled"}; cap ${maxPerClipAtomic} micro-USDC; every check required.`,
       evidenceReferences: [termsHash] });
     const result: Created = { ok: true, orderId, publicId, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS,
-      autoPay: { ...autoPay, maxPerClipAtomic: maxPerClipAtomic.toString() } };
+      autoPay: { ...autoPay, maxPerClipAtomic: maxPerClipAtomic.toString() }, ...(fundingPayTo ? { fundingPayTo } : {}) };
     await saveIdempotentResult(ctx, "public_order", keyHash, requestHash, result);
     return result;
-  },
+}
+/** Public HTTP entry point: fixed commercial terms, buyer-selected auto-pay rule. */
+export const createDemoOrder = mutation({ args: demoOrderArgs, handler: createDemoOrderFor });
+
+/** Operator-only provisioning of exactly one agent-treasury Wallet MCP demo.
+ * No signing/settlement and no auto-spend. No caller-selected arguments or secrets.
+ */
+export const createWalletMcpDemo = internalMutation({
+  args: {},
+  handler: async ctx => createDemoOrderFor(ctx, {
+    serviceSecret: process.env.SKARL_PAYMENTS_SERVICE_SECRET ?? "",
+    ipDigest: digest({ operator: "wallet-mcp-agent-order-v1" }), requestId: "00000000-0000-4000-8000-000000000001",
+    idempotencyKey: "wallet-mcp-agent-order-v1", fundingProfile: "agent",
+    autoPay: { enabled: false, maxPerClipAtomic: DEMO_ORDER_BUDGET.toString(), requireAllChecks: true },
+  }),
 });
 const evidence = v.object({ network: v.string(), tokenAddress: v.string(), txHash: v.string(), logIndex: v.number(),
   blockNumber: v.int64(), blockHash: v.string(), fromAddress: v.string(), toAddress: v.string(), amountAtomic: v.int64(),
@@ -135,17 +163,22 @@ export const fundingStatus = query({
 export const recordFundingAttempt = mutation({
   args: { ...secretArg, orderId: v.string(), demoIdentity: v.string(), payerAddress: v.string(), recipientAddress: v.string(),
     authorizationNonce: v.string(), amountAtomic: v.int64(), validBefore: v.number(), network: v.optional(fundingNetwork),
-    idempotencyKey: v.optional(v.string()) },
+    idempotencyKey: v.optional(v.string()), expectedFundingTermsHash: v.optional(v.string()) },
   handler: async (ctx, args) => {
     service(args.serviceSecret);
     const order = await orderFor(ctx, args.orderId, args.demoIdentity);
     const network = args.network ?? PAYMENT_NETWORK;
     const rail = paymentRail(network);
+    if (order.fundingPayTo && network !== PAYMENT_NETWORK) throw new Error("funding_recipient_changed");
     const payerAddress = railAddress(network, args.payerAddress), recipientAddress = railAddress(network, args.recipientAddress);
+    if (order.fundingPayTo && recipientAddress !== normalizeAddress(order.fundingPayTo)) throw new Error("funding_recipient_changed");
     if (network === SOLANA_PAYMENT_NETWORK && recipientAddress !== process.env.SKARL_SOLANA_TREASURY_ADDRESS) {
       throw new Error("wrong_solana_treasury");
     }
     const nonce = hash(args.authorizationNonce);
+    if (args.expectedFundingTermsHash !== undefined && !/^[a-f0-9]{64}$/.test(args.expectedFundingTermsHash)) {
+      throw new Error("invalid_funding_terms_hash");
+    }
     if (args.idempotencyKey !== undefined) validateIdempotencyKey(args.idempotencyKey);
     const scope = "funding_attempt", keyHash = args.idempotencyKey ? idempotencyKeyHash(args.idempotencyKey) : undefined;
     const requestHash = digest({ orderId: order._id, network, payerAddress, recipientAddress, authorizationNonce: nonce, amountAtomic: args.amountAtomic });
@@ -174,6 +207,15 @@ export const recordFundingAttempt = mutation({
     if (!["draft", "awaiting_funding"].includes(order.status) || Date.now() > order.deadlineAt) throw new Error("order_not_fundable");
     const existing = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
     if (existing.some(i => i.kind !== "contributor_payout")) throw new Error("funding_already_pending_reconcile_first");
+    // Close the HTTP snapshot -> atomic claim race. Replays above are status-only
+    // and must never be interpreted as permission for another settlement.
+    if (args.expectedFundingTermsHash !== undefined && (network !== PAYMENT_NETWORK ||
+      args.expectedFundingTermsHash !== fundingTermsHash({ orderId: order._id,
+        amountAtomic: order.budgetAtomic.toString(), payTo: recipientAddress,
+        autoPay: order.autoPay ? { enabled: order.autoPay.enabled,
+          maxPerClipAtomic: order.autoPay.maxPerClipAtomic.toString(), requireAllChecks: order.autoPay.requireAllChecks } : null }))) {
+      throw new Error("funding_terms_changed");
+    }
     if (!Number.isSafeInteger(args.validBefore) || args.validBefore <= Date.now()) throw new Error("authorization_expired");
     const now = Date.now();
     const intentId = await ctx.db.insert("paymentIntents", { organizationId: order.organizationId, kind: "funding", orderId: order._id,
