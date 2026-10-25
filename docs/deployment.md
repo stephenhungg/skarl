@@ -87,6 +87,33 @@ Run this only from the linked repository root after confirming the project.
 Environment changes require a new deployment. Never use `--value` with a secret,
 print environment values, or commit the ignored `.vercel` directory.
 
+## CDP configuration probe
+
+After importing credentials, this read-only probe checks the authenticated CDP
+facilitator's supported schemes without submitting a payment:
+
+```sh
+node --input-type=module <<'JS'
+import { homedir } from "node:os";
+import { createCdpFacilitatorClient } from "@coinbase/cdp-sdk/x402";
+process.loadEnvFile(`${homedir()}/.config/skarl/cdp.env`);
+try {
+  const result = await createCdpFacilitatorClient().getSupported();
+  console.log(JSON.stringify({
+    network: "eip155:84532",
+    kinds: result.kinds.filter(kind => kind.network === "eip155:84532"),
+  }));
+} catch {
+  console.error("CDP supported-schemes probe failed; no payment attempted.");
+  process.exitCode = 1;
+}
+JS
+```
+
+A successful response proves API reachability/authentication for that call, not
+settlement, wallet authorization or Bazaar indexing. The existing 10 USDC funding
+transaction was recorded before this CDP configuration step.
+
 ## Verification
 
 ```sh

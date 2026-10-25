@@ -354,3 +354,17 @@ A hung attempt is aborted once, without restarting another 30-second window,
 and verification persists a failed `needs_review` report. No unavailable model
 can qualify a sample for acceptance. Regression tests exercise the 30-second cap,
 shared retry deadline, unchanged defaults and environment overrides.
+
+## Production Git integration verified
+
+After push `37ce828`, Vercel created production deployment
+`dpl_EE91QJj61JgLXkqJdSq9oPdC2byw` from that GitHub `main` commit and reached READY.
+Subsequent `main` updates also deployed automatically. `pnpm check` passed before
+the push, including TypeScript, tests, docs links and the production build.
+
+A public POST to the already-funded v2 order returned HTTP 200 with its existing
+confirmed intent and the same stored transaction hash; no new payment was sent.
+After the webhook change landed, public `HEAD /api/webhooks/cdp` returned 200;
+unsigned POST returned `503 {"error":"webhook_not_configured"}` while subscription
+secrets were absent. This establishes reachability and missing-configuration
+behavior, not successful signed webhook delivery.
