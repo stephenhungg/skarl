@@ -3,14 +3,15 @@ import { useAction } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import { VoiceBeam, useMicrophone } from "voice-glow";
 import { StatusMark } from "@/components/glaze/ui/status";
 import { toast } from "@/components/glaze/ui/toast";
 import { SendButton } from "@/components/glaze/ai/send-button";
 import { api, BUYER, useExceptions, useOrderData, useOrderId, useRuns, useStatements, type AgentRun, type Id, type PayableRow } from "./data";
-import { formatMs, formatUsdc, humanize } from "./format";
+import { formatMs, humanize } from "./format";
+import { AgentAnswer } from "./agent-prose-view";
 import { Amount, Loading, Unavailable } from "./ui";
 import { cn } from "@/lib/glaze/utils";
 
@@ -40,11 +41,6 @@ const BRAND_GLOW = ["#c7f18e", "#b4e47c", "#9fcf6c", "#86b35d", "#c7f18e"];
 const workingMotion = () => {
   const t = performance.now() / 1000;
   return { gather: 1, offset: Math.sin(t * 1.6) * 0.85, stretch: Math.abs(Math.cos(t * 1.6)) * 0.4, heldLevel: 0.65, cornerFollow: 0.6 };
-};
-
-const ACCOUNT_NAMES: Record<string, string> = {
-  "asset:usdc": "USDC cash", "liability:customer_prepayments": "Customer prepayments", "liability:contributor_payables": "Contributor payables",
-  "liability:customer_refunds": "Refunds payable", "revenue:dataset_sales": "Dataset sales", "expense:contributor_acquisition": "Contributor cost",
 };
 
 type Step = { call: { id?: string; name: string; arguments?: unknown }; result?: unknown; error?: string };
@@ -77,41 +73,11 @@ function factFor(step: Step): Fact | null {
       return rows.length ? { status: "fail", text: `${rows.length} reconciliation ${rows.length === 1 ? "exception" : "exceptions"}` } : { status: "ok", text: "No reconciliation exceptions" };
     }
     default: {
-      if (typeof r.ok === "boolean") return { status: r.ok ? "ok" : "fail", text: `${humanize(step.call.name.replace(/([a-z])([A-Z])/g, "$1_$2"))}: ${r.ok ? "done" : humanize(String(r.code ?? "refused"))}` };
-      const firstList = Object.entries(r).find(([, v]) => Array.isArray(v));
-      return firstList ? { status: "idle", text: `${(firstList[1] as unknown[]).length} ${humanize(firstList[0]).toLowerCase()}` } : null;
+      if (r.ok === false) return { status: "fail", text: `${humanize(step.call.name.replace(/([a-z])([A-Z])/g, "$1_$2"))}: ${humanize(String(r.code ?? "refused"))}` };
+      // Unknown result arrays are not user-facing facts (e.g. "2 journalentryids").
+      return null;
     }
   }
-}
-
-/** Make the model's prose readable: display units, account names, no database IDs. */
-function clean(text: string) {
-  return text
-    .replace(/([\d,]+) micro-USDC/g, (_, n: string) => `${formatUsdc(n.replace(/,/g, ""))} USDC`)
-    .replace(/\b(\d{1,3}(?:,\d{3}){2,})\b/g, n => `${formatUsdc(n.replace(/,/g, ""))} USDC`)
-    .replace(/\b(asset|liability|revenue|expense):[a-z_]+/g, code => ACCOUNT_NAMES[code] ?? humanize(code.split(":")[1]!))
-    .replace(/\bOrder [a-z0-9]{25,}\b/g, "This order")
-    .replace(/\b[a-z0-9]{30,}\b/g, "this order")
-    .replace(/USDC of USDC/g, "USDC");
-}
-
-/** Paragraphs, **bold** and "- " bullets, the subset the agent writes. */
-function Prose({ text }: { text: string }) {
-  const inline = (s: string): ReactNode => s.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith("**") ? <strong key={i} className="font-medium text-text-1">{part.slice(2, -2)}</strong> : <Fragment key={i}>{part}</Fragment>);
-  return (
-    <div className="flex max-w-(--measure) flex-col gap-2 type-body-sm text-text-2">
-      {clean(text).replace(/^#+\s*/gm, "").split(/\n{2,}/).map((block, i) => {
-        const lines = block.split("\n");
-        const bullets = lines.filter(l => /^\s*[-*]\s+/.test(l));
-        if (bullets.length) {
-          const lead = lines.find(l => !/^\s*[-*]\s+/.test(l));
-          return <div key={i}>{lead && <p>{inline(lead)}</p>}<ul className="mt-1 flex list-disc flex-col gap-0.5 ps-5">{bullets.map((b, j) => <li key={j}>{inline(b.replace(/^\s*[-*]\s+/, ""))}</li>)}</ul></div>;
-        }
-        return <p key={i}>{inline(block)}</p>;
-      })}
-    </div>
-  );
 }
 
 function UserMessage({ text }: { text: string }) {
@@ -121,7 +87,6 @@ function UserMessage({ text }: { text: string }) {
 function AgentMessage({ run, live, payables }: { run: AgentRun; live?: boolean; payables: PayableRow[] | undefined }) {
   const steps = (run.transcript ?? []) as Step[];
   const facts = steps.map(factFor).filter((f): f is Fact => !!f);
-  const [showProse, setShowProse] = useState(false);
   const running = run.status === "running";
   const took = run.completedAt && run.startedAt ? formatMs(run.completedAt - run.startedAt) : null;
   const proposed = BigInt(run.proposedAtomic);
@@ -132,24 +97,15 @@ function AgentMessage({ run, live, payables }: { run: AgentRun; live?: boolean; 
         {running ? <p className="type-body text-text-2">Reading the books</p>
           : run.status === "failed" ? <p className="type-body text-fail-text">Stopped: {humanize(run.failureCode ?? "run failed")}. Nothing was proposed.</p>
           : (
-            <>
-              {facts.length > 0 && (
+            <AgentAnswer explanation={run.explanation ?? undefined} checks={facts.length > 0 ? (
                 <ul className="flex flex-col gap-1.5">
                   {facts.map((fact, i) => (
                     <li key={i} className="flex items-center gap-2 type-body"><StatusMark status={fact.status} /><span>{fact.text}</span></li>
                   ))}
                 </ul>
-              )}
+              ) : undefined}>
               <Proposals steps={steps} payables={payables} />
-              {run.explanation && (facts.length > 0
-                ? <div>
-                    <button type="button" onClick={() => setShowProse(v => !v)} aria-expanded={showProse} className="type-label-sm text-text-2 underline underline-offset-4">
-                      {showProse ? "Hide explanation" : "Show explanation"}
-                    </button>
-                    {showProse && <div className="mt-2"><Prose text={run.explanation} /></div>}
-                  </div>
-                : <Prose text={run.explanation} />)}
-            </>
+            </AgentAnswer>
           )}
         <p className="type-label-sm text-text-3">
           {run.provider ? humanize(run.provider) : "Agent"}{took ? ` \u00b7 ${took}` : ""}
