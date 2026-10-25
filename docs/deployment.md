@@ -45,8 +45,8 @@ an older worktree: the backend deployment owner deploys merged `origin/main`.
 | `SKARL_PAYMENTS_SERVICE_SECRET` | Private service authentication; must match Convex |
 | `BASE_SEPOLIA_RPC_URL` | Receipt verification; public default `https://sepolia.base.org` |
 | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` | Server-side CDP facilitator authentication when both configured |
-| `CDP_WALLET_SECRET` | Reserved for the separately implemented CDP-managed wallet integration |
-| `CDP_CLIENT_API_KEY` | CDP data API integration when implemented |
+| `CDP_WALLET_SECRET` | CDP-managed wallet integration; buyer/Convex executor setup is separate |
+| `CDP_CLIENT_API_KEY` | CDP SQL witness; its Convex action also needs this key in Convex |
 
 The public URL is the only `NEXT_PUBLIC_*` value in this deployment setup. Gemini
 credentials belong in Convex, where inference runs. Setting credentials does not

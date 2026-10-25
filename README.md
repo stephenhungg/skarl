@@ -30,8 +30,8 @@ No API keys are required to run the shell. See [setup](docs/setup.md) for Python
    maximum of 10 USDC.” The existing demo order is already funded, so this is a safe
    status demonstration without another charge. For a new order, use its actual ID
    and stored budget. The plugin also describes buying a verified sample’s evidence
-   for at most 0.25 USDC; that flow requires the deployed endpoint and an eligible
-   sample, and must stop if either is unavailable.
+   for at most 0.25 USDC; the endpoint is implemented, but a licensed, accepted and delivered
+   sample is still required. Stop if the sample is unavailable.
 
 See [deployment](docs/deployment.md) for operator setup and [status](docs/status.md)
 for live evidence. Installing the plugin is not proof of a completed Wallet MCP

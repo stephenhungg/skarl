@@ -425,3 +425,43 @@ source change. The orchestrator must deploy merged `origin/main` from a clean,
 matching checkout before the new `evalVideoModel` argument is available live.
 
 Validation: `pnpm check` passed **396 tests** (107 Node, 261 Convex, 28 payment-route), all typechecks, documentation checks and the production build. This includes 18 runner tests plus model-default/override/scope/replay regressions; transport and provider responses are mocked in these tests. A separate read-only review found no actionable paired-evaluation correctness issue. No new live inference measurement is claimed.
+
+## Production CDP facilitator verification — October 25, 2026, 02:49 PDT
+
+Production URL: https://skarl.vercel.app
+
+The CDP API key ID/secret pair arrived and was installed as encrypted production
+variables via stdin. Deployment `dpl_5wKnDRjDaRT8HeB29HoYVRMT5EH2` reached READY
+with the merged CDP facilitator and evidence routes. `CDP_WALLET_SECRET` and
+`CDP_CLIENT_API_KEY` were still absent at this check; polling continues for them.
+
+Live, authenticated `createCdpFacilitatorClient().getSupported()` returned these
+Base Sepolia kinds: x402 V2 `exact`, `upto`, and `batch-settlement`. This is a real
+CDP API response, not a fixture, simulation or payment. The app selects `exact`.
+
+The public, unpaid POST probe to
+`/api/orders/skarl-red-cup-demo-v1/fund` returned **402**, with
+`X-Skarl-Facilitator: cdp` and decoded `PAYMENT-REQUIRED` fields:
+
+```json
+{
+  "x402Version": 2,
+  "scheme": "exact",
+  "network": "eip155:84532",
+  "amount": "100000000",
+  "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "payTo": "0x8408a922ea400af33d7c2080a9edd5d3495b695f",
+  "maxTimeoutSeconds": 300
+}
+```
+
+This is the legacy **100 USDC v1** order, used only for an unsigned challenge
+probe. No wallet approval, signature or settlement was submitted. The existing
+10 USDC v2 order remains a confirmed status read, not a new CDP payment.
+
+The deployed evidence endpoint returned **404 `sample_unavailable`** for the
+known verification-only submission `mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j`, correctly
+refusing to offer unlicensed/unaccepted work for sale. The plugin now documents
+the implemented 0.25 USDC contract and actual response fields. A licensed,
+accepted and delivered sample, live paid delivery, and Bazaar indexing evidence
+remain outstanding. No new transaction hash was produced by this deployment.
