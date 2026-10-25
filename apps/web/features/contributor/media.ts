@@ -40,15 +40,15 @@ export const MEDIA_ERROR_COPY: Record<MediaErrorKind, { title: string; body: str
   },
   unsupported_browser: {
     title: "This browser can't record here",
-    body: "It doesn't offer camera capture or MediaRecorder. Try a current Chrome, Safari or Firefox.",
+    body: "It doesn't offer camera capture or MediaRecorder, so try a current Chrome, Safari or Firefox.",
   },
   unsupported_codec: {
     title: "No supported recording format",
-    body: "This browser can't record MP4 (H.264) or WebM. Try a current Chrome, Safari or Firefox.",
+    body: "This browser can't record MP4 (H.264) or WebM, so try a current Chrome, Safari or Firefox.",
   },
   permission_denied: {
     title: "Camera or microphone access was blocked",
-    body: "Allow both in the site settings next to the address bar, then try again. Narration is part of the evidence, so the mic is required.",
+    body: "Allow both in the site settings next to the address bar and try again, since narration is part of the evidence and the mic is required.",
   },
   no_device: {
     title: "No camera or microphone found",
@@ -56,11 +56,11 @@ export const MEDIA_ERROR_COPY: Record<MediaErrorKind, { title: string; body: str
   },
   device_in_use: {
     title: "The camera is busy",
-    body: "Another app or tab is using it. Close video calls or other recorders, then try again.",
+    body: "Another app or tab is using it, so close video calls or other recorders and try again.",
   },
   recorder_failed: {
     title: "Recording stopped unexpectedly",
-    body: "The browser's recorder reported an error. Retake the clip.",
+    body: "The browser's recorder reported an error, so retake the clip.",
   },
   too_large: {
     title: "Clip is over 25 MB",
@@ -68,7 +68,7 @@ export const MEDIA_ERROR_COPY: Record<MediaErrorKind, { title: string; body: str
   },
   unknown: {
     title: "Couldn't start the camera",
-    body: "Something unexpected went wrong. Try again, or reload the page.",
+    body: "Something unexpected went wrong, so try again or reload the page.",
   },
 };
 

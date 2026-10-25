@@ -27,7 +27,7 @@ export function CatchCard({ card, active, visible }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill status={card.status} />
           <span className="skc-chip mono">{formatDuration(card.report.source.durationMs)}</span>
-          <span className="mono ml-auto text-[11px] leading-none text-[rgb(var(--paper)/.5)] max-[809px]:hidden">Illustrative report, not model output</span>
+          <span className="mono ml-auto text-[11px] leading-none text-[rgb(var(--paper)/.5)] max-[809px]:hidden">Example report written by hand</span>
         </div>
         <p className="skc-title cut-regular">{card.title}</p>
         <div className="mt-auto">

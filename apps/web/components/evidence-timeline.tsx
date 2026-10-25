@@ -53,10 +53,10 @@ export function formatDuration(ms: number) {
 }
 
 export function resultLine(report: VerificationReport) {
-  if (report.duplicate.status === "suspected") return "Duplicate suspected · no second payable";
+  if (report.duplicate.status === "suspected") return "Flagged as a copy of paid work";
   if (report.recommendation === "accept") return "Recommends acceptance · payable on approval";
-  if (report.recommendation === "request_correction") return "Acceptance held · no payable created";
-  return "Sent to a person · no payable yet";
+  if (report.recommendation === "request_correction") return "Held, nothing is paid";
+  return "Waiting on a person";
 }
 
 const RANK: Record<CriterionStatus, number> = { supported: 0, unobservable: 1, contradicted: 2 };

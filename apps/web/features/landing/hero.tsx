@@ -28,12 +28,12 @@ export function Hero() {
       <div className="relative z-10 flex w-full max-w-[800px] flex-col items-center px-[18px] text-center">
         <Rise delay={0.25} duration={0.6}>
           <h1 id="hero-title" className="cut-regular text-[32px] leading-[1.2] tracking-[-0.015em] text-ink md:text-[42px] xl:text-[48px]">
-            Pay people for what the video shows.
+            Get paid to record short task videos for AI teams.
           </h1>
         </Rise>
         <Rise delay={0.35} duration={0.5} className="mt-4 max-w-[600px]">
           <p className="text-[14px] leading-[1.2] tracking-[0.01em] text-slate-500 md:text-[18px]">
-            A marketplace for short narrated demonstrations. Each clip is checked against its narration, and contributors are paid in test USDC on Base Sepolia after a person approves.
+            AI teams post a task and fund it. You record yourself doing it and say what you are doing. The video is checked against what you said, and once a person approves it you are paid in test USDC on Base Sepolia.
           </p>
         </Rise>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-[18px]">

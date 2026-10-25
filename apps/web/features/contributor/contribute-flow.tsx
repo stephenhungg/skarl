@@ -95,7 +95,7 @@ function Shell({ backend, summary, history, payables, submitter }: ShellProps) {
           </div>
           <div className="flex flex-col items-start gap-1.5 md:items-end">
             <BackendBadge backend={backend} />
-            <span className="text-[12px] leading-[1.2] text-fog">Signed in as the demo contributor. This is a labeled demo identity, not real sign-in.</span>
+            <span className="text-[12px] leading-[1.2] text-fog">Signed in as the demo contributor account.</span>
           </div>
         </motion.header>
 

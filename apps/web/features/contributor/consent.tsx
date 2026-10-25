@@ -3,8 +3,8 @@ import { Card, CardTitle, Pill } from "./ui";
 
 export const CONSENT_ITEMS = [
   { id: "self", text: "I'm the person in this clip, and nobody else can be seen or heard in it." },
-  { id: "license", text: "I license this clip to the buyer for model training under the demo license (demo-consent-v1). The original stays in private storage." },
-  { id: "testnet", text: "This is a testnet demo. Payment is test USDC on Base Sepolia, sent only after a person approves an accepted clip." },
+  { id: "license", text: "I license this clip to the buyer for model training under the demo license (demo-consent-v1), and the original stays in private storage." },
+  { id: "testnet", text: "This is a testnet demo, and payment is test USDC on Base Sepolia sent only after a person approves an accepted clip." },
 ] as const;
 
 export type ConsentId = typeof CONSENT_ITEMS[number]["id"];

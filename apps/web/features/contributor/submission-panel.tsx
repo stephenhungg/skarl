@@ -16,7 +16,7 @@ export function statusView(submission: Submission, payable?: Payable): StatusVie
   }
   switch (submission.status) {
     case "uploading": return { label: "UPLOADING", tone: "muted", note: "The upload hasn't been confirmed yet." };
-    case "queued": return { label: "QUEUED", tone: "neutral", note: "Waiting for analysis. Nothing has looked at the clip yet." };
+    case "queued": return { label: "QUEUED", tone: "neutral", note: "Waiting for analysis, and nothing has looked at the clip yet." };
     case "analysing": return { label: "ANALYZING", tone: "neutral", note: "Analysis is running on the backend." };
     case "needs_review": return { label: "REVIEW", tone: "strong", note: "A person will look at this clip before anything is accepted." };
     case "needs_correction": return { label: "NEEDS CORRECTION", tone: "strong", note: reason ?? "The reviewer asked for a new take." };
@@ -34,8 +34,8 @@ const SUBMIT_ERROR: Record<Extract<SubmitState, { phase: "error" }>["kind"], str
   upload_url_failed: "The backend didn't hand out an upload URL.",
   upload_failed: "The upload to Convex storage failed.",
   upload_timeout: "The upload took longer than two minutes and was stopped.",
-  offline: "You're offline. Reconnect, then retry.",
-  create_failed: "The clip uploaded, but creating the submission failed. Retrying reuses the same upload.",
+  offline: "You're offline, so reconnect and then retry.",
+  create_failed: "The clip uploaded but creating the submission failed, and retrying reuses the same upload.",
   refused: "The backend refused this submission.",
 };
 
@@ -131,7 +131,7 @@ export function SubmissionPanel({ submitState, onRetry, current, history, payabl
             </p>
           )}
           {current?.analysis?.implementation === "scaffold" && (
-            <p className="mt-3 text-[13px] leading-[1.35] text-slate-500">This analysis came from a scaffold, not a model, so it can only route to review.</p>
+            <p className="mt-3 text-[13px] leading-[1.35] text-slate-500">This analysis came from a placeholder, so it goes to a person for review.</p>
           )}
           {current?.analysis?.summary && (
             <p className="mt-3 text-[13px] leading-[1.4] text-slate-700">{current.analysis.summary}</p>

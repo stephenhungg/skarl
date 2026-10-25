@@ -5,9 +5,9 @@ import { Card, CardTitle, Pill, shortHash } from "./ui";
 // Mirrors convex/seed.ts. Shown only when the live rubric can't be read, and labeled as such.
 const DOC_TASK = {
   title: "Red-cup narrated demonstrations",
-  taskPrompt: "Pick up the red cup and place it on the marked coaster. Narrate each action. Fixed camera; red and blue cups; 10 to 30 seconds.",
+  taskPrompt: "Pick up the red cup and place it on the marked coaster while you narrate each action, with a fixed camera, red and blue cups and a 10 to 30 second clip.",
   criteria: [
-    { criterionId: "red-cup-pickup", description: "Pick up the red cup, not the blue cup", modality: "visual" },
+    { criterionId: "red-cup-pickup", description: "Pick up the red cup", modality: "visual" },
     { criterionId: "coaster-placement", description: "Place the red cup on the marked coaster", modality: "temporal" },
     { criterionId: "narration-alignment", description: "Narration agrees with visible actions and object", modality: "cross_modal" },
   ] satisfies Criterion[],
@@ -16,10 +16,10 @@ const DOC_TASK = {
 const MODALITY: Record<Criterion["modality"], string> = { visual: "VISUAL", audio: "AUDIO", temporal: "TEMPORAL", cross_modal: "CROSS-MODAL" };
 
 const ORDER_STATUS: Record<string, string> = {
-  awaiting_funding: "Awaiting buyer funding. Clips can be reviewed, but nothing is accepted or paid until funding lands.",
+  awaiting_funding: "The buyer has not funded this yet, so clips can be reviewed but nothing is accepted or paid until funding lands.",
   funded: "Funded and open.",
   collecting: "Funded and collecting.",
-  fulfilled: "Quota filled. New clips won't be accepted.",
+  fulfilled: "The quota is filled, so new clips won't be accepted.",
 };
 
 export function TaskBrief({ summary }: { summary: OrderSummary | null | undefined }) {
@@ -70,7 +70,7 @@ export function TaskBrief({ summary }: { summary: OrderSummary | null | undefine
         </p>
       )}
       {!live && summary !== undefined && (
-        <p className="mt-5 text-[13px] leading-[1.35] text-slate-500">The live order isn&apos;t reachable, so this is the task as written in the docs. Pay and open spots come from the order and aren&apos;t shown.</p>
+        <p className="mt-5 text-[13px] leading-[1.35] text-slate-500">The live order isn&apos;t reachable, so this is the task as written in the docs and pay and open spots aren&apos;t shown.</p>
       )}
     </Card>
   );

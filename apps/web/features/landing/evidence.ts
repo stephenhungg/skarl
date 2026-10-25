@@ -13,7 +13,7 @@ export const DEMO_VIDEO_URL: string | null = null; // set once the 3 minute demo
 export const SETTLEMENT = {
   status: "PLANNED" as EvidenceStatus,
   label: "Base Sepolia settlement",
-  detail: "not yet observed",
+  detail: "waiting for the first transfer",
 };
 
 export type ProofRow = { date: string; title: string; summary: string; status: EvidenceStatus; href?: string };
@@ -29,21 +29,21 @@ export const PROOF_LOG: ProofRow[] = [
   {
     date: "10.25",
     title: "Seeded demo backend deployed on Convex",
-    summary: "One organization, four demo identities and one unfunded 100 USDC order with a frozen rubric. Seeding again returns the same IDs.",
+    summary: "One organization, four demo identities and one unfunded 100 USDC order with a frozen rubric, and seeding again returns the same IDs.",
     status: "LIVE",
     href: "https://github.com/stephenhungg/skarl/blob/main/docs/backend.md#task-1-client-contract",
   },
   {
     date: "10.25",
     title: "Self-approval and agent approval are refused",
-    summary: "A payout proposal with a changed requester, recipient or amount is refused too, and every refusal leaves an audit row. Covered by the Convex regressions.",
+    summary: "A payout proposal with a changed requester, recipient or amount is refused too, and every refusal leaves an audit row that the Convex tests check.",
     status: "SIMULATED",
     href: "https://github.com/stephenhungg/skarl/blob/main/docs/finance-agent.md",
   },
   {
     date: "10.25",
     title: "A duplicate clip cannot create a second payable",
-    summary: "A hash match against accepted work keeps the submission as evidence and posts nothing. The hashes come from test fixtures for now.",
+    summary: "A hash match against accepted work keeps the submission as evidence and posts nothing, though the hashes come from test fixtures for now.",
     status: "SIMULATED",
     href: "https://github.com/stephenhungg/skarl/blob/main/docs/accounting.md",
   },
@@ -78,7 +78,7 @@ export const STATUS_LEGEND: { status: EvidenceStatus; meaning: string }[] = [
   { status: "LIVE", meaning: "Ran for real and is observable now" },
   { status: "REPLAYED", meaning: "Real output recorded earlier, shown again" },
   { status: "SIMULATED", meaning: "Deterministic fixture or synthetic data" },
-  { status: "PLANNED", meaning: "Designed, not running" },
+  { status: "PLANNED", meaning: "Designed, waiting to be built" },
 ];
 
 export const EVIDENCE_DOCS_URL = "https://github.com/stephenhungg/skarl/tree/main/docs";
@@ -141,7 +141,7 @@ const refundPaid = createRefundPaidJournal({ eventId: "refund-paid-1", orderId: 
 export const MONEY_LEDGER: LedgerState = [funding, fulfillment, payout, refundReserved, refundPaid].reduce(postJournal, EMPTY_LEDGER);
 export const MONEY_CASH_LEFT = accountBalance(MONEY_LEDGER, "asset:usdc");
 
-export const MONEY_SEATS = "Fills the settlement accountant and accounts-payable clerk seats. The controller stays human.";
+export const MONEY_SEATS = "The finance agent prepares payouts and refunds, and a person approves each one.";
 
 export const MONEY_ACCOUNT_LABEL: Record<Account, string> = {
   "asset:usdc": "USDC cash",
@@ -159,7 +159,7 @@ export const MONEY_STEPS: MoneyStep[] = [
     detail: `${usdcShort(FUNDED)} test USDC on Base Sepolia, paid through Coinbase x402. It is held as a customer prepayment, a liability, not revenue.`,
     journals: [funding],
     journalStatus: "SIMULATED",
-    transfer: { label: "Buyer funding", amountMicro: FUNDED, status: SETTLEMENT.status, detail: "x402 funding on Base Sepolia, not yet observed", txHref: null },
+    transfer: { label: "Buyer funding", amountMicro: FUNDED, status: SETTLEMENT.status, detail: "Paid over x402 on Base Sepolia once funding is live", txHref: null },
   },
   {
     id: "accept",
@@ -168,16 +168,16 @@ export const MONEY_STEPS: MoneyStep[] = [
     journals: [fulfillment],
     journalStatus: "SIMULATED",
     transfer: null,
-    idleNote: "Revenue and the payable are booked. No cash moves until a payout is approved and confirmed.",
+    idleNote: "Revenue and the payable are booked, but no cash moves until a payout is approved and confirmed.",
   },
   {
     id: "approve",
     title: "Agent proposes, controller approves",
-    detail: "The finance agent drafts the payout. A human controller approves it, and the agent cannot approve its own request.",
+    detail: "The finance agent drafts the payout and a person on the team approves it, since the agent has no way to approve its own request.",
     journals: [],
-    note: "Approval posts nothing. It binds the recipient, amount, chain and proposal version, and the payable stays open until the transfer confirms.",
+    note: "Approving does not move money, so the payment stays open until the transfer confirms.",
     journalStatus: "SIMULATED",
-    transfer: { label: "Contributor payout", amountMicro: RATE, status: "PLANNED", detail: "Proposed by the agent, approved by the controller, not yet observed on chain", txHref: null },
+    transfer: { label: "Contributor payout", amountMicro: RATE, status: "PLANNED", detail: "Proposed by the agent and approved by the controller, waiting for the transfer", txHref: null },
   },
   {
     id: "payout",
@@ -185,24 +185,24 @@ export const MONEY_STEPS: MoneyStep[] = [
     detail: `The ${usdcShort(RATE)} payable clears only when the approved transfer confirms. A signature appears here once one is observed.`,
     journals: [payout],
     journalStatus: "SIMULATED",
-    transfer: { label: "Contributor payout", amountMicro: RATE, status: SETTLEMENT.status, detail: "Base Sepolia transfer, not yet observed", txHref: null },
+    transfer: { label: "Contributor payout", amountMicro: RATE, status: SETTLEMENT.status, detail: "Sent on Base Sepolia once payouts are live", txHref: null },
   },
   {
     id: "refund",
     title: `Nine samples cancelled, ${usdcShort(REFUND)} refunded`,
-    detail: "The unfulfilled balance moves to refunds payable, then clears when the refund transfer confirms.",
+    detail: "The unused 90 is set aside to refund the buyer and clears when the refund transfer confirms.",
     journals: [refundReserved, refundPaid],
     journalStatus: "SIMULATED",
-    transfer: { label: "Buyer refund", amountMicro: REFUND, status: SETTLEMENT.status, detail: "Base Sepolia transfer, not yet observed", txHref: null },
+    transfer: { label: "Buyer refund", amountMicro: REFUND, status: SETTLEMENT.status, detail: "Sent on Base Sepolia once payouts are live", txHref: null },
   },
   {
     id: "close",
     title: `Cash ends at ${usdcShort(MONEY_CASH_LEFT)}`,
-    detail: "Before inference, fees and gas, not profit.",
+    detail: "This is before model, fee and gas costs.",
     journals: [],
     closing: true,
     idleNote: "Cash left on the order after the payout and the refund.",
-    note: "Before inference, fees and gas, not profit. Prepayments, payables and refunds all end at zero.",
+    note: "Everything owed has been paid or refunded, and this is before model, fee and gas costs.",
     journalStatus: "SIMULATED",
     transfer: null,
   },
@@ -353,8 +353,8 @@ export type CatchCard = {
 };
 
 export const CATCH_CARDS: CatchCard[] = [
-  { id: "mismatch", status: "HELD", title: "Said the red cup. Picked up the blue one.", result: "Acceptance held · no payable created", report: CATCH_REPORT_MISMATCH, provenance: "SIMULATED" },
-  { id: "retake", status: "ACCEPTED", title: "Retake matches the narration. Payable created.", result: "Accepted by the controller · one payable created", report: CATCH_REPORT_RETAKE, provenance: "SIMULATED" },
-  { id: "duplicate", status: "DUPLICATE", title: "Cropped re-upload. No second payable.", result: "Duplicate suspected · no second payable", report: CATCH_REPORT_DUPLICATE, provenance: "SIMULATED" },
-  { id: "unobservable", status: "REVIEW", title: "Hand covers the coaster. Sent to a person.", result: "Sent to a person · no payable yet", report: CATCH_REPORT_UNOBSERVABLE, provenance: "SIMULATED" },
+  { id: "mismatch", status: "HELD", title: "The narration says red cup, the video shows blue", result: "Held, nothing is paid", report: CATCH_REPORT_MISMATCH, provenance: "SIMULATED" },
+  { id: "retake", status: "ACCEPTED", title: "The retake matches the narration", result: "Accepted, the contributor is owed 7.50", report: CATCH_REPORT_RETAKE, provenance: "SIMULATED" },
+  { id: "duplicate", status: "DUPLICATE", title: "A cropped copy of an earlier clip", result: "Flagged as a copy of paid work", report: CATCH_REPORT_DUPLICATE, provenance: "SIMULATED" },
+  { id: "unobservable", status: "REVIEW", title: "The coaster is hidden, so a person checks it", result: "Waiting on a person", report: CATCH_REPORT_UNOBSERVABLE, provenance: "SIMULATED" },
 ];
