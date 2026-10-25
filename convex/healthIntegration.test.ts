@@ -156,6 +156,18 @@ describe("redacted integration evidence", () => {
     expect(await row(f.t, "claude")).toMatchObject({ status: "ok" });
   });
 
+  it.each(["gemini", "claude"] as const)("completed %s analyst calls count because newer finance integrations share the same provider", async provider => {
+    const f = await setup();
+    const id = await f.t.run(ctx => ctx.db.insert("analystNotes", { organizationId: f.organizationId, orderId: f.defaultOrderId,
+      kind: "exception", itemKey: "synthetic-health", promptVersion: "synthetic", status: "provider_error", summary: PRIVATE,
+      evidenceCited: [], recommendation: "needs_info", confidence: 0, provider, model: `${provider}-synthetic`,
+      transcriptJson: PRIVATE, attempts: 1, createdAt: Date.now(), completedAt: Date.now() }));
+    expect(await row(f.t, provider)).toMatchObject({ status: "missing" });
+    await f.t.run(ctx => ctx.db.patch(id, { status: "completed" }));
+    expect(await row(f.t, provider)).toMatchObject({ status: "ok" });
+    expect(JSON.stringify(await rows(f.t))).not.toContain(PRIVATE);
+  });
+
   it("bank freshness is independent of reachable Nessie and never exposes snapshot contents", async () => {
     const f = await setup();
     expect(await row(f.t, "bank_snapshot")).toMatchObject({ status: "missing" });

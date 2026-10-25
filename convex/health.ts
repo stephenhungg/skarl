@@ -1,5 +1,6 @@
 import { internalAction, query } from "./_generated/server";
 import { makeFunctionReference } from "convex/server";
+import { v } from "convex/values";
 import { PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK } from "../packages/contracts/src/chain";
 import { envConfigured, evidenceStatus, publicSiteUrl, REQUIRED_ENV, type HealthItem } from "./lib/health";
 import { probeBalance, probeNessie, probeBinding, type Probe } from "./lib/healthProbe";
@@ -40,7 +41,8 @@ export const refresh = internalAction({ args: {}, handler: async ctx => {
 } });
 
 /** Fixed demo scope and an explicit allowlist: never return source documents or errors. */
-export const integrations = query({ args: {}, handler: async ctx => {
+// sampleAt changes the HTTP query cache key each minute; it never supplies the clock.
+export const integrations = query({ args: { sampleAt: v.optional(v.number()) }, handler: async ctx => {
   const now = Date.now(), items: HealthItem[] = [];
   const item = (id: string, status: HealthItem["status"], demoCritical: boolean, reason: string, fix: string,
     lastSuccessAt: number | null, evidence: HealthItem["evidence"] = {}) =>
@@ -77,10 +79,12 @@ export const integrations = query({ args: {}, handler: async ctx => {
   const financeRuns = orgId ? await ctx.db.query("financeAgentRuns").filter(q => q.eq(q.field("organizationId"), orgId)).order("desc").take(100) : [];
   const chats = orgId ? await ctx.db.query("agentChats").filter(q => q.eq(q.field("organizationId"), orgId)).order("desc").take(100) : [];
   const coaches = orgId ? await ctx.db.query("coachExplanations").filter(q => q.eq(q.field("organizationId"), orgId)).order("desc").take(100) : [];
+  const analystNotes = orgId ? await ctx.db.query("analystNotes").filter(q => q.eq(q.field("organizationId"), orgId)).order("desc").take(100) : [];
   for (const provider of ["gemini", "claude"] as const) {
     const times = financeRuns.filter(run => realOrderIds.has(run.orderId) && (run.provider ?? "gemini") === provider && run.status === "completed")
       .map(run => run.completedAt ?? 0);
     times.push(...chats.filter(chat => realOrderIds.has(chat.orderId) && chat.model.startsWith(provider) && chat.status === "completed").map(chat => chat.completedAt ?? 0));
+    times.push(...analystNotes.filter(note => realOrderIds.has(note.orderId) && note.provider === provider && note.status === "completed").map(note => note.completedAt ?? 0));
     if (provider === "claude") for (const coach of coaches) {
       if (coach.status !== "completed" || !coach.model.startsWith("claude")) continue;
       const submission = await ctx.db.get(coach.submissionId);

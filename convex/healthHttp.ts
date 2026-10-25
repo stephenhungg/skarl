@@ -6,7 +6,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
   status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
 });
 export const get = httpAction(async ctx => {
-  try { return json(await ctx.runQuery(makeFunctionReference<"query">("health:integrations"), {})); }
+  try { return json(await ctx.runQuery(makeFunctionReference<"query">("health:integrations"), { sampleAt: Math.floor(Date.now() / 60_000) })); }
   catch { return json({ error: "health_unavailable" }, 503); }
 });
 

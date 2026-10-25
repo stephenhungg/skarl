@@ -70,12 +70,14 @@ export function healthReport(report) {
 }
 
 /** Read-only GET. Passing means no missing critical prerequisite, not successful settlement. */
-export async function runPreflight({ args = [], env = process.env, fetchImpl = fetch, log = console.log, table = console.table } = {}) {
+export async function runPreflight({ args = [], env = process.env, fetchImpl = fetch, log = console.log, table = console.table, now = Date.now } = {}) {
   try {
     const url = healthUrl({ args, env });
     const response = await fetchImpl(url, { method: "GET", signal: AbortSignal.timeout(10_000), redirect: "error" });
     if (!response.ok) throw new Error();
     const report = healthReport(await response.json());
+    // A cached green report is not current health if all cron telemetry has stopped.
+    if (now() - report.generatedAt > 5 * 60_000 || report.generatedAt - now() > 60_000) throw new Error("stale_health_report");
     log(`health evidence as of ${new Date(report.generatedAt).toISOString()}`);
     table(report.items.map(row => ({ integration: row.id, status: row.status,
       observed: row.observedAt === null ? "unverified" : new Date(row.observedAt).toISOString(), reason: row.reason, fix: row.fix })));

@@ -12,6 +12,7 @@ function report() {
 function harness(body = report(), response = {}) {
   const requests = [], logs = [], tables = [];
   return { requests, logs, tables, options: {
+    now: () => timestamp,
     env: { CONVEX_URL: "https://synthetic.convex.cloud" },
     fetchImpl: async (...args) => { requests.push(args); return { ok: true, json: async () => body, ...response }; },
     log: line => logs.push(line), table: rows => tables.push(rows),
@@ -133,5 +134,15 @@ test("a missing target or invalid arguments cannot silently run against another 
     Object.assign(h.options, options);
     assert.equal(await runPreflight(h.options), 1);
     assert.equal(h.requests.length, 0);
+  }
+});
+
+test("stale or future green reports cannot pass because cached health is not evidence of current cron activity", async () => {
+  for (const at of [timestamp - 300001, timestamp + 60001]) {
+    const body = report(); body.generatedAt = at;
+    for (const item of body.items) item.observedAt = at;
+    const h = harness(body);
+    assert.equal(await runPreflight(h.options), 1);
+    assert.equal(h.tables.length, 0);
   }
 });
