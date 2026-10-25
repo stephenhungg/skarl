@@ -31,7 +31,7 @@ export function Hero() {
           maskImage: "linear-gradient(180deg, #000 0%, #000 55%, transparent 88%)",
         }}
       >
-        <SpectralDrape className="h-full w-full" colors={["#c7f18e", "#8fe3b4", "#5f7d6a", "#e9f9cf"]} backgroundColor="#10120e" />
+        <SpectralDrape className="h-full w-full" colors={["#e9f6dd", "#d0e9bf", "#b4d89c", "#f7fcf1"]} backgroundColor="#10120e" />
       </motion.div>
 
       <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(60% 40% at 50% 45%, rgb(var(--ink) / .4), transparent 75%)" }} />
