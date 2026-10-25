@@ -6,6 +6,14 @@ The agent proposes; the buyer-signed policy (or the buyer in review) approves; a
 
 **[Open the live demo](https://skarl.devshardat.work)** · [Coinbase submission](docs/coinbase-submission.md) · [Devpost text](docs/devpost.md) · [Two-minute demo and judging runbook](docs/demo-script.md) · [Architecture SVG](docs/architecture.svg)
 
+## How we use Convex
+
+Convex is Skarl's whole backend: schema, queries, mutations, actions, HTTP actions, crons and file storage.
+Clip uploads go to Convex storage, and a scheduled action runs verification.
+Payouts wait on a durable `@convex-dev/workflow` approval step.
+The buyer dashboard and mobile task list update live through `useQuery` subscriptions.
+Details, evidence files and a dated build log are in [hackathon.md](hackathon.md).
+
 The demo moment: an accepted original earns a payable; a copied submission cannot earn a second one; the finance agent can propose payment but cannot approve its own request. Required source, consent, duplicate and financial controls gate progress. Optional witnesses expose disagreements without granting authority.
 
 **Start here: [track-to-evidence review guide](docs/review-guide.md).** It maps sponsor requirements to real code, isolated checks, recorded live evidence and remaining gaps. [Sponsor criteria](docs/sponsor-tracks.md) · [Architecture](docs/architecture.svg) · [Dated build status](docs/status.md) · [Demo runbook](docs/demo-script.md).
