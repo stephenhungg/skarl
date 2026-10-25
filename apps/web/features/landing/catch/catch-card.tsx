@@ -1,4 +1,6 @@
+"use client";
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { formatDuration } from "@/components/evidence-timeline";
 import { CheckSheet } from "./check-sheet";
 import { StatusPill } from "@/components/status-pill";
@@ -21,9 +23,37 @@ type Props = {
   visible: boolean;
 };
 
+// The example clip fills the card; only the centre card plays it.
+function ClipBackground({ clip, active }: { clip: CatchCardData["clip"]; active: boolean }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (active && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) void v.play().catch(() => {});
+    else v.pause();
+  }, [active]);
+  return (
+    <>
+      <video
+        ref={ref}
+        src={clip.src}
+        poster={clip.poster}
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        aria-hidden="true"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      <div aria-hidden="true" className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgb(var(--ink) / .5) 0%, rgb(var(--ink) / .12) 24%, rgb(var(--ink) / .72) 44%, rgb(var(--ink) / .96) 66%)" }} />
+    </>
+  );
+}
+
 export function CatchCard({ card, active, visible }: Props) {
   const inner = (
     <div className="skc-frame">
+      {visible && <ClipBackground clip={card.clip} active={active} />}
       <div className="skc-body">
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill status={card.status} />
