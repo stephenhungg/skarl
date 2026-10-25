@@ -31,6 +31,7 @@ impersonable demo selectors, not production authentication.
 | `?format=jsonl` | One complete sample per line; empty dataset produces an empty body |
 | `?format=lerobot` | `skarl.lerobot-v2-manifest.v1`, LeRobot-v2-style info, task and episode metadata |
 | `?format=rlds-json` | `skarl.rlds-json.v1`, RLDS-style episode and step conversion metadata |
+| `?format=lerobot-v2` | Loadable LeRobot v2.1 zip: per-episode Parquet with the retargeted SO-101 `action` and hand keypoints, plus `meta/`; see [LeRobot v2 Parquet archive](#lerobot-v2-parquet-archive) |
 
 All formats retain each sample's quality breakdown, usable bounds, consent
 license, source hash, decision basis, duplicate status, optional attestation and
@@ -105,6 +106,48 @@ write Parquet and local videos before loading a `LeRobotDataset`. The nominal
 grid is useful conversion input, not proof of exact frame PTS. The reference
 layout uses `meta/info.json`, episode/task metadata, per-frame Parquet, and videos;
 see the [LeRobot v0.3.3 dataset utilities](https://github.com/huggingface/lerobot/blob/v0.3.3/src/lerobot/datasets/utils.py).
+
+### LeRobot v2 Parquet archive
+
+`?format=lerobot-v2` returns `skarl-ORDER_ID-lerobot-v2.zip`, built in the Next.js
+route after the same `datasets.forOrder` authorization and per-episode
+`datasets.trainingInputs` hydration as the JSON manifests. It follows the
+lerobot v0.3.3 v2.1 layout:
+
+| Path | Content |
+| --- | --- |
+| `data/chunk-000/episode_000000.parquet` | One row per grid frame: `action` (float32[6], rad), `observation.hand_keypoints` (float32[63], normalized image xyz), `action_is_valid`, `action_is_reachable`, `action_ik_position_residual_m`, `timestamp`, `frame_index`, `episode_index`, `index`, `task_index` |
+| `meta/info.json` | `codebase_version: "v2.1"`, `robot_type: "so101"`, totals, `fps`, `splits`, `data_path`, `video_path: null`, feature descriptors with units and `validated_on_hardware: false` |
+| `meta/episodes.jsonl`, `meta/tasks.jsonl` | Episode lengths and the frozen task prompt (narration stays in the JSON exports) |
+| `meta/episodes_stats.jsonl` | Per-episode min/max/mean/std/count; action and keypoint stats cover valid frames only |
+| `meta/skarl_provenance.json` | Episode to submission/source-hash mapping, per-episode `action_spec`, skipped submissions and absent fields |
+
+The grid is the saved annotation sample rate (5 fps from the replay studio), not
+video FPS: each grid time takes the nearest saved frame within half a period.
+Frames without a confident hand keep the row (so LeRobot's timestamp check holds)
+with `NaN` action and keypoints and `action_is_valid: false`; filter on it before
+training. Episodes are skipped, and listed in `skipped`, when they have no saved
+hand run, no confident hand frame, a non-integer sample rate, or a sample rate
+different from the first included episode. Parquet column statistics are disabled
+so that `NaN` placeholders never become min/max values. The archive contains no
+images or video and no recorded robot state; the archive is advisory training
+input, not a teleoperation dataset. Identical snapshots produce byte-identical
+zips.
+
+Verification used `pyarrow` 26 and `lerobot==0.3.3` (the last release reading
+v2.1; lerobot 0.4+ reads v3.0 and needs its v2.1 to v3.0 converter):
+
+```python
+import zipfile
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+zipfile.ZipFile("skarl-ORDER_ID-lerobot-v2.zip").extractall("skarl_lerobot")
+dataset = LeRobotDataset("skarl/ORDER_ID", root="skarl_lerobot")
+print(dataset.num_episodes, dataset.num_frames, dataset.fps)
+frame = dataset[0]
+if frame["action_is_valid"]:
+    print(frame["action"])  # SO-101 joint targets in rad, URDF zero, never hardware-validated
+```
 
 ### RLDS metadata
 

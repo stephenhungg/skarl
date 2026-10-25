@@ -216,6 +216,8 @@ export function handToTarget(keypoints: Keypoints, aspect: number, config: ArmRe
 export interface ArmFrame {
   tMs: number;
   handedness: "Left" | "Right" | null;
+  /** Index of the retargeted hand within the annotation frame's `hands`; null when none qualified. */
+  handIndex: number | null;
   target: { position: Vec3; approach: Vec3; hinge: Vec3; gripper: number } | null;
   /** Joint targets in SO101_JOINT_NAMES order (radians); null without a usable hand, never zeros. */
   joints: JointTargets | null;
@@ -231,15 +233,17 @@ export interface ArmTrajectory {
 const SEEDS = [[0, 0, 0, 0, 0], [0, -0.5, 0.5, 0.8, 0], [0, 0.4, -0.4, 1.2, 0]];
 const blend = (previous: Vec3, next: Vec3, alpha: number): Vec3 => add(scale(previous, 1 - alpha), scale(next, alpha));
 
-/** Per saved annotation frame: pick the highest-scoring hand, map, smooth (EMA, reset across gaps), then solve IK. */
+/** Per saved annotation frame: pick the highest-scoring hand (first listed on ties), map, smooth (EMA, reset across gaps), then solve IK. */
 export function retargetHands(file: AnnotationFile, config = armRetargetConfig()): ArmTrajectory {
   const aspect = file.videoWidth / file.videoHeight;
   let smoothed: (RetargetFrameTarget & { tMs: number }) | null = null, previousJoints: number[] | null = null;
   const frames = file.frames.map((frame): ArmFrame => {
-    const hand = [...(frame.hands ?? [])].filter(item => item.score >= config.minHandScore)
-      .sort((a, b) => b.score - a.score || (a.handedness === "Right" ? -1 : 1))[0];
+    const hands = frame.hands ?? [];
+    const handIndex = hands.map((item, index) => ({ score: item.score, index })).filter(item => item.score >= config.minHandScore)
+      .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.index ?? null;
+    const hand = handIndex === null ? undefined : hands[handIndex];
     const raw = hand ? handToTarget(hand.keypoints, aspect, config) : null;
-    if (!hand || !raw) { smoothed = null; previousJoints = null; return { tMs: frame.tMs, handedness: hand?.handedness ?? null, target: null, joints: null, ik: null }; }
+    if (!hand || !raw) { smoothed = null; previousJoints = null; return { tMs: frame.tMs, handedness: hand?.handedness ?? null, handIndex: null, target: null, joints: null, ik: null }; }
     if (smoothed && frame.tMs - smoothed.tMs <= config.smoothingResetMs) {
       const alpha = config.smoothing, prior: RetargetFrameTarget & { tMs: number } = smoothed;
       const hingeSign = dot(prior.hinge, raw.hinge) < 0 ? -1 : 1;
@@ -252,7 +256,7 @@ export function retargetHands(file: AnnotationFile, config = armRetargetConfig()
     const ik = so101InverseKinematics(target, previousJoints ? [previousJoints, ...SEEDS] : SEEDS, config);
     previousJoints = ik.joints;
     const { joints, ...status } = ik;
-    return { tMs: frame.tMs, handedness: hand.handedness, target, joints: [...joints, target.gripper] as JointTargets, ik: status };
+    return { tMs: frame.tMs, handedness: hand.handedness, handIndex, target, joints: [...joints, target.gripper] as JointTargets, ik: status };
   });
   return { schema: "skarl.arm-retarget.v1", robotType: "so101", kinematicsSource: SO101_SPEC.source, jointNames: SO101_JOINT_NAMES,
     units: "rad", source: "retargeted_from_human_hand", validated_on_hardware: false, advisory: true, cameraConvention: CAMERA_CONVENTION, handModel: file.model,

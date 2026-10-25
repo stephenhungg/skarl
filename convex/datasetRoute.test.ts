@@ -176,3 +176,29 @@ it("does not return a training export if consent/binding changes during hydratio
   expect(response.status).toBe(503);
   expect(await response.json()).toEqual({ error: "dataset_unavailable" });
 });
+
+const handRun = { schema: "skarl.annotations.v1", submissionId: sample.submissionId, sourceSha256: "b".repeat(64), kind: "hands",
+  model: { name: "Synthetic hand pose", version: "fixture-v1", runtime: "browser-wasm" }, sampleFps: 5, videoWidth: 1000, videoHeight: 1000, advisory: true,
+  frames: [0, 200].map(tMs => ({ tMs, hands: [{ handedness: "Right", score: 0.9, keypoints: Array.from({ length: 21 }, (_, i) =>
+    [0.44 + (i % 5) * 0.03, 0.6 - Math.floor(i / 4) * 0.035, 0.5]) }] })) };
+it("serves the loadable LeRobot v2 zip only through the same licensed query and bound hydration action", async () => {
+  mocks.action.mockResolvedValue({ trace: null, hands: handRun, status: "validated_storage" });
+  const response = await GET(request("buyer", "?format=lerobot-v2"), context());
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Content-Type")).toBe("application/zip");
+  expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+  expect(response.headers.get("Content-Disposition")).toBe(`attachment; filename="skarl-${orderId}-lerobot-v2.zip"`);
+  expect(new Uint8Array(await response.arrayBuffer()).slice(0, 2)).toEqual(new Uint8Array([0x50, 0x4b])); // "PK"
+  expect(getFunctionName(mocks.query.mock.calls[0]![0])).toBe("datasets:forOrder");
+  expect(getFunctionName(mocks.action.mock.calls[0]![0])).toBe("datasets:trainingInputs");
+});
+it("denies the LeRobot v2 zip to unauthorized callers and explains when no episode can be retargeted", async () => {
+  mocks.query.mockRejectedValueOnce(new Error("order_not_owned: private arguments"));
+  const denied = await GET(request("contributor", "?format=lerobot-v2"), context());
+  expect(denied.status).toBe(403);
+  expect(mocks.action).not.toHaveBeenCalled();
+  const empty = await GET(request("buyer", "?format=lerobot-v2"), context());
+  expect(empty.status).toBe(422);
+  expect(await empty.json()).toEqual({ error: "lerobot_v2_unavailable", reason: "no_retargetable_episodes",
+    skipped: [{ submissionId: sample.submissionId, reason: "no_saved_hand_run" }] });
+});

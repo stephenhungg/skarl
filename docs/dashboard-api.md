@@ -1263,6 +1263,8 @@ curl -H 'x-skarl-demo-identity: buyer' \
   'https://skarl.vercel.app/api/orders/ORDER_ID/dataset?format=lerobot' > lerobot-manifest.json
 curl -H 'x-skarl-demo-identity: buyer' \
   'https://skarl.vercel.app/api/orders/ORDER_ID/dataset?format=rlds-json' > rlds-manifest.json
+curl -H 'x-skarl-demo-identity: buyer' \
+  'https://skarl.vercel.app/api/orders/ORDER_ID/dataset?format=lerobot-v2' > skarl-lerobot-v2.zip
 ```
 
 The JSON response has `schema: "skarl.dataset.v1"`, `orderId`, `generatedAt`
@@ -1357,8 +1359,10 @@ asynchronous, with `frame_aligned: false`; raw sensor downloads are not exposed.
 `?format=rlds-json` returns `schema: "skarl.rlds-json.v1"` with episode metadata,
 the same language instruction and accepted success flag, and `step_metadata`
 describing conversion. Episodes have `steps: []`, `steps_status: "not_materialized"`:
-frame steps have not been decoded. No actions, joint states, rewards, discounts,
-or terminal signals are invented. Both formats retain all sample quality,
+frame steps have not been decoded unless a saved hand run supplies a temporal
+grid. Recorded actions, joint states, rewards, discounts and terminal signals are
+never invented; the only `action` is an advisory SO-101 joint target retargeted
+from saved hand keypoints (`validated_on_hardware: false`). Both formats retain all sample quality,
 license and provenance fields in each episode.
 
 These are human-video conversion manifests. Both explicitly set
@@ -1367,6 +1371,15 @@ Parquet/video archives or RLDS TFDS datasets. A converter must decode the video,
 verify FPS/frame count, and materialize observation-only records. Full feature
 mapping, compatibility requirements and primary references are in
 [Buyer datasets](datasets.md).
+
+`?format=lerobot-v2` is the exception: an `application/zip` LeRobot v2.1 dataset
+(`data/chunk-000/episode_XXXXXX.parquet`, `meta/info.json`, `meta/episodes.jsonl`,
+`meta/episodes_stats.jsonl`, `meta/tasks.jsonl`) that `LeRobotDataset` loads
+directly. It runs the same buyer query and per-episode `datasets.trainingInputs`
+hydration as the manifests, contains only retargeted actions and hand keypoints
+(no video), and returns `422 {error: "lerobot_v2_unavailable", skipped}` when no
+licensed episode has a confident saved hand run. See
+[LeRobot v2 Parquet archive](datasets.md#lerobot-v2-parquet-archive).
 
 ### Sample quality and usable segment
 

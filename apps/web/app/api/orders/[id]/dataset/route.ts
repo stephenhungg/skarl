@@ -4,6 +4,7 @@ import { ConvexHttpClient } from "convex/browser";
 import type { NextRequest } from "next/server";
 import { api, paymentJson, type Id } from "../../../../../lib/payments/server";
 import { lerobotManifest, rldsJsonManifest } from "../../../../../../../convex/lib/trainingFormats";
+import { lerobotV2Archive } from "../../../../../features/datasets/lerobot-v2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   const orderId = (await context.params).id;
   if (!/^[a-zA-Z0-9]+$/.test(orderId)) return paymentJson({ error: "invalid_order_id" }, 400);
   const format = request.nextUrl.searchParams.get("format") ?? "json";
-  if (!["json", "jsonl", "lerobot", "rlds-json"].includes(format)) return paymentJson({ error: "invalid_dataset_format" }, 400);
+  if (!["json", "jsonl", "lerobot", "lerobot-v2", "rlds-json"].includes(format)) return paymentJson({ error: "invalid_dataset_format" }, 400);
   const url = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (!url) return paymentJson({ error: "dataset_not_configured" }, 503);
   try {
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const manifest = await db.query(api.datasets.forOrder, { demoIdentity, orderId: orderId as Id<"orders">,
       refreshKey: Math.floor(Date.now() / webConfig.datasetRefreshMs) });
     if (format === "json") return paymentJson(manifest);
-    if (format === "lerobot" || format === "rlds-json") {
+    if (format === "lerobot" || format === "lerobot-v2" || format === "rlds-json") {
       // Hydrate one licensed episode at a time; the action repeats publication and
       // consent checks after reading bounded private sensor/annotation storage.
       const samples = [];
@@ -34,6 +35,17 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
         samples.push({ ...sample, trainingInputs });
       }
       const training = { ...manifest, samples };
+      if (format === "lerobot-v2") {
+        const archive = lerobotV2Archive(training);
+        if (!archive.ok) return paymentJson({ error: "lerobot_v2_unavailable", reason: archive.error, skipped: archive.skipped }, 422);
+        return new Response(Uint8Array.from(archive.zip), { headers: {
+          "Content-Type": "application/zip",
+          "Cache-Control": "private, no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff",
+          "Content-Disposition": `attachment; filename="skarl-${orderId}-lerobot-v2.zip"`,
+        } });
+      }
       return paymentJson(format === "lerobot" ? lerobotManifest(training) : rldsJsonManifest(training));
     }
     // Authorize and materialize the snapshot before starting the response. Each
