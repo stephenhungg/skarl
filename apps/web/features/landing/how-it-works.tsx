@@ -1,90 +1,63 @@
 import { SectionHeader } from "@/components/section-header";
 import { LandingFigure, type LandingFigureName } from "./figures/landing-figure";
 
-type Step = { fig: LandingFigureName; title: string; body: string };
+type Step = { fig: LandingFigureName; title: string; body: string; order: string };
 
-const RECORD: Step = { fig: "record", title: "Record", body: "A contributor films the task and narrates it." };
-const CHECK: Step = { fig: "check", title: "Check", body: "AI compares video with narration and flags copies." };
-const APPROVE: Step = { fig: "approve", title: "Approve", body: "A person on the team signs off on each payout." };
-const PAY: Step = { fig: "pay", title: "Pay", body: "Test USDC moves on Base Sepolia and the books balance." };
+// Reading order around the pane: Record, Check, down to Approve, back across to Pay.
+// On one column the order classes put them back in sequence.
+const PANES: Step[] = [
+  { fig: "record", title: "Record", body: "A contributor films the task and narrates it.", order: "order-1" },
+  { fig: "check", title: "Check", body: "AI compares video with narration and flags copies.", order: "order-2" },
+  { fig: "pay", title: "Pay", body: "Test USDC moves on Base Sepolia and the books balance.", order: "order-4 min-[640px]:order-3" },
+  { fig: "approve", title: "Approve", body: "A person on the team signs off on each payout.", order: "order-3 min-[640px]:order-4" },
+];
 
-const GAP = 88; // room between panels for the arrows
-
-function Panel({ step }: { step: Step }) {
+function Pane({ step }: { step: Step }) {
   return (
-    <div className="flex flex-col gap-3">
-      <LandingFigure name={step.fig} />
-      <div className="flex flex-col gap-1 px-1">
-        <span className="cut-regular text-[17px] leading-[1.3] text-deep">{step.title}</span>
-        <span className="cut-book text-[15px] leading-[1.4] text-slate-500">{step.body}</span>
+    <div className="relative">
+      <LandingFigure name={step.fig} className="rounded-none" />
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 px-5 pb-4 pt-12"
+        style={{ background: "linear-gradient(180deg, transparent, rgb(var(--ink) / .85) 55%)" }}
+      >
+        <span className="cut-regular text-[16px] leading-[1.25] text-paper">{step.title}</span>
+        <span className="cut-book text-[13px] leading-[1.35] text-fog">{step.body}</span>
       </div>
     </div>
   );
 }
 
-// A flowing arrow. `dir` picks the direction; the dash of light runs along it.
-function Arrow({ dir }: { dir: "right" | "left" | "down" }) {
-  const vertical = dir === "down";
-  const len = vertical ? 64 : GAP - 16;
-  const line = vertical ? `M10 2 V${len - 4}` : dir === "right" ? `M2 10 H${len - 4}` : `M${len - 2} 10 H6`;
-  const head = vertical
-    ? `M5 ${len - 9} L10 ${len - 3} L15 ${len - 9}`
-    : dir === "right"
-      ? `M${len - 9} 5 L${len - 3} 10 L${len - 9} 15`
-      : `M9 5 L3 10 L9 15`;
+// Small arrow badge that sits on a seam between two panes.
+function SeamArrow({ left, top, rotate }: { left: string; top: string; rotate: number }) {
   return (
-    <svg viewBox={vertical ? `0 0 20 ${len}` : `0 0 ${len} 20`} width={vertical ? 20 : len} height={vertical ? len : 20} fill="none" aria-hidden="true">
-      <path d={line} stroke="rgb(var(--haze))" strokeWidth="1.5" />
-      <path d={line} stroke="rgb(var(--slate-700))" strokeWidth="1.5" strokeDasharray="8 40" className="hw-flow" />
-      <path d={head} stroke="rgb(var(--slate-700))" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <span
+      aria-hidden="true"
+      className="absolute z-10 grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-paper text-ink"
+      style={{ left, top }}
+    >
+      <svg viewBox="0 0 12 12" width="11" height="11" fill="none" style={{ transform: `rotate(${rotate}deg)` }}>
+        <path d="M2 6h7.5M6.5 3l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
   );
 }
 
-// Arrow laid over a panel row at the vertical middle of the panel art. Padding percentages resolve against
-// the row's width, and the art is 14:11, so its middle sits at (row - gap) / 2 * 11 / 28.
-function RowArrow({ dir }: { dir: "right" | "left" }) {
-  return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 hidden min-[810px]:block" style={{ paddingTop: `calc((100% - ${GAP}px) * 11 / 56 - 10px)` }}>
-      <div className="flex justify-center"><Arrow dir={dir} /></div>
-    </div>
-  );
-}
-
-// The four steps as a two by two flowchart: Record to Check, down to Approve, across to Pay.
+// The four steps as one window: four panes with thin bars between them and arrows on the seams.
 export function HowItWorks() {
   return (
     <section id="how-it-works" aria-labelledby="how-it-works-title" className="py-[72px] xl:py-[108px]">
-      <style>{`
-        .hw-flow { animation: hw-flow 1.8s linear infinite; }
-        @keyframes hw-flow { from { stroke-dashoffset: 48; } to { stroke-dashoffset: 0; } }
-        .hw-chart { --panel-w: calc((100% - ${GAP}px) / 2); }
-        @media (prefers-reduced-motion: reduce) { .hw-flow { animation: none; } }
-      `}</style>
       <div className="frame">
         <SectionHeader id="how-it-works-title" eyebrow="How Skarl works" title="From task to payout" />
-
-        <div className="hw-chart relative mx-auto mt-8 max-w-[900px]">
-          <div className="grid grid-cols-1 gap-y-8 min-[810px]:gap-y-0" style={{ gridTemplateColumns: undefined }}>
-            <div className="relative grid grid-cols-1 gap-8 min-[810px]:grid-cols-[1fr_88px_1fr] min-[810px]:gap-0">
-              <Panel step={RECORD} />
-              <div className="hidden min-[810px]:block" />
-              <Panel step={CHECK} />
-              <RowArrow dir="right" />
-            </div>
-
-            <div aria-hidden="true" className="hidden min-[810px]:grid min-[810px]:grid-cols-[1fr_88px_1fr]">
-              <div />
-              <div />
-              <div className="flex justify-center py-3"><Arrow dir="down" /></div>
-            </div>
-
-            <div className="relative grid grid-cols-1 gap-8 min-[810px]:grid-cols-[1fr_88px_1fr] min-[810px]:gap-0">
-              <div className="order-2 min-[810px]:order-1"><Panel step={PAY} /></div>
-              <div className="hidden min-[810px]:order-2 min-[810px]:block" />
-              <div className="order-1 min-[810px]:order-3"><Panel step={APPROVE} /></div>
-              <RowArrow dir="left" />
-            </div>
+        <div className="relative mx-auto mt-10 max-w-[760px]">
+          <ol className="m-0 grid list-none grid-cols-1 gap-[6px] overflow-hidden rounded-[16px] p-0 min-[640px]:grid-cols-2">
+            {PANES.map(step => (
+              <li key={step.title} className={step.order}><Pane step={step} /></li>
+            ))}
+          </ol>
+          <div className="hidden min-[640px]:block">
+            <SeamArrow left="50%" top="25%" rotate={0} />
+            <SeamArrow left="75%" top="50%" rotate={90} />
+            <SeamArrow left="50%" top="75%" rotate={180} />
           </div>
         </div>
       </div>
