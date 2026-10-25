@@ -127,7 +127,7 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
                         {finding.evidence.map((e, i) => (
                           <button key={i} type="button" onClick={() => seek(e.startMs, e.endMs)} title={e.claim}
                             className="rounded-pill border border-line-control px-2 py-0.5 type-label-sm text-text-2 tabular-nums hover:bg-hover hover:text-text-1">
-                            {humanize(e.modality)} {formatMs(e.startMs)}&ndash;{formatMs(e.endMs)}
+                            {humanize(e.modality)} {formatMs(e.startMs)} to {formatMs(e.endMs)}
                           </button>
                         ))}
                       </div>

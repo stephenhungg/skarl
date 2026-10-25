@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { ContributeFlow } from "@/features/contributor/contribute-flow";
+import { OverviewPage } from "@/features/contributor/pages";
 
 export const metadata: Metadata = {
   title: "Contribute · Skarl",
-  description: "Record a task video, upload it privately and follow its review.",
+  description: "Follow your clips from upload to payout.",
 };
 
 export default function ContributePage() {
-  return <ContributeFlow />;
+  return <OverviewPage />;
 }

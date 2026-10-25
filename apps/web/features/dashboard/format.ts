@@ -4,14 +4,14 @@ const SCALE = 10n ** BigInt(USDC_DECIMALS);
 
 /** Exact micro-USDC to display text. Keeps every significant decimal (1.875 stays 1.875), at least two. */
 export function formatUsdc(value: string | bigint | null | undefined): string {
-  if (value === null || value === undefined || value === "") return "—";
+  if (value === null || value === undefined || value === "") return "None";
   const amount = BigInt(value), absolute = amount < 0n ? -amount : amount;
   const fraction = (absolute % SCALE).toString().padStart(USDC_DECIMALS, "0").replace(/0+$/, "").padEnd(2, "0");
   return `${amount < 0n ? "-" : ""}${(absolute / SCALE).toLocaleString("en-US")}.${fraction}`;
 }
 
 export function shortHash(value: string | null | undefined, head = 6, tail = 4) {
-  if (!value) return "—";
+  if (!value) return "None";
   return value.length <= head + tail + 1 ? value : `${value.slice(0, head)}…${value.slice(-tail)}`;
 }
 
@@ -22,7 +22,7 @@ export function formatMs(ms: number) {
 }
 
 export function formatTime(ms: number | null | undefined) {
-  if (!ms) return "—";
+  if (!ms) return "Unknown";
   return new Date(ms).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
