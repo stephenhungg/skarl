@@ -36,7 +36,7 @@ function toTask(orderId: string, summary: Summary | undefined, network: string):
 export function useLiveTask(orderId?: string) {
   const connection = useConvexConnectionState();
   const base = useQuery(api.context, identity);
-  const context = base && orderId ? { ...base, orderId } : base;
+  const context = useMemo(() => base && orderId ? { ...base, orderId } : base, [base, orderId]);
   const summary = useQuery(api.summary, context ? { ...identity, orderId: context.orderId } : 'skip');
   const task = useMemo(() => context ? toTask(context.orderId, summary, context.network) : null, [context?.orderId, context?.network, summary]);
   const loading = context === undefined || (context !== null && summary === undefined);
@@ -44,10 +44,12 @@ export function useLiveTask(orderId?: string) {
     live: !!task && connection.isWebSocketConnected };
 }
 
+const OPEN_TASKS = { ids: { query: api.openTasks, args: identity } };
+
 /** Every open task, newest first. Falls back to the default order if the backend has no task list yet. */
 export function useOpenTasks() {
   const context = useQuery(api.context, identity);
-  const listed = useQueries({ ids: { query: api.openTasks, args: identity } }).ids as string[] | Error | undefined;
+  const listed = useQueries(OPEN_TASKS).ids as string[] | Error | undefined;
   const ids = useMemo(() => Array.isArray(listed) ? listed : context ? [context.orderId] : [], [listed, context?.orderId]);
   const queries = useMemo(() => Object.fromEntries(ids.map(orderId => [orderId, { query: api.summary, args: { ...identity, orderId } }])), [ids]);
   const summaries = useQueries(queries) as Record<string, Summary | Error | undefined>;
