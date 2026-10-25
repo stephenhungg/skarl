@@ -16,6 +16,7 @@ import type * as analytics from "../analytics.js";
 import type * as approvalWorkflow from "../approvalWorkflow.js";
 import type * as chainWitness from "../chainWitness.js";
 import type * as dashboard from "../dashboard.js";
+import type * as evidenceSales from "../evidenceSales.js";
 import type * as exceptions from "../exceptions.js";
 import type * as finance from "../finance.js";
 import type * as financeAgent from "../financeAgent.js";
@@ -56,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   approvalWorkflow: typeof approvalWorkflow;
   chainWitness: typeof chainWitness;
   dashboard: typeof dashboard;
+  evidenceSales: typeof evidenceSales;
   exceptions: typeof exceptions;
   finance: typeof finance;
   financeAgent: typeof financeAgent;
