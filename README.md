@@ -42,7 +42,7 @@ The rule defaults on with a cap equal to the per-clip price and requires every c
 2. Give your agent [the Skarl plugin instructions](docs/wallet-mcp-plugin/skarl.md). They pin Base Sepolia, the test USDC contract, approved payee and payment cap; no Skarl server credentials are needed.
 3. Ask: **“Create a fresh Skarl demo order with POST https://skarl.vercel.app/api/orders, then fund its returned fundUrl with at most 1 USDC on Base Sepolia.”** Creation accepts an empty body or `{}` and requires no identity header. Each order has a fixed red-cup task and exactly 1 USDC budget. Inspect the terms, approve in Coinbase Wallet, then verify confirmed funding. Creation allows 3 orders per IP and 30 globally per hour; HTTP 429 includes `Retry-After`. For a no-charge replay, check `skarl-red-cup-demo-v2`, already funded. [Exact requests and recovery](docs/wallet-mcp-plugin/README.md).
 
-The API documents itself at [GET /api/orders](https://skarl.vercel.app/api/orders).
+The API documents itself at [GET /api/orders](https://skarl.vercel.app/api/orders). The [Wallet MCP funding coordinator](docs/wallet-mcp-demo.md#durable-handoff-from-the-repository), `pnpm wallet:fund`, validates the quote and stored buyer rule, persists request/recovery boundaries privately and independently checks seller + canonical chain confirmation. It emits tool calls for the connected agent; it never signs, approves or invokes Wallet MCP itself. An operator-only, idempotent agent-treasury demo order supports a buyer whose wallet is also the legacy treasury, without changing other orders. Both web and Convex changes require deployment before using that path.
 
 ## For AI agents
 

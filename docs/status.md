@@ -91,6 +91,14 @@ outside this Convex environment inventory and still needs separate verification.
 - Prerecorded evaluation can opt into content-quality metrics without claiming liveness was tested or making media publishable/payable. The operational report retains the missing-liveness/licensing restrictions.
 - This pass does not deploy, run paid inference, create scenario artifacts or send a payment. Integrated `pnpm check` passed: 185 package/script, 877 Convex, 185 payment and 33 web tests (1,280 total), typechecks, 57-file documentation checks and the production build. A local browser connected read-only to the shared cloud rendered the scenario history, confirmation/cancel flow, clip witnesses and the stored 10-USDC four-way funding match. No scenario was executed by this pass; the historical run rows belong to their original executions. Production hosting and the new content-only cloud protocol still require operator deployment.
 
+## Coinbase Wallet MCP upgrade — October 25, 2026
+
+- Added a non-signing funding coordinator (`pnpm wallet:fund`) with exact quote/recipient/cap checks, private state, write-ahead request boundaries, same-request recovery, first-completion deadlines and independent seller + canonical chain verification. Operator-entered MCP metadata is not cryptographic tool provenance or a journal check.
+- Added a versioned funding-terms commitment over the order, budget, canonical Base USDC, recipient and buyer auto-pay rule. The HTTP route and atomic claim both reject stale reviewed terms before settlement/new financial writes. Legacy callers remain compatible.
+- Added an operator-only idempotent one-order agent-treasury path with auto-pay disabled. It freezes that order's Base recipient to the configured CDP agent wallet; the global treasury and other orders stay unchanged. Public order creation cannot select an arbitrary payee.
+- **Live read-only MCP evidence:** `get_wallets` returned the existing human treasury as the connected Base Account; `search_x402_services` for Skarl on Base Sepolia returned zero matches. Both real calls completed once. No initiation, completion or transfer ran in this probe.
+- Both web and Convex code must be deployed before provisioning/funding the agent-treasury order. A completed Wallet MCP funding payment, Bazaar listing, licensed sample sale and contributor payout are not inferred from code or read-only discovery. Final integrated `pnpm check` passed 261 package/script, 1,187 Convex, 192 payment, 34 web and 11 finance-eval tests (1,685 total), typechecks, documentation checks and the production build. A cloud invocation found `payments:createWalletMcpDemo` unavailable on the current shared deployment; that failed invocation created no order or payment. The operator owns deployment before provisioning and human wallet approval.
+
 ## Verifier jury and evaluation honesty — October 25, 2026
 
 Implemented and pushed for operator deployment:

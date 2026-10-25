@@ -1,6 +1,6 @@
 # Skarl — Coinbase Payment Agents submission
 
-**Every claim has a witness.** Skarl is the autonomous settlement desk for human-data companies: independent witnesses must agree before anything moves. Agents propose, a rule the buyer signed approves, the AI never approves itself. Buyers review exceptions. The seats are **settlement accountant + AP clerk**.
+**Every claim has a witness.** Skarl is the autonomous settlement desk for human-data companies: required evidence and deterministic financial checks govern each obligation. Agents propose, a rule the buyer signed approves, the AI never approves itself. Buyers review exceptions. The seats are **settlement accountant + AP clerk**.
 
 [The thesis and witness table](thesis.md) separate live work/money evidence from simulated controls and pending integrations. The intended moment is a duplicate blocked before a second payable, refused agent self-approval, then buyer-policy approval within cap, independent CDP execution constraints and chain/ledger agreement. The complete live sequence remains pending; the receipts below prove funding.
 
@@ -21,6 +21,12 @@ Skarl serves AI teams buying short narrated demonstrations and operators who mus
 **Agent platforms:** Claude Code or Codex with Coinbase Wallet MCP for the buyer interface; bounded Gemini/Claude tool loops running as Convex Node actions for finance. The [custom plugin](wallet-mcp-plugin/skarl.md) is reusable instruction context, not a Coinbase-certified or preinstalled plugin. Wallet MCP and CDP Server Wallet are separate execution surfaces.
 
 ## 2. Working example and reuse
+
+### Reliable Wallet MCP handoff
+
+[The funding runbook](wallet-mcp-demo.md) includes `pnpm wallet:fund`, a non-signing coordinator with an adversarially tested quote preflight, stable funding idempotency key, write-ahead initiation/completion boundaries and original-request recovery. Its funding-terms commitment binds the order, budget, Base USDC recipient and buyer auto-pay rule; the server rechecks it before settlement and inside the atomic claim. Changed terms fail closed. Public metadata and operator-recorded MCP results do not replace actual Wallet MCP approval/completion or canonical receipt verification.
+
+The operator-only `payments:createWalletMcpDemo({})` provisions one agent-treasury order idempotently with auto-pay disabled, resolving the observed buyer/treasury self-send problem without changing the default treasury or exposing arbitrary recipient selection. This source path still requires deployment and a real human-approved Wallet MCP payment; provisioning itself moves no money.
 
 ### Start with the verified result
 
@@ -122,7 +128,7 @@ crop, flip, overlay or screen recapture.
 ### Known limitations
 
 1. **The complete earn-and-payout loop has not run live.** Wallet MCP purchase, eligible sample sale, Bazaar listing and contributor payout remain unverified at the evidence cutoff. The deployed signature fix enabled live contributor registration and policy enforcement, but there is still no accept-eligible submission, payable or independently approved payout intent. The source auto-pay path requires operator deployment and `PAYOUT_EXECUTOR=cdp_agent`; no live auto-pay execution is claimed here.
-2. **Demo identity selectors are impersonable.** Server role checks demonstrate policy, not production authentication. Operator-owned test assets and demo identities are the entire funds scope.
+2. **Anonymous demo identity selectors remain impersonable while demo mode is enabled.** Signed-in buyer/contributor memberships are implemented; production provider/deployment checks and removal of anonymous demo access remain separate. Operator-owned test assets and demo identities are the entire funds scope.
 3. **Evidence-sale accounting is implemented but not live-proven.** New code debits separate `asset:evidence_usdc` and credits `revenue:evidence_sales` when bound licensed content remains available, or `liability:evidence_receipts` when unavailable. It preserves the receiving wallet and leaves order prepayments, quota and contributor obligations unchanged. This availability-based recognition does not prove download. Both deployments must include the new schema/handlers before payment; automatic redelivery, deferred-revenue release and sale refunds remain unfinished. A lost response requires operator recovery without repaying.
 4. **AI quality is unmeasured.** Live negative smoke tests and a directional frame probe are not a human-task benchmark. Monotonic dHash alignment has local re-encode and synthetic shifted-sample regressions; crop, flip, overlay and screen recapture are not covered. Speed robustness and independent-retake false positives are uncalibrated.
 5. **Recovery still needs an operator in some cases.** SQL is unavailable; exhausted webhook retries or a lost payout hash do not have a general background repair worker. A successful approval or submitted hash is not a paid payable.
@@ -199,3 +205,8 @@ no custom Skarl contract. The deployed cron backfilled all 11 finalized reports;
 EASScan and RPC confirmed their attestations, all with `needs_review` outcomes.
 [Live inventory](status.md#live-backfill-and-automatic-sweep--october-25-2026-0353-pdt).
 These receipts prove recorded provenance, not accepted work or payment.
+
+
+## Wallet MCP connectivity re-check — October 25, 2026
+
+A real read-only Codex session called `base-mcp.get_wallets` and `search_x402_services` once each. The returned Base Account was `0x8408a922ea400af33d7c2080a9edd5d3495b695f`, which equals the legacy funding treasury. Search for `Skarl`, `network:base-sepolia`, `scheme:exact`, `maxUsdPrice:"1"`, `limit:3` returned an empty result set with no further page. This establishes Wallet MCP read connectivity and an observed missing listing, not an initiated or completed payment. The agent-treasury order addresses the payer/payee collision; its payment remains pending operator deployment and human approval. The current cloud helper lookup failed as not deployed, so no new order, initiation or payment was created by that check.

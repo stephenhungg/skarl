@@ -33,7 +33,8 @@
     "cdp:sql:witness": "node scripts/cdp-sql-witness.mjs",
     "eval:finance": "vitest run --config evals/finance-agent/vitest.config.mts",
     "eval:finance-live": "node evals/finance-agent/live.mjs",
-    "check:no-hardcode": "node scripts/no-hardcode.mjs"
+    "check:no-hardcode": "node scripts/no-hardcode.mjs",
+    "wallet:fund": "node scripts/wallet-mcp-flow.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.3.0",
