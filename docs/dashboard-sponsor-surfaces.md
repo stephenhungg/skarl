@@ -1,12 +1,16 @@
 # Dashboard sponsor surfaces
 
+Implemented in this source pass: clip-review work/money/judgment witness panels, ledger four-way reconciliation, and `/dashboard/scenarios` with confirmed, explicitly simulated runs and persistent audit evidence. Payout document-ID signing/recovery fixes have regression coverage, and proposals open the real agent loop. Local read-only browser checks verified these evidence surfaces; production version verification and operator deployment remain separate. The checklist below still contains remaining presentation work.
+
 What the dashboard must show so each sponsor judge sees their technology doing real work. The thesis on every screen: **every claim has a witness**. Each surface lists its data source (exact Convex function; arguments in [dashboard API](dashboard-api.md)), whether the dashboard renders it today, and the judge moment it creates.
 
-Status: **Shown** = rendered in `apps/web/app/dashboard/**` today. **Missing** = API is live, UI is not. **Pending deploy** = code merged, needs a Convex deploy.
+Status: **Shown** = rendered in source, not a production-version claim. **Missing** = source API exists, with presentation work still outstanding in this handoff. **Pending deploy** = source needs an operator deployment.
 
 Labelling rule for every surface: testnet and simulated data carry a visible badge (`Base Sepolia`, `Solana Devnet`, `Mock bank (Nessie)`, `SIMULATED`). Never render an unconfirmed payout as paid.
 
-## Gap audit (Oct 25, 06:10 PDT, main @ `f20665c`)
+## Historical baseline audit (Oct 25, 06:10 PDT, main @ `f20665c`)
+
+This teammate audit is retained against its named commit. The integration in this change now supplies G1 in Ledger → Reconciliation and G2’s eight-scenario run/history surface; the per-clip witness panel also exposes EAS links. These source changes were checked in a local browser. The historical grades and missing-surface rows below describe the earlier commit, not this integrated source. Remaining PR #2 capture/order-switching work and the separate proof-page plan are preserved. Deployment and the full live payout still need verification.
 
 Method: grep of `apps/web/app`, `apps/web/features` and `apps/web/components` for each sponsor API and sponsor name. This audits **what a judge can see in the UI**, not whether the backend works (the backend items below are deployed and verified separately in [status](status.md)).
 
@@ -60,13 +64,14 @@ Method: grep of `apps/web/app`, `apps/web/features` and `apps/web/components` fo
 
 Scenario lab: run `bank_mismatch` → four-way table turns red live (Capital One, Convex) → agent run card shows Claude badge and the refused self-approval, then policy-engine approval (Anthropic, Hyphenate) → payout row with BaseScan transaction link and `cdp_agent` executor (Coinbase) → Skarl Guard card opens the Jira ticket (Atlassian).
 
-## P0: build these first (they carry the most tracks)
+## P0: core evidence surfaces
 
 | # | Surface | Source | Status | Tracks |
 | --- | --- | --- | --- | --- |
-| 1 | **Witness receipt** per submission: checklist of every witness (agree / disagree / missing / pending) with evidence links | `witnessReceipt.forSubmission` | Shown (audit Oct 25) | All, the thesis made visible |
-| 2 | **Four-way reconciliation table**: order · ledger · chain · bank per intent, mismatches in red | `bankWitness.reconciliation4Way`, `bankWitness.bankExceptions` | Missing (G1) | Hyphenate, Capital One |
-| 3 | **Scenario lab**: buttons to inject the 6 attacks, live pass/fail table read back from the DB | `scenarios.run`, `scenarios.listRuns` | In PR #2, not merged (G2) | Hyphenate, Convex, MTC |
+| 1 | **Witness receipt** per submission: checklist of every witness (agree / disagree / missing / pending) with evidence links | `witnessReceipt.forSubmission` | Shown below the clip and rubric; optional witnesses remain advisory | All, the thesis made visible |
+| 2 | **Four-way reconciliation table**: order · ledger · chain · bank per intent, mismatches in red | `bankWitness.reconciliation4Way`, `bankWitness.bankExceptions` | Shown in Ledger → Reconciliation; mock bank explicitly labeled | Hyphenate, Capital One |
+| 3 | **Scenario lab**: confirmed actions for 8 labeled simulations, expected/observed outcomes read from the DB | `scenarios.run`, `scenarios.listRuns` | Shown at `/dashboard/scenarios`; missing prerequisites remain blocked | Hyphenate, Convex, MTC |
+
 | 4 | **Agent refused** moment: finance agent proposal → self-approval refused, with audit reason | `financeAgentData.runs`, `dashboard.auditEvents` | Partially shown (agent page, audit page); make the refusal a highlighted card | Hyphenate, Anthropic, Coinbase |
 | 5 | **Funding with rail badge and explorer links** (BaseScan / Solana Explorer), x402 status | `payments.fundingStatus` (`network`, `explorerUrl`) | Check: order summary shown; rail badge + explorer link likely missing | Coinbase, Solana |
 
@@ -75,7 +80,7 @@ Scenario lab: run `bank_mismatch` → four-way table turns red live (Capital One
 ### Hyphenate: autonomous finance (primary)
 - Named seats on screen: **settlement accountant + AP clerk**.
 - Duplicate catch: side-by-side frames with score, second payable blocked. `media.duplicatePair` (shown), `media.submissionEvidence`.
-- Payables → proposal → independent approval → payout, each step with actor and time. `dashboard.payables`, `finance.proposePayment`, `finance.approve`, `dashboard.journal` (shown).
+- Payables → agent proposal → buyer-policy approval or buyer exception review → payout, each step with actor and time. `dashboard.payables`, `finance.proposePayment`, `finance.approve`, `dashboard.journal` (shown).
 - Balanced journal and trial balance from journals. `dashboard.journal`, `statements.forOrder` (shown).
 - Exceptions queue with acknowledge/resolve. `exceptions.list/acknowledge/resolve` (list shown; ensure actions are wired).
 - 4-way reconciliation (P0 #2) and scenario lab (P0 #3).
@@ -130,5 +135,5 @@ Scenario lab: run `bank_mismatch` → four-way table turns red live (Capital One
 1. Submissions → duplicate caught (Hyphenate moment).
 2. Witness receipt of the good clip (thesis).
 3. Agent run → self-approval refused → buyer-signed policy approves → independent CDP cap → payout tx link (Hyphenate, Coinbase, Anthropic).
-4. 4-way reconciliation all green; then run the bank-mismatch scenario and watch it turn red live (Nessie, Convex).
+4. 4-way confirmed funding comparison; then run the explicitly simulated bank-mismatch probe and inspect its recorded discrepancy (Nessie, Convex).
 5. "Connect your agent" panel (agent-native, Coinbase MCP).

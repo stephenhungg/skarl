@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { useExceptions, useJournal, useOrderId, useStatements } from "./data";
 import { formatTime, formatUsdc, humanize } from "./format";
 import { JournalReceipt } from "./receipt";
+import { FourWayReconciliation } from "./witnesses";
 import { Amount, Loading, PageHeader, Section, Unavailable } from "./ui";
 
 const ACCOUNT_LABEL: Record<string, string> = {
@@ -23,7 +24,7 @@ export function Ledger() {
   const statements = useStatements(orderId);
   const journal = useJournal(orderId);
   const exceptions = useExceptions(orderId);
-  const [tab, setTab] = useState<"books" | "journal" | "exceptions">("books");
+  const [tab, setTab] = useState<"books" | "journal" | "reconciliation" | "exceptions">("books");
   const openExceptions = (exceptions ?? []).filter(item => item.stillDetected && item.disposition?.status !== "resolved").length;
   if (orderId === null) return <Unavailable title="No staged order" description="Run pnpm seed to stage the demo order." />;
   return (
@@ -33,6 +34,7 @@ export function Ledger() {
         <TabsList size="sm">
           <TabsTrigger value="books">Books</TabsTrigger>
           <TabsTrigger value="journal">Journal<TabsCount>{journal?.length ?? 0}</TabsCount></TabsTrigger>
+          <TabsTrigger value="reconciliation">Reconciliation</TabsTrigger>
           <TabsTrigger value="exceptions">Exceptions<TabsCount>{openExceptions}</TabsCount></TabsTrigger>
         </TabsList>
         <TabsContent value="books">
@@ -97,6 +99,7 @@ export function Ledger() {
         )}
       </Section>
         </TabsContent>
+        <TabsContent value="reconciliation"><FourWayReconciliation orderId={orderId} /></TabsContent>
         <TabsContent value="exceptions">
       <Section className="mt-2" title="Reconciliation exceptions" meta="Order terms, ledger and chain compared">
         {exceptions === undefined ? <Loading rows={2} /> : exceptions.length === 0

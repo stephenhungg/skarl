@@ -1,6 +1,6 @@
 # Working on Skarl
 
-Read `docs/README.md`, `docs/workstreams.md` (the 8-hour plan; deadline Oct 25, 2026, 9:00 AM PDT) and the relevant subsystem document before editing. This is a scaffold; keep implementation status truthful. Existing root user instructions remain applicable.
+Read `docs/README.md`, `docs/workstreams.md` (the 8-hour plan; deadline Oct 25, 2026, 9:00 AM PDT) and the relevant subsystem document before editing. This is a working hackathon prototype; keep source implementation, synthetic tests, recorded external evidence and deployment status distinct. The current [review guide](docs/review-guide.md) maps those evidence boundaries to source and reproducible checks. Existing root user instructions remain applicable.
 
 ## Product and platform constraints
 

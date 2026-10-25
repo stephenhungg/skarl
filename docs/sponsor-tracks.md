@@ -1,6 +1,6 @@
 # Sponsor track strategy and evidence
 
-Pitch: **Every claim has a witness. Skarl is the autonomous settlement desk for human-data companies.** Agents propose, a rule the buyer signed approves, the AI never approves itself. Buyers review exceptions. See the [thesis and witness table](thesis.md) and [per-prize rubric mapping](devpost.md#prize-specific-evidence). The prize list on [Devpost](https://cal-hacks-13-0.devpost.com/) is authoritative. The deadline is October 25, 2026, 12:00 PM EDT (9:00 AM PDT).
+Pitch: **Every claim has a witness. Skarl is the autonomous settlement desk for human-data companies.** Agents propose, a rule the buyer signed approves, the AI never approves itself. Buyers review exceptions. See the [thesis and witness table](thesis.md) and [per-prize rubric mapping](devpost.md#prize-specific-evidence). The prize list on [Devpost](https://cal-hacks-13-0.devpost.com/) is authoritative. The deadline is October 25, 2026, 12:00 PM EDT (9:00 AM PDT). Official sources were rechecked on October 25 through Devpost and the original sponsor briefs. Start with the [review guide](review-guide.md) for criteria, source files, safe reproduction commands and remaining evidence gaps.
 
 Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devnet test USDC** (confirmed at 03:29 PDT). Base remains primary and the only payout target; a live contributor payout is still pending. Repository docs and fixture tests are not evidence of a working sponsor integration.
 
@@ -8,18 +8,18 @@ Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devne
 
 | Track (Devpost name) | What we demonstrate |
 | --- | --- |
-| [Hyphenate] The Hyphenated Enterprise: Autonomous Systems for Finance (**primary**) | The duplicate-clip catch, the blocked second payable, the agent's refused self-approval, a reconciled payout and balanced books |
+| [Hyphenate] The Hyphenated Enterprise: Autonomous Systems for Finance (**primary**) | Implemented duplicate/payable controls, separate agent proposer and buyer-policy approver, balanced journals and recorded funding; complete live policy-approved payout remains pending |
 | [Coinbase] Best Use of x402, **Payment Agents** track | Live x402 funding via CDP, a reusable Wallet MCP approval plugin, and live CDP wallet cap/allowlist rejections; contributor payout and MCP purchase still pending |
 | [Convex] Best use of Convex | Convex as the system of record: live queries, atomic financial mutations, file storage, and a Workflow for the approval wait |
 | [MLH] Best Use of Solana | Live 1-USDC Solana Devnet x402 funding and finalized RPC reconciliation; Base stays primary and the only payout rail |
-| [MLH] Best Use of Gemini API | Two independent Gemini calls (silent video, audio) producing schema-validated, timestamped evidence |
+| [MLH] Best Use of Gemini API | Argon + Flash silent-frame jury and separate Transcribe audio; stored live negative run, timestamped evidence and deterministic comparison; labeled task accuracy unmeasured |
 | Capital One (Nessie) | Live Nessie bank as the fourth reconciliation witness: on October 25 at 04:11 PDT, order, ledger, chain and bank all `match` for a 10 USDC order (mock bank, no fiat moved) |
-| Anthropic (Claude) | Live Claude finance agent (`claude-sonnet-5-5`, 3 read-only tool calls, about 7 s, cannot approve) and a Claude contributor coach whose output is validated server-side and cannot change verdicts |
-| [Atlassian] Best Security Solution for Agents | [Skarl Guard for Jira](../integrations/jira-forge/README.md), Agentic Workforce Challenge Track 2: deterministic injection guard, constrained Claude triage, audited refusals and selective rollback; **live on a Jira Cloud demo site (Oct 25, 04:53 PDT):** authenticated feed sync created SKARL-1..5 (0 errors); Claude triaged SKARL-5 within policy (labels, priority) with per-action audit and revert; the bulk-change test refused a six-issue batch with no Jira change. One agent comment write returned `uncertain` and was not replayed, by design. Injection-in-issue demo still to record |
+| [Anthropic] Claude for Public Benefit | Stored `claude-sonnet-5-5` finance run: three read-only tools, **4,636 ms backend time**, zero proposed amount; contributor coach implemented and constrained, live coach quality/community benefit unmeasured |
+| [Atlassian] Best Agent / Best Security Solution for Agents — **security track** | Forge guard/allowlisted triage/audit/selective rollback implemented. Team-recorded Jira demo at 04:53: SKARL-1..5 synced, SKARL-5 triaged, six-issue batch refused. One comment write remained `uncertain`; complete injection/reversion video and current installed behavior still need verification |
 
 ## Hyphenate
 
-Seats filled: **settlement accountant + AP clerk**, performed by the agent and buyer-signed policy. Separation of duties is **agent proposer vs. buyer-signed policy approver vs. independent CDP cap**. The buyer is the only human reviewer; a separate controller is not required.
+Seats filled: **settlement accountant + AP clerk**, performed by the agent and buyer-signed policy. Separation of duties is **agent proposer vs. buyer-signed policy approver vs. independent CDP cap**. The buyer is the only human reviewer; a separate controller is not required. The receipt aggregates supporting and missing evidence; optional sensors, detector overlays, EAS and Nessie are not universal payment gates. Auto-acceptance requires the policy’s evidence checks; exceptions go to the owning buyer. Source/licensing, duplicate, quota and recipient bindings remain enforced. See the [enforcement boundaries](review-guide.md#what-the-controls-actually-enforce).
 
 The [official brief](https://docs.google.com/document/d/1u4iN8R97ILY3kfHTPKC82zdutHrGx4ze5eCAP-J92w4/edit) judges realism, whether the system could be hired, novelty, and a memorable catch, recovery or defended decision. It requires:
 
@@ -31,7 +31,7 @@ The [official brief](https://docs.google.com/document/d/1u4iN8R97ILY3kfHTPKC82zd
 
 Judges may inject a scenario.
 
-Our moment is the [demo](demo.md) opening:
+The planned moment is the [demo](demo.md) opening; this full live sequence remains unverified:
 
 1. A re-encoded duplicate clip arrives.
 2. Its second payable is blocked.
@@ -59,7 +59,7 @@ $500 USDC plus a recruiter call per eligible team member, per track. There are t
 | Criterion | Reproducible evidence |
 | --- | --- |
 | Usefulness | An agent funds a collection order and can purchase a verified sample’s evidence; explain the buyer/contributor need. |
-| Technical design | Durable intents, exact micro-USDC, bounded spending, independent approval and receipt reconciliation; explain model/tool choices and known failure paths. |
+| Technical design | Durable intents, exact micro-USDC, bounded spending, buyer-signed policy approval separate from the proposer, and receipt reconciliation; explain model/tool choices and known failure paths. |
 | Ease of reuse | Public HTTPS app, [Wallet MCP plugin](wallet-mcp-plugin/skarl.md), three-step README setup and exact capped request examples. |
 | Product feedback | Observed blocker, workaround and desired capability; distinguish doc research from a live Wallet MCP session. |
 
@@ -94,9 +94,11 @@ Convex judges ask for real features ("live queries and components"), so the appr
 
 ## Gemini
 
-The pipeline makes two independent calls so the visual evidence is not contaminated by narration: one on timestamped JPEG frames extracted from the original clip, one on its separately extracted audio. Each returns structured output validated against the shared schema, with timestamps.
+The default verifier runs **two separate silent-frame visual requests**, Argon and Flash, plus a separate Transcribe audio request. Narration is withheld from both visual calls. Deterministic code compares each observation with the rubric; visual disagreement or unavailable evidence routes machine recommendations to review. `VERIFIER_JURY=off` and explicitly scoped evaluations use one selected visual model instead. The jury is advisory, not statistically independent proof or payment authority.
 
-Current configurable defaults are `gemini-4-argon` for visual evidence, `gemini-3.8-flash` for finance reasoning and read-only `askAgent`, and `gemini-3.5-transcribe` for audio. Billing is enabled; the team's latest probes returned correct HTTP 200 responses for 3.8 Flash, 4 Argon and 3.6 Flash. Earlier free-tier quota failures are historical and no longer current blockers. No automatic model fallback is configured. The shared transport gives each logical request one 30-second deadline across at most three transient attempts; finance rounds fit inside a two-minute overall budget. Preserve the actual model ID for every historical measurement and record prompt version and measured latency. [Configuration and probe results](ai-verification.md#models-and-configuration), [Gemini models](https://ai.google.dev/gemini-api/docs/models).
+The single-video default is `gemini-4-argon`; `gemini-3.5-transcribe` supplies audio. Gemini finance and read-only `askAgent` default to `gemini-3.8-flash`; the finance loop can separately select Claude. Stored model/provider metadata identifies what actually ran. Billing is enabled; earlier free-tier failures are historical. Each logical Gemini request has one shared 30-second deadline, including retries/backoff, within the finance run’s overall budget.
+
+The [04:40 read-back](status.md#submission-evidence-refresh--october-25-2026-0440-pdt) records a negative jury run: Argon **7,758 ms**, Flash **4,916 ms**, Transcribe **718 ms**; both visual reports found task criteria unobservable. This is live integration evidence, not accuracy, calibrated independence or a successful task acceptance. [Configuration](ai-verification.md#models-and-configuration), [evaluation protocol](evaluation.md), [Gemini models](https://ai.google.dev/gemini-api/docs/models).
 
 ## Solana
 
@@ -104,9 +106,22 @@ Current configurable defaults are `gemini-4-argon` for visual evidence, `gemini-
 
 The earlier 03:13 attempt failed before settlement because fee-payer rotation broke exact quote matching. Its expired, unsettled authorization and spend reservation were retained before the single new attempt. Current-set fee-payer validation resolves that mismatch while retaining all economic and deduplication checks. See [live success and validation](status.md#confirmed-solana-funding-after-fee-payer-fix--october-25-2026-0329-pdt), [Solana rail](payments.md#solana-rail), and [Coinbase builder feedback](coinbase-submission.md#solana-fee-payer-rotation-during-x402-funding). Base/Coinbase remain primary and payouts remain Base-only. This proves testnet funding, not a Solana payout, bridge, Wallet MCP purchase or prize eligibility.
 
+## Atlassian security track
+
+The [official Forge challenge](https://docs.google.com/document/d/12Y2Vamxbm9W_l2Eo4AM530R7HfNAYCXI-UI6F6Xnggw/edit) requires a Forge app and evaluates originality, practical organizational value and execution using Atlassian APIs. Select **Best Security Solution for Agents** in the project description; include the repository and a demo video of at most three minutes. Skarl Guard limits instruction-like issue content to comments/human review, applies project/action/batch caps, records actions and only selectively reverts an unchanged applied result. Detection is heuristic, not comprehensive prompt-injection prevention.
+
+The 04:53 Jira observations in the table are team-recorded; this documentation pass did not re-run Jira or independently inspect the site. The existing integration README still contains historical pending-deployment wording. Keep the successful sync/triage and refused batch distinct from the unresolved comment and the unrecorded planted-injection sequence. [Code and local checks](../integrations/jira-forge/README.md), [review mapping](review-guide.md).
+
+## Additional opt-ins and eligibility gates
+
+- **Most Technically Complex:** map the general Devpost technical-depth criterion to specific trust-boundary failures and recoveries, rather than counting integrations. [Review mapping](review-guide.md).
+- **Microsoft:** the [official Hacker Guide](https://docs.google.com/document/d/1RQrueC9wm5u8uxtWSC2gadIchp05hVayhGUrIjxT9dE/edit) asks for customer understanding, measurable usefulness, a path to production, responsible design and an end-to-end agent. It does not state an Azure requirement. Customer interviews, measured benefit and the complete payout flow are not established.
+- **CREAO:** the [official track page](https://community.creao.ai/CalHacks2026) requires a CREAO agent doing core product work, its agent ID and shared run link in the Devpost README, and a running demo. No such integration or run evidence is recorded. **Do not claim eligibility from using another provider’s agent.** The three CREAO tracks remain conditional on meeting that requirement.
+- **Commit Fellowship:** a working team prototype addressing a real problem, Devpost opt-in and the [supplemental form](https://mlh.link/commit-fellowship-form) are required. The [event prize listing](https://cal-hacks-13-0.devpost.com/) and [MLH category](https://www.mlh.com/events/prizes) establish the opportunity, not that the team has opted in or submitted the form.
+
 ## Other tracks and evidence gates
 
-- **Auth0:** Cal Hacks 13.0 has no Auth0 prize. Demo identities are seeded Convex users whose roles are checked on the server, and they are labeled as demo identities.
+- **Auth0:** Cal Hacks 13.0 has no Auth0 prize. Optional Convex Auth/Google sign-in and membership checks are implemented; provider configuration and deployed behavior need verification. Impersonable seeded demo selectors remain available when demo mode is enabled and are not production authentication.
 - **Cartesia:** no live evidence in the current status snapshot; exclude it as a working witness.
 - **Anthropic / Capital One:** stored live Claude finance and hosted Nessie mock-bank funding evidence now support the [Devpost mapping](devpost.md#prize-specific-evidence). See the [04:40 refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt); no measured community impact or real bank settlement is claimed.
 
@@ -143,4 +158,4 @@ At approximately 02:54 PDT, every recorded query to `/platform/v2/data/query/run
 
 ### One capability we most want
 
-**Policy-bound autonomous agent wallets usable through Wallet MCP without a human click for each already-authorized transaction.** Let the operator define a revocable network/token/recipient/budget policy once, then allow bounded execution under that policy with a stable request ID. Skarl would still require its own independent business approval; this would remove the second manual signing handoff and the separate CDP SDK executor solely for bounded execution. Today's Wallet MCP remains in approval mode. No feature request has been sent externally.
+**Policy-bound autonomous agent wallets usable through Wallet MCP without a human click for each already-authorized transaction.** Let the operator define a revocable network/token/recipient/budget policy once, then allow bounded execution under that policy with a stable request ID. Skarl still requires its own stored buyer-policy or buyer-review business approval; this would remove the Wallet MCP manual signing handoff and the separate CDP SDK executor solely for bounded execution. Today's Wallet MCP remains in approval mode. No feature request has been sent externally.

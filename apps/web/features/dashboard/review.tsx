@@ -14,6 +14,7 @@ import { formatMs, humanize, shortHash } from "./format";
 import { SubmissionStatus } from "./submissions";
 import { ConfirmDialog, Loading, PageHeader, Unavailable } from "./ui";
 import { toast } from "@/components/glaze/ui/toast";
+import { SubmissionWitnesses } from "./witnesses";
 
 type Evidence = { modality: "video" | "audio" | "text"; startMs: number; endMs: number; claim: string };
 type Finding = { criterionId: string; status: "supported" | "contradicted" | "unobservable"; evidence: Evidence[]; reason: string };
@@ -156,6 +157,7 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
           <Decision submissionId={submissionId} status={report.status} report={parsed} verificationOnly={report.verificationOnly} />
         </aside>
       </div>
+      <div className="mt-6"><SubmissionWitnesses submissionId={submissionId} /></div>
     </>
   );
 }

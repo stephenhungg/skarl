@@ -30,10 +30,12 @@ const NAV: { group?: string; items: NavItem[] }[] = [
   { group: "System", items: [
     { href: "/dashboard/agent", label: "Finance agent", icon: "browser-terminal" },
     { href: "/dashboard/audit", label: "Audit log", icon: "fingerprint-circle" },
+    { href: "/dashboard/scenarios", label: "Scenario lab", icon: "wrench" },
   ] },
 ];
 const MOBILE: NavItem[] = [NAV[0]!.items[0]!, NAV[0]!.items[1]!, NAV[1]!.items[0]!, NAV[1]!.items[1]!];
-const TITLES: Record<string, string> = { receipt: "Receipt", inbox: "Exceptions", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log" };
+const TITLES: Record<string, string> = { receipt: "Receipt", inbox: "Exceptions", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log", scenarios: "Scenario lab" };
+
 const STORE = "skarl:dashboard:sidebar";
 
 const isActive = (pathname: string, href: string) => href === "/dashboard" ? pathname === href : pathname.startsWith(href);
