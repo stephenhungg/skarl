@@ -5,6 +5,7 @@ import { coachTables } from "./coachSchema";
 import { attestationTables } from "./attestationsSchema";
 import { v } from "convex/values";
 import { sensorTrace } from "./sensorTraceValidators";
+import { annotationKind, annotationModel, annotationSummary } from "./annotationValidators";
 import { diversityValidator } from "./lib/diversity";
 import { vWorkflowId } from "@convex-dev/workflow";
 import {
@@ -236,6 +237,15 @@ export default defineSchema({
     ])
     .index("by_source_hash", ["organizationId", "sourceHash"])
     .index("by_perceptual_hash", ["organizationId", "perceptualHash"]),
+
+  // Browser-derived evidence only; no acceptance, verdict or financial authority.
+  derivedAnnotations: defineTable({
+    ...tenant, submissionId: v.id("submissions"), kind: annotationKind, model: annotationModel,
+    storageId: v.id("_storage"), summary: annotationSummary, createdBy: tokenIdentifier,
+    createdAt: v.number(), advisory: v.literal(true),
+    // Bounded, server-recomputed overlap witnesses; queries cannot read blob bytes.
+    cupInHandTimestampsMs: v.optional(v.array(v.number())),
+  }).index("by_submission", ["submissionId"]).index("by_storage", ["storageId"]),
 
   consentRecords: defineTable({
     ...tenant,

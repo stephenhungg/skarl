@@ -82,6 +82,20 @@ it("serializes JSON money without losing integer precision", async () => {
   expect((await response.json()).samples[0].amountAtomic).toBe("9007199254740993");
 });
 
+it.each(["json", "jsonl", "lerobot", "rlds-json"])("preserves derived advisory annotations and model provenance in %s", async format => {
+  const annotations = [{ kind: "hands", model: { name: "Synthetic hand pose", version: "fixture-v1", runtime: "browser-wasm" },
+    summary: { kind: "hands", frames: 2, handsDetectedFrames: 1, maxHands: 1, durationMs: 1000 },
+    url: "https://private.example/derived-labels", derived: true, advisory: true }];
+  mocks.query.mockResolvedValue({ ...manifest, samples: [{ ...sample, annotations }] });
+  const response = await GET(request("buyer", `?format=${format}`), context());
+  expect(response.status).toBe(200);
+  if (format === "jsonl") expect(JSON.parse((await response.text()).trim()).annotations).toEqual(annotations);
+  else {
+    const body = await response.json();
+    expect((format === "json" ? body.samples : body.episodes)[0].annotations).toEqual(annotations);
+  }
+});
+
 it.each(["lerobot", "rlds-json"])("serves %s only after the same licensed buyer query and preserves quality witnesses", async format => {
   const accepted = { ...sample, durationMs: 12000, task: { id: "task123", languageInstruction: "Place the cup." },
     usableStartMs: 500, usableEndMs: 2500, qualityScore: 70,

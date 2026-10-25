@@ -1383,3 +1383,98 @@ credential validation or proof of an empty account. Startup requires a
 successful customer POST probe or verification of a known account ID before
 accepting activity reads. Hosted-provider success must be recorded separately
 from mocked test results and must retain the simulated-bank label.
+
+## Derived annotations (hands, objects, masks)
+
+**Implementation requires deployment by the backend owner.** Browser models
+produce advisory hand keypoints, object boxes, and mask outlines. These runs
+cannot change verdicts, acceptance, payables, payment destinations or quality
+scores. Model name/version/runtime are client-declared provenance; server JSON
+validation and summary recomputation do not attest that inference occurred.
+
+| Function | Arguments in addition to `demoIdentity` | Result / permission |
+| --- | --- | --- |
+| `annotations.generateUploadUrl` (mutation) | `submissionId` | Native upload URL; controller or owning contributor |
+| `annotations.saveDerived` (mutation) | `submissionId`, `storageId`, `summary` | Stored annotation ID; controller or owning contributor; replaying the same upload returns the existing ID |
+| `annotations.forSubmission` (query) | `submissionId` | Newest-first `[{_id, kind, model, createdAt, createdBy, url, summary}]`; controller, order's buyer, or owning contributor |
+
+All calls check active roles and the submission's organization. An authenticated
+session supplies the principal; `demoIdentity` does not override it. Finance agents,
+other contributors, and buyers of another order are refused. Upload the JSON
+with `Content-Type: application/json` to the URL, then pass the returned
+`storageId` to `saveDerived`. The upload request contains the same advisory
+`summary` shape below for compatibility, but the server ignores its values and
+recomputes the stored summary from the uploaded bytes inside the mutation.
+Read URLs are private Convex storage bearer URLs issued after authorization;
+do not publish or cache them publicly. They are not the five-minute original
+video proxy grants, and a previously issued URL cannot be recalled by revocation.
+
+The uploaded file contract is `skarl.annotations.v1`:
+
+```ts
+{
+  schema: "skarl.annotations.v1",
+  submissionId: string,
+  sourceSha256: string, // lowercase SHA-256, bound to the stored original
+  kind: "hands" | "objects" | "masks",
+  model: {name: string, version: string, runtime: "browser-wasm" | "browser-webgpu"},
+  sampleFps: number,
+  videoWidth: number,
+  videoHeight: number,
+  advisory: true,
+  frames: Array<{
+    tMs: number,
+    hands?: Array<{handedness: "Left" | "Right", score: number,
+      keypoints: Array<[number, number, number]>}>,
+    objects?: Array<{label: string, score: number, box: [number, number, number, number]}>,
+    masks?: Array<{label?: string, prompt: {x: number, y: number}, score: number,
+      bbox: [number, number, number, number], areaFrac: number, polygon?: Array<[number, number]>}>
+  }>
+}
+```
+
+Files are capped at 5 MiB and 2,000 frames. Unknown fields are rejected at every
+level. The array named by `kind` must exist on every frame; empty arrays record
+no detections. Other declared annotation arrays may accompany that kind.
+Timestamps must increase strictly, lie in 0–30,000 ms, and not exceed the known
+original duration. `sampleFps` is positive and at most 60; dimensions are whole
+numbers from 1–8,192. Scores, all keypoint coordinates (including z), prompts,
+polygon coordinates and area fractions must be finite and normalized to 0–1.
+Boxes are `[x,y,width,height]` within the normalized image, not pixel coordinates.
+Each hand has exactly 21 three-coordinate keypoints. Per frame there are at
+most two hands, 100 objects and 20 masks; polygons contain 3–256 points.
+Model strings are nonempty and at most 160 characters; labels are printable
+ASCII, at most 80 characters, with unsafe object keys rejected. At most 100
+unique object labels may occur in a file to keep the inline summary bounded.
+
+The stored summary is `{kind, frames, durationMs}` plus `handsDetectedFrames`
+and `maxHands` for hands, `objectLabels` (detection counts by label) and
+`cupInHandFrames` for objects, or total `masks` for masks. `durationMs` is the
+last sampled timestamp (zero for an empty run), not an inferred full video
+length. A cup-in-hand frame requires a positive-score `cup`/`red cup` box and
+a positive-score overlapping hand box, or an accompanying hand keypoint inside
+that cup box. Left/right hand and red-cup label variants with spaces, hyphens
+or underscores are recognized. This spatial heuristic does not establish cup
+color, a grasp or task completion; a person box alone is insufficient.
+
+The additive `derivedAnnotations` table stores the model, server summary,
+creator, creation time and `advisory: true`. For objects it also stores bounded,
+server-recomputed `cupInHandTimestampsMs` so receipt queries can compare actual
+sample times without fetching blob bytes. No original media is duplicated.
+
+The witness receipt adds `key: "detector"`, `kind: "work"`, `live: false`.
+It is `missing` without an objects run; otherwise it compares the latest
+objects run with the source-bound independent jury's supported
+`red-cup-pickup` video intervals. `agree` requires a positive cup-in-hand count
+and a sampled timestamp inside every available jury model's supported interval;
+`disagree` means that corroboration was not established, including when no
+valid independent jury interval exists. Its detail includes model name, version,
+runtime and the advisory/client-computed limitation. Existing witnesses and
+financial state retain their existing behavior.
+
+Every dataset sample includes `annotations: [{kind, model, summary, url,
+derived: true, advisory: true}]` across JSON, JSONL, LeRobot and RLDS JSON.
+`provenance.derivedAnnotations` lists metadata-only runs with
+`basis: "client_computed"`. Export still requires the existing licensed,
+accepted delivery and consent gates. Server-side batch annotation is roadmap
+work; no live model inference is established by synthetic contract tests.

@@ -9,6 +9,9 @@ export interface TrainingSample {
   task?: { id: string; languageInstruction?: string };
   media?: { url: string; fps?: number | null; frameCount?: number | null; clientReportedFps?: number | null };
   sensorTrace?: { rawTraceExists: boolean; sensors: string[]; sampleRateHz: number; rawTraceDownload?: null } | null;
+  annotations?: { kind: "hands" | "objects" | "masks";
+    model: { name: string; version: string; runtime: "browser-wasm" | "browser-webgpu" };
+    summary: unknown; url: string | null; derived: true; advisory: true }[];
 }
 export interface TrainingManifest {
   orderId: string;

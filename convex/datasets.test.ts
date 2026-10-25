@@ -94,6 +94,38 @@ async function paidEvidence(f: Fixture, sample: Awaited<ReturnType<typeof delive
 const args = (f: Fixture, demoIdentity = "buyer") => ({ demoIdentity, orderId: f.orderId });
 
 describe("buyer dataset delivery (synthetic evidence)", () => {
+  it("exports browser-derived runs with advisory model provenance without changing acceptance or payment", async () => {
+    const f = await setup(), sample = await delivered(f);
+    const before = (await f.t.query(forOrder, args(f))).samples[0];
+    await f.t.run(async ctx => {
+      for (const kind of ["hands", "objects", "masks"] as const) {
+        const storageId = await ctx.storage.store(new Blob([JSON.stringify({ synthetic: true })], { type: "application/json" }));
+        await ctx.db.insert("derivedAnnotations", { submissionId: sample.submissionId, organizationId: f.organizationId,
+          kind, model: { name: `Synthetic ${kind}`, version: "fixture-v1", runtime: "browser-wasm" }, storageId,
+          summary: { kind, frames: 2, durationMs: 1000 }, createdBy: CONTRIBUTOR, createdAt: sample.now, advisory: true });
+      }
+      const foreign = await ctx.db.insert("organizations", { name: "Foreign annotations", status: "active",
+        createdByTokenIdentifier: "foreign-controller" });
+      const storageId = await ctx.storage.store(new Blob(["synthetic foreign annotation"]));
+      await ctx.db.insert("derivedAnnotations", { submissionId: sample.submissionId, organizationId: foreign,
+        kind: "objects", model: { name: "Foreign run", version: "fixture-v1", runtime: "browser-wasm" }, storageId,
+        summary: { kind: "objects", frames: 1, durationMs: 0 }, createdBy: "foreign-contributor", createdAt: sample.now, advisory: true });
+    });
+    const exported = (await f.t.query(forOrder, args(f))).samples[0];
+    expect(exported.annotations).toHaveLength(3);
+    for (const kind of ["hands", "objects", "masks"]) {
+      expect(exported.annotations).toContainEqual({ kind,
+        model: { name: `Synthetic ${kind}`, version: "fixture-v1", runtime: "browser-wasm" },
+        summary: { kind, frames: 2, durationMs: 1000 }, url: expect.stringMatching(/^https?:/), derived: true, advisory: true });
+    }
+    expect(exported.provenance.derivedAnnotations).toHaveLength(3);
+    expect(exported.acceptance).toEqual(before.acceptance);
+    expect(exported.payout).toEqual(before.payout);
+    expect(exported.qualityScore).toBe(before.qualityScore);
+    expect(JSON.stringify(exported.annotations)).not.toContain(CONTRIBUTOR);
+    expect(JSON.stringify(exported)).not.toContain("Foreign run");
+  });
+
   it("adds the frozen instruction and derived bounds to every licensed sample without inventing FPS", async () => {
     const f = await setup(), sample = await delivered(f);
     await f.t.run(ctx => ctx.db.patch(sample.submissionId, { environment: "kitchen-a", variant: "blue-coaster" }));

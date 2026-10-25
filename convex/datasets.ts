@@ -148,10 +148,20 @@ async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Do
     expiresAt = grant.expiresAt;
     mediaUrl = `https://skarl.vercel.app/api/orders/${order._id}/dataset/media?token=${encodeURIComponent(grant.token)}`;
   }
+  // Client-derived labels are separate from the published acceptance snapshot.
+  // Only authorized, licensed samples reach this point; no model output affects
+  // eligibility, payable amounts, quality scores or original-media bindings.
+  const annotationRuns = await ctx.db.query("derivedAnnotations")
+    .withIndex("by_submission", q => q.eq("submissionId", submission._id)).order("desc").collect();
+  const annotations = await Promise.all(annotationRuns
+    .filter(run => run.organizationId === order.organizationId && run.advisory === true)
+    .map(async run => ({ kind: run.kind, model: run.model, summary: run.summary,
+      url: await ctx.storage.getUrl(run.storageId), derived: true as const, advisory: true as const })));
   return { submissionId: submission._id, sourceSha256: submission.sourceHash, durationMs,
     task: { id: rubric._id, version: rubric.version, languageInstruction: rubric.taskPrompt, criterionIds: rubric.criteria.map(row => row.criterionId) },
     acceptedAt: decision.decidedAt, acceptance: { basis: machine ? "machine" as const : "human_controller" as const, decisionId: decision._id },
     license: { version: consent.licenseVersion, scope: consent.scope },
+    annotations,
     provenance: await buildProvenance(ctx, { ...submission, currentAnalysisId: analysis?._id }),
     diversity: { environment: submission.environment ?? null, variant: submission.variant ?? null,
       source: "contributor_self_reported" as const },

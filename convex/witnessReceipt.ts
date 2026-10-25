@@ -116,6 +116,53 @@ function workWitnesses(submission: Doc<"submissions">, analysis: Doc<"analysisRe
   return rows;
 }
 
+type Interval = { startMs: number; endMs: number };
+/** Only source-bound, available jury reports can supply a supported pickup interval. */
+function juryPickupIntervals(submission: Doc<"submissions">, analysis: Doc<"analysisResults"> | null): Interval[][] {
+  if (!analysis || analysis.implementation !== "inference" || !["completed", "needs_review"].includes(analysis.pipelineStatus)) return [];
+  const report = parsed(analysis.reportJson), durationMs = object(report.source).durationMs;
+  if (typeof durationMs !== "number" || !Number.isSafeInteger(durationMs) || durationMs <= 0) return [];
+  const judges = list(object(parsed(analysis.observationsJson).jury).judges).map(object);
+  if (judges.length < 2 || judges.length > 16 || judges.some(judge => !text(judge.model).trim()) ||
+    new Set(judges.map(judge => text(judge.model))).size !== judges.length) return [];
+  const intervals: Interval[][] = [];
+  for (const judge of judges) {
+    const judgeReport = object(judge.report), pipeline = object(judgeReport.pipeline), source = object(judgeReport.source);
+    if (judge.failureCode || pipeline.implementation !== "inference" || !["completed", "needs_review"].includes(text(pipeline.status)) ||
+      judgeReport.submissionId !== submission._id || judgeReport.taskVersionId !== submission.taskVersionId ||
+      source.sha256 !== submission.sourceHash || source.durationMs !== durationMs || pipeline.version !== analysis.pipelineVersion) return [];
+    const findings = list(judgeReport.criteria).map(object).filter(row => row.criterionId === "red-cup-pickup");
+    if (findings.length !== 1 || findings[0]!.status !== "supported") return [];
+    const evidence = list(findings[0]!.evidence).slice(0, 64).map(object).filter(row => row.modality === "video" &&
+      typeof row.startMs === "number" && Number.isSafeInteger(row.startMs) && row.startMs >= 0 &&
+      typeof row.endMs === "number" && Number.isSafeInteger(row.endMs) && row.endMs > row.startMs && row.endMs <= durationMs)
+      .map(row => ({ startMs: row.startMs as number, endMs: row.endMs as number }));
+    if (!evidence.length) return [];
+    intervals.push(evidence);
+  }
+  return intervals;
+}
+
+async function detectorWitness(ctx: QueryCtx, submission: Doc<"submissions">, analysis: Doc<"analysisResults"> | null): Promise<Witness> {
+  const runs = await ctx.db.query("derivedAnnotations").withIndex("by_submission", q => q.eq("submissionId", submission._id)).collect();
+  if (runs.some(run => run.organizationId !== submission.organizationId)) throw new Error("annotation_reference_mismatch");
+  const run = runs.filter(row => row.kind === "objects").sort((a, b) => b.createdAt - a.createdAt || b._creationTime - a._creationTime)[0];
+  if (!run) return absent("detector", "Object detector (advisory, client-computed)", "work",
+    "No stored browser-derived objects run. Advisory, client-computed detector evidence is missing.");
+  const intervals = juryPickupIntervals(submission, analysis);
+  // These timestamps are recomputed from validated uploaded frames by saveDerived,
+  // not accepted from a client summary. A clip-wide count cannot establish overlap.
+  const matching = (run.cupInHandTimestampsMs ?? []).filter(tMs => Number.isFinite(tMs) && tMs >= 0 && intervals.length > 0 &&
+    intervals.every(windows => windows.some(interval => tMs >= interval.startMs && tMs <= interval.endMs)));
+  const agrees = (run.summary.cupInHandFrames ?? 0) > 0 && matching.length > 0;
+  const comparison = agrees ? `${matching.length} cup/hand-overlap frames coincide with every available jury model's supported red-cup-pickup interval`
+    : intervals.length ? "No cup/hand-overlap frame coincides with every available jury model's supported red-cup-pickup interval"
+      : "No valid, source-bound supported red-cup-pickup interval is available from an independent jury; this run cannot corroborate it";
+  return witness("detector", "Object detector (advisory, client-computed)", "work", agrees ? "agree" : "disagree",
+    `${run.model.name} ${run.model.version} (${run.model.runtime}); advisory and client-computed. ${comparison}. Spatial cup/hand overlap is a heuristic, does not establish cup color or grasp, and never changes verdicts, acceptance, or payables.`,
+    await ctx.storage.getUrl(run.storageId));
+}
+
 async function bankWitness(ctx: QueryCtx, intent: Doc<"paymentIntents">, payable: Doc<"payables">): Promise<Witness> {
   const [operation, snapshot, treasury, destination] = await Promise.all([
     ctx.db.query("bankOperations").withIndex("by_intent", q => q.eq("paymentIntentId", intent._id)).unique(),
@@ -179,6 +226,7 @@ export const forSubmission = query({
     const recommendation = !analysis ? null : analysis.implementation === "inference" && analysis.pipelineStatus === "completed"
       ? analysis.recommendation : "needs_review";
     const witnesses = workWitnesses(submission, analysis);
+    witnesses.push(await detectorWitness(ctx, submission, analysis));
     const attestation = analysis ? await ctx.db.query("attestations").withIndex("by_analysis", q => q.eq("analysisId", analysis._id)).unique() : null;
     if (attestation && attestation.submissionId !== submission._id) throw new Error("attestation_reference_mismatch");
     const attested = attestation?.status === "confirmed" && hash(attestation.attestationUid) && hash(attestation.txHash) && !!attestation.fields;
