@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { StatusPill } from "@/components/status-pill";
 import { BUILT_ON, type BuiltOnItem } from "./evidence";
 
 // M7: the set repeats until it overfills the track, then slides left at 25px/s and wraps after
@@ -10,17 +9,18 @@ const GAP = 72;
 const HOVER_RATE = 0.15;
 const RATE_MS = 400;
 
-const LOGO_H = 22;
+const LOGO_H = 26;
 
-// Logos render through a CSS mask so every mark takes the same ink colour as the text.
-function Logo({ item }: { item: BuiltOnItem }) {
+// Logos only, through a CSS mask so every mark takes the same ink colour.
+function Item({ item }: { item: BuiltOnItem }) {
   if (!item.logo) return null;
-  const h = item.showName ? LOGO_H : item.logo.ratio > 3 ? LOGO_H * 0.8 : LOGO_H * 1.05;
+  const wide = item.logo.ratio > 1.5;
+  const h = (wide ? LOGO_H : LOGO_H * 1.15) * (item.logo.scale ?? 1);
   return (
     <span
       role="img"
-      aria-label={item.showName ? undefined : item.name}
-      aria-hidden={item.showName ? true : undefined}
+      aria-label={item.name}
+      title={item.name}
       className="inline-block flex-none bg-ink"
       style={{
         width: h * item.logo.ratio,
@@ -35,19 +35,6 @@ function Logo({ item }: { item: BuiltOnItem }) {
         maskPosition: "center",
       }}
     />
-  );
-}
-
-function Item({ item }: { item: BuiltOnItem }) {
-  return (
-    <span className="flex items-center gap-3 whitespace-nowrap">
-      <span className="flex items-center gap-2">
-        <Logo item={item} />
-        {(!item.logo || item.showName || item.label) && <span className="cut-regular text-[18px] leading-none text-ink">{item.label ?? item.name}</span>}
-      </span>
-      <span className="cut-book text-[14px] leading-none text-slate-500">{item.role}</span>
-      <StatusPill status={item.status} />
-    </span>
   );
 }
 
