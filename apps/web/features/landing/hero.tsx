@@ -33,7 +33,7 @@ export function Hero() {
         </Rise>
         <Rise delay={0.35} duration={0.5} className="mt-4 max-w-[600px]">
           <p className="text-[14px] leading-[1.2] tracking-[0.01em] text-slate-500 md:text-[18px]">
-            AI teams post tasks they need recorded, you film yourself doing one while you talk through it, and once a reviewer signs off you get paid in test USDC on Base Sepolia.
+            On Skarl, AI teams post tasks they need recorded, you film yourself doing one while you talk through it, and once a reviewer signs off you get paid in test USDC on Base Sepolia.
           </p>
         </Rise>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-[18px]">

@@ -56,7 +56,7 @@ export function CatchSection() {
     <section id="the-catch" className="skc-root relative flex w-full flex-col items-center gap-8 overflow-x-clip py-[72px]" aria-labelledby="catch-title">
       <style>{css}</style>
       <div className="frame">
-        <SectionHeader id="catch-title" eyebrow="Verification" title="How a clip gets checked" />
+        <SectionHeader id="catch-title" eyebrow="Verification" title="How Skarl checks a clip" />
       </div>
       <CatchCarousel />
     </section>

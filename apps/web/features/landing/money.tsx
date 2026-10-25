@@ -53,7 +53,7 @@ export function Money() {
   return (
     <section id="money" aria-labelledby="money-title" className="py-[72px] min-[810px]:py-[108px]">
       <div className="frame">
-        <SectionHeader id="money-title" eyebrow="Payments" title="How a test order is paid out" href="https://github.com/stephenhungg/skarl/blob/main/docs/accounting.md" external />
+        <SectionHeader id="money-title" eyebrow="Payments" title="How Skarl pays out a test order" href="https://github.com/stephenhungg/skarl/blob/main/docs/accounting.md" external />
 
         <div ref={ref} className="mt-8 grid gap-8 min-[1024px]:grid-cols-[minmax(0,1fr)_minmax(0,460px)] min-[1024px]:gap-12">
           <div className="min-w-0">

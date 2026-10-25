@@ -13,7 +13,7 @@ export function HowItWorks() {
   return (
     <section id="how-it-works" aria-labelledby="how-it-works-title" className="py-[72px] xl:py-[108px]">
       <div className="frame">
-        <SectionHeader id="how-it-works-title" eyebrow="How it works" title="From task to payout" />
+        <SectionHeader id="how-it-works-title" eyebrow="How Skarl works" title="From task to payout" />
         <ol className="m-0 mt-8 grid list-none grid-cols-1 gap-3 p-0 min-[810px]:grid-cols-2 min-[1200px]:grid-cols-4">
           {STEPS.map((s) => (
             <li key={s.n} className="flex flex-col gap-3">

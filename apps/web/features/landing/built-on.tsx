@@ -92,7 +92,7 @@ export function BuiltOn() {
 
   return (
     <section className="flex w-full flex-col items-center gap-6 py-12" aria-labelledby="built-on-title">
-      <p id="built-on-title" className="cut-book m-0 text-[14px] leading-[1.2] tracking-[0.01em] text-slate-300">Built on</p>
+      <p id="built-on-title" className="cut-book m-0 text-[14px] leading-[1.2] tracking-[0.01em] text-slate-300">Skarl is built on</p>
       {still ? (
         <ul className="frame m-0 flex list-none flex-wrap items-center justify-center gap-x-12 gap-y-4 p-0">
           {BUILT_ON.map(item => (

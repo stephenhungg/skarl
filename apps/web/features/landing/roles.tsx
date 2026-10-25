@@ -15,7 +15,7 @@ export function Roles() {
       <div className="frame">
       <style>{ROLE_TILE_CSS}</style>
       <Reveal>
-        <SectionHeader id="roles-title" eyebrow="Roles" title="Who can do what" href={`${DOCS}security.md`} external />
+        <SectionHeader id="roles-title" eyebrow="Roles" title="Who can do what on Skarl" href={`${DOCS}security.md`} external />
       </Reveal>
       <div className="mt-8 flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">

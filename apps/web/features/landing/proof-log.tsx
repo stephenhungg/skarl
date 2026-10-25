@@ -12,7 +12,7 @@ export function ProofLog() {
       <div className="frame">
       <style>{PROOF_CSS}</style>
       <Reveal>
-        <SectionHeader id="proof-title" eyebrow="Status" title="What runs today" href={EVIDENCE_DOCS_URL} external />
+        <SectionHeader id="proof-title" eyebrow="Status" title="What Skarl runs today" href={EVIDENCE_DOCS_URL} external />
       </Reveal>
 
       <Reveal className="mt-8">
