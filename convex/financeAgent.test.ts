@@ -245,7 +245,7 @@ describe("finance agent action with a synthetic Gemini provider", () => {
     vi.stubGlobal("fetch", fetcher);
     const pending = run(f);
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
-    await vi.advanceTimersByTimeAsync(60_001);
+    await vi.advanceTimersByTimeAsync(30_001);
     const result = await pending, row = await stored(f, result.runId);
     expect(row.status).toBe("failed"); expect(row.failureCode).toBe("gemini_timeout");
     expect(json(row)).not.toContain("sensitive timeout detail");

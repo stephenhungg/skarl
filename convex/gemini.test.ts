@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { requestInteraction, observeVideo, observeAudio, transcriptObservation } from "./lib/gemini";
+import { requestInteraction, observeVideo, observeAudio, transcriptObservation, financeModel, videoModel, GEMINI_REQUEST_TIMEOUT_MS } from "./lib/gemini";
 
-afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();});
+afterEach(()=>{vi.useRealTimers();vi.unstubAllEnvs();vi.unstubAllGlobals();});
 const response=(body:unknown)=>new Response(JSON.stringify(body),{status:200});
 describe("Gemini transport and independent inputs (mocked provider only)",()=>{
   it("fails closed when the secret is unavailable",async()=>{
@@ -93,4 +93,40 @@ it("accepts requires_action only for explicitly enabled function calling, never 
   await expect(requestInteraction({},fetcher,1000,1)).rejects.toThrow("gemini_incomplete");
   expect((await requestInteraction({},fetcher,1000,1,true)).status).toBe("requires_action");
   await expect(requestInteraction({},async()=>response({status:"requires_action",steps:[]}),1000,1,true)).rejects.toThrow("gemini_incomplete");
+});
+
+it("defaults both model routes to 3.8 Flash and preserves explicit environment overrides",()=>{
+  vi.stubEnv("GEMINI_VIDEO_MODEL",""); vi.stubEnv("GEMINI_FINANCE_MODEL","");
+  expect(videoModel()).toBe("gemini-3.8-flash");
+  expect(financeModel()).toBe("gemini-3.8-flash");
+  vi.stubEnv("GEMINI_VIDEO_MODEL","custom-vision"); vi.stubEnv("GEMINI_FINANCE_MODEL","custom-finance");
+  expect(videoModel()).toBe("custom-vision"); expect(financeModel()).toBe("custom-finance");
+});
+
+it("caps a caller's longer timeout at 30 seconds and never retries a hung request",async()=>{
+  vi.stubEnv("GEMINI_API_KEY","unit-test-placeholder"); vi.useFakeTimers();
+  let aborted=false;
+  const fetcher=vi.fn((_url:unknown,options?:RequestInit)=>new Promise<Response>((_,reject)=>{
+    options?.signal?.addEventListener("abort",()=>{aborted=true;reject(new Error("private failure detail"));},{once:true});
+  }));
+  const pending=requestInteraction({},fetcher,90_000);
+  const assertion=expect(pending).rejects.toThrow(/^gemini_timeout$/);
+  await vi.advanceTimersByTimeAsync(29_999); expect(aborted).toBe(false);
+  await vi.advanceTimersByTimeAsync(1); await assertion;
+  expect(aborted).toBe(true); expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("keeps transient retries inside the original 30-second deadline",async()=>{
+  vi.stubEnv("GEMINI_API_KEY","unit-test-placeholder"); vi.useFakeTimers();
+  const started=Date.now(); let aborted=false;
+  const fetcher=vi.fn((_url:unknown,options?:RequestInit)=>{
+    if(fetcher.mock.calls.length===1) return Promise.resolve(new Response("busy",{status:503}));
+    return new Promise<Response>((_,reject)=>options?.signal?.addEventListener("abort",()=>{aborted=true;reject(new Error("sensitive failure"));},{once:true}));
+  });
+  const assertion=expect(requestInteraction({},fetcher,90_000,1)).rejects.toThrow(/^gemini_timeout$/);
+  await vi.waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(2));
+  const remaining=GEMINI_REQUEST_TIMEOUT_MS-(Date.now()-started);
+  await vi.advanceTimersByTimeAsync(remaining-1); expect(aborted).toBe(false);
+  await vi.advanceTimersByTimeAsync(1); await assertion;
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });

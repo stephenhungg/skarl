@@ -8,13 +8,14 @@ import { controllerApproved, workflow } from "./approvalWorkflow";
 import { demoToken } from "./lib/demoAuth";
 import { paymentBinding, sourceVersion } from "./lib/finance";
 import schema from "./schema";
+import { runScheduledUntil } from "../test/workflow";
 
 // Synthetic approved business records isolate the durable dispatch boundary.
 // These tests perform no inference, wallet signing, RPC or onchain payment.
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
 const RECIPIENT = `0x${"11".repeat(20)}`;
 beforeEach(() => { vi.useFakeTimers(); });
-afterEach(() => { vi.useRealTimers(); });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 async function setup() {
   const t = convexTest(schema, modules);
@@ -153,14 +154,18 @@ describe("durable approval event", () => {
       { intentId: f.intentId, bindingHash: f.bindingHash }, { startAsync: true }));
     await f.t.run(ctx => ctx.db.patch(f.intentId, { approvalWorkflowId: workflowId }));
     if (!early) {
-      await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+      await runScheduledUntil(async () => {
+        const status = await f.t.run(ctx => getStatus(ctx, components.workflow, workflowId));
+        return status.type === "inProgress" && status.running.some(step => step.kind === "event");
+      });
       expect((await f.t.run(ctx => getStatus(ctx, components.workflow, workflowId))).type).toBe("inProgress");
       expect(await f.outbox()).toHaveLength(0);
     }
     await f.t.run(ctx => workflow.sendEvent(ctx, { ...controllerApproved, workflowId,
       value: { approvalId: f.approvalId, bindingHash: f.bindingHash } }));
-    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
-    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+    await runScheduledUntil(async () => (await f.t.run(ctx => getStatus(ctx, components.workflow, workflowId))).type === "completed");
+    // Let ready zero-delay callbacks settle again: replay must not create another dispatch.
+    await vi.advanceTimersByTimeAsync(0);
     expect((await f.t.run(ctx => getStatus(ctx, components.workflow, workflowId))).type).toBe("completed");
     expect(await f.outbox()).toHaveLength(1);
   });

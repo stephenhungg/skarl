@@ -31,9 +31,10 @@ quality benchmark or real human demonstration evaluation has been completed.
    enforces all shape/bounds rules); large constrained-output arrays stalled
    during integration. Native-video requests also returned 503/timeouts, so
    timestamped image input is the implemented visual path. Two independent logical Gemini stages run concurrently through the
-   Interactions API with `store: false`, no tools and one 90-second deadline per
-   stage. Transient 429/503 responses receive at most two bounded backoff retries
-   inside that deadline. Other errors fail immediately with sanitized codes.
+   Interactions API with `store: false`, no tools and one 30-second whole-request
+   deadline per stage. The shared transport allows at most three total transient
+   attempts; all attempts, response reads and backoff share that same deadline,
+   rather than receiving 30 seconds each. Other errors fail immediately with sanitized codes.
 6. Visual event intervals must contain at least one actual sampled frame time;
    otherwise the observation is invalid and routes to review. Video returns structured visible action/object/target intervals; it cannot
    return an acceptance recommendation. The default audio model returns
@@ -57,9 +58,9 @@ quality benchmark or real human demonstration evaluation has been completed.
    no payable, acceptance decision or payment. A five-minute watchdog handles
    interrupted jobs by exposing review rather than leaving a spinner.
 
-## Latest Task 3 smoke test
+## Historical Task 3 smoke test (3.8 Flash)
 
-The evaluation runner processed one pre-labeled generated color-pattern clip
+The earlier evaluation runner processed one pre-labeled generated color-pattern clip
 with machine speech, using isolated copy scope and verification-only licensing.
 Both independent stages completed: `gemini-3.8-flash` visual observation took
 **3,629 ms** and `gemini-3.5-transcribe` took **1,038 ms**. Backend processing was
@@ -83,7 +84,9 @@ Its real `gemini-3.5-transcribe` audio round trip was **1,262 ms** and the trans
 was stored. Server hashing, actual FFmpeg processing and canonical failure-report
 persistence ran. The visual stage returned HTTP 503; the final report is failed /
 needs_review. Earlier native-video attempts and a minimal image probe also failed
-or timed out. A listed Argon model returned 429 with zero free-tier quota. **That Task 2 attempt did not produce a successful visual observation.** The
+or timed out. A listed Argon model returned 429 with zero free-tier quota. These
+are historical errors; billing is now enabled and the latest probes below
+succeeded. **That Task 2 attempt did not produce a successful visual observation.** The
 later Task 3 generated-input success is above; human-demo quality remains unmeasured.
 See [current status](status.md#task-2-verification-and-actual-provider-state).
 
@@ -94,21 +97,34 @@ Set these **on the Convex deployment**, never in browser code:
 ```dotenv
 GEMINI_VIDEO_MODEL=gemini-3.8-flash
 GEMINI_AUDIO_MODEL=gemini-3.5-transcribe
+GEMINI_FINANCE_MODEL=gemini-3.8-flash
 ```
 
 `GEMINI_API_KEY` is configured only as a Convex secret. No key belongs in Git,
-reports, logs or the sample script. The model IDs above are code defaults;
-`gemini-4-argon` is an available configurable alternative, not a silent fallback.
+reports, logs or the sample script. The model IDs above are the current code
+defaults and remain configurable through their environment variables. Historical
+3.8 runs above and in [finance measurements](finance-agent.md#historical-live-read-only-loop-measurement)
+retain their original model IDs and measured times.
 If `GEMINI_AUDIO_MODEL` names a general Gemini model, the adapter requests strict
 JSON transcript/segments/claims and checks claims against the actual transcript.
 The Transcribe adapter uses its native structured `word_info` annotations,
 verbatim mode and word timestamps; it does not ask that ASR model to make a
 semantic acceptance decision. No third model call performs comparison.
 
-Provider availability is operational: an actual Flash media request returned
-503/high demand during integration. Those errors are distinct from validation
-failures and cannot become successful reports. A valid JSON schema does not
-prove an observation is true or its timestamps are accurate.
+Billing is now enabled. The team's latest Interactions API probes all returned
+HTTP 200 with correct visual responses: 3.8 Flash in approximately **2.1 seconds**,
+4 Argon in **3.0 seconds**, and 3.6 Flash in **1.4 seconds**. The current video
+and finance default stays 3.8 Flash. Model IDs remain configurable; no automatic
+fallback is configured. These are provider availability/latency probes, not a
+Skarl human-task benchmark or a guarantee of future availability.
+
+The earlier free-tier 3.8/3.7 stalls, Flash 503 responses and Argon zero-quota
+responses are historical and are not current blockers after these successful
+billing-enabled probes. Historical measurements above retain their original
+results. New provider failures and timeouts still remain distinct from validation
+failures and cannot become successful reports. A valid JSON schema does not prove an observation is true or its
+timestamps are accurate. The finance agent uses the same transport: at most 30
+seconds per provider round, including retries, within its two-minute overall budget.
 
 ## Copy detection and provenance
 
@@ -211,7 +227,8 @@ Grounding DINO can supply text-conditioned object proposals if necessary. Ultral
 
 ## Primary sources
 
-- [Gemini 3.8 Flash specifications](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)
+- [Gemini models and model IDs](https://ai.google.dev/gemini-api/docs/models) (capabilities and listings do not establish this key's quota)
+- [Gemini 3.8 Flash specifications](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash) (current configurable video/finance default and model used in the recorded smoke test)
 - [Gemini video input, FPS, clipping, and processing](https://ai.google.dev/gemini-api/docs/video-understanding)
 - [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output)
 - [Gemini model update and introductory pricing](https://ai.google.dev/gemini-api/docs/latest-model)

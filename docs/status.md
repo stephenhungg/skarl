@@ -8,9 +8,9 @@ Truthful state as of October 25, 2026, after the adversarial audit and the move 
 | Shared contracts | Base Sepolia chain constants (`chain.ts`), funding/payout status lists, JSON Schema, TS report validation, `parseAtomicUsdc` | Rubric-membership check wired into acceptance |
 | Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads and verified contributor wallets; production auth is out of demo scope |
 | Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; live audio measured | Both model stages completed on one generated input; human task acceptance, model accuracy and copy calibration remain unmeasured; intermittent provider failures persist |
-| Evaluation | Cloud clip runner; pre-labeled/source-hashed manifest; isolated copy scope; advisory quality projection; dated JSON/Markdown metrics and resume checkpoints | No consented labeled human corpus or measured accuracy run yet; provider availability remains a blocker |
+| Evaluation | Cloud clip runner; pre-labeled/source-hashed manifest; isolated copy scope; advisory quality projection; dated JSON/Markdown metrics and resume checkpoints | No consented labeled human corpus or measured accuracy run yet; earlier provider quota blockers resolved after billing was enabled |
 | Ledger | Atomic journal persistence; journal-derived trial balance, cash, deferred revenue, revenue/expense and payables by contributor; exact replay protection | Live payout settlement and end-to-end reconciliation evidence |
-| Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | First x402 funding recorded below; v2 read-back is funded with 10000000 micro-USDC cash and deferred revenue. Complete the independent approval, wallet payout and reconciliation demo |
+| Payments | Live Base Sepolia x402 funding succeeded: **10 USDC** to treasury `0x8408a922ea400af33d7c2080a9edd5d3495b695f` ([transaction](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757)); funding journal/reconciliation and payout adapters implemented | Independent controller approval, wallet payout and payout reconciliation remain to demonstrate |
 | Finance agent | Gemini function-calling action; six typed tools; persisted transcript/explanation; cumulative exact batch and call caps; existing proposal and refused approval audits | Live model measurement below; durable Workflow approval wait implemented; wallet execution remains separate |
 | Sponsors | Requirements checked against Devpost and the briefs | Working integrations; Coinbase eligibility checklist per member |
 
@@ -108,8 +108,8 @@ text succeeded after reducing provider schema array limits. Argon
 (`gemini-4-argon`) returned HTTP 429 with **0 requests/day on Free Tier**. No
 billing/account upgrade was performed. Model listing is not inference quota.
 The cloud configuration was restored to the requested Flash + Transcribe
-model defaults. A working visual-provider response/quota is still required to
-claim a complete live multimodal verification demo.
+model defaults. Those quota failures describe the earlier free-tier state;
+billing is now enabled and subsequent Interactions probes succeeded.
 
 **Chosen duplicate approach:** server-computed original SHA-256 and six sampled
 64-bit dHashes, with bounded Hamming candidate checks repeated at acceptance.
@@ -337,3 +337,20 @@ environment variable), then install the returned signing secrets in Vercel and
 redeploy. This worktree has no `apps/web/.vercel/project.json`; the subscription
 script supplies environment instructions instead of changing an unlinked project.
 Root `package.json` alias ownership approval is pending; the node command is ready.
+
+## Gemini request deadline and billing correction
+
+Current video and finance defaults remain `gemini-3.8-flash`, with explicit
+`GEMINI_VIDEO_MODEL` / `GEMINI_FINANCE_MODEL` overrides preserved. Audio remains
+`gemini-3.5-transcribe`. Billing is now enabled on the key. The team's latest
+Interactions probes returned correct HTTP 200 responses for 3.8 Flash (~2.1 s),
+Argon (~3.0 s) and 3.6 Flash (~1.4 s). Earlier Flash 503/stall and Argon zero-quota
+observations are historical, not current free-tier blockers.
+
+The shared transport now caps the entire logical provider request at 30 seconds,
+including response reading and all transient retries/backoff. Finance action and
+read-only chat rounds use the same cap; smaller caller budgets remain allowed.
+A hung attempt is aborted once, without restarting another 30-second window,
+and verification persists a failed `needs_review` report. No unavailable model
+can qualify a sample for acceptance. Regression tests exercise the 30-second cap,
+shared retry deadline, unchanged defaults and environment overrides.

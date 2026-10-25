@@ -1,11 +1,10 @@
 "use node";
-import process from "node:process";
 import { randomUUID } from "node:crypto";
 import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { GeminiFailure, requestInteraction } from "./lib/gemini";
+import { GeminiFailure, requestInteraction, financeModel, GEMINI_REQUEST_TIMEOUT_MS } from "./lib/gemini";
 import { financeTools, runFinanceLoop, type AgentStep } from "./lib/financeAgentLoop";
 
 const READ_TOOLS = new Set(["listOutstandingPayables", "explainPayable", "getTrialBalance", "listReconciliationExceptions"]);
@@ -18,7 +17,7 @@ export const askAgent = action({
   handler: async (ctx, args): Promise<{ chatId: Id<"agentChats">; replayed: boolean }> => {
     const orderId = args.orderId ?? (await ctx.runQuery(api.dashboard.demoContext, { demoIdentity: args.demoIdentity }))?.orderId;
     if (!orderId) throw new Error("order_not_found");
-    const model = process.env.GEMINI_FINANCE_MODEL || "gemini-3.8-flash";
+    const model = financeModel();
     const started = await ctx.runMutation(internal.agentChatData.begin, { demoIdentity: args.demoIdentity, orderId,
       question: args.question, requestId: args.requestId ?? randomUUID(), model });
     if (started.replayed) return started;
@@ -36,7 +35,7 @@ export const askAgent = action({
           const response = await requestInteraction({ model, system_instruction: SYSTEM, input: history,
             tools: financeTools.filter(tool => READ_TOOLS.has(tool.name)),
             generation_config: { temperature: 0, thinking_level: "low", max_output_tokens: 2048 },
-          }, fetch, Math.min(60_000, deadline - Date.now()), 1000, true);
+          }, fetch, Math.min(GEMINI_REQUEST_TIMEOUT_MS, deadline - Date.now()), 1000, true);
           const raw = response as unknown as { steps: { type: string; id?: string; name?: string; arguments?: Record<string, unknown> }[]; output_text?: string };
           if (!Array.isArray(raw.steps)) throw new GeminiFailure("chat_response_invalid");
           history.push(...raw.steps); // Provider signatures remain transient; hidden reasoning is never persisted.

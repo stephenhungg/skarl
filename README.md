@@ -6,6 +6,8 @@ Verified human demonstrations, paid with x402 on Base. The AP/settlement seat fo
 
 Built for Cal Hacks 13.0. **Current state: deployed demo backend, contributor recorder and payment adapters, not a complete marketplace.** The shared Convex dev backend has seeded demo identities, acceptance/payable/journal mutations, independent approval and dashboard queries. Task 2 adds scheduled Gemini verification, uploads and server media processing. Both independent model stages ran live on one generated-media smoke test; human demonstration accuracy remains unmeasured. A bounded finance tool loop, durable approval Workflow and journal-derived statements are implemented. The payment owner recorded live x402 funding; outgoing wallet payout remains unconfirmed. Production authentication and contributor-wallet verification remain unimplemented. See [connection/setup](docs/setup.md) and [current status](docs/status.md).
 
+Current configurable model defaults are `gemini-3.8-flash` for visual evidence and the finance agent, and `gemini-3.5-transcribe` for audio. Billing is enabled and the latest provider probes succeeded; earlier free-tier quota failures are historical. Each logical provider request shares one 30-second deadline across at most three transient attempts, including backoff. Finance rounds also remain within the two-minute overall run budget. Historical measurements retain the actual model IDs used. See [model configuration and probe results](docs/ai-verification.md#models-and-configuration).
+
 ## Start here
 
 ```sh

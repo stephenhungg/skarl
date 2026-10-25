@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
+import { runScheduledUntil } from "../test/workflow";
 import { PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 
 // These are isolated in-memory policy tests. The stored media, completed-analysis
@@ -436,7 +437,11 @@ describe("demo finance mutations against isolated Convex state", () => {
     const approved = await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: proposed.intentId });
     expect(approved.ok).toBe(true);
     if (!approved.ok) throw new Error(approved.code);
-    await fixture.t.finishAllScheduledFunctions(vi.runAllTimers);
+    await runScheduledUntil(async () => {
+      const dispatch = await fixture.t.run(ctx => ctx.db.query("outboxEvents").withIndex("by_event_key", q =>
+        q.eq("organizationId", fixture.organizationId).eq("eventKey", `dispatch:${proposed.paymentCommandId}`)).unique());
+      return dispatch?.status === "pending";
+    });
     const replay = await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: proposed.intentId });
     expect(replay).toEqual({ ...approved, replayed: true });
     state = await snapshot(fixture);
@@ -519,7 +524,11 @@ describe("demo finance mutations against isolated Convex state", () => {
     if (!proposed.ok) throw new Error(proposed.code);
     const approved = await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: proposed.intentId });
     if (!approved.ok) throw new Error(approved.code);
-    await fixture.t.finishAllScheduledFunctions(vi.runAllTimers);
+    await runScheduledUntil(async () => {
+      const dispatch = await fixture.t.run(ctx => ctx.db.query("outboxEvents").withIndex("by_event_key", q =>
+        q.eq("organizationId", fixture.organizationId).eq("eventKey", `dispatch:${proposed.paymentCommandId}`)).unique());
+      return dispatch?.status === "pending";
+    });
     await fixture.t.run((ctx) => ctx.db.patch(proposed.paymentCommandId, { status: "cancelled" }));
     const refused = await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: proposed.intentId });
     expect(refused).toMatchObject({ ok: false, code: "approval_invalidated" });

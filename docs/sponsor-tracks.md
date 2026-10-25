@@ -88,9 +88,9 @@ Convex judges ask for real features ("live queries and components"), so the appr
 
 ## Gemini
 
-The pipeline makes two separate calls so the visual evidence is not contaminated by narration: one on the video with the sound off, one on the audio. Each returns structured output validated against the shared schema, with timestamps.
+The pipeline makes two independent calls so the visual evidence is not contaminated by narration: one on timestamped JPEG frames extracted from the original clip, one on its separately extracted audio. Each returns structured output validated against the shared schema, with timestamps.
 
-The model ID is configurable. The default is Gemini 3.8 Flash (stable; video, audio and structured output). The models page also announces `gemini-4-argon`; switch only if measured latency at the venue is acceptable. Record the model, prompt version and measured latency. [Gemini models](https://ai.google.dev/gemini-api/docs/models)
+Current configurable defaults are `gemini-3.8-flash` for visual evidence and finance reasoning, and `gemini-3.5-transcribe` for audio. Billing is enabled; the team's latest probes returned correct HTTP 200 responses for 3.8 Flash, 4 Argon and 3.6 Flash. Earlier free-tier quota failures are historical and no longer current blockers. No automatic model fallback is configured. The shared transport gives each logical request one 30-second deadline across at most three transient attempts; finance rounds fit inside a two-minute overall budget. Preserve the actual model ID for every historical measurement and record prompt version and measured latency. [Configuration and probe results](ai-verification.md#models-and-configuration), [Gemini models](https://ai.google.dev/gemini-api/docs/models).
 
 ## Not targeted
 

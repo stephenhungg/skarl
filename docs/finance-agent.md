@@ -78,8 +78,14 @@ Convex environment configuration: `GEMINI_FINANCE_MODEL` defaults to
 `gemini-3.8-flash`; `FINANCE_AGENT_MAX_TOOL_CALLS` defaults to 12 (range 1–24);
 `FINANCE_AGENT_MAX_BATCH_ATOMIC` defaults to `10000000` micro-USDC. The existing
 server-only `GEMINI_API_KEY` is reused. No key reaches model input or transcript.
-The run has a two-minute model deadline, at most 60 seconds per provider round,
-a bounded transcript and a three-minute interruption watchdog. Reusing the same
+The run has a two-minute overall budget, at most 30 seconds per provider round,
+a bounded transcript and a three-minute interruption watchdog. The shared
+transport permits at most three transient attempts within that single 30-second
+round deadline, including response reads and backoff; retries do not restart the
+clock. Billing is now enabled; the latest 3.8 Flash Interactions probe returned
+HTTP 200 with a correct visual response in about 2.1 seconds. Earlier free-tier
+stalls are historical, not a current availability blocker. This probe is not a
+finance-agent benchmark. Reusing the same
 request ID returns the original run and never repeats proposals; use a new ID
 for a deliberate new attempt. Proposal replay does not consume the run's cap
 twice. The cap applies to the whole run, including multiple batches.
@@ -114,9 +120,9 @@ creating a payment attempt. Claiming consumes the outbox and creates the durable
 attempt in one mutation; `delivered` means handed to the executor, never paid.
 The existing wallet/reconciliation path remains responsible for settlement.
 
-## Live read-only loop measurement
+## Historical live read-only loop measurement
 
-After earlier provider timeouts, a real `gemini-3.8-flash` run selected
+A real `gemini-3.8-flash` run selected
 `getTrialBalance`, read the funded order's exact `10000000` micro-USDC debit and
 credit totals, and persisted its final advisory explanation. Client time was
 6,805 ms and backend run time 6,351 ms. It created no proposal, approval or

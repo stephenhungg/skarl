@@ -126,10 +126,14 @@ read by the local sample script or browser. Configure model IDs on the deploymen
 ```sh
 pnpm exec convex env set GEMINI_VIDEO_MODEL gemini-3.8-flash
 pnpm exec convex env set GEMINI_AUDIO_MODEL gemini-3.5-transcribe
+pnpm exec convex env set GEMINI_FINANCE_MODEL gemini-3.8-flash
 pnpm verify:sample /absolute/path/to/clip.mp4
 ```
 
-These are the code defaults. The sample script uploads the supplied clip, creates
+These are the current configurable code defaults. Earlier 3.8 measurements keep
+their original model attribution. Each logical Gemini request has one shared
+30-second deadline across at most three transient attempts, including backoff;
+finance rounds also fit within a two-minute overall run budget. The sample script uploads the supplied clip, creates
 an explicitly verification-only contribution, waits for its scheduled action and
 prints the stored report/observations. It does not grant training rights or
 request acceptance/payment. Do not commit media. See [AI verification](ai-verification.md)
@@ -142,10 +146,14 @@ private temporary directory and restores executable permission before use.
 Nothing under `node_modules` or temporary media belongs in Git. All new Convex
 functions use committed generated API types.
 
-Model listing does not prove inference quota. The key's Argon media probe
-returned HTTP 429 with zero free-tier daily requests; no billing upgrade was
-performed. Flash capacity/schema failures and ordinary timeouts produce stored
-review-only reports. Do not replace those with a fabricated successful result.
+Billing is now enabled. The latest Interactions probes returned HTTP 200 with
+correct visual output for 3.8 Flash (about 2.1 seconds), 4 Argon (3.0 seconds)
+and 3.6 Flash (1.4 seconds). The video and finance defaults remain 3.8 Flash.
+Earlier free-tier stalls, Flash 503 responses and Argon zero-quota errors are
+historical, not current blockers. These are provider probes, not a human-task
+accuracy benchmark. No automatic model fallback is configured. New capacity,
+schema or timeout failures still produce stored review-only reports; never
+replace them with fabricated success.
 
 ## Remaining integrations
 
