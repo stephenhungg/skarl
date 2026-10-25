@@ -566,3 +566,205 @@ Validation for this follow-up: `pnpm check` passed all typechecks, **466 tests**
 ## Solana funding rail (October 25)
 
 Implemented optional Solana Devnet x402 funding with Base first, durable message-hash claims, strict RPC reconciliation, a bounded CDP buyer, and an idempotent 1 USDC demo seed. Base payouts and human approval remain unchanged. Receive-only treasury `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh` and its canonical USDC ATA are live; the treasury address is configured in Vercel production and Convex. This is setup evidence, not a funding claim. Live x402 funding awaits the deployment owner's Convex deploy of `origin/main` and is not yet demonstrated. See [Solana rail](payments.md#solana-rail).
+
+## Wallet MCP buyer-to-agent revenue path — October 25, 03:12 PDT
+
+Code commit `ab2a5fe` was pushed to `main` after the required rebase and `pnpm check`: TypeScript, **518 tests** (122 Node, 280 Convex, 116 payments), documentation links and production build passed. Concurrent payment changes on main were preserved. Vercel Git deployment `dpl_BGDpDrnHWQ79dyvDT5gLQf3ELZGA` reached READY and the production alias `https://skarl.vercel.app` was confirmed against that commit before validation.
+
+- Evidence `payTo`: **`0x0A9EfDF66c58543538824906aE267B969Ed651c5`**, the existing `skarl-finance-agent` address read from live Convex `CDP_AGENT_ADDRESS`. Set as `SKARL_EVIDENCE_PAYTO` in the linked Vercel **skarl** production project and Convex `dev:keen-marmot-986`. No second CDP account was created.
+- Funding remains directed to **`0x8408a922ea400af33d7c2080a9edd5d3495b695f`**. The deployed v2 funding GET returned HTTP 200, `fundingStatus:"confirmed"`, `amountAtomic:"10000000"`, and that treasury recipient. No new payment was made.
+- Dedicated `evidence_sale` / `evidence_sale_deferred` journals retain the revenue wallet, keep its cash separate from treasury cash, and do not change order prepayments or accrue another contributor payable. Reconciliation checks the standalone claim, receipt and journal. These changes require the backend owner to deploy the new Convex schema/handlers from `ab2a5fe` or later. **This worktree did not deploy Convex.** Web refuses payment against older accounting capability or a mismatched backend recipient.
+- Actual middleware tests verify an anonymous, header-free GET produces a v2 JSON body and `PAYMENT-REQUIRED` header with exact Base Sepolia canonical USDC, `250000` atomic amount, and the separate revenue recipient. The pinned adapter normally sends `{}` as the body; the evidence route now mirrors its public challenge into JSON. Tests are synthetic service/receipt evidence, not a live sale.
+- Live inventory: all three organization orders have `acceptedCount:"0"`; the three v2 submissions remain verification-only, `needs_review`, with no delivery. No useful verified-sample catalog exists to sell, so no empty paid catalog was added. A fresh consented contribution, completed inference and authorized acceptance/delivery remain necessary.
+- [Exact Claude Code prompts and approval/journal checks](wallet-mcp-demo.md) and the [Wallet MCP plugin](wallet-mcp-plugin/skarl.md) are updated. Search explicitly uses `network:"base-sepolia"` because Wallet MCP defaults to Base mainnet. Evidence GET requires no custom headers. No Wallet MCP purchase, human approval, new transfer or Bazaar indexing is claimed.
+
+### Deployed Bazaar validation output
+
+At `2026-10-25T10:12:45.672101+00:00`, POST `https://api.cdp.coinbase.com/platform/v2/x402/validate` with:
+
+```json
+{
+  "resource": "https://skarl.vercel.app/api/samples/sample-mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j/evidence",
+  "method": "GET"
+}
+```
+
+returned **HTTP 200** with **`valid:false`**, endpoint **404 `sample_unavailable`**, `bazaarExtension:null`, `index:null`, `x402Version:null`, and `simulation.outcome:"rejected"`. URL validity, HTTPS and reachability passed; `returns_402` failed because this existing verification-only sample is not saleable. Payload/schema checks were skipped. The validator's simulation is not a blockchain transaction. Successful live 402 validation remains pending an eligible sample and the backend deployment.
+
+<details>
+<summary>Exact validator response</summary>
+
+```json
+{
+  "bazaarExtension": null,
+  "index": null,
+  "paymentRequirements": {
+    "error": "sample_unavailable"
+  },
+  "preflight": [
+    {
+      "check": "url_valid",
+      "detail": "URL is well-formed",
+      "passed": true,
+      "severity": "required"
+    },
+    {
+      "actual": "https",
+      "check": "url_https",
+      "detail": "Resource URL uses HTTPS",
+      "expected": "https",
+      "passed": true,
+      "severity": "required"
+    },
+    {
+      "check": "endpoint_reachable",
+      "detail": "Endpoint responded with status 404",
+      "passed": true,
+      "severity": "required"
+    },
+    {
+      "actual": "404",
+      "check": "returns_402",
+      "detail": "Endpoint returned HTTP 404 instead of 402",
+      "expected": "402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "valid_json",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "x402_version",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "payment_required_header",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "has_accepts",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].shape",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].scheme",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].network",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].asset",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].amount",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].payTo",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].maxTimeoutSeconds",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "has_resource",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "has_bazaar_extension",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "bazaar.info",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "bazaar.info.input",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "bazaar.info.input.type",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "bazaar.info.input.method",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "bazaar.info.output",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "advisory"
+    },
+    {
+      "check": "bazaar.info.output.example",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "advisory"
+    },
+    {
+      "check": "bazaar.schema",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "parse",
+      "detail": "Skipped: preflight checks failed",
+      "passed": false,
+      "severity": "required"
+    }
+  ],
+  "simulation": {
+    "outcome": "rejected",
+    "rejectionReason": "endpoint failed preflight checks"
+  },
+  "statusCode": 404,
+  "valid": false,
+  "x402Version": null
+}
+```
+
+</details>
