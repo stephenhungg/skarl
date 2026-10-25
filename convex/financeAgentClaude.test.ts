@@ -108,7 +108,8 @@ describe("Claude finance provider with synthetic SDK HTTP responses", () => {
       expect(body.tool_choice).toEqual({ type: "auto" });
       expect(body.output_config).toEqual({ effort: "low" });
       expect(body.tools.map(t => t.name)).toEqual(financeTools.map(t => t.name));
-      expect(body.tools.every(t => t.strict && t.input_schema.additionalProperties === false)).toBe(true);
+      expect(body.tools.every(t => t.input_schema.additionalProperties === false)).toBe(true);
+      expect(body.tools.filter(t => t.strict).length).toBeLessThanOrEqual(20);
       expect(body.system[0]?.cache_control).toEqual({ type: "ephemeral" });
       expect(body.tools.at(-1)?.cache_control).toEqual({ type: "ephemeral" });
       expect(body.tools.some(t => /approve|send|sign/i.test(t.name))).toBe(false);
@@ -280,7 +281,8 @@ describe("Claude strict tool schemas", () => {
     expect(() => validateToolCall({ id: "forms", name: "contributorsNeedingForms", arguments: { taxForm: "w9_on_file" } })).toThrow("invalid_tool_arguments");
     expect(() => validateToolCall({ id: "set", name: "setTaxProfile", arguments: {} })).toThrow("tool_not_allowed");
     for (const tool of claudeFinanceTools.filter(t => ["taxSummary", "contributorsNeedingForms"].includes(t.name))) {
-      expect(tool.strict).toBe(true);
+      // Read tools spend none of Anthropic's 20-strict-tool budget; validateToolCall above enforces their typed scope.
+      expect(tool.strict).toBe(false);
       expect(tool.input_schema.additionalProperties).toBe(false);
       expect(tool.input_schema.required).toEqual(Object.keys(tool.input_schema.properties ?? {}));
     }

@@ -8,8 +8,10 @@ export function envNumber(key: string, fallback: number, minimum = 0): number {
   if (!Number.isFinite(value) || value < minimum) throw new Error(`invalid_config:${key}`);
   return value;
 }
+// Blank values count as unset: Convex module analysis can expose unset variables as "".
 export function envList(key: string, fallback: readonly string[]): string[] {
-  return process.env[key] === undefined ? [...fallback] : process.env[key]!.split(",").map((value: string) => value.trim()).filter(Boolean);
+  const raw = process.env[key]?.trim();
+  return raw ? raw.split(",").map((value: string) => value.trim()).filter(Boolean) : [...fallback];
 }
 export const appOrigin = () => envString("SKARL_APP_ORIGIN", "https://skarl.devshardat.work");
 export const paymentOrigin = () => envString("SKARL_PAYMENT_ORIGIN", "https://skarl.vercel.app");

@@ -91,7 +91,8 @@ for (const provider of ["claude", "gemini"] as const) describe(`${provider} outb
     expect(new Set(tools.map(tool => tool.name))).toEqual(financeReadToolNames);
     expect(tools.some(tool => ["proposePaymentBatch", "requestApproval", "approve", "approvePayment"].includes(tool.name))).toBe(false);
     if (provider === "claude") {
-      expect(tools.every(tool => tool.strict)).toBe(true);
+      // Read-only registry: no tool needs Anthropic's 20-strict-tool budget; validateToolCall enforces arguments.
+      expect(tools.some(tool => tool.strict)).toBe(false);
       expect(JSON.stringify(tools)).not.toContain("maxItems");
     }
   });
