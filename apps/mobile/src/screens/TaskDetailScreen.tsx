@@ -12,7 +12,7 @@ import { CONSENT } from '../consent';
 import { Button, Empty, Pill, Section } from '../components/Primitives';
 import { Sheet } from '../components/Sheet';
 import { PressableScale } from '../components/PressableScale';
-import { TaskArt } from '../components/TaskArt';
+import { artFor, TaskArt } from '../components/TaskArt';
 import { CaptureIcon, CheckIcon, ChevronLeft, ClockIcon, SensorIcon, TasksIcon } from '../components/Icons';
 import type { RootProps } from '../navigation';
 
@@ -42,7 +42,7 @@ export function TaskDetailScreen({ navigation, route }: RootProps<'TaskDetail'>)
   return <View style={s.screen}>
     <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}>
       <View>
-        <TaskArt style={[s.hero, { paddingTop: insets.top }]} />
+        <TaskArt kind={artFor(task?.title)} style={[s.hero, { paddingTop: insets.top }]} />
         <PressableScale accessibilityRole="button" accessibilityLabel="Back" onPress={() => navigation.goBack()} style={[s.back, { top: insets.top + 8 }]}>
           <ChevronLeft />
         </PressableScale>

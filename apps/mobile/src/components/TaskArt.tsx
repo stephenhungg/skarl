@@ -3,8 +3,13 @@ import { View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Circle, Defs, Ellipse, LinearGradient, Path, Pattern, Rect, Stop } from 'react-native-svg';
 import { colors as c } from '../../theme';
 
-/** Drawing of the live task's own props: a red cup, a blue cup and a marked coaster. */
-export function TaskArt({ style, compact }: { style?: StyleProp<ViewStyle>; compact?: boolean }) {
+export type ArtKind = 'cup' | 'can';
+
+/** Picks the drawing whose props match the task, from its title. */
+export const artFor = (title?: string): ArtKind => title && /\bcan\b/i.test(title.replace(/-/g, ' ')) ? 'can' : 'cup';
+
+/** Drawing of a task's own props: red and blue cups with a coaster, or a can moved toward the hat beside a lamp. */
+export function TaskArt({ style, compact, kind = 'cup' }: { style?: StyleProp<ViewStyle>; compact?: boolean; kind?: ArtKind }) {
   // Gradient ids must be unique per drawing; web shares one id namespace per page.
   const id = useId().replace(/[^a-zA-Z0-9]/g, '');
   return <View style={[{ backgroundColor: c.mist, overflow: 'hidden' }, style]}>
@@ -21,6 +26,7 @@ export function TaskArt({ style, compact }: { style?: StyleProp<ViewStyle>; comp
         </LinearGradient>
       </Defs>
       <Rect width="320" height="200" fill={`url(#dots${id})`} />
+      {kind === 'can' ? <CanScene id={id} compact={compact} /> : <>
       <Ellipse cx="226" cy="150" rx="46" ry="13" fill={c.paper} stroke={c.slate300} strokeWidth="1.5" strokeDasharray="4 4" />
       <Ellipse cx="226" cy="150" rx="28" ry="7.5" fill={c.accent} opacity={0.9} />
       <Ellipse cx="112" cy="152" rx="30" ry="7" fill={c.ink} opacity={0.08} />
@@ -35,6 +41,40 @@ export function TaskArt({ style, compact }: { style?: StyleProp<ViewStyle>; comp
         <Path d="M124 56 C150 30 196 34 218 120" stroke={c.slate500} strokeWidth="1.6" fill="none" strokeDasharray="3 5" strokeLinecap="round" />
         <Path d="M212 110 L218 121 L225 111" stroke={c.slate500} strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
       </>}
+      </>}
     </Svg>
   </View>;
+}
+
+function CanScene({ id, compact }: { id: string; compact?: boolean }) {
+  return <>
+    <Defs>
+      <LinearGradient id={`can${id}`} x1="0" y1="0" x2="1" y2="0">
+        <Stop offset="0" stopColor="#c9ced6" /><Stop offset="0.45" stopColor="#f1f3f6" /><Stop offset="1" stopColor="#9aa2ad" />
+      </LinearGradient>
+      <LinearGradient id={`shade${id}`} x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0" stopColor="#f4e6bf" /><Stop offset="1" stopColor="#e2cd92" />
+      </LinearGradient>
+    </Defs>
+    {/* lamp */}
+    <Path d="M248 46 L284 46 L294 84 L238 84 Z" fill={`url(#shade${id})`} />
+    <Ellipse cx="266" cy="84" rx="28" ry="4" fill="#d3bc7d" />
+    <Rect x="264.5" y="86" width="3" height="66" fill={c.slate500} />
+    <Ellipse cx="266" cy="154" rx="20" ry="5" fill={c.slate700} />
+    {/* hat beside the lamp, with its target zone */}
+    <Ellipse cx="196" cy="157" rx="40" ry="11" fill={c.paper} stroke={c.slate300} strokeWidth="1.5" strokeDasharray="4 4" />
+    <Ellipse cx="206" cy="152" rx="30" ry="7" fill="#3b3631" />
+    <Path d="M190 152 L192 122 Q206 114 220 122 L222 152 Z" fill="#4a443d" />
+    <Rect x="191" y="140" width="30" height="5" fill={c.accent} />
+    {/* can */}
+    <Ellipse cx="92" cy="154" rx="22" ry="5" fill={c.ink} opacity={0.08} />
+    <Path d="M74 96 L110 96 L110 150 Q92 156 74 150 Z" fill={`url(#can${id})`} />
+    <Rect x="74" y="114" width="36" height="18" fill="#c8453a" />
+    <Ellipse cx="92" cy="96" rx="18" ry="5" fill="#dfe3e8" stroke="#9aa2ad" strokeWidth="1" />
+    <Ellipse cx="96" cy="95.5" rx="4" ry="1.6" fill="#9aa2ad" />
+    {!compact && <>
+      <Path d="M104 82 C126 50 162 52 172 132" stroke={c.slate500} strokeWidth="1.6" fill="none" strokeDasharray="3 5" strokeLinecap="round" />
+      <Path d="M165 122 L172 133 L178 122" stroke={c.slate500} strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </>}
+  </>;
 }
