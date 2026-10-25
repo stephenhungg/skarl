@@ -15,6 +15,50 @@ Current source summary, October 25, 2026. The dated entries below preserve obser
 
 Local checks establish only the paths they execute. They do not establish deployed behavior, inference accuracy, settlement, customer benefit or sponsor eligibility.
 
+## System status
+
+Source implementation: `GET /health` on the Convex **site** origin returns a
+redacted integration report, also available as the public `health:integrations`
+query. Each row includes `ok`, `degraded` or `missing`, a reason, repair guidance,
+query time, last successful evidence time where known and allowlisted evidence.
+Credentials are represented by variable names and configuration booleans only;
+`SITE_URL` is the public origin. Original media, model text, account identifiers,
+provider errors and credential values are excluded.
+
+Run `pnpm demo:preflight` using the existing public Convex URL configuration, or
+`pnpm demo:preflight --url https://YOUR-DEPLOYMENT.convex.site`. It prints a table
+and exits nonzero for an unavailable/incomplete endpoint or any missing
+demo-critical prerequisite: model calls, reconciliation/finance crons, CDP agent
+gas/USDC, treasury USDC, required Convex configuration and a licensed accepted
+clip on the canonical demo order. It explicitly prints **needs a licensed
+accepted clip** when that blocker remains. Optional sponsor integrations stay
+visible; degraded rows require review even when the command exits zero.
+
+The internal `health:refresh` action performs bounded read-only Base Sepolia RPC
+and known-account Nessie GET probes every two minutes; public GET/query calls
+only read cached probes and stored evidence. Balances are decimal integer
+strings, bound to their wallet/account; zero funds are missing and probes older
+than five minutes are degraded. Cron wrappers record invocation outcomes, not
+proof of every downstream settlement. Model rows read stored successful calls,
+including negative review reports, and exclude scenario replays. Nessie remains
+simulated banking; Solana remains optional funding-only.
+
+Operator deployment is required for the Convex schema/functions/crons and the
+Forge publisher. The latter sends numeric successful-sync/uncertain-inventory
+telemetry to authenticated `POST /health/jira` using the existing feed secret;
+truncated inventory is unknown, never zero. No new credential is needed. Until
+deployed and exercised, new cron/probe/Forge telemetry is missing. This source
+change does not deploy Convex, change environment variables, exercise Google
+sign-in, call a model, attest, or send money. Preflight is not end-to-end proof.
+The required Convex variable names are enumerated in
+[`REQUIRED_ENV`](../convex/lib/health.ts); existing values must be supplied through
+the operator's secret manager. `PAYOUT_EXECUTOR` must select the CDP agent;
+Nessie/EAS flags must enable their respective integrations. Google setup is in
+[authentication](auth.md). `BASE_SEPOLIA_RPC_URL` is optional (the public Base
+Sepolia RPC is the default), and treasury identity comes from the canonical
+demo order's stored funding intent. Web-only webhook/origin configuration is
+outside this Convex environment inventory and still needs separate verification.
+
 ## Sponsor review integration — October 25, 2026
 
 - Browser payout signing/recovery now use the Convex intent document ID, not the business event key. Proposal actions open the real finance-agent loop rather than impersonating an agent with a demo selector; existing buyer rejection and policy execution controls are preserved.

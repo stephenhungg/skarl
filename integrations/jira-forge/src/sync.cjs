@@ -1,5 +1,6 @@
 const { hash, clean, validateFeed, policy } = require('./core.cjs');
 const { randomUUID } = require('node:crypto');
+const { rememberSuccessfulSync, publishJiraHealth } = require('./health.cjs');
 const sourceKey = id => `source:${hash(id)}`;
 const receiptKey = id => `receipt:${hash(id)}`;
 function createSync({ store, jira, config, fetcher }) {
@@ -71,8 +72,9 @@ function createSync({ store, jira, config, fetcher }) {
         }
       }
       await store.kvs.set('last-sync', result);
+      await rememberSuccessfulSync(store, result);
       return result;
-    });
+    }).finally(() => publishJiraHealth({ store, config, fetcher }));
   }
   return { sync };
 }

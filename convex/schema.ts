@@ -3,6 +3,7 @@ import { authTables } from "@convex-dev/auth/server";
 import { financeAnalystTables } from "./financeAnalystSchema";
 import { bankWitnessTables } from "./bankWitnessSchema";
 import { publicSecurityTables } from "./publicSecuritySchema";
+import { healthTables } from "./healthSchema";
 import { coachTables } from "./coachSchema";
 import { attestationTables } from "./attestationsSchema";
 import { v } from "convex/values";
@@ -70,6 +71,7 @@ export default defineSchema({
   ...attestationTables,
   ...bankWitnessTables,
   ...financeAnalystTables,
+  ...healthTables,
   // Trusted web ingress supplies a keyed IP digest, never a raw IP. Atomic with order creation.
   demoOrderLimits: defineTable({ key: v.string(), windowStart: v.number(), count: v.number() })
     .index("by_key", ["key"]),

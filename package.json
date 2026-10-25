@@ -21,6 +21,7 @@
     "test:payments": "vitest run --config packages/payments/vitest.config.mts",
     "verify:sample": "node scripts/verify-sample.mjs",
     "demo:e2e": "node scripts/demo-e2e.mjs",
+    "demo:preflight": "node scripts/demo-preflight.mjs",
     "scenario": "node scripts/scenario.mjs",
     "eval:clips": "node scripts/eval-clips.mjs",
     "test:eval": "node --test scripts/eval-clips.test.mjs",

@@ -67,3 +67,6 @@ auth.addHttpRoutes(http);
 import { handle as proofHandler } from "./proofPublic";
 http.route({ path: "/proof.json", method: "GET", handler: proofHandler });
 http.route({ path: "/proof.json", method: "OPTIONS", handler: preflight });
+import { get as healthGet, jira as jiraHealth } from "./healthHttp";
+http.route({ path: "/health", method: "GET", handler: healthGet });
+http.route({ path: "/health/jira", method: "POST", handler: jiraHealth });
