@@ -52,9 +52,28 @@ Cut rule: if a step is not working by its slot, replace it with a clearly labele
 1. Live controller dashboard: order and funding, report evidence with timestamps, payables, journal, and the approve/sign button.
 2. Show the duplicate block and the agent's refused self-approval with their audit reasons. Format amounts from exact micro-units; never show an unconfirmed payout as paid.
 
-## Deferred (design only; not built tonight)
+## Quality bar (must ship, layered on the core path)
 
-The Railway Python worker, HMAC service gateway, job leasing, faster-whisper, SSCD, the eval split protocol, period close, refunds (unless funding and payout both work by hour 6), Auth0, the Coinbase retail MCP (Base mainnet only) and Solana. Their designs remain in the subsystem docs, marked deferred.
+The core path above is the floor, not the product. Cuts below remove infrastructure judges never see; they do not lower product quality. Each owner runs parallel Codex/Claude agents on these once their core slice is green, merging small to `main`. Every item is real or explicitly labeled simulated.
+
+| Item | Owner | Why it wins |
+| --- | --- | --- |
+| Polished, consistent UI (shadcn + motion, dark/light, responsive, real loading/empty/error states) across buyer, contributor and controller views | silaswu4 + MatthewKim323 | Judges score what they see first |
+| Evidence player: click any criterion or duplicate match and the video seeks to that timestamp, with the narration transcript aligned underneath | MatthewKim323 | Makes the multimodal AI visible, not a JSON blob |
+| Server-side perceptual duplicate detection on sampled frames (re-encode/crop survives), with a side-by-side frame comparison in the UI | Stephen | The demo moment must be real, not a hash of the same file |
+| Finance agent as a real tool-calling loop over typed Convex tools: explains obligations, proposes payout batches, flags exceptions, and is visibly refused when it tries to approve | Stephen | Hyphenate's "autonomous finance" ask, with separation of duties on screen |
+| Three-way reconciliation: order contract vs. ledger vs. chain (BaseScan), with an exceptions queue for mismatches (wrong amount, unknown transfer, late settlement) | qtzx06 + Stephen | Hyphenate brief: "sources that disagree" |
+| Live financial statements from journals: payables, cash, revenue, a trial balance that always balances | Stephen | Proves the books are real double-entry, not a dashboard total |
+| Buyer funding via x402 by an agent (Wallet MCP) and a buyer view of delivery and remaining quota | qtzx06 | Coinbase x402 track |
+| Refund of unused quota (x402-funded order, controller-approved transfer back) | qtzx06 | Completes the money loop; keep if funding + payout work by 05:00 |
+| Mini evaluation: 15–20 staged team clips (valid, missed step, narration mismatch, re-encoded copy) labeled before running; report accuracy, false acceptances and latency in the README | Stephen | "Actual AI engineering": a measured number, not a claim |
+| Convex Workflow for the approval wait, live queries everywhere | Stephen | Convex track criterion: real Convex features |
+
+Ordering rule: never start a quality item while your core slice is red. At 05:00 freeze new items; 05:00–06:30 is integration and polish only.
+
+## Cut (infrastructure only; designs kept in subsystem docs)
+
+The Railway Python worker, HMAC service gateway, job leasing, faster-whisper and SSCD (Gemini plus perceptual hashing replace them), the held-out eval split protocol (the mini evaluation replaces it), period close, Auth0 (no prize; demo identities instead), the Coinbase retail MCP (Base mainnet only) and Solana.
 
 ## Shared rules
 
