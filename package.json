@@ -16,7 +16,8 @@
     "convex:dev": "convex dev",
     "check:convex": "CONVEX_AGENT_MODE=anonymous convex dev --once --typecheck enable",
     "seed": "convex run seed:demo",
-    "test:convex": "vitest run --config test/convex.config.mts"
+    "test:convex": "vitest run --config test/convex.config.mts",
+    "agent:fund": "node packages/payments/src/agent-fund.ts"
   },
   "dependencies": {
     "@noble/hashes": "2.4.0",
