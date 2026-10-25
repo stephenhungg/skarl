@@ -38,6 +38,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#10120e"
       }
-    }
+    },
+    "scheme": "skarl"
   }
 }

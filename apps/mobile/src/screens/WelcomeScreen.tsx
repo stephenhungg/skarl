@@ -13,25 +13,27 @@ import type { RootProps } from '../navigation';
 const rise = (step: number) => enter(700 + step * 110, 520);
 
 export function WelcomeScreen({ navigation }: RootProps<'Welcome'>) {
-  const { signIn } = useSession();
+  const { signIn, demoMode } = useSession();
+  const [error, setError] = useState('');
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
-  const go = async () => { setBusy(true); try { await signIn(); } finally { setBusy(false); } };
+  const go = async () => { setBusy(true); setError(''); try { await signIn(); } catch { setError('Demo entry is unavailable. Please sign in with Google.'); } finally { setBusy(false); } };
   const orbit = Math.min(width, height * 0.5);
   return <View style={[s.screen, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) }]}>
-    <View style={s.top}><Orbit size={orbit} onPress={() => void go()} /></View>
+    <View style={s.top}><Orbit size={orbit} onPress={() => navigation.navigate('SignIn')} /></View>
     <View style={s.bottom}>
       <Animated.Text entering={rise(0)} accessibilityRole="header" style={s.title}>Welcome to Skarl</Animated.Text>
       <Animated.Text entering={rise(1)} style={s.body}>
         Skarl turns short task videos into earnings. Record tasks, get reviewed, get paid.
       </Animated.Text>
       <Animated.View entering={rise(2)} style={{ alignItems: 'center', marginTop: 22 }}>
-        <Button kind="secondary" title="Log in with your email" icon={<ArrowRight />} onPress={() => navigation.navigate('Email')} style={s.email} />
+        <Button title="Continue with Google" icon={<ArrowRight />} onPress={() => navigation.navigate('SignIn')} style={s.email} />
       </Animated.View>
       <Animated.View entering={rise(3)} style={{ marginTop: 12 }}>
-        <Button title="Let's earn" onPress={() => void go()} loading={busy} style={s.primary} />
-        <Text style={s.demo}>Continues with a demo account on Base Sepolia testnet</Text>
+        {demoMode && <><Button kind="secondary" title="Continue with demo account" onPress={() => void go()} loading={busy} style={s.primary} />
+        <Text style={s.demo}>Unsigned demo identity · Base Sepolia testnet</Text></>}
+        {error ? <Text accessibilityRole="alert" style={s.demo}>{error}</Text> : null}
       </Animated.View>
       <Animated.Text entering={rise(4)} style={s.legal}>
         By continuing, you agree to our <Text style={s.legalStrong}>Terms</Text> and <Text style={s.legalStrong}>Privacy Policy</Text>

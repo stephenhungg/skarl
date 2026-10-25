@@ -4,9 +4,8 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 export const authToken = (userId: Id<"users">) => `auth:${userId}`;
 export const demoModeEnabled = () => process.env.SKARL_DEMO_IDENTITIES !== "off";
-export const githubEnabled = () => Boolean(process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET);
 
-/** Password signup alone does not prove ownership of a controller's email. */
+/** Only a verified provider email can satisfy the privileged-role allowlist. */
 export function controllerEmailAllowed(user: Doc<"users"> | null) {
   if (!user?.email || !user.emailVerificationTime) return false;
   const allowlist = (process.env.SKARL_CONTROLLER_EMAILS ?? "").split(",")

@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 export type RootParamList = {
-  Welcome: undefined; Email: undefined;
+  Welcome: undefined; SignIn: undefined;
   Tasks: undefined;
   Profile: { segment?: 'Payouts' | 'Submissions' | 'Ledger' } | undefined;
   TaskDetail: undefined;

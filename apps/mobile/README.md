@@ -2,8 +2,9 @@
 
 A standalone Expo Go iPhone app for real, consented demo contributions: portrait
 back-camera video with narration, synchronized device sensors, private uploads,
-and live analysis/review status. **Base Sepolia testnet, test USDC, impersonable
-demo identities.** No production authentication or payout signing in this app.
+and live analysis/review status. **Base Sepolia testnet, test USDC.** Google is
+the only real sign-in; a labeled, unsigned demo contributor is also available.
+Payout signing is not part of this app.
 
 ## Run on your iPhone
 
@@ -34,6 +35,34 @@ EXPO_PUBLIC_CONVEX_URL=https://keen-marmot-986.convex.cloud
 Restart Expo after changing it. No private API key belongs in an `EXPO_PUBLIC_`
 variable. **The operator must deploy the sensor backend from main before sensor
 attachment works.** This work does not deploy Convex.
+
+## Google sign-in
+
+The operator must configure Google OAuth and deploy the backend before real
+sign-in works. Follow [authentication setup](../../docs/auth.md): use a Google
+OAuth client of type **Web application**, with the exact redirect URI
+`https://keen-marmot-986.convex.site/api/auth/callback/google`. Google client
+credentials stay on Convex; no secret belongs in this app.
+
+Choose “Continue with Google”, complete the browser flow, then claim contributor
+access for your own account. Profile signs out of Convex Auth. Tokens and the
+OAuth verifier use `expo-secure-store`; AsyncStorage is only for the demo choice
+and upload drafts. The separate demo button continues unsigned and remains
+subject to `SKARL_DEMO_IDENTITIES` on the backend.
+
+Expo Go uses the URL returned by
+`makeRedirectUri({ scheme: "skarl", path: "auth" })`, typically
+`exp://<metro-host>:8081/--/auth`. Keep the same Metro session reachable from the
+phone. `skarl://auth` applies when running an app that registers the `skarl`
+scheme; setting it in `app.json` does not add that scheme to Expo Go. Do not add
+these app-return URLs to Google's authorized redirect URIs: Google returns to
+the HTTPS Convex callback, then Convex redirects back to the app.
+
+With real credentials on a physical iPhone, test successful sign-in, browser
+cancellation, relaunch/session restoration, contributor onboarding, and sign-out.
+Confirm a signed-in account sees only its own contributions even when demo mode
+is enabled. These live OAuth/device checks are not established by local tests
+or an iOS export.
 
 ## Phone smoke test
 

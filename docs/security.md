@@ -3,8 +3,8 @@
 ## Current status
 
 Server role checks protect acceptance/payable/journal posting, independent
-approval and refusal audits. Additive Convex Auth password and optional GitHub
-sign-in is implemented in source; operator configuration and deployment are
+approval and refusal audits. Convex Auth with Google-only real sign-in
+on web and mobile is implemented in source; operator configuration and deployment are
 required before live authentication is claimed. See [authentication](auth.md).
 Unsigned demo selectors remain impersonable when demo mode is enabled (the
 default); only intended demo assets and testnet funds belong on that path.
@@ -22,10 +22,10 @@ unsigned role-gated demo scripts and integrations.
 
 Signed-in humans may claim buyer or contributor in the demo organization.
 Controller claims require both an allowlisted email and verified email ownership;
-password signup alone does not prove ownership. Humans cannot claim finance-agent.
+Google's `email_verified` claim must be exactly `true`. Humans cannot claim finance-agent.
 Contributor/controller role conflicts, agent-approval refusals and independent
 self-approval checks remain server-enforced. See [controller onboarding](auth.md#membership-and-onboarding-api)
-for the operator verification process and remaining password reset limitation.
+for Google setup and the operator allowlist policy.
 
 | Principal | Allowed authority | Excluded authority |
 | --- | --- | --- |

@@ -27,12 +27,14 @@ function Stat({ value, label, index }: { value: string; label: string; index: nu
 
 export function ProfileScreen({ navigation, route }: RootProps<'Profile'>) {
   const insets = useSafeAreaInsets();
-  const { signOut, draft } = useSession();
+  const { signOut, draft, authenticated, email, userId } = useSession();
   const { earnings, submissions, loading, error } = useContributorActivity();
+  const [signOutError, setSignOutError] = useState('');
+  const leave = async () => { try { await signOut(); } catch { setSignOutError('Could not sign out. Please try again.'); } };
   const [segment, setSegment] = useState<Segment>('Submissions');
   useEffect(() => { if (route.params?.segment) setSegment(route.params.segment); }, [route.params?.segment]);
 
-  const token = submissions[0]?.contributorTokenIdentifier ?? `demo:${identity.demoIdentity}`;
+  const token = submissions[0]?.contributorTokenIdentifier ?? (authenticated ? `auth:${userId}` : `demo:${identity.demoIdentity}`);
   const [shortId, setShortId] = useState('');
   useEffect(() => {
     let live = true;
@@ -57,7 +59,7 @@ export function ProfileScreen({ navigation, route }: RootProps<'Profile'>) {
       <View style={s.avatar}><ProfileIcon size={24} color={c.accentInk} /></View>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={s.name}>Contributor #{shortId || '...'}</Text>
-        <Text style={s.sub}>Demo identity</Text>
+        <Text style={s.sub}>{authenticated ? email ?? 'Google account' : 'Demo identity'}</Text>
       </View>
     </Animated.View>
 
@@ -114,7 +116,8 @@ export function ProfileScreen({ navigation, route }: RootProps<'Profile'>) {
       </Animated.View>)}
     </View> : <Empty title="Nothing earned yet" />)}
 
-    <Button kind="secondary" title="Sign out" onPress={() => void signOut()} style={{ marginTop: 28 }} />
+    {signOutError ? <Text accessibilityRole="alert" style={s.sub}>{signOutError}</Text> : null}
+    <Button kind="secondary" title="Sign out" onPress={() => void leave()} style={{ marginTop: 28 }} />
   </ScrollView>;
 }
 

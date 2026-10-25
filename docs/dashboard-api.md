@@ -22,15 +22,15 @@ Source: [dashboard](../convex/dashboard.ts), [finance](../convex/finance.ts), [p
 ## Authentication
 
 **Source implementation; operator configuration and deployment required.** See
-[authentication setup](auth.md) for keys, environment variables and GitHub OAuth.
+[authentication setup](auth.md) for keys, environment variables and Google OAuth.
 The existing `demoIdentity` arguments below stay required for compatibility.
 When a Convex caller is signed in, the shared role check resolves only that
 user's `auth:<userId>` membership and ignores `demoIdentity`; passing a controller
 selector cannot elevate a signed-in contributor. Action calls preserve this
 identity through `ctx.runQuery` and `ctx.runMutation`.
 
-`auth/memberships:me({})` returns `userId`, `email`, `roles`, `demoMode`,
-`githubEnabled` and `canClaimController`. Signed-in users can call
+`auth/memberships:me({})` returns `userId`, `email`, `roles`, `demoMode` and
+`canClaimController`. Signed-in users can call
 `auth/memberships:claimRole({role})` to claim buyer/contributor in the demo
 organization. A controller claim requires a verified email on the
 `SKARL_CONTROLLER_EMAILS` allowlist. Humans cannot claim finance-agent, and a

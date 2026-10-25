@@ -6,13 +6,15 @@ import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ConvexProvider, ConvexReactClient } from 'convex/react';
+import { ConvexReactClient } from 'convex/react';
+import { ConvexAuthProvider } from '@convex-dev/auth/react';
+import { authStorage } from './src/authStorage';
 import { colors as c, fonts as f, gutter } from './theme';
 import { SessionProvider, useSession } from './src/session';
 import type { RootParamList } from './src/navigation';
 import { Button } from './src/components/Primitives';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
-import { EmailScreen } from './src/screens/EmailScreen';
+import { SignInScreen } from './src/screens/SignInScreen';
 import { TasksScreen } from './src/screens/TasksScreen';
 import { TaskDetailScreen } from './src/screens/TaskDetailScreen';
 import { CaptureScreen } from './src/screens/CaptureScreen';
@@ -27,12 +29,13 @@ const Stack = createNativeStackNavigator<RootParamList>();
 const theme = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: c.paper, card: c.paper, text: c.ink, border: c.hairline, primary: c.ink } };
 
 function Root() {
-  const { ready, signedIn } = useSession();
+  const { ready, signedIn, authenticated, contributorReady } = useSession();
   if (!ready) return <View style={s.center}><ActivityIndicator color={c.slate500} /></View>;
+  if (authenticated && !contributorReady) return <SignInScreen />;
   return <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.paper }, animation: 'slide_from_right' }}>
     {!signedIn ? <>
       <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ animation: 'fade' }} />
-      <Stack.Screen name="Email" component={EmailScreen} />
+      <Stack.Screen name="SignIn" component={SignInScreen} />
     </> : <>
       <Stack.Screen name="Tasks" component={TasksScreen} options={{ animation: 'fade' }} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
@@ -71,9 +74,9 @@ export default function App() {
           <Text style={s.title}>Connect Skarl</Text>
           <Text style={s.body}>Set EXPO_PUBLIC_CONVEX_URL in apps/mobile/.env, then restart Expo.</Text>
         </View>
-          : <ConvexProvider client={client}><SessionProvider><Boundary>
+          : <ConvexAuthProvider client={client} storage={authStorage}><SessionProvider><Boundary>
             <NavigationContainer theme={theme}><Root /></NavigationContainer>
-          </Boundary></SessionProvider></ConvexProvider>}
+          </Boundary></SessionProvider></ConvexAuthProvider>}
     </SafeAreaProvider>
   </GestureHandlerRootView>;
 }

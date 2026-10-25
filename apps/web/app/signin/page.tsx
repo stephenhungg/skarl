@@ -36,7 +36,7 @@ function SignInForm() {
     catch { setError(true); setBusy(false); }
   }
 
-  if (isLoading || me === undefined) return null;
+  if (isLoading || me === undefined) return <p role="status" className="mono text-center text-sm text-slate-700">Checking your account…</p>;
   if (me.userId) return <section>
     <div className="mb-8 flex items-start justify-between gap-3"><h1 className="cut-medium text-[32px] tracking-[-.02em]">Pick a role</h1><AccountMenu /></div>
     <RoleClaims />
@@ -50,9 +50,10 @@ function SignInForm() {
     <h1 className="cut-medium mb-8 text-[32px] tracking-[-.02em]">Sign in to Skarl</h1>
     <button type="button" disabled={busy} onClick={() => void google()} className="cut-regular inline-flex h-12 w-full items-center justify-center gap-3 rounded-[10px] border border-haze bg-paper text-[15px] transition-colors hover:bg-mist disabled:opacity-50">
       <GoogleMark />
-      Continue with Google
+      {busy ? "Please wait…" : "Continue with Google"}
     </button>
     {error && <p role="alert" className="mt-4 text-sm text-slate-700">Couldn’t reach Google, try again.</p>}
+    {me.demoMode && <p className="mt-8 text-[13px] text-slate-700">The public demo is available without signing in. <Link href="/dashboard" className="text-ink underline underline-offset-4">View with a demo identity</Link>.</p>}
   </section>;
 }
 

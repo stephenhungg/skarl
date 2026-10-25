@@ -29,7 +29,10 @@ export type EarningRow = {
   submissionId: string; orderId: string; status: string; amountAtomic: string;
   payableStatus: 'accrued' | 'payout_in_progress' | 'paid' | 'reversed' | null; payout: PayoutProjection;
 };
+export type Membership = { userId: string | null; email: string | null; roles: string[]; demoMode: boolean };
 export const api = {
+  me: makeFunctionReference<'query', Record<string, never>, Membership>('auth/memberships:me'),
+  claimContributor: makeFunctionReference<'mutation', { role: 'contributor' }, { roles: string[] }>('auth/memberships:claimRole'),
   context: makeFunctionReference<'query', Identity, Context>('dashboard:demoContext'),
   summary: makeFunctionReference<'query', Identity & { orderId: string }, Summary>('dashboard:orderSummary'),
   submissions: makeFunctionReference<'query', Identity & { orderId: string }, SubmissionRow[]>('dashboard:submissions'),

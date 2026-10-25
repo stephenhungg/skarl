@@ -2,9 +2,25 @@
 
 Skarl's standalone [Expo Go app](../apps/mobile/README.md) collects consented
 10–30 second portrait task videos with narration and a synchronized IMU trace.
-This is a **Base Sepolia testnet demo** using the existing impersonable contributor
-identity. It creates ordinary licensed demo contributions, never `verificationOnly`
-submissions. No wallet key, location data or new database is introduced.
+This is a **Base Sepolia testnet demo** with Google sign-in and an explicit
+unsigned, impersonable contributor fallback. It creates ordinary licensed demo
+contributions, never `verificationOnly` submissions. No wallet key, location data or new database is introduced.
+
+## Authentication
+
+Google is the only real sign-in provider. `ConvexAuthProvider` connects the
+existing Convex client to auth, with tokens and the OAuth verifier in
+`expo-secure-store`. The browser flow uses `expo-web-browser` and
+`expo-auth-session`, both available in Expo Go. A signed-in account must claim
+the contributor role before using contributor calls and always uses its own
+membership; a missing or refused membership never becomes a demo identity.
+Profile offers sign-out. The separate labeled demo entry remains unsigned and
+works only while the server's demo mode permits it.
+
+See [authentication setup](auth.md) for the Google Web application client,
+Convex callback, environment variables and Expo Go's `exp://` return URL behavior.
+Real Google callback delivery and native session persistence require credentials
+and a physical-phone smoke test; local tests and exports cannot verify them.
 
 ## Why sensors
 
@@ -173,8 +189,8 @@ must not cause a second video submission.
 Live `submissions:getReport` powers the status and timestamped criteria. The
 owner/controller-only `media:submissionEvidence` returns `sensorTrace` or null.
 Its signed-by-possession storage URL is private bearer access: do not cache or
-publish it. Demo identities remain impersonable; these are demo role boundaries,
-not production authentication.
+publish it. Signed-in calls use their own persisted membership. Unsigned demo
+identities remain impersonable and are not authentication.
 
 ## Motion summary for the dashboard
 
