@@ -72,16 +72,22 @@ establish Skarl accuracy.
 
 ## Task-scoped evidence (source implementation, October 25)
 
-`task-evidence-2.0` replaces the red-cup-only pipeline. Orders may supply optional
-`taskSpec: { object, distractors, target, steps, narration? }` through
-`orders:createOrder` or `skarl_create_order`. Labels are bounded snake-case strings;
-`other` and `unknown` are reserved fallbacks. New explicit specs participate in
-the frozen rubric content hash and order replay binding. The rubric stores a
-`taskSpecHash` binding its spec to `contentHash`; verification reads the submission's
-frozen rubric, never a mutable title, model output or narration. Only the exact
-legacy rubric gets the implicit red-cup default. Unstructured unrelated orders
-remain createable but produce failed/review-only reports until given a supported
-frozen spec.
+`task-evidence-2.0` uses the frozen rubric's structured vocabulary. Order creation
+(`orders:createOrder`, the public HTTP route and MCP) stores the rubric with
+`taskSpecStatus: pending` and schedules an internal extraction action. The existing
+Gemini provider extracts `{ object, distractors, target, steps, narration }` from
+that order's **criteria text**, with no task example or default in the prompt.
+Strict response-schema validation and normalization precede storage. The spec is
+bound to the original `contentHash`, extraction version, provider/model and an
+additional `taskSpecHash`; frozen financial terms and original rubric hashes do
+not change. Optional caller-supplied specs remain request bindings for backwards
+compatibility, but never become trusted semantics.
+
+There is no implicit legacy task. Missing credentials, unavailable/incomplete
+responses, invalid schema, unknown extraction versions or stale hash bindings
+leave the task pending. Verification records failed/review-only evidence; a prior
+accept projection cannot automatically qualify a pending order. Evidence-bound
+owning-buyer review remains available. Rerun backfill after provider recovery.
 
 Both silent visual judges receive the same spec and criterion descriptions in
 separate image-only requests. General audio models receive an independently
@@ -104,8 +110,8 @@ Additional actions or unsupported criterion/narration semantics require review.
 Canonical reports can carry `observations.video` / `observations.audio`. Shared
 TypeScript and Python shape validation remains available for reading artifacts;
 scoped validation additionally takes the trusted order spec and rejects labels
-from another task. `red-cup-evidence-1.2` retains its legacy label validation and
-old reports without embedded observations remain readable. Historical reports
+from another task. Historical reports retain generic shape validation and remain readable;
+current acceptance with task observations requires the trusted extracted spec. Historical reports
 are never rewritten. Liveness still compares the issued random words independently
 of task vocabulary. Coach explanations and dataset `language_instruction` already
 use report evidence and the frozen rubric respectively.
@@ -115,7 +121,8 @@ approximation. A can has no faithful class and returns `not_applicable`, even if
 legacy cup detections exist. New derived runs bind task object/class and compute
 overlap timestamps from validated uploaded frames. These browser observations
 remain advisory and client-computed, never authority for acceptance or payment.
-Legacy stored cup summaries remain available for compatible tasks.
+Historical unscoped object summaries remain readable, but cannot corroborate a task;
+new detector witnesses require an explicit matching task-object/class binding.
 
 ### Operator handoff (no deployment performed by this change)
 
@@ -123,14 +130,18 @@ Deploy the Convex schema/functions and web changes, then run this internal,
 idempotent migration against the intended deployment:
 
 ```sh
-pnpm exec convex run taskSpecMigration:backfill '{}'
+pnpm exec convex run --prod orders:backfillTaskSpecs '{}'
 ```
 
-It enriches the seeded red-cup v1/v2 and exact hash-guarded can rubric, preserving
-existing commercial terms, rubric content hashes and reports. Its added spec hash
-and audit event record the binding. Unrelated orders are skipped. It does not
-rerun old submissions, create a payable, or perform a chain transaction. Re-record
-or submit a licensed can demonstration after migration to obtain new evidence.
+It visits existing open orders and extracts from **each order's own rubric**,
+without any per-order IDs, rubric hashes or task constants. Valid current-version
+extractions are reused. Failures remain pending and may be retried. The action
+returns ready/pending/skipped counts; it preserves financial terms, original
+rubric hashes and historical reports. It does not rerun old submissions, create
+a payable or perform a chain transaction. New submissions are needed to obtain
+new verifier evidence. `taskSpecMigration:backfill` is a compatibility action for
+the same generic backfill. See [runtime configuration](config.md) for environment
+keys, defaults and exact operator commands.
 
 Synthetic tests cover can/hat acceptance against its spec, cross-task rejection,
 legacy report compatibility, task prompts, injection resistance, both visual jury

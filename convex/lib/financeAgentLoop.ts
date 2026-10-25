@@ -1,3 +1,4 @@
+import { configNumber } from "./config.ts";
 /** Bounded orchestration. Model steps are data; only the dispatcher has authority. */
 import { financeReadToolNames, capFinanceToolResult, validateFinanceToolCall } from "./financeToolRegistry";
 import { compactFinanceSteps, financeJson, financeWrapUp } from "./financeAgentBudget";
@@ -17,11 +18,11 @@ export async function runFinanceLoop(options: {
   const ids = new Set<string>();
   const finish = (reason: string) => ({ status: "capped" as const, steps, explanation: financeWrapUp(steps, reason) });
   for (let turn = 0; turn <= options.maxToolCalls; turn++) {
-    if (options.deadline && Date.now() >= options.deadline - 1500) return finish("deadline reached");
+    if (options.deadline && Date.now() >= options.deadline - configNumber("FINANCE_AGENT_DEADLINE_RESERVE_MS")) return finish("deadline reached");
     let response: Awaited<ReturnType<typeof options.next>>;
-    try { response = await options.next(compactFinanceSteps(steps, options.contextChars ?? 65000)); }
+    try { response = await options.next(compactFinanceSteps(steps, options.contextChars ?? configNumber("FINANCE_AGENT_LOOP_CONTEXT_CHARS"))); }
     catch (error) {
-      if (options.deadline && Date.now() >= options.deadline - 1500) return finish("provider deadline reached");
+      if (options.deadline && Date.now() >= options.deadline - configNumber("FINANCE_AGENT_DEADLINE_RESERVE_MS")) return finish("provider deadline reached");
       throw error;
     }
     if (!response.calls.length) {
@@ -45,7 +46,7 @@ export async function runFinanceLoop(options: {
     // model order with a persistence barrier before any following mutation.
     for (let index = 0; index < response.calls.length;) {
       if (steps.length >= options.maxToolCalls) return finish("tool-call limit reached");
-      if (options.deadline && Date.now() >= options.deadline - 1500) return finish("deadline reached");
+      if (options.deadline && Date.now() >= options.deadline - configNumber("FINANCE_AGENT_DEADLINE_RESERVE_MS")) return finish("deadline reached");
       const group: AgentCall[] = [response.calls[index++]!];
       if (financeReadToolNames.has(group[0]!.name)) {
         while (index < response.calls.length && financeReadToolNames.has(response.calls[index]!.name) && steps.length + group.length < options.maxToolCalls) group.push(response.calls[index++]!);

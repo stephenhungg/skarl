@@ -68,7 +68,7 @@ export function Reconciliation() {
     try {
       const { status } = await refresh({ demoIdentity: BUYER, orderId });
       if (status === "available") toast.success("CDP witness refreshed");
-      else if (status === "cached_or_rate_limited") toast("CDP witness is recent", { description: "Snapshots are reused for 30 seconds." });
+      else if (status === "cached_or_rate_limited") toast("CDP witness is recent", { description: "Recent snapshots are reused." });
       else toast.warn("CDP witness unavailable", { description: "Order, ledger, chain and bank results above still stand." });
     } catch (error) {
       toast.fail("Refresh failed", { description: humanize(errorCode(error)) });

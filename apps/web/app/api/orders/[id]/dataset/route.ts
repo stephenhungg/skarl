@@ -1,3 +1,4 @@
+import { webConfig } from "../../../../../lib/config";
 import { authenticateConvexRequest } from "../../../../../lib/auth/server";
 import { ConvexHttpClient } from "convex/browser";
 import type { NextRequest } from "next/server";
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const db = new ConvexHttpClient(url);
     await authenticateConvexRequest(db, request);
     const manifest = await db.query(api.datasets.forOrder, { demoIdentity, orderId: orderId as Id<"orders">,
-      refreshKey: Math.floor(Date.now() / 60_000) });
+      refreshKey: Math.floor(Date.now() / webConfig.datasetRefreshMs) });
     if (format === "json") return paymentJson(manifest);
     if (format === "lerobot" || format === "rlds-json") {
       // Hydrate one licensed episode at a time; the action repeats publication and

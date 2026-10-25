@@ -1,3 +1,4 @@
+import { configNumber, qualityWeights } from "./config.ts";
 import type { SpokenLivenessResult } from "./spokenLiveness";
 
 /** A reproducible ranking heuristic over stored witnesses, never acceptance authority. */
@@ -66,26 +67,27 @@ export function deriveSampleQuality(input: SampleQualityInput) {
   const live = input.liveness?.status === "passed" && durationMs !== null && interval(input.liveness.evidence, durationMs);
   const steadiness = input.sensorSummary?.source === "clientReported" && fraction(input.sensorSummary.steadinessRatio)
     ? input.sensorSummary.steadinessRatio : null;
+  const weights = qualityWeights();
   const components = {
-    juryAgreement: component(juryFraction === null ? 0 : Math.round(25 * juryFraction), 25,
+    juryAgreement: component(juryFraction === null ? 0 : Math.round(weights.juryAgreement * juryFraction), weights.juryAgreement,
       juryFraction === null ? "missing" : juryFraction === 1 ? "supported" : juryFraction === 0 ? "failed" : "partial",
       juryFraction === null ? "No complete, distinct-model jury with a valid agreement result."
         : `${agreedCriteria}/${criterionIds.length} rubric criteria agree across ${judges.length} stored model reports; conservative agreement fraction ${juryFraction}.`),
-    allCriteriaSupported: component(allSupported ? 25 : 0, 25, allSupported ? "supported" : "failed",
+    allCriteriaSupported: component(allSupported ? weights.allCriteriaSupported : 0, weights.allCriteriaSupported, allSupported ? "supported" : "failed",
       allSupported ? `All ${criterionIds.length} rubric criteria have supported findings and valid timestamped evidence.`
         : "At least one rubric criterion lacks a unique supported finding with valid timestamped evidence."),
-    duplicateClear: component(duplicateClear ? 20 : 0, 20, duplicateClear ? "supported" : duplicate.status === "suspected" ? "failed" : "missing",
+    duplicateClear: component(duplicateClear ? weights.duplicateClear : 0, weights.duplicateClear, duplicateClear ? "supported" : duplicate.status === "suspected" ? "failed" : "missing",
       duplicateClear ? "Stored heuristic duplicate check is clear with no matches; this is not proof of uniqueness."
         : `Duplicate check is ${typeof duplicate.status === "string" ? duplicate.status : "unavailable"}; no clear-check credit.`),
-    livenessPassed: component(live ? 15 : 0, 15, live ? "supported" : input.liveness ? "failed" : "missing",
+    livenessPassed: component(live ? weights.livenessPassed : 0, weights.livenessPassed, live ? "supported" : input.liveness ? "failed" : "missing",
       live ? "Issued spoken challenge matched timestamped transcript segments; this is not identity verification."
         : `Spoken liveness has no valid pass (${input.liveness?.status ?? "unavailable"}).`),
-    sensorSteadiness: component(steadiness === null ? 0 : Math.round(5 * steadiness), 5,
+    sensorSteadiness: component(steadiness === null ? 0 : Math.round(weights.sensorSteadiness * steadiness), weights.sensorSteadiness,
       !input.sensorSummary ? "not_applicable" : steadiness === null ? "missing" : steadiness === 1 ? "supported" : "partial",
       !input.sensorSummary ? "No sensor trace; no steadiness credit and no weight redistribution."
         : steadiness === null ? "Attached sensor summary has no valid client-reported steadiness ratio."
           : `Client-reported steady gyroscope sample ratio ${steadiness}; heuristic camera stability, not task success.`),
-    attestationPresent: component(input.attested ? 10 : 0, 10, input.attested ? "supported" : "missing",
+    attestationPresent: component(input.attested ? weights.attestationPresent : 0, weights.attestationPresent, input.attested ? "supported" : "missing",
       input.attested ? "Confirmed, source/report-bound attestation is present; it commits to the report, not its truth."
         : "No confirmed, source/report-bound attestation."),
   };
@@ -99,9 +101,9 @@ export function deriveSampleQuality(input: SampleQualityInput) {
   if (!allSupported) capReasons.push("all_criteria_evidence_required");
   if (juryFraction !== null && juryFraction < 1) capReasons.push("jury_disagreement");
   const rawQualityScore = Object.values(components).reduce((sum, row) => sum + row.score, 0);
-  const scoreCap = capReasons.length ? 49 : null;
+  const scoreCap = capReasons.length ? configNumber("SKARL_QUALITY_REVIEW_SCORE_CAP") : null;
   const intervals = supported.map(value => object(value) as { startMs: number; endMs: number });
-  const paddingMs = 500;
+  const paddingMs = configNumber("SKARL_QUALITY_SEGMENT_PADDING_MS");
   const usableStartMs = intervals.length ? Math.max(0, Math.min(...intervals.map(row => row.startMs)) - paddingMs) : null;
   const usableEndMs = intervals.length ? Math.min(durationMs!, Math.max(...intervals.map(row => row.endMs)) + paddingMs) : null;
   return { method: "skarl.quality.heuristic.v1" as const,

@@ -14,9 +14,9 @@ beforeEach(() => {
   vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", SECRET);
   vi.stubEnv("CDP_AGENT_ADDRESS", AGENT);
   vi.stubEnv("SKARL_TREASURY_ADDRESS", TREASURY);
-  vi.spyOn(Date, "now").mockReturnValue(NOW);
+  vi.useFakeTimers(); vi.setSystemTime(NOW);
 });
-afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 async function setup() {
   const t = convexTest(schema, modules);
   await t.mutation(internal.seed.demo, {});
@@ -34,15 +34,15 @@ async function rows(t: Awaited<ReturnType<typeof setup>>) {
 }
 
 describe("per-order operator-selected agent funding treasury", () => {
-  it("creates one fixed, disabled-auto-pay order without changing the global receiving address or other orders", async () => {
+  it("creates one data-driven, disabled-auto-pay order without changing the global receiving address or other orders", async () => {
     const t = await setup();
     const initial = await rows(t);
     const created = await t.mutation(internal.payments.createWalletMcpDemo, {});
     if (!created.ok) throw new Error("operator provisioning refused");
     expect(created).toMatchObject({ fundingPayTo: AGENT.toLowerCase(),
-      autoPay: { enabled: false, requireAllChecks: true, maxPerClipAtomic: "1000000" } });
+      autoPay: { enabled: false, requireAllChecks: true, maxPerClipAtomic: "2500000" } });
     expect(await t.run(ctx => ctx.db.get(created.orderId))).toMatchObject({ fundingPayTo: AGENT.toLowerCase(),
-      status: "awaiting_funding", budgetAtomic: 1_000_000n, autoPay: { enabled: false } });
+      status: "awaiting_funding", budgetAtomic: 10_000_000n, autoPay: { enabled: false } });
     const after = await rows(t);
     expect(after.orders).toHaveLength(initial.orders.length + 1);
     for (const original of initial.orders) expect(after.orders.find(order => order._id === original._id)).toEqual(original);
@@ -94,9 +94,9 @@ describe("per-order operator-selected agent funding treasury", () => {
     const t = await setup(), created = await t.mutation(internal.payments.createWalletMcpDemo, {});
     if (!created.ok || !created.fundingPayTo) throw new Error("operator provisioning refused");
     const funding = { serviceSecret: SECRET, orderId: created.orderId, demoIdentity: "buyer", payerAddress: PAYER,
-      recipientAddress: created.fundingPayTo, authorizationNonce: `0x${"aa".repeat(32)}`, amountAtomic: 1_000_000n,
+      recipientAddress: created.fundingPayTo, authorizationNonce: `0x${"aa".repeat(32)}`, amountAtomic: BigInt(created.amountAtomic),
       validBefore: NOW + 60_000, expectedFundingTermsHash: fundingTermsHash({ orderId: created.orderId,
-        amountAtomic: "1000000", payTo: created.fundingPayTo, autoPay: created.autoPay }) };
+        amountAtomic: created.amountAtomic, payTo: created.fundingPayTo, autoPay: created.autoPay }) };
     const before = await rows(t);
     await expect(t.mutation(api.payments.recordFundingAttempt, { ...funding, recipientAddress: TREASURY }))
       .rejects.toThrow("funding_recipient_changed");
@@ -111,12 +111,12 @@ describe("per-order operator-selected agent funding treasury", () => {
     expect(claim.replayed).toBe(false);
     const observation = { network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS, txHash: `0x${"bb".repeat(32)}`,
       logIndex: 1, blockNumber: 10n, blockHash: `0x${"cc".repeat(32)}`, fromAddress: PAYER,
-      toAddress: created.fundingPayTo, amountAtomic: 1_000_000n, confirmations: 2, succeeded: true, observedAt: NOW };
+      toAddress: created.fundingPayTo, amountAtomic: BigInt(created.amountAtomic), confirmations: 2, succeeded: true, observedAt: NOW };
     expect(await t.mutation(api.payments.confirmFunding, { serviceSecret: SECRET, attemptId: claim.attemptId,
       authorizationNonce: funding.authorizationNonce, observation })).toMatchObject({ ok: true });
     const final = await rows(t);
     expect(final.intents).toHaveLength(1);
-    expect(final.intents[0]).toMatchObject({ recipientAddress: created.fundingPayTo, amountAtomic: 1_000_000n, status: "confirmed" });
+    expect(final.intents[0]).toMatchObject({ recipientAddress: created.fundingPayTo, amountAtomic: BigInt(created.amountAtomic), status: "confirmed" });
     expect(final.journals).toHaveLength(1);
     expect(final.orders.find(order => order._id === created.orderId)).toMatchObject({ status: "funded", autoPay: { enabled: false } });
   });
@@ -130,6 +130,6 @@ describe("per-order operator-selected agent funding treasury", () => {
     expect(await t.run(ctx => ctx.db.get(created.orderId))).not.toHaveProperty("fundingPayTo");
     expect((await t.mutation(api.payments.recordFundingAttempt, { serviceSecret: SECRET, orderId: created.orderId,
       demoIdentity: "buyer", payerAddress: PAYER, recipientAddress: TREASURY, authorizationNonce: `0x${"dd".repeat(32)}`,
-      amountAtomic: 1_000_000n, validBefore: NOW + 60_000 })).replayed).toBe(false);
+      amountAtomic: BigInt(created.amountAtomic), validBefore: NOW + 60_000 })).replayed).toBe(false);
   });
 });

@@ -1,3 +1,4 @@
+import { seedWithTaskSpecs } from "./fixtures/seedWithTaskSpecs";
 import { convexTest } from "convex-test";
 import workflowTest from "@convex-dev/workflow/test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +16,7 @@ afterEach(() => vi.unstubAllEnvs());
 async function setup() {
   const t = convexTest(schema, modules);
   workflowTest.register(t);
-  const seeded = await t.mutation(internal.seed.demo, {});
+  const seeded = await seedWithTaskSpecs(t);
   return { t, ...seeded };
 }
 

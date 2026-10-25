@@ -1,11 +1,11 @@
 import type { IsoFigureDef } from "@/components/iso/types";
 import { auto, kit, mix, type V3 } from "@/components/iso/kit";
 
-// A phone on a tripod filming a small desk: two cups, one on a coaster. Screen shows REC and a
+// A phone on a tripod filming a small desk: two cups, one on a target surface. Screen shows REC and a
 // running timer; a light cone runs from the lens onto the desk.
 export const recordFigure: IsoFigureDef = {
   id: "rec",
-  aria: "Isometric phone on a tripod recording a desk with two cups and a coaster. Its screen shows a red record dot and a running timer.",
+  aria: "Isometric phone on a tripod recording a desk with two cups and a target surface. Its screen shows a red record dot and a running timer.",
   css: `
     .iso-stage[data-fig="rec"] .rec-scr { fill:url(#rec-scrg); }
     .iso-stage[data-fig="rec"] .rec-dot { fill:#ff4f45; }
@@ -53,7 +53,7 @@ export const recordFigure: IsoFigureDef = {
     // where the light lands
     svg += `<g transform="${TOP(0, 0, 36.2)}"><ellipse id="rec-spot" class="rec-spot" cx="${SPOT[0]}" cy="${SPOT[1]}" rx="34" ry="30"/>
       <ellipse class="rw-hi" style="opacity:.35" cx="${SPOT[0]}" cy="${SPOT[1]}" rx="18" ry="15"/></g>`;
-    // cup on the left, coaster + cup at the back
+    // cup on the left, target surface + cup at the back
     const cup = (cx: number, cy: number, z: number, r: number, h: number) =>
       G.cyl(cx, cy, z, r, h) + `<g transform="${TOP(0, 0, z + h)}"><circle class="rw-pit" cx="${cx}" cy="${cy}" r="${r - 1.6}"/>
         <circle class="rec-liquid" cx="${cx}" cy="${cy}" r="${r - 3.2}"/></g>`;

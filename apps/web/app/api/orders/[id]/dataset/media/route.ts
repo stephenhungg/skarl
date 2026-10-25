@@ -1,3 +1,4 @@
+import { webConfig } from "../../../../../../lib/config";
 import { authenticateConvexRequest } from "../../../../../../lib/auth/server";
 import { makeFunctionReference } from "convex/server";
 import type { NextRequest } from "next/server";
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       orderId: grant.orderId as Id<"orders">, submissionId: grant.submissionId as Id<"submissions">, binding: grant.binding });
     if (original.binding !== grant.binding) throw new Error("invalid_dataset_media_grant");
     const upstream = await fetch(original.storageUrl, {
-      cache: "no-store", redirect: "error", signal: AbortSignal.timeout(30_000),
+      cache: "no-store", redirect: "error", signal: AbortSignal.timeout(webConfig.mediaFetchTimeoutMs),
     });
     if (!upstream.ok || !upstream.body) return paymentJson({ error: "dataset_media_unavailable" }, 503);
     return new Response(upstream.body, { headers: {

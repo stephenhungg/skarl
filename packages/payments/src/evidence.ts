@@ -1,7 +1,8 @@
+import { paymentConfig } from "./config.ts";
 import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import { fundingRouteConfig } from "./funding.ts";
 export { bazaarResourceServerExtension };
-export const EVIDENCE_PRICE_ATOMIC = 250_000n;
+export const EVIDENCE_PRICE_ATOMIC = paymentConfig.evidencePriceAtomic;
 
 export function evidenceRouteConfig(revenueAddress: string) {
   return { ...fundingRouteConfig(EVIDENCE_PRICE_ATOMIC, revenueAddress),

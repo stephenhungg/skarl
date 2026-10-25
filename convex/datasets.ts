@@ -1,3 +1,4 @@
+import { paymentOrigin } from "./lib/config";
 import { v } from "convex/values";
 import { action, internalQuery, query, type QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -150,7 +151,7 @@ async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Do
     const secret = process.env.SKARL_PAYMENTS_SERVICE_SECRET ?? "";
     const grant = createDatasetMediaToken({ demoIdentity, orderId: order._id, submissionId: submission._id, binding }, secret);
     expiresAt = grant.expiresAt;
-    mediaUrl = `https://skarl.vercel.app/api/orders/${order._id}/dataset/media?token=${encodeURIComponent(grant.token)}`;
+    mediaUrl = `${paymentOrigin()}/api/orders/${order._id}/dataset/media?token=${encodeURIComponent(grant.token)}`;
   }
   // Client-derived labels are separate from the published acceptance snapshot.
   // Only authorized, licensed samples reach this point; no model output affects

@@ -1,3 +1,4 @@
+import { configNumber } from "./config.ts";
 export interface FrameHash { timestampMs: number; hash: string }
 export function validateFrameHashes(hashes: FrameHash[], durationMs?: number): void {
   if (hashes.length < 3 || hashes.length > 12) throw new Error("frame_hash_count_must_be_3_to_12");
@@ -43,14 +44,14 @@ export function alignFrameHashes(left: readonly FrameHash[], right: readonly Fra
       if (!path) continue;
       if (i < left.length) keep(i + 1, j, count, path);
       if (j < right.length) keep(i, j + 1, count, path);
-      if (distance <= 10 && count < limit) keep(i + 1, j + 1, count + 1,
+      if (distance <= configNumber("SKARL_DUPLICATE_MAX_FRAME_DISTANCE") && count < limit) keep(i + 1, j + 1, count + 1,
         {total:path.total + distance, matches:[...path.matches, {leftIndex:i, rightIndex:j, distance}]});
     }
   }
   // Prefer the most supporting pairs, then the lowest mean for that count.
   for (let count = limit; count >= 3; count--) {
     const path = paths[left.length]![right.length]![count];
-    if (path && path.total <= 6 * count) return {score:1 - path.total / count / 64, matches:path.matches};
+    if (path && path.total <= configNumber("SKARL_DUPLICATE_MAX_MEAN_DISTANCE") * count) return {score:1 - path.total / count / 64, matches:path.matches};
   }
   return null;
 }

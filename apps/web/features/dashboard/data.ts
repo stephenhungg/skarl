@@ -9,8 +9,8 @@ export { api };
 export type { Id };
 
 /** Demo selector from docs/dashboard-api.md. Impersonable on purpose; this is not authentication. */
-export const BUYER = "buyer" as const;
-export const FINANCE_AGENT = "finance-agent" as const;
+export { DEMO_BUYER as BUYER, DEMO_FINANCE_AGENT as FINANCE_AGENT } from "../../lib/auth/identities";
+import { DEMO_BUYER as BUYER } from "../../lib/auth/identities";
 
 export type OrderSummary = FunctionReturnType<typeof api.dashboard.orderSummary>;
 export type SubmissionRow = FunctionReturnType<typeof api.dashboard.submissions>[number];

@@ -1,3 +1,4 @@
+import { webConfig } from "../../lib/config";
 "use client";
 
 import { useConvex, useQuery } from "convex/react";
@@ -157,7 +158,7 @@ function MotionEvidence({ trace, currentTimeMs, onSeek }: { trace: Trace | null;
     <p className="type-caption text-text-3">Client-reported IMU, on the phone callback clock. Alignment with video is approximate; this is not proof of the filmed action.</p>
     {!trace ? <p className="type-body-sm text-text-2">No sensor trace attached. Missing sensors do not mean a steady camera.</p> : <>
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1 type-body-sm">
-        <dt className="text-text-2">Steadiness</dt><dd>{summary?.steadinessRatio == null ? "Unavailable" : `${(summary.steadinessRatio * 100).toFixed(0)}% of gyro samples ≤ 0.15 rad/s`}</dd>
+        <dt className="text-text-2">Steadiness</dt><dd>{summary?.steadinessRatio == null ? "Unavailable" : `${(summary.steadinessRatio * 100).toFixed(0)}% of gyro samples ≤ ${webConfig.gyroThresholdRadPerSec} rad/s`}</dd>
         <dt className="text-text-2">Mean tilt</dt><dd>{summary?.meanTiltDegrees == null ? "Unavailable" : `${summary.meanTiltDegrees.toFixed(1)}° portrait horizon roll`}</dd>
         <dt className="text-text-2">Clock</dt><dd className="break-words">{trace.clock}</dd>
       </dl>

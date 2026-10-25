@@ -1,17 +1,16 @@
+import { paymentConfig } from "../packages/payments/src/config.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain.ts";
 import { compareCdpWitness, fetchCdpTransfers } from "../convex/lib/cdpSql.ts";
 
-export const FUNDING_TX = "0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757";
-export const DEMO_TREASURY = "0x8408a922ea400af33d7c2080a9edd5d3495b695f";
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const HASH = /^0x[0-9a-f]{64}$/i;
 const ADDRESS = /^0x[0-9a-f]{40}$/i;
 
 /** Read-only proof command. It never records observations, signs, or submits transactions. */
-export async function runSqlWitness({ apiKey, txHash = FUNDING_TX, treasury = DEMO_TREASURY,
+export async function runSqlWitness({ apiKey, txHash = process.env.SKARL_FUNDING_TX, treasury = process.env.SKARL_TREASURY_ADDRESS,
   rpcUrl = "https://sepolia.base.org", fetchImpl = fetch } = {}) {
   if (!HASH.test(txHash) || !ADDRESS.test(treasury)) throw new Error("invalid_scope");
   const sql = await fetchCdpTransfers({ apiKey, txHashes: [txHash], treasury, fetchImpl });
@@ -32,7 +31,7 @@ export async function runSqlWitness({ apiKey, txHash = FUNDING_TX, treasury = DE
     if (!receipt || receipt.status !== "0x1" || receipt.transactionHash.toLowerCase() !== txHash.toLowerCase()) throw new Error("receipt_unavailable");
     const head = BigInt(await rpc("eth_blockNumber", []));
     const canonical = await rpc("eth_getBlockByNumber", [receipt.blockNumber, false]);
-    if (canonical?.hash?.toLowerCase() !== receipt.blockHash.toLowerCase() || head - BigInt(receipt.blockNumber) + 1n < 2n) throw new Error("receipt_unconfirmed");
+    if (canonical?.hash?.toLowerCase() !== receipt.blockHash.toLowerCase() || head - BigInt(receipt.blockNumber) + 1n < BigInt(paymentConfig.requiredConfirmations)) throw new Error("receipt_unconfirmed");
     const rpcTransfers = receipt.logs.filter(log => log.address.toLowerCase() === USDC_ADDRESS.toLowerCase() &&
       log.topics?.[0]?.toLowerCase() === TRANSFER_TOPIC).map(log => {
       if (log.topics.length !== 3 || !HASH.test(log.topics[1]) || !HASH.test(log.topics[2]) || !HASH.test(log.data) || log.removed) throw new Error("invalid_rpc_log");
@@ -51,13 +50,13 @@ export async function runSqlWitness({ apiKey, txHash = FUNDING_TX, treasury = DE
 
 async function main() {
   if (process.argv.includes("--help")) {
-    console.log("usage: node scripts/cdp-sql-witness.mjs [txHash] [treasury]\nloads ~/.config/skarl/cdp.env privately; requires CDP_CLIENT_API_KEY; optional BASE_SEPOLIA_RPC_URL\nread-only: compares live CDP indexed transfers with confirmed Base Sepolia RPC receipt logs");
+    console.log("usage: node scripts/cdp-sql-witness.mjs [txHash] [treasury]\nrequires arguments or SKARL_FUNDING_TX and SKARL_TREASURY_ADDRESS; no historical defaults\nloads ~/.config/skarl/cdp.env privately; requires CDP_CLIENT_API_KEY; optional BASE_SEPOLIA_RPC_URL\nread-only: compares live CDP indexed transfers with confirmed Base Sepolia RPC receipt logs");
     return;
   }
   try { process.loadEnvFile(join(homedir(), ".config/skarl/cdp.env")); }
   catch (error) { if (error?.code !== "ENOENT") throw new Error("credential_file_unreadable"); }
   const result = await runSqlWitness({ apiKey: process.env.CDP_CLIENT_API_KEY,
-    txHash: process.argv[2] ?? FUNDING_TX, treasury: process.argv[3] ?? process.env.SKARL_TREASURY_ADDRESS ?? DEMO_TREASURY,
+    txHash: process.argv[2] ?? process.env.SKARL_FUNDING_TX, treasury: process.argv[3] ?? process.env.SKARL_TREASURY_ADDRESS,
     rpcUrl: process.env.BASE_SEPOLIA_RPC_URL ?? "https://sepolia.base.org" });
   console.log(JSON.stringify(result, null, 2));
   if (result.sql.status !== "available" || result.rpcStatus !== "observed" || !result.witnesses?.length ||

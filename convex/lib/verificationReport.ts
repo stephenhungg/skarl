@@ -1,10 +1,11 @@
-import { RED_CUP_TASK_SPEC, resolveTaskSpec, normalizeTaskSpec, type TaskSpec } from "./taskSpec.ts";
+import { configNumber, evaluationVideoModels } from "./config.ts";
+import { resolveTaskSpec, normalizeTaskSpec, type TaskSpec } from "./taskSpec.ts";
 import { checkSpokenLiveness, MISSING_LIVENESS_WARNING, instructionLike, type SpokenLivenessChallenge } from "./spokenLiveness.ts";
 
 /** Pure, advisory evidence comparison. No model, storage, or payment authority. */
 export const PIPELINE_VERSION = "task-evidence-2.0";
 /** Evaluation overrides are deliberately bounded and never change payment authority. */
-export const EVALUATION_VIDEO_MODELS = ["gemini-4-argon", "gemini-3.8-flash"] as const;
+export const EVALUATION_VIDEO_MODELS = evaluationVideoModels();
 export type EvaluationVideoModel = typeof EVALUATION_VIDEO_MODELS[number];
 export type Action = "pickup" | "place";
 export type ObservedObject = string;
@@ -93,11 +94,11 @@ export interface BuildVerificationReportInput {
   reportId?: string;
 }
 
-const MAX_RAW_LENGTH = 64_000;
-const MAX_ACTIONS = 64;
-const MAX_SEGMENTS = 256;
-const MAX_TEXT_LENGTH = 16_000;
-const TEMPORAL_TOLERANCE_MS = 2_000;
+const MAX_RAW_LENGTH = configNumber("VERIFIER_MAX_RAW_LENGTH");
+const MAX_ACTIONS = configNumber("VERIFIER_MAX_ACTIONS");
+const MAX_SEGMENTS = configNumber("VERIFIER_MAX_SEGMENTS");
+const MAX_TEXT_LENGTH = configNumber("VERIFIER_MAX_TEXT_LENGTH");
+const TEMPORAL_TOLERANCE_MS = configNumber("VERIFIER_TEMPORAL_TOLERANCE_MS");
 const actionProperties = {
   action: { type: "string", enum: ["pickup", "place"] },
   object: { type: "string", minLength: 1, maxLength: 80 },
@@ -189,7 +190,7 @@ function parseJson(raw: string): unknown {
   text(raw, "model response", MAX_RAW_LENGTH);
   try { return JSON.parse(raw) as unknown; } catch { throw new Error("model response is not strict JSON"); }
 }
-export function parseVideoResponse(raw: string, durationMs: number, spec: TaskSpec = RED_CUP_TASK_SPEC): VideoObservation {
+export function parseVideoResponse(raw: string, durationMs: number, spec: TaskSpec): VideoObservation {
   integer(durationMs, "durationMs");
   const object = record(parseJson(raw), ["visibility", "observations"], "video response");
   return {
@@ -211,7 +212,7 @@ function labelPattern(label: string): RegExp {
 }
 
 /** Conservative English claim extraction; it never infers an action from the task prompt. */
-export function audioFromTranscriptSegments(input: TranscriptSegment[], durationMs: number, spec: TaskSpec = RED_CUP_TASK_SPEC): AudioObservation {
+export function audioFromTranscriptSegments(input: TranscriptSegment[], durationMs: number, spec: TaskSpec): AudioObservation {
   integer(durationMs, "durationMs");
   const segments = parseSegments(input, durationMs);
   const transcript = segments.map(segment => segment.text).join(" ");
@@ -248,7 +249,7 @@ export function audioFromTranscriptSegments(input: TranscriptSegment[], duration
     let object: ObservedObject = named.length === 1 ? named[0]! : "unknown";
     const noun = spec.object.split("_").at(-1)!;
     const reference = new RegExp(`\\b(?:it|(?:that|this) (?:object|${noun}))\\b`, "i");
-    if (!named.length && reference.test(clause) && startMs - previousEndMs <= 4_000) object = previousObject;
+    if (!named.length && reference.test(clause) && startMs - previousEndMs <= configNumber("VERIFIER_PRONOUN_WINDOW_MS")) object = previousObject;
     let target: Target = "unknown";
     if (action === "place") {
       const destination = labelPattern(spec.target).source.slice(2, -2);
@@ -269,7 +270,7 @@ export function audioFromTranscriptSegments(input: TranscriptSegment[], duration
   return { transcript, segments, claims };
 }
 
-export function parseAudioResponse(raw: string, durationMs: number, spec: TaskSpec = RED_CUP_TASK_SPEC): AudioObservation {
+export function parseAudioResponse(raw: string, durationMs: number, spec: TaskSpec): AudioObservation {
   integer(durationMs, "durationMs");
   const object = record(parseJson(raw), ["transcript", "segments", "claims"], "audio response");
   const transcript = text(object.transcript, "transcript", MAX_TEXT_LENGTH, true);
@@ -375,8 +376,8 @@ function buildScopedReport(input: BuildVerificationReportInput, contentOnly = fa
   }
   const spec = input.taskSpec ? normalizeTaskSpec(input.taskSpec) : resolveTaskSpec({ criteria: input.criteria });
   // Revalidate typed inputs at this boundary: TypeScript types do not protect runtime callers.
-  const video = input.failure === undefined && input.video ? parseVideoResponse(JSON.stringify(input.video), input.durationMs, spec ?? RED_CUP_TASK_SPEC) : undefined;
-  const audio = input.failure === undefined && input.audio ? parseAudioResponse(JSON.stringify(input.audio), input.durationMs, spec ?? RED_CUP_TASK_SPEC) : undefined;
+  const video = input.failure === undefined && input.video && spec ? parseVideoResponse(JSON.stringify(input.video), input.durationMs, spec) : undefined;
+  const audio = input.failure === undefined && input.audio && spec ? parseAudioResponse(JSON.stringify(input.audio), input.durationMs, spec) : undefined;
   const warnings = array(input.warnings ?? [], 32, "warnings").map((item, index) => text(item, `warnings[${index}]`));
   const runs = array(input.modelRuns, 16, "modelRuns").map((item, index): ModelRun => {
     const object = record(item, ["provider", "model", "promptVersion", "elapsedMs", "inputTokens", "outputTokens"], `modelRuns[${index}]`);

@@ -1,3 +1,4 @@
+import { paymentConfig } from "./config.ts";
 /**
  * Convex handlers for paid, licensed evidence. The deployment entrypoint re-exports
  * these handlers as `evidenceSales`. No network calls or signing occur here.
@@ -12,7 +13,7 @@ import { createEvidenceSaleJournal } from "../../ledger/src/index";
 import { evidencePayTo } from "./evidence-payee";
 import { chainIdentity, validateTransfer } from "./reconciliation";
 
-export const EVIDENCE_PRICE_ATOMIC = 250_000n;
+export const EVIDENCE_PRICE_ATOMIC = paymentConfig.evidencePriceAtomic;
 export const EVIDENCE_ACCOUNTING = "evidence_sale_inflow" as const;
 type Context = QueryCtx | MutationCtx;
 export interface SampleEvidence {

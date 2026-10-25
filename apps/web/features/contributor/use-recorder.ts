@@ -1,4 +1,5 @@
 "use client";
+import { webConfig } from "../../lib/config";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LivenessChallenge } from "./api";
 import {
@@ -18,7 +19,7 @@ export type RecorderState =
   | { phase: "error"; failure: MediaFailure; retryable: boolean };
 
 const CONSTRAINTS: MediaStreamConstraints = {
-  video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
+  video: { width: { ideal: webConfig.captureWidth }, height: { ideal: webConfig.captureHeight }, frameRate: { ideal: webConfig.captureFrameRate, max: webConfig.captureFrameRate } },
   audio: { echoCancellation: true, noiseSuppression: true },
 };
 

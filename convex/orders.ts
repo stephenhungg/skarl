@@ -1,9 +1,9 @@
 import { requireFinanceService } from "./lib/serviceAuth";
 import { makeFunctionReference, paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { api } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { api, internal } from "./_generated/api";
+import type { Id, Doc } from "./_generated/dataModel";
+import { mutation, query, internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { requireRole } from "./lib/demoAuth";
 import { requireBuyerOrder, actorFor, audit, digest, normalizeAddress, loadLedger, paymentBinding, recordJournal, requireTenant } from "./lib/finance";
 import { MAX_ATOMIC_USDC, parseAtomicUsdc, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
@@ -38,10 +38,11 @@ export const createOrder = mutation({
     const diversity = normalizeDiversity(args.diversity, quantityRequested);
     const buyerWalletAddress = normalizeAddress(args.buyerWalletAddress);
     if (buyerWalletAddress === `0x${"0".repeat(40)}`) throw new Error("invalid_buyer_wallet");
-    const taskSpec = args.taskSpec === undefined ? resolveTaskSpec({ criteria: args.criteria }) : normalizeTaskSpec(args.taskSpec);
+    // Caller-supplied labels are a request binding only, never trusted task semantics.
+    const requestedTaskSpec = args.taskSpec === undefined ? undefined : normalizeTaskSpec(args.taskSpec);
     // Preserve legacy request bindings when callers omit the optional structured spec.
     const contentHash = digest({ version: 1, taskPrompt, criteria: args.criteria,
-      ...(args.taskSpec === undefined ? {} : { taskSpec }) });
+      ...(requestedTaskSpec === undefined ? {} : { taskSpec: requestedTaskSpec }) });
     const termsHash = digest({ title, quantityRequested, pricePerSampleAtomic, contributorRateAtomic, budgetAtomic,
       deadlineAt: args.deadlineAt, buyerWalletAddress, contentHash, autoPay: policyTerms, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
       ...(diversity !== undefined ? { diversity } : {}) });
@@ -55,13 +56,14 @@ export const createOrder = mutation({
     const now = Date.now();
     const orderId = await ctx.db.insert("orders", { organizationId: principal.organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
       autoPay: { ...policyTerms, setBy: principal.tokenIdentifier, setAt: now },
-      ...(taskSpec ? { taskSpec } : {}),
+      taskSpecStatus: "pending",
       publicId, buyerTokenIdentifier: principal.tokenIdentifier, buyerWalletAddress, title, status: "awaiting_funding",
       ...(diversity !== undefined ? { diversity } : {}),
       quantityRequested, pricePerSampleAtomic, contributorRateAtomic, budgetAtomic, acceptedCount: 0n, deadlineAt: args.deadlineAt, termsHash, updatedAt: now });
     const taskVersionId = await ctx.db.insert("rubricVersions", { organizationId: principal.organizationId, orderId, version: 1,
-      taskPrompt, criteria: args.criteria, contentHash, ...(taskSpec ? { taskSpec, taskSpecHash: digest({ contentHash, taskSpec }) } : {}), createdByTokenIdentifier: principal.tokenIdentifier, frozenAt: now });
+      taskPrompt, criteria: args.criteria, contentHash, taskSpecStatus: "pending", createdByTokenIdentifier: principal.tokenIdentifier, frozenAt: now });
     await ctx.db.patch(orderId, { taskVersionId });
+    await ctx.scheduler.runAfter(0, internal.taskSpecExtraction.extract, { orderId });
     await audit(ctx, { organizationId: principal.organizationId, eventKey: `order_created:${orderId}`, actor: actorFor(principal),
       action: "order_created", entityType: "orders", entityId: orderId,
       reason: "Buyer froze the rubric and exact terms; funding is still required.", evidenceReferences: [taskVersionId, termsHash] });
@@ -214,5 +216,62 @@ export const setAutoPay = mutation({
       }
     }
     return { ok: true, replayed: false };
+  },
+});
+
+/** Only internal extraction may attach semantics to the frozen rubric. */
+export const taskSpecContext = internalQuery({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    const rubric = order?.taskVersionId ? await ctx.db.get(order.taskVersionId) : null;
+    if (!order || !rubric || rubric.orderId !== order._id || rubric.organizationId !== order.organizationId) return null;
+    return { order, rubric };
+  },
+});
+export const storeTaskSpec = internalMutation({
+  args: { orderId: v.id("orders"), taskVersionId: v.id("rubricVersions"), rubricHash: v.string(),
+    version: v.string(), provider: v.string(), model: v.string(), taskSpec: v.optional(taskSpecValidator), failure: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId), rubric = await ctx.db.get(args.taskVersionId);
+    if (!order || !rubric || order.taskVersionId !== rubric._id || rubric.orderId !== order._id ||
+      rubric.organizationId !== order.organizationId || rubric.contentHash !== args.rubricHash) return { status: "skipped" as const };
+    // A delayed failed attempt cannot erase a successful extraction of the same version/hash.
+    if (resolveTaskSpec(rubric) && rubric.taskSpecExtraction?.version === args.version) return { status: "ready" as const };
+    const taskSpec = args.taskSpec === undefined ? undefined : normalizeTaskSpec(args.taskSpec);
+    const taskSpecStatus = taskSpec ? "ready" as const : "pending" as const;
+    const taskSpecHash = taskSpec ? digest({ version: args.version, contentHash: rubric.contentHash, taskSpec }) : undefined;
+    await ctx.db.patch(rubric._id, { taskSpec, taskSpecHash, taskSpecStatus,
+      taskSpecExtraction: { version: args.version, rubricHash: args.rubricHash, provider: args.provider,
+        model: args.model, extractedAt: Date.now(), ...(args.failure ? { failure: args.failure } : {}) } });
+    await ctx.db.patch(order._id, { taskSpec, taskSpecStatus, updatedAt: Date.now() });
+    await audit(ctx, { organizationId: order.organizationId,
+      eventKey: `task_spec:${rubric._id}:${args.version}:${taskSpecHash ?? "pending"}`,
+      actor: { kind: "service", identity: "task-spec-extractor" }, action: "task_spec_extracted", entityType: "orders", entityId: order._id,
+      reason: taskSpec ? "Validated task specification extracted from this frozen rubric's criteria." : "Task extraction unavailable; verification requires review.",
+      evidenceReferences: [rubric._id, rubric.contentHash, ...(taskSpecHash ? [taskSpecHash] : [])] });
+    return { status: taskSpecStatus };
+  },
+});
+export const taskSpecBackfillPage = internalQuery({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => ctx.db.query("orders").paginate(args.paginationOpts),
+});
+/** Operator action; no per-order IDs, task vocabulary or guesses. Safe to rerun after provider recovery. */
+export const backfillTaskSpecs = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ ready: number; pending: number; skipped: number }> => {
+    const counts = { ready: 0, pending: 0, skipped: 0 };
+    let cursor: string | null = null;
+    do {
+      const page: { page: Doc<"orders">[]; isDone: boolean; continueCursor: string } = await ctx.runQuery(internal.orders.taskSpecBackfillPage, { paginationOpts: { cursor, numItems: 100 } });
+      for (const order of page.page) {
+        if (!["awaiting_funding", "funded", "collecting"].includes(order.status)) continue;
+        const result = await ctx.runAction(internal.taskSpecExtraction.extract, { orderId: order._id });
+        counts[result.status]++;
+      }
+      cursor = page.isDone ? null : page.continueCursor;
+    } while (cursor !== null);
+    return counts;
   },
 });

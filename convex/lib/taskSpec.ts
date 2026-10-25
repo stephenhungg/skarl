@@ -1,4 +1,8 @@
+import { detectorClasses } from "./config.ts";
 import { v } from "convex/values";
+import { digest } from "./canonical.ts";
+
+export const TASK_SPEC_EXTRACTION_VERSION = "rubric-task-spec-v1";
 
 /** Trusted, frozen task vocabulary. Media can supply evidence, never edit these labels. */
 export interface TaskSpec {
@@ -10,10 +14,6 @@ export interface TaskSpec {
 }
 export const taskSpecValidator = v.object({ object: v.string(), distractors: v.array(v.string()),
   target: v.string(), steps: v.array(v.string()), narration: v.optional(v.array(v.string())) });
-export const RED_CUP_TASK_SPEC: TaskSpec = { object: "red_cup", distractors: ["blue_cup"], target: "coaster",
-  steps: ["Pick up the red cup, not the blue cup", "Place the red cup on the marked coaster"], narration: ["Narrate each action"] };
-export const CAN_TO_HAT_TASK_SPEC: TaskSpec = { object: "can", distractors: [], target: "hat",
-  steps: ["Pick up the can", "Place the can closer to the hat that is next to the lamp"], narration: ["Narrate each action"] };
 
 export function normalizeTaskSpec(input: TaskSpec): TaskSpec {
   if (!input || typeof input !== "object" || Array.isArray(input) ||
@@ -35,32 +35,25 @@ export function normalizeTaskSpec(input: TaskSpec): TaskSpec {
     ...(input.narration === undefined ? {} : { narration: phrases(input.narration, false) }) };
 }
 
-interface RubricShape { taskSpec?: TaskSpec; taskPrompt?: string;
+interface RubricShape { taskSpec?: TaskSpec; taskPrompt?: string; taskSpecStatus?: string;
+  contentHash?: string; taskSpecHash?: string; taskSpecExtraction?: { version: string; rubricHash: string };
   criteria?: { criterionId: string; description: string; modality: string }[] }
-const LEGACY_CRITERIA = [
-  { criterionId: "red-cup-pickup", description: "Pick up the red cup, not the blue cup", modality: "visual" },
-  { criterionId: "coaster-placement", description: "Place the red cup on the marked coaster", modality: "temporal" },
-  { criterionId: "narration-alignment", description: "Narration agrees with visible actions and object", modality: "cross_modal" },
-];
-/** Only the exact legacy rubric has an implicit default; arbitrary new orders abstain. */
+/** Missing or pending extraction always abstains, including historical demo rubrics. */
 export function resolveTaskSpec(rubric: RubricShape): TaskSpec | undefined {
-  if (rubric.taskSpec !== undefined) return normalizeTaskSpec(rubric.taskSpec);
-  if (rubric.criteria?.length === LEGACY_CRITERIA.length && LEGACY_CRITERIA.every(expected =>
-    rubric.criteria!.some(actual => actual.criterionId === expected.criterionId && actual.description === expected.description && actual.modality === expected.modality))) {
-    return normalizeTaskSpec(RED_CUP_TASK_SPEC);
-  }
-  return undefined;
+  if (rubric.taskSpecStatus !== "ready" || rubric.taskSpec === undefined || !rubric.contentHash ||
+    rubric.taskSpecExtraction?.version !== TASK_SPEC_EXTRACTION_VERSION ||
+    rubric.taskSpecExtraction.rubricHash !== rubric.contentHash) return undefined;
+  try {
+    const taskSpec = normalizeTaskSpec(rubric.taskSpec);
+    return rubric.taskSpecHash === digest({ version: TASK_SPEC_EXTRACTION_VERSION, contentHash: rubric.contentHash, taskSpec })
+      ? taskSpec : undefined;
+  } catch { return undefined; }
 }
 
 /** COCO names only; never approximate cans as bottles or cups. Color remains a VLM check. */
 export function detectorClassForObject(object: string): string | null {
-  if (object === "red_cup" || object === "blue_cup") return "cup";
-  const faithful = new Set(["person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic_light",
-    "fire_hydrant", "stop_sign", "parking_meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear",
-    "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports_ball",
-    "kite", "baseball_bat", "baseball_glove", "skateboard", "surfboard", "tennis_racket", "bottle", "wine_glass", "cup", "fork",
-    "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli", "carrot", "hot_dog", "pizza", "donut", "cake",
-    "chair", "couch", "potted_plant", "bed", "dining_table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell_phone",
-    "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy_bear", "hair_drier", "toothbrush"]);
-  return faithful.has(object) ? object.replaceAll("_", " ") : null;
+  const faithful = new Set(detectorClasses());
+  const match = [...faithful].sort((a, b) => b.length - a.length)
+    .find(label => object === label || object.endsWith(`_${label}`));
+  return match ? match.replaceAll("_", " ") : null;
 }

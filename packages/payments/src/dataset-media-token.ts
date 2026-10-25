@@ -1,8 +1,9 @@
+import { paymentConfig } from "./config.ts";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 
-const TTL_MS = 5 * 60_000;
+const TTL_MS = paymentConfig.mediaTokenTtlMs;
 export type DatasetMediaGrant = {
   demoIdentity: string;
   orderId: string;

@@ -1,3 +1,4 @@
+import { configNumber } from "./lib/config";
 import { v } from "convex/values";
 import { makeFunctionReference } from "convex/server";
 import { action, internalMutation, mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
@@ -132,7 +133,7 @@ export const reserveRefresh = internalMutation({ args: scope, handler: async (ct
   const { order, treasury } = await orderScope(ctx, args);
   if (!treasury) return false;
   const snapshot = await ctx.db.query("cdpWitnessSnapshots").withIndex("by_order", q => q.eq("orderId", order._id)).unique();
-  if (snapshot && Date.now() - snapshot.fetchedAt < 30_000) return false;
+  if (snapshot && Date.now() - snapshot.fetchedAt < configNumber("SKARL_CHAIN_SNAPSHOT_COOLDOWN_MS")) return false;
   const gate = await ctx.db.query("cdpQueryGate").withIndex("by_key", q => q.eq("key", "sql")).unique();
   if (gate && gate.nextAt > Date.now()) return false;
   if (gate) await ctx.db.patch(gate._id, { nextAt: Date.now() + 15_000 });
@@ -162,7 +163,7 @@ export const reconciliationWithWitness = query({ args: scope, handler: async (ct
   const { treasury, observations } = await orderScope(ctx, args);
   const reconciliation = await ctx.runQuery(api.payments.reconciliation, args);
   const snapshot = await ctx.db.query("cdpWitnessSnapshots").withIndex("by_order", q => q.eq("orderId", args.orderId)).unique();
-  const fresh = snapshot && snapshot.treasury === treasury && Date.now() - snapshot.fetchedAt < 120_000;
+  const fresh = snapshot && snapshot.treasury === treasury && Date.now() - snapshot.fetchedAt < configNumber("SKARL_CHAIN_SNAPSHOT_FRESH_MS");
   const result: SqlResult = fresh ? JSON.parse(snapshot.resultJson) as SqlResult :
     { status: "witness_unavailable", reason: "not_refreshed_or_stale", fetchedAt: Date.now() };
   const witnesses = observations.map(row => ({ chainIdentity: chainIdentity(row), ...compareCdpWitness(row, result) }));

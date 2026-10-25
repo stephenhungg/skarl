@@ -2,18 +2,19 @@ import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { enter, timing } from '../components/motion';
+import { enter } from '../components/motion';
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { colors as c, fonts as f, gutter, radius } from '../../theme';
 import { money } from '../api';
+import { captureDurationLabel } from '../config';
 import { useLiveTask } from '../data';
 import { useSession } from '../session';
 import { CONSENT } from '../consent';
 import { Button, Empty, Pill, Section } from '../components/Primitives';
 import { Sheet } from '../components/Sheet';
 import { PressableScale } from '../components/PressableScale';
-import { artFor, TaskArt } from '../components/TaskArt';
-import { CaptureIcon, CheckIcon, ChevronLeft, ClockIcon, SensorIcon, TasksIcon } from '../components/Icons';
+import { TaskArt } from '../components/TaskArt';
+import { CaptureIcon, CheckIcon, ChevronLeft, ClockIcon, TasksIcon } from '../components/Icons';
 import type { RootProps } from '../navigation';
 
 function Checkbox({ checked, label, onPress, disabled }: { checked: boolean; label: string; onPress(): void; disabled?: boolean }) {
@@ -42,7 +43,7 @@ export function TaskDetailScreen({ navigation, route }: RootProps<'TaskDetail'>)
   return <View style={s.screen}>
     <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}>
       <View>
-        <TaskArt kind={artFor(task?.title, task?.taskSpec?.object)} style={[s.hero, { paddingTop: insets.top }]} />
+        <TaskArt title={task?.title} {...task?.taskSpec} style={[s.hero, { paddingTop: insets.top }]} />
         <PressableScale accessibilityRole="button" accessibilityLabel="Back" onPress={() => navigation.goBack()} style={[s.back, { top: insets.top + 8 }]}>
           <ChevronLeft />
         </PressableScale>
@@ -65,7 +66,7 @@ export function TaskDetailScreen({ navigation, route }: RootProps<'TaskDetail'>)
           </View>
           <View style={s.stat}>
             <ClockIcon size={18} color={c.slate700} />
-            <Text style={s.statValue}>10 to 30 s</Text>
+            <Text style={s.statValue}>{captureDurationLabel}</Text>
             <Text style={s.statLabel}>Video</Text>
           </View>
           <View style={s.stat}>
@@ -77,14 +78,10 @@ export function TaskDetailScreen({ navigation, route }: RootProps<'TaskDetail'>)
 
         <Section title="Steps" />
         <View style={{ gap: 8 }}>
-          {task.criteria.map((criterion, index) => <Animated.View key={criterion.criterionId} entering={enter(140 + index * 60, 420)} style={s.step}>
+          {task.steps.map((step, index) => <Animated.View key={`${index}:${step}`} entering={enter(140 + index * 60, 420)} style={s.step}>
             <View style={s.stepNumber}><Text style={s.stepNumberText}>{index + 1}</Text></View>
-            <Text style={s.stepText}>{criterion.description}</Text>
+            <Text style={s.stepText}>{step}</Text>
           </Animated.View>)}
-          <Animated.View entering={enter(140 + task.criteria.length * 60, 420)} style={s.step}>
-            <View style={[s.stepNumber, { backgroundColor: c.mist }]}><SensorIcon size={15} color={c.ink} /></View>
-            <Text style={s.stepText}>Keep the phone fixed and narrate</Text>
-          </Animated.View>
         </View>
       </View>}
     </ScrollView>

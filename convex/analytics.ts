@@ -1,3 +1,4 @@
+import { configNumber } from "./lib/config";
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
@@ -5,7 +6,7 @@ import type { Id, Doc } from "./_generated/dataModel";
 import { financeScope, ledgerRows, orderRows } from "./lib/dashboardRead";
 
 const args = { demoIdentity: v.string(), orderId: v.optional(v.id("orders")) };
-const BUCKET_MS = 5 * 60_000;
+const BUCKET_MS = configNumber("SKARL_BUCKET_MS");
 const isRefusal = (event: Doc<"auditEvents">) => event.action.endsWith("_refused");
 const isDuplicate = (event: Doc<"auditEvents">) => event.action === "acceptance_refused" && event.reason === "duplicate_submission";
 function percentiles(values: number[]) {

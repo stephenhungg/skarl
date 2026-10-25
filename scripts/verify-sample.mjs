@@ -1,4 +1,5 @@
 /** Development-only: sends the specified clip to the shared demo verification backend. No Gemini key is read here. */
+import { scriptConfig } from "./config.mjs";
 import { readFile, stat } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -20,8 +21,8 @@ let url=process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL;
 if (!url) {
   try {url=(await readFile(new URL("../.env.local",import.meta.url),"utf8")).split(/\r?\n/).find(line=>line.startsWith("CONVEX_URL="))?.slice("CONVEX_URL=".length).trim().replace(/^["']|["']$/g,"");} catch {}
 }
-url ||= "https://keen-marmot-986.convex.cloud";
-const client=new ConvexHttpClient(url), demoIdentity="contributor";
+if (!url) throw new Error("set CONVEX_URL or NEXT_PUBLIC_CONVEX_URL for the intended deployment");
+const client=new ConvexHttpClient(url), demoIdentity=scriptConfig.contributorIdentity;
 const query=(name,args)=>client.query(makeFunctionReference(name),args);
 const mutation=(name,args)=>client.mutation(makeFunctionReference(name),args);
 const context=await query("dashboard:demoContext",{demoIdentity});

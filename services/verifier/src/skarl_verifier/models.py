@@ -230,10 +230,6 @@ class VerificationReport(ContractModel):
                 raise ValueError("observations require nonzero, ordered intervals")
             if item.endMs > self.source.durationMs:
                 raise ValueError("observation exceeds source duration")
-        if self.pipeline.version == "red-cup-evidence-1.2":
-            for action in actions:
-                if action.object not in {"red_cup", "blue_cup", "unknown"} or action.target not in {"coaster", "other", "unknown"}:
-                    raise ValueError("legacy observation has an invalid label")
 
         return self
 
@@ -249,10 +245,10 @@ class VerificationReport(ContractModel):
 def validate_against_task_spec(report: VerificationReport, task_spec: TaskSpec | None) -> VerificationReport:
     """Validate labels using only the trusted order spec, never narration or report text."""
     observations = report.action_observations()
-    if not observations or report.pipeline.version == "red-cup-evidence-1.2":
-        return report
-    if task_spec is None:
+    if task_spec is None and (observations or (report.pipeline.version == "task-evidence-2.0" and report.recommendation == "accept")):
         raise ValueError("task-scoped observations require the order task spec")
+    if task_spec is None:
+        return report
     objects = {task_spec.object, *task_spec.distractors, "other", "unknown"}
     targets = {task_spec.target, "other", "unknown"}
     for observation in observations:
@@ -267,8 +263,7 @@ def validate_against_rubric(
     report: VerificationReport, rubric_criterion_ids: Iterable[str], task_spec: TaskSpec | None = None
 ) -> VerificationReport:
     """Reject criteria the task never defined; model output can invent its own."""
-    if task_spec is not None or report.pipeline.version == "task-evidence-2.0":
-        validate_against_task_spec(report, task_spec)
+    validate_against_task_spec(report, task_spec)
     rubric = list(rubric_criterion_ids)
     if not rubric or len(set(rubric)) != len(rubric):
         raise ValueError("rubric criterion IDs must be nonempty and unique")

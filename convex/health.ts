@@ -1,3 +1,5 @@
+import { configNumber } from "./lib/config";
+import { demoOrderPublicId, demoOrganizationKey } from "./lib/config";
 import { internalAction, query } from "./_generated/server";
 import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
@@ -62,7 +64,7 @@ export const integrations = query({ args: { sampleAt: v.optional(v.number()) }, 
   for (const job of ["reconcile", "attest", "bank", "finance"] as const) {
     const runs = await ctx.db.query("healthCronRuns").withIndex("by_job", q => q.eq("job", job)).order("desc").take(20);
     const run = runs[0], success = runs.find(row => row.outcome === "complete");
-    const freshMs = job === "finance" ? 25 * 60_000 : 5 * 60_000;
+    const freshMs = job === "finance" ? configNumber("SKARL_HEALTH_FINANCE_FRESH_MS") : configNumber("SKARL_HEALTH_PROBE_FRESH_MS");
     const state = evidenceStatus(now, run?.startedAt ?? null, run?.outcome === "complete", freshMs);
     item(`cron.${job}`, state, job === "reconcile" || job === "finance",
       !run ? "no observed cron run since health instrumentation deployed" : state === "ok" ? "cron invocation completed; downstream evidence reported separately" : "cron stale, running, disabled or failed",
@@ -70,7 +72,7 @@ export const integrations = query({ args: { sampleAt: v.optional(v.number()) }, 
       { lastRunAt: run?.startedAt ?? null, completedAt: run?.completedAt ?? null, outcome: run?.outcome ?? null, freshMs });
   }
 
-  const org = await ctx.db.query("organizations").withIndex("by_demo_key", q => q.eq("demoKey", "skarl-demo-v1")).unique();
+  const org = await ctx.db.query("organizations").withIndex("by_demo_key", q => q.eq("demoKey", demoOrganizationKey())).unique();
   const orgId = org?._id;
   const realOrders = orgId ? (await ctx.db.query("orders").withIndex("by_org_status", q => q.eq("organizationId", orgId)).order("desc").take(100))
     .filter(order => !order.publicId.startsWith("scenario:")) : [];
@@ -103,7 +105,7 @@ export const integrations = query({ args: { sampleAt: v.optional(v.number()) }, 
       } catch { /* Invalid/missing reports are not live-call proof. */ }
     }
     const at = Math.max(0, ...times) || null;
-    const state = evidenceStatus(now, at, true, 24 * 60 * 60_000);
+    const state = evidenceStatus(now, at, true, configNumber("SKARL_HEALTH_INTEGRATION_FRESH_MS"));
     item(provider, state, true, state === "ok" ? "stored successful inference/tool-loop run; not a new model probe" : at ? "last stored successful run is stale" : "no successful model run in the bounded recent inventory",
       `configure ${provider === "gemini" ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY"} and run the existing ${provider === "gemini" ? "verifier" : "finance agent"}; fixtures do not count`, at,
       { source: "stored runs", inventoryLimitPerTable: 100 });
@@ -112,7 +114,7 @@ export const integrations = query({ args: { sampleAt: v.optional(v.number()) }, 
   const inputs = await ctx.runQuery(probeInputs, {});
   for (const kind of ["agent_wallet", "treasury", "nessie"] as const) {
     const probe = await ctx.db.query("healthProbes").withIndex("by_kind", q => q.eq("kind", kind)).unique();
-    let state = !probe || probe.outcome === "unconfigured" ? "missing" as const : evidenceStatus(now, probe.checkedAt, probe.outcome === "success", 5 * 60_000);
+    let state = !probe || probe.outcome === "unconfigured" ? "missing" as const : evidenceStatus(now, probe.checkedAt, probe.outcome === "success", configNumber("SKARL_HEALTH_PROBE_FRESH_MS"));
     const empty = probe?.outcome === "success" && (kind === "agent_wallet" ? probe.ethWei === "0" || probe.usdcMicro === "0" : kind === "treasury" && probe.usdcMicro === "0");
     const expectedBinding = probeBinding(kind, kind === "agent_wallet" ? process.env.CDP_AGENT_ADDRESS : kind === "treasury" ? inputs.treasury : inputs.bankAccountId);
     const bindingChanged = probe?.outcome === "success" && probe.bindingHash !== expectedBinding;
@@ -127,7 +129,7 @@ export const integrations = query({ args: { sampleAt: v.optional(v.number()) }, 
         usdcMicro: !bindingChanged ? probe?.usdcMicro ?? null : null, blockNumber: !bindingChanged ? probe?.blockNumber ?? null : null, simulated: kind === "nessie" });
   }
 
-  const demoOrder = realOrders.find(order => order.publicId === "skarl-red-cup-demo-v2");
+  const demoOrder = realOrders.find(order => order.publicId === demoOrderPublicId());
   const funding = demoOrder ? await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", demoOrder._id))
     .filter(q => q.and(q.eq(q.field("network"), PAYMENT_NETWORK), q.neq(q.field("kind"), "contributor_payout"))).order("desc").first() : null;
   const webhooks = orgId && funding ? await ctx.db.query("cdpWebhookReceipts").withIndex("by_treasury", q =>
@@ -138,12 +140,12 @@ export const integrations = query({ args: { sampleAt: v.optional(v.number()) }, 
     "configure the web CDP webhook secret/subscription and verify delivery; never replay a payment to make health green", webhook?.receivedAt ?? null,
     { receivedAt: webhook?.receivedAt ?? null });
   const bank = orgId ? await ctx.db.query("bankSnapshots").withIndex("by_org", q => q.eq("organizationId", orgId)).order("desc").first() : null;
-  item("bank_snapshot", evidenceStatus(now, bank?.fetchedAt ?? null, bank?.status === "available", 5 * 60_000), false,
+  item("bank_snapshot", evidenceStatus(now, bank?.fetchedAt ?? null, bank?.status === "available", configNumber("SKARL_HEALTH_PROBE_FRESH_MS")), false,
     bank ? "latest stored Nessie snapshot; simulated banking" : "no simulated bank snapshot",
     "enable and run the existing bank sweep; Nessie is a mock bank", bank?.status === "available" ? bank.fetchedAt : null,
     { fetchedAt: bank?.fetchedAt ?? null, available: bank?.status === "available", simulated: true });
   const jira = await ctx.db.query("healthJira").first();
-  item("jira", evidenceStatus(now, jira?.lastSyncAt ?? null, !!jira && !jira.truncated && jira.uncertainCount === 0, 15 * 60_000), false,
+  item("jira", evidenceStatus(now, jira?.lastSyncAt ?? null, !!jira && !jira.truncated && jira.uncertainCount === 0, configNumber("SKARL_HEALTH_JIRA_FRESH_MS")), false,
     !jira ? "Forge sync telemetry not received; uncertain count unknown" : jira.truncated ? "uncertain inventory unavailable or capped" :
       jira.uncertainCount ? "Jira uncertain writes require reconciliation" : "Forge successful-sync heartbeat recorded; inspect timestamp for freshness",
     "deploy the Forge health publisher and Convex receiver using the existing feed secret; reconcile uncertain writes without replay",
@@ -166,7 +168,7 @@ export const integrations = query({ args: { sampleAt: v.optional(v.number()) }, 
     "use the existing Solana funding flow if demonstrating the optional rail; payouts stay on Base", solana?.succeeded ? solana.observedAt : null,
     { observedAt: solana?.observedAt ?? null, fundingOnly: true });
 
-  const order = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
+  const order = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", demoOrderPublicId())).unique();
   const deliveries = order && order.organizationId === orgId ? await ctx.db.query("deliveries").withIndex("by_order", q => q.eq("orderId", order._id)).order("desc").take(100) : [];
   let licensedAt: number | null = null;
   for (const delivery of deliveries) {

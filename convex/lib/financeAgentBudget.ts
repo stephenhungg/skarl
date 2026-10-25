@@ -1,14 +1,19 @@
+import { configNumber } from "./config.ts";
 import type { AgentStep } from "./financeAgentLoop";
 
 export function financeMaxToolCalls(): number {
-  const value = Number(process.env.FINANCE_AGENT_MAX_TOOL_CALLS || "24");
-  if (!Number.isSafeInteger(value) || value < 1 || value > 24) throw new Error("invalid_agent_tool_limit");
-  return value;
+  try {
+    const value = configNumber("FINANCE_AGENT_MAX_TOOL_CALLS");
+    if (value > configNumber("SKARL_FINANCE_AGENT_MAX_ALLOWED_TOOL_CALLS")) throw new Error("invalid_agent_tool_limit");
+    return value;
+  } catch { throw new Error("invalid_agent_tool_limit"); }
 }
 export function financeContextChars(): number {
-  const value = Number(process.env.FINANCE_AGENT_CONTEXT_CHARS || "80000");
-  if (!Number.isSafeInteger(value) || value < 32000 || value > 100000) throw new Error("invalid_agent_context_limit");
-  return value;
+  try {
+    const value = configNumber("FINANCE_AGENT_CONTEXT_CHARS");
+    if (value < configNumber("FINANCE_AGENT_MIN_CONTEXT_CHARS") || value > configNumber("FINANCE_AGENT_MAX_CONTEXT_CHARS")) throw new Error("invalid_agent_context_limit");
+    return value;
+  } catch { throw new Error("invalid_agent_context_limit"); }
 }
 export const financeJson = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => typeof item === "bigint" ? item.toString() : item);
 
@@ -17,7 +22,7 @@ export const financeJson = (value: unknown): string => JSON.stringify(value, (_k
 export function summarizeFinanceResult(result: unknown) {
   const facts: { path: string; value: string | number | boolean }[] = [];
   const walk = (value: unknown, path: string) => {
-    if (facts.length >= 18) return;
+    if (facts.length >= configNumber("FINANCE_AGENT_SUMMARY_FACT_LIMIT")) return;
     if (Array.isArray(value)) { value.forEach((item, index) => walk(item, `${path}[${index}]`)); return; }
     if (value && typeof value === "object") {
       const row = value as Record<string, unknown>;
@@ -26,7 +31,7 @@ export function summarizeFinanceResult(result: unknown) {
       return;
     }
     if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return;
-    if (String(value).length <= 180 && /(?:Id|_id|Atomic|status|settlement|balanced|code|txHash|txUrl|network|truncated)$/.test(path)) facts.push({ path, value });
+    if (String(value).length <= configNumber("FINANCE_AGENT_SUMMARY_FACT_CHARS") && /(?:Id|_id|Atomic|status|settlement|balanced|code|txHash|txUrl|network|truncated)$/.test(path)) facts.push({ path, value });
   };
   walk(result, "");
   return { summarized: true, truncated: true, reason: "oldest_tool_result_context_budget", facts,
@@ -43,7 +48,7 @@ export function compactFinanceSteps(steps: AgentStep[], maxChars: number): Agent
 }
 
 /** A deterministic partial answer when there is no time for another provider turn. */
-export function financeWrapUp(steps: AgentStep[], reason: string, factBudget = 3600): string {
+export function financeWrapUp(steps: AgentStep[], reason: string, factBudget = configNumber("FINANCE_AGENT_WRAPUP_CHARS")): string {
   const facts: string[] = [];
   let used = 0;
   for (const step of steps) {

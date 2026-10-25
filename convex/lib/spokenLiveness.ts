@@ -1,3 +1,4 @@
+import { configNumber } from "./config.ts";
 /** Server-issued words are evidence to compare, never instructions for a model. */
 export interface SpokenLivenessChallenge {
   words: string[];
@@ -31,16 +32,16 @@ export function checkSpokenLiveness(
   durationMs: number,
 ): SpokenLivenessResult {
   if (!challenge) return { status: "missing_challenge", warning: MISSING_LIVENESS_WARNING };
-  if (!Array.isArray(challenge.words) || challenge.words.length !== 3 ||
+  if (!Array.isArray(challenge.words) || challenge.words.length !== configNumber("SKARL_LIVENESS_WORD_COUNT") ||
     challenge.words.some(word => typeof word !== "string" || !/^[a-z]+$/.test(word)) ||
     !Number.isSafeInteger(challenge.issuedAt) || challenge.issuedAt < 0 ||
     !Number.isSafeInteger(challenge.consumedAt) || challenge.consumedAt < challenge.issuedAt ||
-    challenge.consumedAt >= challenge.issuedAt + 120_000) {
+    challenge.consumedAt >= challenge.issuedAt + configNumber("SKARL_LIVENESS_CHALLENGE_TTL_MS")) {
     return { status: "invalid_challenge", warning: "Spoken liveness: stored challenge timing or words are invalid; human review required." };
   }
   // Recheck the timestamp/text boundary because persistence also calls this helper.
   if (!audio || typeof audio.transcript !== "string" || !Array.isArray(audio.segments) ||
-    !Number.isSafeInteger(durationMs) || durationMs <= 0 || audio.segments.length === 0 || audio.segments.length > 256 ||
+    !Number.isSafeInteger(durationMs) || durationMs <= 0 || audio.segments.length === 0 || audio.segments.length > configNumber("VERIFIER_MAX_SEGMENTS") ||
     audio.segments.some((segment, index) => !segment || typeof segment.text !== "string" ||
       !Number.isSafeInteger(segment.startMs) || !Number.isSafeInteger(segment.endMs) ||
       segment.startMs < 0 || segment.endMs <= segment.startMs || segment.endMs > durationMs ||

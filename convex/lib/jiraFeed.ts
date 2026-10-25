@@ -1,3 +1,4 @@
+import { appOrigin } from "./config.ts";
 import type { ReconciliationException } from "../../packages/payments/src/reconciliation";
 import { digest } from "./finance";
 
@@ -31,7 +32,7 @@ export function feedCode(value: unknown): string {
 
 export function receiptUrl(submissionId: string | undefined): string | undefined {
   if (!submissionId) return undefined;
-  const origin = process.env.SKARL_JIRA_PUBLIC_URL ?? "https://skarl.devshardat.work";
+  const origin = process.env.SKARL_JIRA_PUBLIC_URL ?? appOrigin();
   try {
     const url = new URL(origin);
     if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return undefined;

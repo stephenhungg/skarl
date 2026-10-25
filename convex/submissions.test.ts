@@ -1,4 +1,5 @@
-import { RED_CUP_TASK_SPEC } from "./lib/taskSpec";
+import { seedWithTaskSpecs } from "./fixtures/seedWithTaskSpecs";
+import { RED_CUP_TASK_SPEC } from "./fixtures/taskSpecs";
 import { convexTest, type TestConvex } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
@@ -23,7 +24,7 @@ afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const seeded = await t.mutation(internal.seed.demo, {});
+  const seeded = await seedWithTaskSpecs(t);
   return { t, ...seeded };
 }
 type Fixture = Awaited<ReturnType<typeof setup>>;
@@ -59,8 +60,8 @@ async function completion(f: Fixture, item: Awaited<ReturnType<typeof create>>, 
     { startMs: 0, endMs: 900, text: submission!.liveness!.words.join(" ") },
     { startMs: 1_000, endMs: 3_000, text: "I pick up the red cup." },
     { startMs: 5_000, endMs: 7_000, text: "I place it on the coaster." },
-  ], 12_000);
-  const report = buildVerificationReport({ liveness: submission!.liveness, submissionId: item.submissionId, taskVersionId: f.taskVersionId,
+  ], 12_000, RED_CUP_TASK_SPEC);
+  const report = buildVerificationReport({ taskSpec: RED_CUP_TASK_SPEC, liveness: submission!.liveness, submissionId: item.submissionId, taskVersionId: f.taskVersionId,
     sourceHash: item.job.sourceHash, durationMs: 12_000, criteria: rubric.criteria,
     video: { visibility: "clear", observations: [
       { action: "pickup", object: "red_cup", target: "unknown", startMs: 1_000, endMs: 3_000, description: "A hand picks up the red cup." },
@@ -107,7 +108,7 @@ describe("submission lifecycle and evidence boundaries", () => {
     const state = await f.t.run(async ctx => ({
       submission: await ctx.db.get(item.submissionId), assets: await ctx.db.query("mediaAssets").collect(),
       consents: await ctx.db.query("consentRecords").collect(), jobs: await ctx.db.query("jobs").collect(),
-      scheduled: await ctx.db.system.query("_scheduled_functions").collect(),
+      scheduled: (await ctx.db.system.query("_scheduled_functions").collect()).filter(row => row.name === "verify:run"),
       order: await ctx.db.get(f.orderId), payables: await ctx.db.query("payables").collect(),
     }));
     expect(state.submission).toMatchObject({ status: "queued", taskVersionId: f.taskVersionId,
@@ -420,7 +421,7 @@ it("does not mark a retry as copied merely because an earlier provider attempt f
   const f=await setup(),first=await create(f,"failed-provider");
   const claim=await claimAndFacts(f,first);
   const rubric=await f.t.run(ctx=>ctx.db.get(f.taskVersionId));
-  const report=buildVerificationReport({submissionId:first.submissionId,taskVersionId:f.taskVersionId,sourceHash:first.job.sourceHash,
+  const report=buildVerificationReport({ taskSpec: RED_CUP_TASK_SPEC,submissionId:first.submissionId,taskVersionId:f.taskVersionId,sourceHash:first.job.sourceHash,
     durationMs:12000,criteria:rubric!.criteria,modelRuns:[],duplicate:{status:"not_checked",matches:[]},failure:"gemini_timeout"});
   const reportJson=canonical(report),reportStorageId=await f.t.run(ctx=>ctx.storage.store(new Blob([reportJson],{type:"application/json"})));
   await f.t.mutation(internal.submissions.complete,{jobId:first.job._id,generation:claim.generation,reportJson,reportStorageId,

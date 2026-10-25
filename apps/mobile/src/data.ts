@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useConvexConnectionState, useQueries, useQuery } from 'convex/react';
+import { mobileConfig } from './config';
 import { api, identity, type EarningRow, type Summary, type SubmissionRow } from './api';
 
 export const CLOSED = ['closed', 'cancelled', 'cancelling', 'fulfilled', 'refunded'];
@@ -9,6 +10,7 @@ const DAY = 24 * 60 * 60 * 1000;
 export type LiveTask = {
   orderId: string; title: string; prompt: string; category: string; rateAtomic: string; status: string; closed: boolean;
   openSpots: string; quantity: string; isNew: boolean; criteria: NonNullable<Summary['rubric']>['criteria'];
+  steps: string[];
   rubricVersion: number; rubricHash: string; network: string; taskSpec?: Summary['order']['taskSpec'];
 };
 
@@ -19,20 +21,18 @@ function categoryOf(title: string) {
   return noun.charAt(0).toUpperCase() + noun.slice(1);
 }
 
-// Mirrors the backend filter so leftover test orders stay hidden even before it deploys.
-const FIXTURE = /^(scenario:|skarl-outsider-demo-|skarl-red-cup-demo-sol|skarl-red-cup-demo-v1)/;
-const isFixture = (order: Summary['order']) => FIXTURE.test(order.publicId ?? '') || /webhook verification/i.test(order.title);
-
 function toTask(orderId: string, summary: Summary | undefined, network: string): LiveTask | null {
   if (!summary?.rubric) return null;
   const { order, rubric } = summary;
+  const spec = rubric.taskSpecStatus === 'ready' ? rubric.taskSpec : undefined;
   const open = BigInt(order.quantityRequested) - BigInt(order.acceptedCount);
   return {
     orderId, title: order.title, prompt: rubric.taskPrompt.replace(/\s*[–-]\s*(?=\d)/g, ' to '),
     category: categoryOf(order.title), rateAtomic: order.contributorRateAtomic, status: order.status,
     closed: CLOSED.includes(order.status), openSpots: (open < 0n ? 0n : open).toString(), quantity: order.quantityRequested,
-    isNew: Date.now() - order._creationTime < 7 * DAY, criteria: rubric.criteria,
-    rubricVersion: rubric.version, rubricHash: rubric.contentHash, network: order.network ?? network, taskSpec: rubric.taskSpec ?? order.taskSpec,
+    isNew: Date.now() - order._creationTime < mobileConfig.newTaskWindowMs, criteria: rubric.criteria,
+    rubricVersion: rubric.version, rubricHash: rubric.contentHash, network: order.network ?? network, taskSpec: spec,
+    steps: [...(spec?.steps ?? rubric.criteria.map(criterion => criterion.description)), ...(spec?.narration ?? [])],
   };
 }
 
@@ -59,7 +59,7 @@ export function useOpenTasks() {
   const summaries = useQueries(queries) as Record<string, Summary | Error | undefined>;
   const tasks = useMemo(() => ids.map(orderId => {
     const summary = summaries[orderId];
-    return summary instanceof Error || (summary && isFixture(summary.order)) ? null : toTask(orderId, summary, context?.network ?? '');
+    return summary instanceof Error ? null : toTask(orderId, summary, context?.network ?? '');
   }).filter((task): task is LiveTask => !!task), [ids, summaries, context?.network]);
   const loading = context === undefined || (listed === undefined) || ids.some(orderId => summaries[orderId] === undefined);
   return { tasks, loading };

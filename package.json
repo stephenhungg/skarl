@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p convex && pnpm --filter @skarl/web typecheck",
     "test": "node --test packages/contracts/src/*.test.ts packages/payments/src/*.test.ts packages/ledger/src/*.test.ts scripts/*.test.mjs",
     "check:docs": "python3 scripts/check_docs.py",
-    "check": "pnpm typecheck && pnpm test && pnpm test:convex && pnpm test:payments && pnpm --filter @skarl/web test && pnpm eval:finance && pnpm check:docs && pnpm build",
+    "check": "pnpm check:no-hardcode && pnpm typecheck && pnpm test && pnpm test:convex && pnpm test:payments && pnpm --filter @skarl/web test && pnpm eval:finance && pnpm check:docs && pnpm build",
     "convex:dev": "convex dev",
     "check:convex": "node scripts/check-convex.mjs",
     "seed": "convex run seed:demo",
@@ -32,7 +32,8 @@
     "cdp:webhooks:create": "node scripts/cdp-webhooks-create.mjs",
     "cdp:sql:witness": "node scripts/cdp-sql-witness.mjs",
     "eval:finance": "vitest run --config evals/finance-agent/vitest.config.mts",
-    "eval:finance-live": "node evals/finance-agent/live.mjs"
+    "eval:finance-live": "node evals/finance-agent/live.mjs",
+    "check:no-hardcode": "node scripts/no-hardcode.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.3.0",

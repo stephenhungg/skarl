@@ -1,4 +1,6 @@
 /// <reference types="node" />
+import { internal } from "./_generated/api";
+import { demoOrderPublicId, publicOrderPrefix, walletMcpOrderKey, walletMcpRequestId } from "./lib/config";
 import { makeFunctionReference } from "convex/server";
 import { mutation, internalMutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
@@ -10,7 +12,7 @@ import { digest, normalizeAddress, paymentBinding, recordJournal, requireTenant,
 import { PAYMENT_NETWORK, paymentRail, SOLANA_PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { createFundingJournal, createPayoutJournal } from "../packages/ledger/src/index";
 import { chainIdentity, validateTransfer, reconcilePayments, type TransferObservation, type PaymentObligation, type PaymentJournal } from "../packages/payments/src/reconciliation";
-import { DEMO_ORDER_BUDGET, DEMO_ORDER_CONTRIBUTOR_RATE, DEMO_ORDER_GLOBAL_LIMIT, DEMO_ORDER_IP_LIMIT, DEMO_ORDER_WINDOW_MS } from "../packages/payments/src/demo-order";
+import { DEMO_ORDER_GLOBAL_LIMIT, DEMO_ORDER_IP_LIMIT, DEMO_ORDER_WINDOW_MS } from "../packages/payments/src/demo-order";
 import { audit } from "./lib/finance";
 import { parseAtomicUsdc } from "../packages/contracts/src/index";
 import { validateIdempotencyKey, idempotencyKeyHash, readIdempotentResult, saveIdempotentResult } from "./lib/requestIdempotency";
@@ -26,9 +28,9 @@ export function service(secret: string) {
 }
 const secretArg = { serviceSecret: v.string() };
 
-type DemoOrderArgs = { serviceSecret: string; ipDigest: string; requestId: string; idempotencyKey?: string;
+type DemoOrderArgs = { serviceSecret: string; ipDigest: string; requestId: string; idempotencyKey?: string; templateOrderId?: Id<"orders">;
   autoPay?: { enabled: boolean; maxPerClipAtomic: string; requireAllChecks: true }; fundingProfile?: "agent" };
-const demoOrderArgs = { ...secretArg, ipDigest: v.string(), requestId: v.string(), idempotencyKey: v.optional(v.string()),
+const demoOrderArgs = { ...secretArg, ipDigest: v.string(), requestId: v.string(), idempotencyKey: v.optional(v.string()), templateOrderId: v.optional(v.id("orders")),
   autoPay: v.optional(v.object({ enabled: v.boolean(), maxPerClipAtomic: v.string(), requireAllChecks: v.literal(true) })),
   // Trusted payment service only. Public HTTP does not forward this field or a payee address.
   fundingProfile: v.optional(v.literal("agent")) };
@@ -38,13 +40,13 @@ async function createDemoOrderFor(ctx: MutationCtx, args: DemoOrderArgs) {
     if (args.idempotencyKey !== undefined) validateIdempotencyKey(args.idempotencyKey);
     const buyer = await requireRole(ctx, "buyer", "buyer");
     if (buyer.roles.includes("finance-agent")) throw new Error("human_buyer_required");
-    const maxPerClipAtomic = parseAtomicUsdc(args.autoPay?.maxPerClipAtomic ?? DEMO_ORDER_BUDGET.toString());
-    if (maxPerClipAtomic <= 0n) throw new Error("invalid_auto_pay_policy");
     const keyHash = idempotencyKeyHash(args.idempotencyKey ?? args.requestId);
     const requestHash = digest({ organizationId: buyer.organizationId, buyer: buyer.tokenIdentifier,
-      enabled: args.autoPay?.enabled ?? true, maxPerClipAtomic, requireAllChecks: true, fundingProfile: args.fundingProfile });
+      templateOrderId: args.templateOrderId ?? demoOrderPublicId(), autoPay: args.autoPay ?? null, fundingProfile: args.fundingProfile });
     type Created = { ok: true; orderId: Id<"orders">; publicId: string; deadlineAt: number;
-      autoPay: { enabled: boolean; maxPerClipAtomic: string; requireAllChecks: true; setBy: string; setAt: number }; fundingPayTo?: string };
+      amountAtomic: string; pricePerSampleAtomic: string; quantityRequested: string; contributorRateAtomic: string;
+      title: string; taskPrompt: string; criteria: Doc<"rubricVersions">["criteria"]; network: string; fundingPayTo?: string;
+      autoPay: { enabled: boolean; maxPerClipAtomic: string; requireAllChecks: true; setBy: string; setAt: number } };
     const previous = await readIdempotentResult<Created>(ctx, "public_order", keyHash, requestHash);
     // A lost creation response must not create another obligation or consume the
     // demo's spend capacity, including when the caller has reached its cap.
@@ -59,9 +61,17 @@ async function createDemoOrderFor(ctx: MutationCtx, args: DemoOrderArgs) {
       }
       fundingPayTo = configured.toLowerCase();
     }
-    const source = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
+    const source = args.templateOrderId ? await ctx.db.get(args.templateOrderId) :
+      await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", demoOrderPublicId())).unique();
     const rubric = source?.taskVersionId ? await ctx.db.get(source.taskVersionId) : null;
-    if (!source || !rubric || source.organizationId !== buyer.organizationId || rubric.orderId !== source._id) throw new Error("demo_seed_required");
+    if (!source || !rubric || source.organizationId !== buyer.organizationId || rubric.orderId !== source._id ||
+      rubric.organizationId !== source.organizationId || !(source.publicId === demoOrderPublicId() || source.publicId.startsWith(publicOrderPrefix()))) throw new Error("public_template_required");
+    if (!["awaiting_funding", "funded", "collecting"].includes(source.status) || source.deadlineAt <= Date.now() ||
+      source.network !== PAYMENT_NETWORK || source.tokenAddress !== USDC_ADDRESS) throw new Error("public_template_unavailable");
+    const maxPerClipAtomic = parseAtomicUsdc(args.autoPay?.maxPerClipAtomic ?? source.autoPay?.maxPerClipAtomic.toString() ?? source.pricePerSampleAtomic.toString());
+    if (maxPerClipAtomic <= 0n || source.quantityRequested <= 0n || source.pricePerSampleAtomic <= 0n ||
+      source.contributorRateAtomic <= 0n || source.contributorRateAtomic > source.pricePerSampleAtomic ||
+      source.budgetAtomic !== source.quantityRequested * source.pricePerSampleAtomic) throw new Error("invalid_template_terms");
     const now = Date.now(), windowStart = Math.floor(now / DEMO_ORDER_WINDOW_MS) * DEMO_ORDER_WINDOW_MS;
     const limits = await Promise.all([
       { key: `ip:${args.ipDigest}`, limit: DEMO_ORDER_IP_LIMIT },
@@ -77,38 +87,44 @@ async function createDemoOrderFor(ctx: MutationCtx, args: DemoOrderArgs) {
       if (limit.row) await ctx.db.patch(limit.row._id, value);
       else await ctx.db.insert("demoOrderLimits", value);
     }
-    const autoPay = { enabled: args.autoPay?.enabled ?? true, maxPerClipAtomic, requireAllChecks: true as const,
+    const autoPay = { enabled: args.autoPay?.enabled ?? source.autoPay?.enabled ?? true, maxPerClipAtomic, requireAllChecks: true as const,
       setBy: buyer.tokenIdentifier, setAt: now };
-    const publicId = `skarl-outsider-demo-${keyHash}`;
-    const termsHash = digest({ contentHash: rubric.contentHash, quantityRequested: 1n, pricePerSampleAtomic: DEMO_ORDER_BUDGET,
-      contributorRateAtomic: DEMO_ORDER_CONTRIBUTOR_RATE, licenseVersion: "demo-consent-v1",
+    const publicId = `${publicOrderPrefix()}${keyHash}`;
+    const termsHash = digest({ contentHash: rubric.contentHash, quantityRequested: source.quantityRequested, pricePerSampleAtomic: source.pricePerSampleAtomic,
+      contributorRateAtomic: source.contributorRateAtomic, templateTermsHash: source.termsHash,
+      ...(source.diversity ? { diversity: source.diversity } : {}),
       autoPay: { enabled: autoPay.enabled, maxPerClipAtomic, requireAllChecks: true }, fundingPayTo });
     const orderId = await ctx.db.insert("orders", {
       organizationId: buyer.organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS, publicId,
-      buyerTokenIdentifier: buyer.tokenIdentifier, buyerWalletAddress: "0x0000000000000000000000000000000000000001",
+      buyerTokenIdentifier: buyer.tokenIdentifier, buyerWalletAddress: source.buyerWalletAddress,
       ...(fundingPayTo ? { fundingPayTo } : {}),
-      title: "DEMO / TESTNET — red-cup narrated demonstration", status: "awaiting_funding", quantityRequested: 1n,
-      pricePerSampleAtomic: DEMO_ORDER_BUDGET, contributorRateAtomic: DEMO_ORDER_CONTRIBUTOR_RATE,
-      budgetAtomic: DEMO_ORDER_BUDGET, autoPay, acceptedCount: 0n, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS, termsHash, updatedAt: now,
+      title: source.title, taskSpecStatus: "pending", status: "awaiting_funding", quantityRequested: source.quantityRequested,
+      ...(source.diversity ? { diversity: source.diversity } : {}),
+      pricePerSampleAtomic: source.pricePerSampleAtomic, contributorRateAtomic: source.contributorRateAtomic,
+      budgetAtomic: source.budgetAtomic, autoPay, acceptedCount: 0n, deadlineAt: source.deadlineAt, termsHash, updatedAt: now,
     });
     const taskVersionId = await ctx.db.insert("rubricVersions", {
       organizationId: buyer.organizationId, orderId, version: 1, taskPrompt: rubric.taskPrompt,
-      criteria: rubric.criteria, contentHash: rubric.contentHash, createdByTokenIdentifier: buyer.tokenIdentifier, frozenAt: now,
+      criteria: rubric.criteria, contentHash: rubric.contentHash, taskSpecStatus: "pending", createdByTokenIdentifier: buyer.tokenIdentifier, frozenAt: now,
     });
     await ctx.db.patch(orderId, { taskVersionId });
+    await ctx.scheduler.runAfter(0, internal.taskSpecExtraction.extract, { orderId });
     await audit(ctx, { organizationId: buyer.organizationId, eventKey: `outsider_demo_created:${orderId}`,
       actor: { kind: "service", identity: "public-demo-orders" }, action: "demo_order_created", entityType: "orders", entityId: orderId,
-      reason: "Public 1 USDC testnet demo order; no payment or inference performed. Actual payer binds during funding.", evidenceReferences: [taskVersionId, termsHash] });
+      reason: "Public testnet order copied from selected stored terms and rubric; no payment or inference performed. Actual payer binds during funding.", evidenceReferences: [taskVersionId, termsHash] });
     await audit(ctx, { organizationId: buyer.organizationId, eventKey: `auto_pay_set:${orderId}`,
       actor: { kind: "human", identity: buyer.tokenIdentifier }, action: "auto_pay_policy_set", entityType: "orders", entityId: orderId,
       reason: `Buyer selected auto-pay ${autoPay.enabled ? "enabled" : "disabled"}; cap ${maxPerClipAtomic} micro-USDC; every check required.`,
       evidenceReferences: [termsHash] });
-    const result: Created = { ok: true, orderId, publicId, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS,
+    const result: Created = { ok: true, orderId, publicId, deadlineAt: source.deadlineAt,
+      amountAtomic: source.budgetAtomic.toString(), pricePerSampleAtomic: source.pricePerSampleAtomic.toString(),
+      quantityRequested: source.quantityRequested.toString(), contributorRateAtomic: source.contributorRateAtomic.toString(),
+      title: source.title, taskPrompt: rubric.taskPrompt, criteria: rubric.criteria, network: PAYMENT_NETWORK,
       autoPay: { ...autoPay, maxPerClipAtomic: maxPerClipAtomic.toString() }, ...(fundingPayTo ? { fundingPayTo } : {}) };
     await saveIdempotentResult(ctx, "public_order", keyHash, requestHash, result);
     return result;
 }
-/** Public HTTP entry point: fixed commercial terms, buyer-selected auto-pay rule. */
+/** Public entry point copies selected stored terms and extracts its rubric. */
 export const createDemoOrder = mutation({ args: demoOrderArgs, handler: createDemoOrderFor });
 
 /** Operator-only provisioning of exactly one agent-treasury Wallet MCP demo.
@@ -116,12 +132,17 @@ export const createDemoOrder = mutation({ args: demoOrderArgs, handler: createDe
  */
 export const createWalletMcpDemo = internalMutation({
   args: {},
-  handler: async ctx => createDemoOrderFor(ctx, {
-    serviceSecret: process.env.SKARL_PAYMENTS_SERVICE_SECRET ?? "",
-    ipDigest: digest({ operator: "wallet-mcp-agent-order-v1" }), requestId: "00000000-0000-4000-8000-000000000001",
-    idempotencyKey: "wallet-mcp-agent-order-v1", fundingProfile: "agent",
-    autoPay: { enabled: false, maxPerClipAtomic: DEMO_ORDER_BUDGET.toString(), requireAllChecks: true },
-  }),
+  handler: async ctx => {
+    const source = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", demoOrderPublicId())).unique();
+    if (!source) throw new Error("public_template_required");
+    const key = walletMcpOrderKey();
+    return createDemoOrderFor(ctx, {
+      serviceSecret: process.env.SKARL_PAYMENTS_SERVICE_SECRET ?? "",
+      ipDigest: digest({ operator: key }), requestId: walletMcpRequestId(),
+      idempotencyKey: key, fundingProfile: "agent",
+      autoPay: { enabled: false, maxPerClipAtomic: source.pricePerSampleAtomic.toString(), requireAllChecks: true },
+    });
+  },
 });
 const evidence = v.object({ network: v.string(), tokenAddress: v.string(), txHash: v.string(), logIndex: v.number(),
   blockNumber: v.int64(), blockHash: v.string(), fromAddress: v.string(), toAddress: v.string(), amountAtomic: v.int64(),

@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runSqlWitness, FUNDING_TX, DEMO_TREASURY } from "./cdp-sql-witness.mjs";
+import { runSqlWitness } from "./cdp-sql-witness.mjs";
 import { USDC_ADDRESS } from "../packages/contracts/src/chain.ts";
 
+const FUNDING_TX = `0x${"a".repeat(64)}`;
+const DEMO_TREASURY = `0x${"1".repeat(40)}`;
 const from = `0x${"2".repeat(40)}`;
 const blockHash = `0x${"b".repeat(64)}`;
 const topicAddress = address => `0x${address.slice(2).padStart(64, "0")}`;
@@ -15,7 +17,7 @@ const receipt = { transactionHash: FUNDING_TX, status: "0x1", blockHash, blockNu
 
 // All API/RPC responses below are simulated, not live chain evidence.
 test("missing client key never makes a network request", async () => {
-  const result = await runSqlWitness({ fetchImpl: () => { throw new Error("unexpected call"); } });
+  const result = await runSqlWitness({ txHash: FUNDING_TX, treasury: DEMO_TREASURY, fetchImpl: () => { throw new Error("unexpected call"); } });
   assert.equal(result.evidence, "not_verified");
   assert.equal(result.sql.status, "witness_unavailable");
   assert.equal(result.sql.reason, "client_key_not_configured");
@@ -30,10 +32,14 @@ test("read-only witness compares CDP and a confirmed canonical RPC log", async (
     assert.notEqual(result, undefined);
     return new Response(JSON.stringify({ result }));
   };
-  const result = await runSqlWitness({ apiKey: "simulated-key", fetchImpl });
+  const result = await runSqlWitness({ txHash: FUNDING_TX, treasury: DEMO_TREASURY, apiKey: "simulated-key", fetchImpl });
   assert.equal(result.rpcStatus, "observed");
   assert.equal(result.confirmations, "2");
   assert.equal(result.witnesses[0].status, "match");
   assert.equal(result.witnesses[0].rpcTransfer.amountAtomic, "10000000");
   assert.deepEqual(methods, ["eth_chainId", "eth_getTransactionReceipt", "eth_blockNumber", "eth_getBlockByNumber"]);
+});
+
+test("missing explicit transaction and treasury fail before a network request", async () => {
+  await assert.rejects(runSqlWitness({ txHash: "", treasury: "", fetchImpl: () => { throw new Error("unexpected network"); } }), /invalid_scope/);
 });

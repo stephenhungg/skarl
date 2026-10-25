@@ -1,3 +1,5 @@
+import { seedWithTaskSpecs } from "./fixtures/seedWithTaskSpecs";
+import { RED_CUP_TASK_SPEC } from "./fixtures/taskSpecs";
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
@@ -24,7 +26,7 @@ afterEach(() => {
 
 async function setup(demoMode: "on" | "off") {
   const t = convexTest(schema, modules);
-  const seed = await t.mutation(internal.seed.demo, {});
+  const seed = await seedWithTaskSpecs(t);
   const userId = await t.run(ctx => ctx.db.insert("users", { email: "worker-contributor@example.test" }));
   const signedIn = t.withIdentity({ subject: `${userId}|synthetic-session`, issuer: "https://auth.example.test" });
   await signedIn.mutation(api["auth/memberships"].claimRole, { role: "contributor" });
@@ -55,7 +57,7 @@ async function claim(f: Fixture) {
 
 async function completion(f: Fixture, generation: number) {
   const rubric = (await f.t.run(ctx => ctx.db.get(f.taskVersionId)))!;
-  const report = buildVerificationReport({ submissionId: f.submissionId,
+  const report = buildVerificationReport({ taskSpec: RED_CUP_TASK_SPEC, submissionId: f.submissionId,
     taskVersionId: f.taskVersionId, sourceHash: f.job.sourceHash, durationMs: 12_000,
     criteria: rubric.criteria, modelRuns: [], duplicate: { status: "not_checked", matches: [] },
     failure: "gemini_timeout" });

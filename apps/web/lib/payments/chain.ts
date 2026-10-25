@@ -1,3 +1,5 @@
+import { paymentConfig } from "../../../../packages/payments/src/config";
+import { webConfig } from "../config";
 import { createPublicClient, http, parseEventLogs, parseAbi, type Hash } from "viem";
 import { baseSepolia } from "viem/chains";
 import { PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "@skarl/contracts/chain";
@@ -8,13 +10,13 @@ export const usdcEvents = parseAbi([
   "event AuthorizationUsed(address indexed authorizer, bytes32 indexed nonce)",
 ]);
 export const publicClient = () => createPublicClient({ chain: baseSepolia,
-  transport: http(process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org", { timeout: 15_000, retryCount: 1 }) });
+  transport: http(webConfig.rpcUrl, { timeout: webConfig.rpcTimeoutMs, retryCount: webConfig.rpcRetryCount }) });
 
 /** Reads a receipt and its canonical block. Client-supplied hashes are only lookup keys, never proof. */
 export async function observeTransfer(txHash: Hash, expected: ExpectedTransfer, authorizationNonce?: string) {
   const client = publicClient();
   if (await client.getChainId() !== PAYMENT_CHAIN_ID) throw new Error("wrong_rpc_network");
-  const receipt = await client.waitForTransactionReceipt({ hash: txHash, confirmations: 2, timeout: 20_000 });
+  const receipt = await client.waitForTransactionReceipt({ hash: txHash, confirmations: paymentConfig.requiredConfirmations, timeout: webConfig.receiptTimeoutMs });
   if (receipt.transactionHash.toLowerCase() !== txHash.toLowerCase()) throw new Error("transaction_replaced_reconcile_manually");
   const [head, block] = await Promise.all([client.getBlockNumber({ cacheTime: 0 }), client.getBlock({ blockNumber: receipt.blockNumber })]);
   if (block.hash !== receipt.blockHash) throw new Error("receipt_reorged");

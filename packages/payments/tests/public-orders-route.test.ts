@@ -13,25 +13,34 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.stubEnv("SKARL_TREASURY_ADDRESS", "0x8408a922ea400af33d7c2080a9edd5d3495b695f");
   vi.stubEnv("VERCEL", "1");
-  mocks.mutation.mockResolvedValue({ ok: true, orderId: "fresh-demo", publicId: "demo-public", deadlineAt: 123 });
+  mocks.mutation.mockResolvedValue({ ok: true, orderId: "fresh-demo", publicId: "demo-public", deadlineAt: 123, price: "10.000000", amountAtomic: "10000000", network: "eip155:84532", demo: true, testnet: true });
 });
 afterEach(() => vi.unstubAllEnvs());
 
 describe("public order HTTP contract", () => {
   it("serves unauthenticated documentation without a treasury or database call", async () => {
     vi.stubEnv("SKARL_TREASURY_ADDRESS", undefined);
-    expect(await GET().json()).toMatchObject({ price: "1.000000", amountAtomic: "1000000", identityHeaderRequired: false });
+    const body = await GET().json();
+    expect(body).toMatchObject({ identityHeaderRequired: false, currency: "USDC" });
+    expect(body).not.toHaveProperty("price");
+    expect(body).not.toHaveProperty("amountAtomic");
     expect(mocks.mutation).not.toHaveBeenCalled();
   });
-  it.each([undefined, "{}", " \n"])("creates a fixed demo order without identity headers (%s)", async body => {
+  it.each([undefined, "{}", " \n"])("returns the stored order quote without identity headers (%s)", async body => {
     const response = await POST(request(body, { "x-forwarded-for": "203.0.113.1" }));
     expect(response.status).toBe(201);
     expect(await response.json()).toMatchObject({ orderId: "fresh-demo", fundUrl: "https://skarl.vercel.app/api/orders/fresh-demo/fund",
-      price: "1.000000", amountAtomic: "1000000", network: "eip155:84532", demo: true, testnet: true });
+      price: "10.000000", amountAtomic: "10000000", network: "eip155:84532", demo: true, testnet: true });
     const args = mocks.mutation.mock.calls[0]![1];
     expect(Object.keys(args).sort()).toEqual(["ipDigest", "requestId", "serviceSecret"]);
     expect(args.ipDigest).toBe(createHmac("sha256", secret).update("203.0.113.1").digest("hex"));
     expect(args.ipDigest).not.toContain("203.0.113.1");
+  });
+  it("selects the caller's source order and returns its actual commercial data", async () => {
+    mocks.mutation.mockResolvedValue({ ok: true, orderId: "fresh-other", price: "6.000000", amountAtomic: "6000000", quota: 2 });
+    const response = await POST(request(JSON.stringify({ templateOrderId: "selected-source" })));
+    expect(mocks.mutation.mock.calls[0]![1].templateOrderId).toBe("selected-source");
+    expect(await response.json()).toMatchObject({ orderId: "fresh-other", price: "6.000000", amountAtomic: "6000000", quota: 2 });
   });
   it.each(['{"budgetAtomic":"9999999"}', '{"taskPrompt":"injected"}', '{"payTo":"attacker"}', "[]", "null", "false", "invalid", " ".repeat(513)])("refuses arbitrary body %s", async body => {
     expect((await POST(request(body))).status).toBe(400);

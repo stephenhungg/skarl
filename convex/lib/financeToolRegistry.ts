@@ -1,3 +1,4 @@
+import { configNumber } from "./config.ts";
 import { untrustedToolData } from "./untrustedToolData";
 
 /** One capability catalogue for the proposal agent and both advisory readers.
@@ -16,7 +17,7 @@ const page = { cursor: { type: ["string", "null"] }, limit: { type: ["integer", 
 const schema = (properties: Record<string, JsonSchema> = {}): JsonSchema => ({
   type: "object", properties, required: Object.keys(properties), additionalProperties: false,
 });
-const define = (name: string, description: string, properties: Record<string, JsonSchema> = {}, readOnly = true, maxResultChars = 12000): FinanceTool => ({
+const define = (name: string, description: string, properties: Record<string, JsonSchema> = {}, readOnly = true, maxResultChars = configNumber("FINANCE_AGENT_TOOL_RESULT_CHARS")): FinanceTool => ({
   type: "function", name, description, parameters: schema(properties), readOnly,
   roles: readOnly ? ["run", "chat", "analyst"] : ["run"], maxResultChars,
 });
@@ -29,17 +30,17 @@ export const financeToolRegistry: readonly FinanceTool[] = [
   define("listReconciliationExceptions", "Read recorded three-way discrepancies. No exceptions does not establish settlement."),
   define("taxSummary", "Read this order's tax-ready ledger for a UTC year; null selects the current order/year. Exact integer micro-USD. Not tax advice — demo data. Cannot change forms, withhold or file tax.", { orderId: nullableId, year: { type: ["integer", "null"], minimum: 1970, maximum: 9999 } }),
   define("contributorsNeedingForms", "Read missing form-on-file attestations for this order. Never collect SSNs, TINs, IDs or form documents. Not tax advice — demo data."),
-  define("proposePaymentBatch", "Propose up to 20 unique existing payables within the server's cumulative run cap. No approval, signing or execution.", { payableIds: { type: "array", items: id } }, false),
+  define("proposePaymentBatch", `Propose up to ${configNumber("FINANCE_AGENT_MAX_BATCH_SIZE")} unique existing payables within the server's cumulative run cap. No approval, signing or execution.`, { payableIds: { type: "array", items: id } }, false),
   define("requestApproval", "Record a request for independent buyer/policy approval of one stored intent. This never approves.", { intentId: id }, false),
   define("getOrderContext", "Read order terms, task/rubric version, exact per-clip price, quota, funding, remaining escrow, buyer auto-pay rule and network."),
-  define("getJournal", "Read a page of scoped journal entries and lines with accounts, debit/credit amounts and event keys. Null cursor starts paging; limit defaults server-side.", page, true, 18000),
+  define("getJournal", "Read a page of scoped journal entries and lines with accounts, debit/credit amounts and event keys. Null cursor starts paging; limit defaults server-side.", page, true, configNumber("FINANCE_AGENT_DETAILED_RESULT_CHARS")),
   define("getStatements", "Read deterministic payables, cash and revenue statements for this order; funding is a prepayment, not revenue."),
   define("getFourWayReconciliation", "Read order, ledger, chain and Mock bank (Capital One Nessie) witnesses. An absent exception never proves settlement."),
   define("getBankExceptions", "Read scoped Mock bank (Capital One Nessie) mismatches and missing bank witnesses."),
   define("getFundingTimeline", "Read recorded x402 funding stages (402, signed, settled, webhook, chain), IDs and transaction links. Missing stages are data gaps."),
   define("getPayoutStatus", "Read scoped payout intents, attempts, executor and BaseScan evidence. Null intentId lists order payouts. Never call paid without matching chain observation.", { intentId: nullableId }),
   define("getAgentWallet", "Read the public agent wallet address, health-recorded Base Sepolia ETH/USDC balances, CDP policy/cap and recorded policy rejections. No credentials or signing authority."),
-  define("getWitnessReceipt", "Read every stored witness for a scoped submission: jury per model/criterion, duplicate, liveness, consent/license, provenance, detector and attestation. Cite statuses and evidence refs.", { submissionId: id }, true, 18000),
+  define("getWitnessReceipt", "Read every stored witness for a scoped submission: jury per model/criterion, duplicate, liveness, consent/license, provenance, detector and attestation. Cite statuses and evidence refs.", { submissionId: id }, true, configNumber("FINANCE_AGENT_DETAILED_RESULT_CHARS")),
   define("getDuplicateEvidence", "Read duplicate match evidence and references for one scoped submission. A duplicate finding never authorizes another payable.", { submissionId: id }),
   define("listReviewQueue", "Read held items with deterministic reasons, including over_cap, duplicate, tax_form_missing, failed checks and mismatches, plus advisory analyst notes."),
   define("getPayoutHistory", "Read a page of scoped payout history with attempts, chain evidence and exact amounts.", page),
@@ -59,7 +60,7 @@ function valid(value: unknown, rule: JsonSchema): boolean {
   const types = Array.isArray(rule.type) ? rule.type : [rule.type];
   if (value === null) return types.includes("null");
   if (types.includes("integer")) return typeof value === "number" && Number.isSafeInteger(value) && value >= Number(rule.minimum) && value <= Number(rule.maximum);
-  if (types.includes("array")) return Array.isArray(value) && value.length >= 1 && value.length <= 20 && new Set(value).size === value.length && value.every(item => valid(item, rule.items as JsonSchema));
+  if (types.includes("array")) return Array.isArray(value) && value.length >= 1 && value.length <= configNumber("FINANCE_AGENT_MAX_BATCH_SIZE") && new Set(value).size === value.length && value.every(item => valid(item, rule.items as JsonSchema));
   if (types.includes("string")) return typeof value === "string" && value.length > 0 && value.length <= 2048 && (!rule.pattern || new RegExp(rule.pattern as string).test(value));
   return false;
 }
@@ -88,10 +89,10 @@ const stringify = (value: unknown) => JSON.stringify(value, (_key, item: unknown
  * Small results preserve their public shape for deterministic consumers; providers must
  * serialize through untrustedToolData. Large results carry an explicit loss marker. */
 export function capFinanceToolResult(name: string, result: unknown): unknown {
-  const max = getFinanceTool(name)?.maxResultChars ?? 6000;
+  const max = getFinanceTool(name)?.maxResultChars ?? configNumber("FINANCE_AGENT_UNKNOWN_RESULT_CHARS");
   const encoded = stringify(result);
   if (encoded.length <= max) return result;
-  let budget = max - 1000;
+  let budget = max - configNumber("FINANCE_AGENT_RESULT_ENVELOPE_CHARS");
   const trim = (value: unknown): unknown => {
     if (budget <= 0) return undefined;
     if (typeof value === "string") {

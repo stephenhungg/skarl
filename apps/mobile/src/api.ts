@@ -2,14 +2,15 @@ import { makeFunctionReference } from 'convex/server';
 
 // Explicit string references keep Metro independent of the backend workspace.
 // These response projections mirror convex/dashboard.ts and submissions.ts.
-export const identity = { demoIdentity: 'contributor' } as const;
+import { contributorIdentity } from './auth/identity';
+export const identity = contributorIdentity;
 type Identity = typeof identity;
 export type Context = { orderId: string; network: string } | null;
 export type TaskSpec = { object: string; distractors: string[]; target: string; steps: string[]; narration?: string[] };
 export type Summary = {
   order: { _id: string; _creationTime: number; publicId: string; title: string; status: string; network: string; contributorRateAtomic: string;
-    quantityRequested: string; acceptedCount: string; deadlineAt?: number; taskSpec?: TaskSpec };
-  rubric: { version: number; contentHash: string; taskPrompt: string; taskSpec?: TaskSpec; criteria: { criterionId: string; description: string; modality: string }[] } | null;
+    quantityRequested: string; acceptedCount: string; deadlineAt?: number; taskSpecStatus?: 'pending' | 'ready'; taskSpec?: TaskSpec };
+  rubric: { version: number; contentHash: string; taskPrompt: string; taskSpecStatus?: 'pending' | 'ready'; taskSpec?: TaskSpec; criteria: { criterionId: string; description: string; modality: string }[] } | null;
 };
 export type LivenessChallenge = { challengeId: string; words: string[]; expiresAt: number };
 export type Report = {

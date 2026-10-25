@@ -1,12 +1,13 @@
+import { mobileConfig } from './config';
 import type { Sample } from './sensors';
 
 // Match the server's existing active-motion gyro threshold. Coaching is visual
 // advice for the fixed-camera task, never an acceptance or upload gate.
-const GYRO_THRESHOLD_RAD_PER_SEC = 0.15;
-const SUSTAINED_MS = 500;
-const MAX_SAMPLE_GAP_MS = 250;
-const STALE_MS = 500;
-const TILT_THRESHOLD_DEGREES = 15;
+const GYRO_THRESHOLD_RAD_PER_SEC = mobileConfig.gyroThresholdRadPerSec;
+const SUSTAINED_MS = mobileConfig.sustainedMotionMs;
+const MAX_SAMPLE_GAP_MS = mobileConfig.maxSampleGapMs;
+const STALE_MS = mobileConfig.staleMotionMs;
+const TILT_THRESHOLD_DEGREES = mobileConfig.tiltThresholdDegrees;
 export type MotionCoaching = { steady: boolean | null; tilted: boolean | null };
 
 export function createMotionCoach() {
@@ -24,7 +25,7 @@ export function createMotionCoach() {
         const magnitude = Math.hypot(sample.x, sample.y, sample.z);
         // Portrait horizon roll, not pitch: contributors may aim down at a table.
         // Looking nearly straight down/up makes the horizon undefined.
-        tilt = magnitude > 0 && projected >= 0.1 * magnitude
+        tilt = magnitude > 0 && projected >= mobileConfig.horizonMinProjectionRatio * magnitude
           ? Math.atan2(Math.abs(sample.x), Math.abs(sample.y)) * 180 / Math.PI : null;
         gravityAt = sample.timestampMs;
       }

@@ -1,3 +1,4 @@
+import { scriptConfig } from "./config.mjs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { createPublicClient, encodeFunctionData, http, serializeTransaction, zeroAddress, zeroHash } from "viem";
@@ -34,7 +35,7 @@ export async function applyAccountPolicy(cdp, account, policy) {
 
 export async function ensureFaucet(cdp, client, account) {
   if (await client.getChainId() !== EAS_CHAIN_ID) throw new Error("wrong_rpc_network");
-  if (await client.getBalance({ address: account.address }) >= 20_000_000_000_000n) return;
+  if (await client.getBalance({ address: account.address }) >= scriptConfig.attestorFaucetMinimumWei) return;
   const { transactionHash } = await cdp.evm.requestFaucet({ address: account.address, network: EAS_NETWORK, token: "eth" });
   console.log(JSON.stringify({ faucetAddress: account.address, transactionHash }));
   const receipt = await client.waitForTransactionReceipt({ hash: transactionHash, timeout: 60_000 });

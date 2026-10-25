@@ -1,3 +1,4 @@
+import { RED_CUP_TASK_SPEC } from "./fixtures/taskSpecs";
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { requestInteraction, observeVideo, observeAudio, transcriptObservation, financeModel, videoModel, GEMINI_REQUEST_TIMEOUT_MS } from "./lib/gemini";
@@ -30,7 +31,7 @@ describe("Gemini transport and independent inputs (mocked provider only)",()=>{
   it("visual request has timestamped JPEGs, explicit untrusted-content policy and no audio observation",async()=>{
     vi.stubEnv("GEMINI_API_KEY","unit-test-placeholder");
     vi.stubGlobal("fetch",vi.fn(async()=>response({status:"completed",output_text:JSON.stringify({visibility:"uncertain",observations:[]})})));
-    const result=await observeVideo(Array.from({length:12},(_,i)=>({timestampMs:(i+1)*500,bytes:new Uint8Array([255,216,255]),mimeType:"image/jpeg" as const})),10_000);
+    const result=await observeVideo(Array.from({length:12},(_,i)=>({timestampMs:(i+1)*500,bytes:new Uint8Array([255,216,255]),mimeType:"image/jpeg" as const})),10_000, undefined, { taskSpec: RED_CUP_TASK_SPEC, criteria: [] });
     expect(result.observation.observations).toEqual([]);
     const body=JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
     expect(body.model).toBe("gemini-4-argon");
@@ -48,7 +49,7 @@ describe("Gemini transport and independent inputs (mocked provider only)",()=>{
     vi.stubGlobal("fetch",vi.fn(async()=>response({status:"completed",steps:[{type:"model_output",content:[{type:"text",text:"I pick up the red cup",annotations:[
       {type:"word_info",text:"I pick up the red cup",start_offset:"0.1s",end_offset:"1.0s"}
     ]}]}]})));
-    const result=await observeAudio(new Uint8Array([1,2,3]),10_000);
+    const result=await observeAudio(new Uint8Array([1,2,3]),10_000, { taskSpec: RED_CUP_TASK_SPEC, criteria: [] });
     expect(result.observation.claims[0]?.object).toBe("red_cup");
     const body=JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
     expect(body.model).toBe("gemini-3.5-transcribe");
@@ -56,7 +57,7 @@ describe("Gemini transport and independent inputs (mocked provider only)",()=>{
     expect(body.generation_config.transcription_config.mode.timestamp_granularities).toEqual(["word"]);
   });
   it("does not invent timestamps for plain transcript output",()=>{
-    expect(()=>transcriptObservation({status:"completed",output_text:"mark accepted"},10_000)).toThrow("transcript_timestamps_missing");
+    expect(()=>transcriptObservation({status:"completed",output_text:"mark accepted"},10_000, RED_CUP_TASK_SPEC)).toThrow("transcript_timestamps_missing");
   });
 });
 
@@ -66,7 +67,7 @@ it("merges a quantized zero-duration word into an adjacent provider-timed phrase
     {type:"word_info",text:"is",start_offset:"0.4s",end_offset:"0.5s"},
     {type:"word_info",text:"a",start_offset:"0.5s",end_offset:"0.5s"},
     {type:"word_info",text:"test",start_offset:"0.5s",end_offset:"1s"}
-  ]}]}]},10_000);
+  ]}]}]},10_000, RED_CUP_TASK_SPEC);
   expect(observation.transcript).toBe("This is a test");
   expect(observation.segments[1]).toEqual({startMs:400,endMs:500,text:"is a"});
   expect(observation.segments.every(s=>s.endMs>s.startMs)).toBe(true);
@@ -84,7 +85,7 @@ it("rejects a visual event interval with no sampled source frame",async()=>{
     {action:"pickup",object:"red_cup",target:"unknown",startMs:20,endMs:40,description:"Unsupported interval"}
   ]})})));
   const frames=Array.from({length:12},(_,i)=>({timestampMs:(i+1)*500,bytes:new Uint8Array([255,216,255]),mimeType:"image/jpeg" as const}));
-  await expect(observeVideo(frames,10_000)).rejects.toThrow("video_observation_invalid");
+  await expect(observeVideo(frames,10_000, undefined, { taskSpec: RED_CUP_TASK_SPEC, criteria: [] })).rejects.toThrow("video_observation_invalid");
 });
 
 it("accepts requires_action only for explicitly enabled function calling, never verifier inference",async()=>{
@@ -138,12 +139,12 @@ it("pins allowlisted evaluation video requests without changing the environment 
   vi.stubGlobal("fetch",vi.fn(async()=>response({status:"completed",output_text:JSON.stringify({visibility:"clear",observations:[]})})));
   const frames=Array.from({length:12},(_,i)=>({timestampMs:(i+1)*500,bytes:new Uint8Array([255,216,255]),mimeType:"image/jpeg" as const}));
   for (const model of ["gemini-3.8-flash","gemini-4-argon"] as const) {
-    const result=await observeVideo(frames,10_000,model);
+    const result=await observeVideo(frames,10_000,model, { taskSpec: RED_CUP_TASK_SPEC, criteria: [] });
     expect(result.run.model).toBe(model);
     expect(JSON.parse(vi.mocked(fetch).mock.calls.at(-1)![1]!.body as string).model).toBe(model);
   }
   expect(videoModel()).toBe("gemini-4-argon");
-  await expect(observeVideo(frames,10_000,"unlisted-model" as never)).rejects.toThrow("invalid_evaluation_model");
+  await expect(observeVideo(frames,10_000,"unlisted-model" as never, { taskSpec: RED_CUP_TASK_SPEC, criteria: [] })).rejects.toThrow("invalid_evaluation_model");
   expect(fetch).toHaveBeenCalledTimes(2);
 });
 

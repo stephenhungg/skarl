@@ -1,3 +1,4 @@
+import { paymentConfig } from "./config.ts";
 /** Testnet buyer CLI. Secrets and signed authorizations never belong in the repo. */
 import { constants, closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -66,7 +67,7 @@ export async function fundOrder(args = process.argv.slice(2)) {
   // Choosing a rule happens before funding; the order is the durable business intent.
   if (args.includes("--create")) {
     const capIndex = args.indexOf("--auto-pay-cap");
-    const maxPerClipAtomic = capIndex === -1 ? "1000000" : args[capIndex + 1];
+    const maxPerClipAtomic = capIndex === -1 ? paymentConfig.buyerAutoPayCapAtomic : args[capIndex + 1];
     if (!maxPerClipAtomic || !/^[1-9][0-9]*$/.test(maxPerClipAtomic) || BigInt(maxPerClipAtomic) > MAX_ATOMIC_USDC) {
       throw new BuyerError("--auto-pay-cap requires positive integer micro-USDC within Int64.");
     }
@@ -75,7 +76,7 @@ export async function fundOrder(args = process.argv.slice(2)) {
     if (args.some(arg => arg !== "--cdp" && arg !== "--rail" && arg !== "base" && arg !== "solana")) {
       throw new BuyerError("Usage: pnpm agent:fund --create [--no-auto-pay] [--auto-pay-cap micro-USDC] [--cdp] [--rail base|solana]");
     }
-    const app = new URL(process.env.SKARL_APP_URL || "http://localhost:3000");
+    const app = new URL(paymentConfig.appUrl);
     if (app.username || app.password || (app.protocol !== "https:" && !(app.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(app.hostname)))) {
       throw new BuyerError("SKARL_APP_URL must use HTTPS, or HTTP on localhost.");
     }
@@ -103,14 +104,14 @@ export async function fundOrder(args = process.argv.slice(2)) {
     const { fundOrderWithCdp } = await import("./cdp-buyer.ts");
     return fundOrderWithCdp(args.filter(arg => arg !== "--cdp"));
   }
-  const orderId = args[0] ?? "skarl-red-cup-demo-v2";
+  const orderId = args[0] ?? process.env.SKARL_ORDER_ID ?? "";
   if (args.length > 1 || (!/^[a-zA-Z0-9_-]+$/.test(orderId) && orderId !== "--address")) {
-    throw new BuyerError("Usage: pnpm agent:fund [orderId] (default: skarl-red-cup-demo-v2; or --address)");
+    throw new BuyerError("Usage: pnpm agent:fund <orderId> (or set SKARL_ORDER_ID; or --address)");
   }
   const account = buyerAccount();
   console.log(account.address);
   if (args[0] === "--address") return;
-  const app = new URL(process.env.SKARL_APP_URL || "http://localhost:3000");
+  const app = new URL(paymentConfig.appUrl);
   if (app.username || app.password || (app.protocol !== "https:" && !(app.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(app.hostname)))) {
     throw new BuyerError("SKARL_APP_URL must use HTTPS, or HTTP on localhost.");
   }
@@ -130,7 +131,7 @@ export async function fundOrder(args = process.argv.slice(2)) {
     const txHash = status.txHash ?? (record(saved) ? saved.txHash : undefined);
     const reconciled = await jsonResponse(await fetch(new URL("/api/payments/reconcile", app), {
       method: "POST", headers, redirect: "error", signal: AbortSignal.timeout(60_000),
-      body: JSON.stringify({ orderId, demoIdentity: "buyer", ...(typeof txHash === "string" ? { txHash } : {}),
+      body: JSON.stringify({ orderId, demoIdentity: paymentConfig.buyerIdentity, ...(typeof txHash === "string" ? { txHash } : {}),
         ...(record(saved) && typeof saved.authorizationNonce === "string" ? { authorizationNonce: saved.authorizationNonce, payerAddress: account.address } : {}) }),
     }));
     printTransaction(reconciled.txHash ?? txHash);

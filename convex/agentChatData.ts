@@ -1,3 +1,4 @@
+import { configNumber } from "./lib/config";
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -22,7 +23,7 @@ export const begin = internalMutation({
     const chatId = await ctx.db.insert("agentChats", { organizationId: principal.organizationId, orderId: order._id,
       requesterTokenIdentifier: principal.tokenIdentifier, requestId: args.requestId, question: args.question,
       model: args.model, status: "running", transcriptJson: "[]", citedRecordIds: [], startedAt: Date.now() });
-    await ctx.scheduler.runAfter(180_000, internal.agentChatData.expire, { chatId });
+    await ctx.scheduler.runAfter(configNumber("SKARL_AGENT_CHAT_LEASE_MS"), internal.agentChatData.expire, { chatId });
     await audit(ctx, { organizationId: principal.organizationId, eventKey: `chat:${chatId}`, actor: actorFor(principal),
       action: "finance_chat_requested", entityType: "orders", entityId: order._id,
       reason: "Read-only financial question; chat cannot propose, approve or execute payments.", evidenceReferences: [chatId] });
@@ -74,7 +75,7 @@ export const expire = internalMutation({
   args: { chatId: v.id("agentChats") },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.chatId);
-    if (!row || row.status !== "running" || Date.now() - row.startedAt < 180_000) return;
+    if (!row || row.status !== "running" || Date.now() - row.startedAt < configNumber("SKARL_AGENT_CHAT_LEASE_MS")) return;
     await ctx.db.patch(row._id, { status: "failed", failureCode: "chat_interrupted", completedAt: Date.now(),
       answer: "The read-only chat was interrupted. No payment changes were made." });
   },

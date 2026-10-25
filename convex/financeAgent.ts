@@ -1,5 +1,6 @@
 "use node";
-import process from "node:process";
+import { configNumber, financeAgentMaxBatchAtomic } from "./lib/config";
+
 import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { api, internal } from "./_generated/api";
@@ -18,12 +19,12 @@ export const run = action({
   handler: async (ctx, args): Promise<{ runId: Id<"financeAgentRuns">; replayed: boolean }> => {
     const { provider, model } = financeProviderConfig();
     const maxToolCalls = financeMaxToolCalls();
-    const maxBatchAtomic = positiveAtomic(process.env.FINANCE_AGENT_MAX_BATCH_ATOMIC || "10000000").toString();
+    const maxBatchAtomic = positiveAtomic(financeAgentMaxBatchAtomic()).toString();
     const started = await ctx.runMutation(internal.financeAgentData.begin, { ...args, provider, model, maxToolCalls, maxBatchAtomic });
     if (started.replayed) return started;
     let persisted: AgentStep[] = [];
     const proposalAuthorized = financeProposalAuthorized(args.prompt);
-    const scope = { demoIdentity: "finance-agent", orderId: args.orderId }, deadline = Date.now() + 120_000;
+    const scope = { demoIdentity: "finance-agent", orderId: args.orderId }, deadline = Date.now() + configNumber("SKARL_FINANCE_AGENT_DEADLINE_MS");
     try {
       const result = await runFinanceLoop({ maxToolCalls, deadline, contextChars: financeContextChars(),
         next: createFinanceProvider({ provider, model, system: FINANCE_SYSTEM, deadline, readOnly: !proposalAuthorized,

@@ -1,3 +1,4 @@
+import { webConfig } from "../../../../lib/config";
 import { createHash } from "node:crypto";
 import { makeFunctionReference, type ApiFromModules, type FunctionArgs, type FunctionReturnType } from "convex/server";
 import type { receiveWebhook, finishWebhook } from "../../../../../../convex/chainWitness";
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
   const secrets = [process.env.CDP_WEBHOOK_SECRET_TO, process.env.CDP_WEBHOOK_SECRET_FROM, process.env.CDP_WEBHOOK_SECRET]
     .filter((secret): secret is string => !!secret);
   if (!secrets.length) return paymentJson({ error: "webhook_not_configured" }, 503);
-  if (Number(request.headers.get("content-length")) > 64_000) return paymentJson({ error: "payload_too_large" }, 413);
+  if (Number(request.headers.get("content-length")) > webConfig.webhookMaxBytes) return paymentJson({ error: "payload_too_large" }, 413);
   // Bound streamed requests too; the body used for HMAC is never parsed/re-serialized first.
   const reader = request.body?.getReader();
   const chunks: Uint8Array[] = []; let size = 0;
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.length;
-    if (size > 64_000) { await reader.cancel(); return paymentJson({ error: "payload_too_large" }, 413); }
+    if (size > webConfig.webhookMaxBytes) { await reader.cancel(); return paymentJson({ error: "payload_too_large" }, 413); }
     chunks.push(value);
   }
   const raw = Buffer.concat(chunks);

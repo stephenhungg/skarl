@@ -1,3 +1,4 @@
+import { demoOrderPublicId, fixtureOrderPrefixes, legacyDemoOrderPublicId, publicOrderPrefix } from "./lib/config";
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
@@ -113,7 +114,7 @@ export const auditEvents = query({
 });
 
 /** Discovery for the shared synthetic demo; no hard-coded Convex document IDs needed in the UI. */
-const FIXTURE_PREFIXES = ["scenario:", "skarl-outsider-demo-", "skarl-red-cup-demo-sol", "skarl-red-cup-demo-v1"];
+const FIXTURE_PREFIXES = fixtureOrderPrefixes();
 /** Tasks a contributor can record for, newest first. Test fixtures, payment checks and the retired v1 order stay hidden. */
 export const openTasks = query({
   args: { demoIdentity: v.string() },
@@ -131,8 +132,8 @@ export const demoContext = query({
   args: { demoIdentity: v.string() },
   handler: async (ctx, input) => {
     const principal = await requireRole(ctx, input.demoIdentity, ["buyer", "contributor", "controller", "finance-agent"]);
-    let order = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique()
-      ?? await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v1")).unique();
+    let order = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", demoOrderPublicId())).unique()
+      ?? await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", legacyDemoOrderPublicId())).unique();
     if (!order || order.organizationId !== principal.organizationId) {
       order = await ctx.db.query("orders").withIndex("by_org_buyer", q =>
         q.eq("organizationId", principal.organizationId)).order("desc").first();

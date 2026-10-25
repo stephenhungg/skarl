@@ -27,7 +27,7 @@ export async function buyEvidence(args = process.argv.slice(2)) {
   if (challenge.x402Version !== 2 || !challenge.accepts.some(requirement => requirement.scheme === "exact" &&
     requirement.network === PAYMENT_NETWORK && requirement.asset.toLowerCase() === USDC_ADDRESS.toLowerCase() &&
     requirement.amount === EVIDENCE_PRICE_ATOMIC.toString() && requirement.payTo.toLowerCase() === revenueAddress)) {
-    throw new CdpBuyerError("Evidence quote must be exactly 0.25 canonical USDC on Base Sepolia to the approved evidence revenue wallet.");
+    throw new CdpBuyerError("Evidence quote must match the configured micro-USDC price on Base Sepolia to the approved evidence revenue wallet.");
   }
   console.log("Discovered endpoint Bazaar declaration; catalog indexing is not established by this probe.");
   const response = await payWithCdp(resource, EVIDENCE_PRICE_ATOMIC, { method: "GET" }, revenueAddress);

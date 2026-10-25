@@ -1,14 +1,15 @@
+import { attestationVideoModels, approvedPipelinePattern, attestorName, easAddress, schemaRegistryAddress } from "./config.ts";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { encodeAbiParameters, encodeFunctionData, encodePacked, keccak256, parseAbi, parseAbiParameters, zeroAddress, zeroHash } from "viem";
 import { PAYMENT_CHAIN_ID, PAYMENT_NETWORK, PAYMENT_RAILS } from "../../packages/contracts/src/chain.ts";
 
 // Official EAS Base Sepolia 1.2.0 predeploys; no Skarl contract is deployed.
-export const EAS_ADDRESS = "0x4200000000000000000000000000000000000021" as const;
-export const SCHEMA_REGISTRY_ADDRESS = "0x4200000000000000000000000000000000000020" as const;
+export const EAS_ADDRESS = easAddress();
+export const SCHEMA_REGISTRY_ADDRESS = schemaRegistryAddress();
 export const EAS_NETWORK = "base-sepolia" as const;
 export const EAS_CHAIN_ID = PAYMENT_CHAIN_ID;
-export const ATTESTOR_NAME = "skarl-attestor";
+export const ATTESTOR_NAME = attestorName();
 export const EAS_SCHEMA = "bytes32 reportHash, bytes32 sourceSha256, bytes32 rubricHash, string pipelineVersion, string videoModel, string recommendation, uint64 verifiedAt, bool licensed";
 export const EAS_SCHEMA_UID = keccak256(encodePacked(["string", "address", "bool"], [EAS_SCHEMA, zeroAddress, true]));
 export const EAS_ABI = parseAbi([
@@ -34,7 +35,7 @@ export function bytes32(value: string): `0x${string}` {
 }
 // Free-form report text, names, URLs, IDs and contributor wallets are never encoded.
 // These versions/models are server-owned metadata, not strings from observations.
-const models = new Set(["gemini-4-argon", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash"]);
+const models = () => new Set(attestationVideoModels());
 export function buildAttestationFields(input: {
   reportJson: string; reportHash: string; sourceHash: string; rubricHash: string; pipelineVersion: string;
   submissionId: string; taskVersionId: string; completedAt: number; licensed: boolean;
@@ -43,7 +44,7 @@ export function buildAttestationFields(input: {
   if (sha256Text(input.reportJson) !== input.reportHash || report.source?.sha256 !== input.sourceHash ||
     report.submissionId !== input.submissionId || report.taskVersionId !== input.taskVersionId ||
     report.pipeline?.version !== input.pipelineVersion) throw new Error("attestation_report_mismatch");
-  if (input.pipelineVersion !== "task-evidence-2.0" && !/^red-cup-evidence-\d+\.\d+(?:\.\d+)?$/.test(input.pipelineVersion)) throw new Error("unapproved_pipeline_version");
+  if (!new RegExp(approvedPipelinePattern()).test(input.pipelineVersion)) throw new Error("unapproved_pipeline_version");
   if (!["accept", "needs_review", "request_correction"].includes(report.recommendation) ||
     ((report.pipeline.implementation !== "inference" || report.pipeline.status !== "completed") && report.recommendation !== "needs_review")) {
     throw new Error("invalid_attestation_recommendation");
@@ -52,7 +53,7 @@ export function buildAttestationFields(input: {
   if (!Array.isArray(runs)) throw new Error("invalid_model_runs");
   const visual = runs.filter((run: {promptVersion?: unknown}) => typeof run.promptVersion === "string" && /^(timestamped-frames-visible-events|video-only-events|silent-video-events|silent-visible-events)-v\d+$/.test(run.promptVersion));
   const videoModels: string[] = [...new Set<string>(visual.map((run: {model: string}) => run.model))];
-  if (videoModels.some(model => !models.has(model))) throw new Error("unapproved_video_model");
+  if (videoModels.some(model => !models().has(model))) throw new Error("unapproved_video_model");
   const verifiedAt = Math.floor(input.completedAt / 1000);
   if (!Number.isSafeInteger(verifiedAt) || verifiedAt <= 0) throw new Error("invalid_verified_at");
   return { reportHash: bytes32(input.reportHash), sourceSha256: bytes32(input.sourceHash), rubricHash: bytes32(input.rubricHash),

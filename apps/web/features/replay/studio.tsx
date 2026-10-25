@@ -1,3 +1,4 @@
+import { webConfig } from "../../lib/config";
 "use client";
 
 import { useConvex, useQuery } from "convex/react";
@@ -263,7 +264,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
       decoder.src = replayProxyUrl(media.clip.url);
       await waitForMedia(decoder, "loadeddata", () => decoder!.readyState >= 2);
       const durationMs = Math.round(decoder.duration * 1000);
-      if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 30_500) throw new Error("A finite clip of up to 30 seconds is required.");
+      if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > webConfig.replayMaxDurationMs) throw new Error(`A finite clip of up to ${webConfig.replayMaxDurationMs / 1000} seconds is required.`);
       const frames: AnnotationFrame[] = [];
       for (let tMs = 0; tMs < durationMs; tMs += 200) {
         if (!mounted.current) throw new Error("Replay closed; the annotation scan was cancelled.");
@@ -277,7 +278,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
       }
       const base = { schema: "skarl.annotations.v1" as const, submissionId, sourceSha256: sourceHash, sampleFps: 5, videoWidth: decoder.videoWidth, videoHeight: decoder.videoHeight, advisory: true as const };
       for (const kind of ["hands", "objects"] as const) {
-        const model = kind === "objects" ? { ...adapters.current.objects!.model, name: "MediaPipe EfficientDet-Lite0 + Hand Landmarker", version: `${adapters.current.objects!.model.version}; hands float16/1; z=clamp(nativeZ+0.5)` } : adapters.current.hands!.model;
+        const model = kind === "objects" ? { ...adapters.current.objects!.model, name: `${adapters.current.objects!.model.name} + ${adapters.current.hands!.model.name}`, version: `${adapters.current.objects!.model.version}; hands ${adapters.current.hands!.model.version}; z=clamp(nativeZ+0.5)` } : adapters.current.hands!.model;
         const file: AnnotationFile = { ...base, kind, model, frames: frames.map(frame => kind === "objects" ? frame : { tMs: frame.tMs, hands: frame.hands }) };
         setNotice(`Saving ${kind} annotations…`); await persist(file, summarize(file, frames.at(-1)?.tMs ?? 0, frames));
       }
@@ -296,7 +297,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
       const response = await fetch(run.url, { cache: "no-store" });
       if (!response.ok) throw new Error("Saved annotations could not be downloaded.");
       const json = await response.text();
-      if (json.length > 8 * 1024 * 1024) throw new Error("Saved annotations exceed the browser replay limit.");
+      if (json.length > webConfig.replayMaxBytes) throw new Error("Saved annotations exceed the browser replay limit.");
       const file = readAnnotationFile(JSON.parse(json), submissionId, report?.sourceHash);
       reloaded.current = file.frames; setReloadedFrames(file.frames);
       for (const kind of ["hands", "objects", "masks"] as const) patchLayer(kind, { enabled: file.frames.some(frame => frame[kind] !== undefined) });
@@ -367,7 +368,7 @@ function friendlyError(error: unknown): string {
 function waitForMedia(video: HTMLVideoElement, event: "loadeddata" | "seeked", ready?: () => boolean): Promise<void> {
   if (ready?.()) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => finish(new Error("Timed out decoding the original video.")), 20_000);
+    const timer = setTimeout(() => finish(new Error("Timed out decoding the original video.")), webConfig.replayDecodeTimeoutMs);
     const success = () => finish();
     const failure = () => finish(new Error("The original video could not be decoded."));
     function finish(error?: Error) { clearTimeout(timer); video.removeEventListener(event, success); video.removeEventListener("error", failure); if (error) reject(error); else resolve(); }

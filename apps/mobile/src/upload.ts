@@ -1,3 +1,4 @@
+import { mobileConfig } from './config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { File } from 'expo-file-system';
 import { fetch } from 'expo/fetch';
@@ -28,7 +29,7 @@ export const clearDraft = () => AsyncStorage.removeItem(DRAFT_KEY);
 async function post(client: ConvexReactClient, body: File | string, contentType: string) {
   const url = await client.mutation(api.uploadUrl, identity);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120_000);
+  const timer = setTimeout(() => controller.abort(), mobileConfig.uploadTimeoutMs);
   try {
     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': contentType }, body, signal: controller.signal });
     if (!response.ok) throw new Error(`Storage upload failed (${response.status}). Retry when connected.`);
@@ -52,8 +53,8 @@ export async function submitDraft(client: ConvexReactClient, initial: Draft,
   if (!draft.videoStorageId) {
     update(draft, 'Uploading private video…');
     const file = new File(draft.uri);
-    if (!file.exists || file.size <= 0 || file.size > 25 * 1024 * 1024) {
-      throw new Error('Video is missing or exceeds 25 MB. Record a new take.');
+    if (!file.exists || file.size <= 0 || file.size > mobileConfig.uploadMaxVideoBytes) {
+      throw new Error(`Video is missing or exceeds ${mobileConfig.uploadMaxVideoBytes / 1024 / 1024} MB. Record a new take.`);
     }
     const mime = /\.mov(?:\?|$)/i.test(draft.uri) ? 'video/quicktime' : 'video/mp4';
     await persist({ videoStorageId: await post(client, file, mime) }, 'Video stored');
@@ -61,7 +62,7 @@ export async function submitDraft(client: ConvexReactClient, initial: Draft,
   if (!draft.sensorStorageId) {
     update(draft, 'Uploading sensor trace…');
     const json = JSON.stringify(draft.trace);
-    if (new TextEncoder().encode(json).length > 2 * 1024 * 1024) throw new Error('Sensor trace exceeds 2 MB.');
+    if (new TextEncoder().encode(json).length > mobileConfig.uploadMaxTraceBytes) throw new Error(`Sensor trace exceeds ${mobileConfig.uploadMaxTraceBytes / 1024 / 1024} MB.`);
     await persist({ sensorStorageId: await post(client, json, 'application/json') }, 'Sensor trace stored');
   }
   if (!draft.submissionId) {

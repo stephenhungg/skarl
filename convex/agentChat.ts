@@ -1,4 +1,6 @@
 "use node";
+import { configNumber } from "./lib/config";
+
 import { randomUUID } from "node:crypto";
 import { v } from "convex/values";
 import { action } from "./_generated/server";
@@ -23,7 +25,7 @@ export const askAgent = action({
     const started = await ctx.runMutation(internal.agentChatData.begin, { demoIdentity: args.demoIdentity, orderId,
       question: args.question, requestId: args.requestId ?? randomUUID(), model });
     if (started.replayed) return started;
-    const refs = new Set<string>([orderId]), deadline = Date.now() + 120_000;
+    const refs = new Set<string>([orderId]), deadline = Date.now() + configNumber("SKARL_AGENT_CHAT_DEADLINE_MS");
     let persisted: AgentStep[] = [];
     try {
       const result = await runFinanceLoop({ maxToolCalls: financeMaxToolCalls(), deadline, contextChars: financeContextChars(),

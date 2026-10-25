@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { scriptConfig } from "./config.mjs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,7 +29,7 @@ export function runScenarios(args = process.argv.slice(2), { execute = spawnSync
   const rows = [];
   for (const scenario of name === "all" ? SCENARIOS : [name]) {
     log(`running ${scenario}...`);
-    const input = { demoIdentity: "buyer", scenario, ...(orderId ? { orderId } : {}) };
+    const input = { demoIdentity: scriptConfig.buyerIdentity, scenario, ...(orderId ? { orderId } : {}) };
     const child = execute("pnpm", ["exec", "convex", "run", "scenarios:run", JSON.stringify(input)], {
       cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: false,
       timeout: 180_000, maxBuffer: 4 * 1024 * 1024,

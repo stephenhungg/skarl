@@ -1,3 +1,4 @@
+import { mobileConfig, captureDurationLabel } from '../config';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Linking, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,7 +28,7 @@ import { CaptureIcon, CheckIcon, CloseIcon } from '../components/Icons';
 import type { RootProps } from '../navigation';
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
-const MIN_MS = 10_000, MAX_MS = 30_000;
+const MIN_MS = mobileConfig.minCaptureMs, MAX_MS = mobileConfig.maxCaptureMs;
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const haptic = () => { if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); };
 
@@ -177,7 +178,7 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
   async function record() {
     if (!camera.current || !context || !ready || !consent || captureBusy.current || busy) return;
     // Leave time for a full take and upload. Never swap the words while filming.
-    if (!challenge || challenge.expiresAt - Date.now() < 60_000) {
+    if (!challenge || challenge.expiresAt - Date.now() < mobileConfig.livenessMinRemainingMs) {
       await refreshChallenge();
       return;
     }
@@ -188,13 +189,13 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
       setCoaching({ steady: null, tilted: null });
       motionStartedAt.current = performance.now();
       trace.current = startTrace(sensors, sample => motionCoach.current.sample(sample), { context: captureContext,
-        stepLabels: task?.criteria.map(step => step.description) ?? [] });
-      const result = await camera.current.recordAsync({ maxDuration: 30, maxFileSize: 24 * 1024 * 1024, codec: 'avc1', progressUpdateInterval: 0.1 });
+        stepLabels: task?.steps ?? [] });
+      const result = await camera.current.recordAsync({ maxDuration: MAX_MS / 1000, maxFileSize: mobileConfig.maxCaptureBytes, codec: 'avc1', progressUpdateInterval: 0.1 });
       trace.current.endRecording();
       const metadata = result?.uri ? await inspectRecording(result.uri).catch(() => undefined) : undefined;
       const data = trace.current.stop(metadata);
       if (interrupted.current) throw new Error('Recording was interrupted. Keep Skarl open and record a new take.');
-      if (!result?.uri || recordedDuration.current < MIN_MS) throw new Error('Record at least 10 seconds.');
+      if (!result?.uri || recordedDuration.current < MIN_MS) throw new Error(`Record at least ${MIN_MS / 1000} seconds.`);
       const clientRequestId = Crypto.randomUUID();
       const extension = /\.mov(?:\?|$)/i.test(result.uri) ? 'mov' : 'mp4';
       const file = new File(Paths.document, `skarl-${clientRequestId}.${extension}`);
@@ -236,7 +237,7 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
     else navigation.navigate('Profile', { segment: 'Submissions' });
   }
 
-  const wordsFresh = !!challenge && challenge.expiresAt - now >= 60_000;
+  const wordsFresh = !!challenge && challenge.expiresAt - now >= mobileConfig.livenessMinRemainingMs;
   const expired = !!draft?.livenessExpiresAt && !draft.submissionId && !draft.createAttempted && draft.livenessExpiresAt <= now;
   const seconds = (elapsed / 1000).toFixed(1);
 
@@ -252,7 +253,7 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
 
     <View style={s.frame}>
       {draft && !draft.submissionId ? <Preview uri={draft.uri} />
-        : !draft && enabled && permitted && consent ? <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode="video" videoQuality="720p" zoom={0} selectedLens="AVCaptureDeviceTypeBuiltInWideAngleCamera" videoStabilizationMode="off" videoBitrate={4_000_000} mute={false}
+        : !draft && enabled && permitted && consent ? <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode="video" videoQuality="720p" zoom={0} selectedLens="AVCaptureDeviceTypeBuiltInWideAngleCamera" videoStabilizationMode="off" videoBitrate={mobileConfig.videoBitsPerSecond} mute={false}
           onRecordingProgress={event => { trace.current?.recordingProgress(event.duration * 1000); recordedDuration.current = event.duration * 1000; setElapsed(recordedDuration.current); }}
           onCameraReady={() => setReady(true)} onMountError={event => { setReady(false); setError(event.message); }} />
           : <View style={s.off}>
@@ -295,9 +296,9 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
       </View>)}
     </View>}
 
-    {recording && !!task?.criteria.length && <View style={s.stepControls}>
-      <Text numberOfLines={2} style={s.stepLabel}>{stepIndex + 1}. {task.criteria[stepIndex]?.description}</Text>
-      <Button kind="accent" title="Next step" disabled={stepIndex >= task.criteria.length - 1 || elapsed <= 0}
+    {recording && !!task?.steps.length && <View style={s.stepControls}>
+      <Text numberOfLines={2} style={s.stepLabel}>{stepIndex + 1}. {task.steps[stepIndex]}</Text>
+      <Button kind="accent" title="Next step" disabled={stepIndex >= task.steps.length - 1 || elapsed <= 0}
         onPress={() => { if (trace.current?.nextStep()) { setStepIndex(index => index + 1); haptic(); } }} />
       <Text style={s.hint}>Optional · tap as you move to the next action</Text>
     </View>}
@@ -319,7 +320,7 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
           : !draft ? <View style={s.centerRow}>
             <RecordButton recording={recording} elapsed={elapsed} disabled={recording ? elapsed < MIN_MS : !ready || busy || !consent}
               onPress={() => recording ? camera.current?.stopRecording() : void record()} />
-            <Text style={s.hint}>{recording ? (elapsed < MIN_MS ? `${Math.ceil((MIN_MS - elapsed) / 1000)} s to go` : 'Tap to stop') : !ready ? 'Preparing' : wordsFresh ? '10 to 30 s' : 'New words'}</Text>
+            <Text style={s.hint}>{recording ? (elapsed < MIN_MS ? `${Math.ceil((MIN_MS - elapsed) / 1000)} s to go` : 'Tap to stop') : !ready ? 'Preparing' : wordsFresh ? captureDurationLabel : 'New words'}</Text>
           </View> : null}
     </View>
 

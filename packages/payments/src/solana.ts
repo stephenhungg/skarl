@@ -1,3 +1,4 @@
+import { paymentConfig } from "./config.ts";
 import { createHash } from "node:crypto";
 import {
   address, decompileTransactionMessage, getAddressEncoder, getBase58Decoder, getBase58Encoder,
@@ -121,7 +122,7 @@ export async function observeSolanaTransfer(signature: string,
   if (!parsed || !raw || !status) throw new Error("solana_transaction_pending");
   if (!parsed.meta || !raw.meta || parsed.meta.err !== null || raw.meta.err !== null || status.err !== null) throw new Error("receipt_failed");
   if (status.confirmationStatus !== "confirmed" && status.confirmationStatus !== "finalized") throw new Error("insufficient_confirmations");
-  if (status.confirmationStatus !== "finalized" && (status.confirmations === null || status.confirmations < 2)) throw new Error("insufficient_confirmations");
+  if (status.confirmationStatus !== "finalized" && (status.confirmations === null || status.confirmations < paymentConfig.requiredConfirmations)) throw new Error("insufficient_confirmations");
   if (!Number.isSafeInteger(parsed.slot) || parsed.slot < 0 || parsed.slot !== raw.slot || parsed.slot !== status.slot) throw new Error("invalid_block_identity");
   if (parsed.transaction.signatures[0] !== signature) throw new Error("wrong_transaction_signature");
   if (raw.transaction[1] !== "base64") throw new Error("invalid_solana_transaction");

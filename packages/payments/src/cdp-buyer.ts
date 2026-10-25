@@ -1,3 +1,4 @@
+import { paymentConfig } from "./config.ts";
 /** CDP-managed testnet buyer. No private signing key is exported or stored here. */
 import { constants, closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
@@ -13,7 +14,7 @@ import { MAX_ATOMIC_USDC } from "@skarl/contracts";
 import { PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "@skarl/contracts/chain";
 
 export class CdpBuyerError extends Error { override name = "CdpBuyerError"; }
-export const EVIDENCE_PRICE_ATOMIC = 250_000n;
+export const EVIDENCE_PRICE_ATOMIC = paymentConfig.evidencePriceAtomic;
 const directory = () => join(homedir(), ".config", "skarl");
 const hashPattern = /^0x[0-9a-fA-F]{64}$/;
 export const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -55,22 +56,22 @@ export class FileSpendStore implements SpendStore {
 export function buyerSpendControls(treasury: string, amount: bigint, store?: SpendStore): SpendControls {
   if (!isAddress(treasury) || /^0x0{40}$/i.test(treasury)) throw new CdpBuyerError("Set SKARL_TREASURY_ADDRESS to the approved treasury address in the buyer environment.");
   if (amount <= 0n || amount > MAX_ATOMIC_USDC) throw new CdpBuyerError("Invalid payment amount.");
-  const cumulativeRaw = process.env.SKARL_CDP_MAX_CUMULATIVE_ATOMIC ?? "20000000";
+  const cumulativeRaw = paymentConfig.cumulativeSpendAtomic.toString();
   if (!/^[1-9][0-9]*$/.test(cumulativeRaw) || BigInt(cumulativeRaw) > MAX_ATOMIC_USDC) throw new CdpBuyerError("SKARL_CDP_MAX_CUMULATIVE_ATOMIC must be a positive integer micro-USDC amount.");
   return { allowedPayees: [getAddress(treasury)], allowedNetworks: [PAYMENT_NETWORK], allowedAssets: [USDC_ADDRESS],
     maxAmountPerPayment: { atomic: amount, asset: USDC_ADDRESS },
-    maxCumulativeSpend: { atomic: BigInt(cumulativeRaw), asset: USDC_ADDRESS }, maxCumulativeSpendWindow: "24h", ...(store ? { store } : {}) };
+    maxCumulativeSpend: { atomic: BigInt(cumulativeRaw), asset: USDC_ADDRESS }, maxCumulativeSpendWindow: paymentConfig.cumulativeSpendWindowMs, ...(store ? { store } : {}) };
 }
 
 export function buyerClientConfig(treasury: string, amount: bigint, store: SpendStore): CdpX402ClientConfig {
-  return { environment: "development", walletConfig: { type: "eoa", accountName: "skarl-buyer-sepolia" },
+  return { environment: "development", walletConfig: { type: "eoa", accountName: paymentConfig.evmAccountName },
     networkSchemes: [{ network: "base-sepolia", rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || baseSepolia.rpcUrls.default.http[0],
       scheme: { exact: true, upto: false, authCapture: false, batchSettlement: false } }],
     spendControls: buyerSpendControls(treasury, amount, store) };
 }
 
 export function buyerAppUrl(): URL {
-  const app = new URL(process.env.SKARL_APP_URL || "http://localhost:3000");
+  const app = new URL(paymentConfig.appUrl);
   if (app.username || app.password || (app.protocol !== "https:" && !(app.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(app.hostname)))) {
     throw new CdpBuyerError("SKARL_APP_URL must use HTTPS, or HTTP on localhost.");
   }
@@ -110,7 +111,7 @@ export async function payWithCdp(resource: URL, amount: bigint, init: RequestIni
   try {
     if (existingAttempt(resource)) throw new CdpBuyerError("A CDP attempt already exists for this resource; reconcile it instead of paying again.");
     const cdp = new CdpClient();
-    const account = await cdp.evm.getOrCreateAccount({ name: "skarl-buyer-sepolia" });
+    const account = await cdp.evm.getOrCreateAccount({ name: paymentConfig.evmAccountName });
     console.log(`CDP Base Sepolia buyer: ${account.address}`);
     const chain = createPublicClient({ chain: baseSepolia, transport: http(config.networkSchemes![0].rpcUrl, { retryCount: 0, timeout: 20_000 }) });
     if (await chain.getChainId() !== PAYMENT_CHAIN_ID) throw new CdpBuyerError("RPC is not Base Sepolia; refusing to sign.");
@@ -123,7 +124,7 @@ export async function payWithCdp(resource: URL, amount: bigint, init: RequestIni
       if (!isRecord(faucet) || typeof faucet.idempotencyKey !== "string") throw new CdpBuyerError("Invalid saved faucet request.");
       const result = await cdp.evm.requestFaucet({ address: account.address, network: "base-sepolia", token: "usdc", idempotencyKey: faucet.idempotencyKey });
       console.log(`USDC faucet transaction: ${baseSepolia.blockExplorers.default.url}/tx/${result.transactionHash}`);
-      await chain.waitForTransactionReceipt({ hash: result.transactionHash, confirmations: 2, timeout: 60_000 });
+      await chain.waitForTransactionReceipt({ hash: result.transactionHash, confirmations: paymentConfig.requiredConfirmations, timeout: 60_000 });
       balance = await chain.readContract({ address: USDC_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [account.address] });
     }
     if (balance < amount) throw new CdpBuyerError(`Insufficient test USDC: ${balance} atomic available, ${amount} required. One faucet claim may not cover order funding; fund this CDP account and retry. Buyer ETH is not required.`);
@@ -171,18 +172,18 @@ export async function payWithCdp(resource: URL, amount: bigint, init: RequestIni
 }
 
 export async function fundOrderWithCdp(args: string[]) {
-  const orderId = args[0] ?? "skarl-red-cup-demo-v2";
+  const orderId = args[0] ?? process.env.SKARL_ORDER_ID ?? "";
   if (args.length > 1 || !/^[a-zA-Z0-9_-]+$/.test(orderId)) throw new CdpBuyerError("Usage: pnpm agent:fund --cdp [orderId]");
   const app = buyerAppUrl();
   const resource = new URL(`/api/orders/${orderId}/fund`, app);
-  const headers = { "Content-Type": "application/json", "x-skarl-demo-identity": "buyer" };
+  const headers = { "Content-Type": "application/json", "x-skarl-demo-identity": paymentConfig.buyerIdentity };
   const status = await buyerJson(await fetch(resource, { headers, redirect: "error", signal: AbortSignal.timeout(20_000) }));
   if (status.fundingStatus === "confirmed") { console.log("Funding already confirmed; no payment sent."); return; }
   const saved = existingAttempt(resource);
   if (saved || status.fundingStatus !== "awaiting_payment" || status.attemptId) {
     const result = await buyerJson(await fetch(new URL("/api/payments/reconcile", app), {
       method: "POST", headers, redirect: "error", signal: AbortSignal.timeout(60_000),
-      body: JSON.stringify({ orderId, demoIdentity: "buyer", ...(saved?.txHash ? { txHash: saved.txHash } : {}),
+      body: JSON.stringify({ orderId, demoIdentity: paymentConfig.buyerIdentity, ...(saved?.txHash ? { txHash: saved.txHash } : {}),
         ...(saved?.authorizationNonce ? { authorizationNonce: saved.authorizationNonce, payerAddress: saved.payerAddress } : {}) }),
     }));
     console.log(`Funding reconciliation status: ${String(result.fundingStatus ?? "pending")}`); return;
@@ -191,7 +192,7 @@ export async function fundOrderWithCdp(args: string[]) {
     typeof status.recipientAddress !== "string" || status.recipientAddress.toLowerCase() !== process.env.SKARL_TREASURY_ADDRESS?.toLowerCase()) {
     throw new CdpBuyerError("Funding quote does not match the approved SKARL_TREASURY_ADDRESS or has an invalid amount.");
   }
-  const result = await buyerJson(await payWithCdp(resource, BigInt(status.amountAtomic), { method: "POST", headers, body: JSON.stringify({ demoIdentity: "buyer" }) }));
+  const result = await buyerJson(await payWithCdp(resource, BigInt(status.amountAtomic), { method: "POST", headers, body: JSON.stringify({ demoIdentity: paymentConfig.buyerIdentity }) }));
   console.log(`Funding status: ${String(result.fundingStatus ?? "unknown; reconcile before paying again")}`);
   console.log(`Facilitator: ${String(result.settledBy ?? "not reported")}`);
 }

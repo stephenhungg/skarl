@@ -1,3 +1,4 @@
+import { configNumber } from "./lib/config";
 import { v } from "convex/values";
 import { internalQuery, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -15,7 +16,7 @@ import { payoutTotals, rowFor, taxYear, reportingThreshold, TAX_ASSUMPTION, TAX_
 import { paymentRail, PAYMENT_NETWORK } from "../packages/contracts/src/chain";
 import { chainIdentity, validateTransfer, reconcilePayments, type PaymentObligation, type PaymentJournal, type ReconciliationObservation } from "../packages/payments/src/reconciliation";
 
-const LIMIT = 250;
+const LIMIT = configNumber("SKARL_FINANCE_TOOL_READ_LIMIT");
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const parsed = (text: string | undefined) => { try { return object(JSON.parse(text ?? "{}")); } catch { return {}; } };
 const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
@@ -48,7 +49,7 @@ export async function readFinanceTool(ctx: QueryCtx, input: { orderId: Id<"order
   const args = object(JSON.parse(input.argsJson));
   const tenant = (row: { organizationId: Id<"organizations"> }) => { if (row.organizationId !== order.organizationId) throw new Error("finance_read_tenant_mismatch"); };
   const page = <T extends { id: string; occurredAt: number }>(rows: T[]) => pageRows(rows, `${order._id}:${input.tool}:${args.type ?? "all"}`,
-    typeof args.cursor === "string" ? args.cursor : undefined, typeof args.limit === "number" ? args.limit : 30);
+    typeof args.cursor === "string" ? args.cursor : undefined, typeof args.limit === "number" ? args.limit : configNumber("SKARL_FINANCE_TOOL_PAGE_SIZE"));
   const submissions = async () => {
     const rows = inventory(await ctx.db.query("submissions").withIndex("by_order_status", q => q.eq("orderId", order._id)).take(LIMIT + 1));
     rows.forEach(tenant); return rows;
@@ -66,7 +67,7 @@ export async function readFinanceTool(ctx: QueryCtx, input: { orderId: Id<"order
     rows.forEach(tenant); return rows;
   };
   const notes = async () => {
-    const rows = await ctx.db.query("analystNotes").withIndex("by_order", q => q.eq("orderId", order._id)).order("desc").take(12);
+    const rows = await ctx.db.query("analystNotes").withIndex("by_order", q => q.eq("orderId", order._id)).order("desc").take(configNumber("SKARL_FINANCE_PRIOR_NOTE_LIMIT"));
     rows.forEach(tenant);
     return rows.map(row => ({ id: row._id, kind: row.kind, status: row.status, itemKey: row.itemKey, recommendation: row.recommendation,
       summary: untrusted(row.summary), evidenceCited: row.evidenceCited, completedAt: row.completedAt ?? null }));
@@ -215,7 +216,7 @@ export async function readFinanceTool(ctx: QueryCtx, input: { orderId: Id<"order
     const treasury = scenarioId ? local ? { status: "ready", accountId: String(local.accountId) } : null :
       await ctx.db.query("bankAccounts").withIndex("by_owner", q => q.eq("organizationId", order.organizationId).eq("owner", "treasury")).unique();
     const fresh = snapshot?.status === "available" && snapshot.accountId === treasury?.accountId &&
-      Date.now() >= snapshot.fetchedAt && Date.now() - snapshot.fetchedAt < 5 * 60_000;
+      Date.now() >= snapshot.fetchedAt && Date.now() - snapshot.fetchedAt < configNumber("SKARL_HEALTH_PROBE_FRESH_MS");
     let activities: BankActivity[] = [];
     if (fresh) { const value: unknown = JSON.parse(snapshot.activitiesJson); if (!Array.isArray(value)) throw new Error("finance_bank_snapshot_invalid"); activities = value; }
     const rows = [];
@@ -352,10 +353,10 @@ export async function readFinanceTool(ctx: QueryCtx, input: { orderId: Id<"order
     case "getAgentWallet": {
       const wallet = walletEvidence(), scopedPayments = await intents(), probe = await ctx.db.query("healthProbes").withIndex("by_kind", q => q.eq("kind", "agent_wallet")).unique();
       const intentIds = new Set(scopedPayments.map(row => row._id as string));
-      const auditEvents = await ctx.db.query("auditEvents").withIndex("by_org_time", q => q.eq("organizationId", order.organizationId)).order("desc").take(500);
+      const auditEvents = await ctx.db.query("auditEvents").withIndex("by_org_time", q => q.eq("organizationId", order.organizationId)).order("desc").take(configNumber("SKARL_FINANCE_WALLET_AUDIT_LIMIT"));
       const rejections = auditEvents.filter(row => intentIds.has(row.entityId) && /refused|rejected/.test(row.action));
       result = { ...wallet, scopedRejections: rejections.map(row => ({ id: row._id, action: row.action, intentId: row.entityId, reason: untrusted(row.reason), occurredAt: row.occurredAt })), balance: probe ? { id: probe._id, checkedAt: probe.checkedAt, outcome: probe.outcome, ethWei: probe.bindingHash === probeBinding("agent_wallet", wallet.address) ? probe.ethWei ?? null : null,
-        usdcMicro: probe.bindingHash === probeBinding("agent_wallet", wallet.address) ? probe.usdcMicro ?? null : null, addressBindingMatches: probe.bindingHash === probeBinding("agent_wallet", wallet.address), stale: Date.now() - probe.checkedAt > 5 * 60_000, bindingHash: probe.bindingHash ?? null,
+        usdcMicro: probe.bindingHash === probeBinding("agent_wallet", wallet.address) ? probe.usdcMicro ?? null : null, addressBindingMatches: probe.bindingHash === probeBinding("agent_wallet", wallet.address), stale: Date.now() - probe.checkedAt > configNumber("SKARL_HEALTH_PROBE_FRESH_MS"), bindingHash: probe.bindingHash ?? null,
         dataGap: probe.bindingHash === probeBinding("agent_wallet", wallet.address) ? null : "Probe address binding differs from configured wallet; balances withheld." } : null }; break;
     }
     case "getWitnessReceipt":
@@ -448,7 +449,7 @@ export async function readFinanceTool(ctx: QueryCtx, input: { orderId: Id<"order
           entityIds.add(attempt._id);
         }
       }
-      const events = await ctx.db.query("auditEvents").withIndex("by_org_time", q => q.eq("organizationId", order.organizationId)).order("desc").take(2000);
+      const events = await ctx.db.query("auditEvents").withIndex("by_org_time", q => q.eq("organizationId", order.organizationId)).order("desc").take(configNumber("SKARL_FINANCE_AUDIT_SCAN_LIMIT"));
       // Evidence sales have no paymentIntent/order field on their attempt. Their
       // durable claim binds the order and complete attempt terms before visibility.
       for (const claim of events) {
@@ -466,7 +467,7 @@ export async function readFinanceTool(ctx: QueryCtx, input: { orderId: Id<"order
       const filtered = events.filter(row => entityIds.has(row.entityId) && (!args.type || row.action === args.type));
       result = { ...page(filtered.map(row => ({ id: row._id, occurredAt: row.occurredAt, eventKey: row.eventKey, type: row.action, entityId: row.entityId,
         entityType: row.entityType, actorKind: row.actor.kind, reason: untrusted(row.reason), evidenceReferences: row.evidenceReferences }))),
-        inventoryTruncated: events.length === 2000, dataGap: events.length === 2000 ? "Only the latest 2000 org audit events were scanned; older events and evidence-sale claim bindings may be missing" : null }; break;
+        inventoryTruncated: events.length === configNumber("SKARL_FINANCE_AUDIT_SCAN_LIMIT"), dataGap: events.length === configNumber("SKARL_FINANCE_AUDIT_SCAN_LIMIT") ? `Only the latest ${configNumber("SKARL_FINANCE_AUDIT_SCAN_LIMIT")} org audit events were scanned; older events and evidence-sale claim bindings may be missing` : null }; break;
     }
     case "getContributorEarnings": {
       const [subs, pays, history] = await Promise.all([submissions(), payables(), payoutRows()]);
@@ -501,18 +502,18 @@ export async function readFinanceTool(ctx: QueryCtx, input: { orderId: Id<"order
       const bank = await ctx.db.query("bankSnapshots").withIndex("by_org", q => q.eq("organizationId", order.organizationId)).unique();
       const funding = await intents(), chain = (await Promise.all(funding.map(evidence))).flatMap(row => row.observations);
       const deploymentCrons = await Promise.all((["reconcile", "attest", "bank", "finance"] as const).map(async job => {
-        const rows = await ctx.db.query("healthCronRuns").withIndex("by_job", q => q.eq("job", job)).order("desc").take(20);
-        const latest = rows[0], lastSuccess = rows.find(row => row.outcome === "complete"), freshMs = job === "finance" ? 25 * 60_000 : 5 * 60_000;
+        const rows = await ctx.db.query("healthCronRuns").withIndex("by_job", q => q.eq("job", job)).order("desc").take(configNumber("SKARL_FINANCE_CRON_HISTORY_LIMIT"));
+        const latest = rows[0], lastSuccess = rows.find(row => row.outcome === "complete"), freshMs = job === "finance" ? configNumber("SKARL_HEALTH_FINANCE_FRESH_MS") : configNumber("SKARL_HEALTH_PROBE_FRESH_MS");
         return { job, scope: "deployment_operational_telemetry", id: latest?._id ?? null, lastStartedAt: latest?.startedAt ?? null,
           lastCompletedAt: latest?.completedAt ?? null, lastSuccessAt: lastSuccess?.completedAt ?? null, outcome: latest?.outcome ?? "unobserved",
           stale: !latest || Date.now() < latest.startedAt || Date.now() - latest.startedAt > freshMs, freshMs };
       }));
       result = { orderId: order._id, checkedAt: Date.now(), deploymentCrons, crons: checkpoints.map(row => ({ id: row._id, kind: row.kind, status: row.status, updatedAt: row.updatedAt,
-        nextAt: row.nextAt, stale: Date.now() - row.updatedAt > 5 * 60_000, lastErrorCode: row.lastErrorCode ?? null })),
+        nextAt: row.nextAt, stale: Date.now() - row.updatedAt > configNumber("SKARL_HEALTH_PROBE_FRESH_MS"), lastErrorCode: row.lastErrorCode ?? null })),
         chainObservation: { count: chain.length, lastObservedAt: chain.length ? Math.max(...chain.map(row => row.observedAt)) : null, observationIds: chain.map(row => row.id) },
         webhook: { configuration: "web runtime configuration is not visible from Convex", dataGap: "Inspect getFundingTimeline for verified ingress receipts; configuration is not delivery evidence" },
         nessie: { label: "Mock bank (Capital One Nessie)", enabled: process.env.NESSIE_ENABLED === "true", snapshotId: bank?._id ?? null,
-          status: bank?.status ?? "missing", fetchedAt: bank?.fetchedAt ?? null, stale: !bank || Date.now() - bank.fetchedAt > 5 * 60_000 },
+          status: bank?.status ?? "missing", fetchedAt: bank?.fetchedAt ?? null, stale: !bank || Date.now() - bank.fetchedAt > configNumber("SKARL_HEALTH_PROBE_FRESH_MS") },
         dataGaps: checkpoints.length ? [] : ["No order-scoped cron checkpoint; global deployment health must be inspected by an operator"] }; break;
     }
     case "getPriorNotes": {

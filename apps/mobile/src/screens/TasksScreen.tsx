@@ -6,11 +6,12 @@ import { Wordmark } from '../components/Mark';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { colors as c, fonts as f, gutter, radius } from '../../theme';
 import { money } from '../api';
+import { captureDurationLabel } from '../config';
 import { useOpenTasks, type LiveTask } from '../data';
 import { useSession } from '../session';
 import { Empty, H1, Pill, Section, t } from '../components/Primitives';
 import { PressableScale } from '../components/PressableScale';
-import { artFor, TaskArt } from '../components/TaskArt';
+import { TaskArt } from '../components/TaskArt';
 import { ChevronRight, ClockIcon, ProfileIcon } from '../components/Icons';
 import type { RootProps } from '../navigation';
 
@@ -20,7 +21,7 @@ const CHIPS: Chip[] = ['Category', 'Pay', 'Time'];
 function TaskCard({ task, onPress, index }: { task: LiveTask; onPress(): void; index: number }) {
   return <Animated.View entering={enter(140 + index * 70, 420)} layout={LinearTransition}>
     <PressableScale accessibilityRole="button" accessibilityLabel={`${task.title}, ${money(task.rateAtomic)} USDC per video`} onPress={onPress} style={s.task}>
-      <TaskArt compact kind={artFor(task.title, task.taskSpec?.object)} style={s.thumb} />
+      <TaskArt compact title={task.title} {...task.taskSpec} style={s.thumb} />
       <View style={{ flex: 1, gap: 6 }}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
           <Text style={s.taskCategory}>{task.category}</Text>
@@ -30,7 +31,7 @@ function TaskCard({ task, onPress, index }: { task: LiveTask; onPress(): void; i
         <View style={s.metaRow}>
           <Text style={s.pay}>{money(task.rateAtomic)} USDC</Text>
           <View style={s.sep} />
-          <ClockIcon size={13} /><Text style={s.meta}>10 to 30 s</Text>
+          <ClockIcon size={13} /><Text style={s.meta}>{captureDurationLabel}</Text>
         </View>
       </View>
       <ChevronRight />
@@ -95,7 +96,7 @@ export function TasksScreen({ navigation }: RootProps<'Tasks'>) {
       {categories.map((item, index) => <Animated.View key={item.name} entering={enter(80 + index * 60, 420)} style={{ width: '100%' }}>
         <PressableScale accessibilityRole="button" onPress={() => setCategory(category === item.name ? null : item.name)}
           style={[s.categoryCard, category === item.name && { borderColor: c.ink }]}>
-          <TaskArt kind={artFor(item.title, item.taskSpec?.object)} style={s.categoryArt} />
+          <TaskArt title={item.title} {...item.taskSpec} style={s.categoryArt} />
           <View style={{ padding: 14, gap: 4 }}>
             <Text style={s.categoryName}>{item.name}</Text>
             <Text style={s.meta}>{item.count} open {item.count === 1 ? 'task' : 'tasks'} · up to {money(item.top)} USDC</Text>

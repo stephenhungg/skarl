@@ -1,3 +1,4 @@
+import { configNumber } from "./config.ts";
 import { makeFunctionReference } from "convex/server";
 import type { ActionCtx } from "../_generated/server";
 
@@ -5,9 +6,9 @@ import type { ActionCtx } from "../_generated/server";
 // clients rotating untrusted Origin/forwarded headers; this is abuse control,
 // never authentication or proof that a header came from trusted ingress.
 export const PUBLIC_RATE_POLICIES = {
-  mcp: { capacity: 240, refillPerMinute: 240 },
-  discovery: { capacity: 600, refillPerMinute: 600 },
-  jira: { capacity: 120, refillPerMinute: 120 },
+  mcp: { capacity: configNumber("SKARL_MCP_RATE_CAPACITY"), refillPerMinute: configNumber("SKARL_MCP_RATE_REFILL") },
+  discovery: { capacity: configNumber("SKARL_DISCOVERY_RATE_CAPACITY"), refillPerMinute: configNumber("SKARL_DISCOVERY_RATE_REFILL") },
+  jira: { capacity: configNumber("SKARL_JIRA_RATE_CAPACITY"), refillPerMinute: configNumber("SKARL_JIRA_RATE_REFILL") },
 } as const;
 export type PublicSurface = keyof typeof PUBLIC_RATE_POLICIES;
 

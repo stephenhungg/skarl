@@ -1,3 +1,4 @@
+import { paymentConfig } from "./config.ts";
 import { PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK, SOLANA_USDC_MINT, USDC_ADDRESS } from "@skarl/contracts/chain";
 import { MAX_ATOMIC_USDC } from "@skarl/contracts";
 import type { RouteConfig } from "@x402/core/server";
@@ -8,10 +9,10 @@ export function fundingRouteConfig(amountAtomic: bigint, treasuryAddress: string
   if (!/^0x[0-9a-fA-F]{40}$/.test(treasuryAddress) || /^0x0{40}$/i.test(treasuryAddress)) throw new Error("invalid_treasury");
   const base = { scheme: "exact", network: PAYMENT_NETWORK, payTo: treasuryAddress,
     price: { asset: USDC_ADDRESS, amount: amountAtomic.toString(), extra: { name: "USDC", version: "2" } },
-    maxTimeoutSeconds: 300, extra: { assetTransferMethod: "eip3009" } };
+    maxTimeoutSeconds: paymentConfig.fundingMaxTimeoutSeconds, extra: { assetTransferMethod: "eip3009" } };
   if (solana && (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(solana.treasuryAddress) || !solana.orderId)) throw new Error("invalid_solana_treasury");
   return { accepts: solana ? [base, { scheme: "exact", network: SOLANA_PAYMENT_NETWORK, payTo: solana.treasuryAddress,
-    price: { asset: SOLANA_USDC_MINT, amount: amountAtomic.toString() }, maxTimeoutSeconds: 60,
+    price: { asset: SOLANA_USDC_MINT, amount: amountAtomic.toString() }, maxTimeoutSeconds: paymentConfig.solanaFundingMaxTimeoutSeconds,
     extra: { memo: `skarl:${solana.orderId}` } }] : base,
     description: "Fund the stored Skarl collection order on Base Sepolia", mimeType: "application/json" };
 }

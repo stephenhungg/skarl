@@ -1,4 +1,5 @@
 "use node";
+import { anthropicEndpoint, configuredClaudeModel, configNumber } from "./config.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import type { MessageCreateParamsNonStreaming } from "@anthropic-ai/sdk/resources/messages";
 
@@ -7,14 +8,14 @@ export class ClaudeFailure extends Error {
   constructor(public readonly code: string) { super(code); }
 }
 export function claudeModel(): string {
-  return process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
+  return configuredClaudeModel();
 }
 export function createClaudeClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new ClaudeFailure("anthropic_key_missing");
-  return new Anthropic({ apiKey, baseURL: "https://api.anthropic.com", maxRetries: 0, timeout: 30_000, logLevel: "off" });
+  return new Anthropic({ apiKey, baseURL: anthropicEndpoint(), maxRetries: 0, timeout: configNumber("ANTHROPIC_REQUEST_TIMEOUT_MS"), logLevel: "off" });
 }
-export async function requestClaude(params: MessageCreateParamsNonStreaming, timeoutMs = 30_000) {
+export async function requestClaude(params: MessageCreateParamsNonStreaming, timeoutMs = configNumber("ANTHROPIC_REQUEST_TIMEOUT_MS")) {
   if (timeoutMs <= 0) throw new ClaudeFailure("agent_deadline");
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -22,10 +23,10 @@ export async function requestClaude(params: MessageCreateParamsNonStreaming, tim
     const client = createClaudeClient();
     // The SDK fetch timeout ends at response headers. Bound body parsing as well.
     const timeout = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => { reject(new ClaudeFailure("claude_timeout")); controller.abort(); }, Math.min(30_000, timeoutMs));
+      timer = setTimeout(() => { reject(new ClaudeFailure("claude_timeout")); controller.abort(); }, Math.min(configNumber("ANTHROPIC_REQUEST_TIMEOUT_MS"), timeoutMs));
     });
     const response = await Promise.race([client.messages.create(params, {
-      timeout: Math.min(30_000, timeoutMs), signal: controller.signal,
+      timeout: Math.min(configNumber("ANTHROPIC_REQUEST_TIMEOUT_MS"), timeoutMs), signal: controller.signal,
     }), timeout]);
     if (!response || !Array.isArray(response.content)) throw new ClaudeFailure("claude_response_invalid");
     if (response.stop_reason === "refusal") throw new ClaudeFailure("claude_refusal");

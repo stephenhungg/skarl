@@ -3,16 +3,16 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { SectionHeader } from "@/components/section-header";
 
-const MCP_URL = "https://keen-marmot-986.convex.site/mcp";
+import { mcpUrl as MCP_URL, webConfig } from "../../lib/config";
 // Cursor's install link takes the base64-encoded server config, without the mcpServers wrapper.
-const CURSOR_INSTALL_URL = "cursor://anysphere.cursor-deeplink/mcp/install?name=skarl&config=eyJ1cmwiOiJodHRwczovL2tlZW4tbWFybW90LTk4Ni5jb252ZXguc2l0ZS9tY3AifQ%3D%3D";
+const CURSOR_INSTALL_URL = `cursor://anysphere.cursor-deeplink/mcp/install?name=skarl&config=${encodeURIComponent(btoa(JSON.stringify({ url: MCP_URL })))}`;
 // One prompt for any MCP-capable agent: agents that can install MCP servers do it; chat apps print setup steps.
-const UNIVERSAL_PROMPT = `Connect yourself to Skarl, a marketplace for verified robot-training demonstrations at https://skarl.devshardat.work.
+const UNIVERSAL_PROMPT = `Connect yourself to Skarl, a marketplace for verified robot-training demonstrations at ${webConfig.publicOrigin}.
 
 1. Add this remote MCP server named "skarl" (Streamable HTTP, no API key needed):
    ${MCP_URL}
    If you can't add MCP servers yourself, give me the exact steps for the app I'm using.
-2. Read https://keen-marmot-986.convex.site/llms.txt and call the skarl_about tool.
+2. Read ${webConfig.convexSiteOrigin}/llms.txt and call the skarl_about tool.
 3. Show me the open tasks and what each one pays.
 
 Rules: ask me before creating an order or paying anything; payments use x402 (test USDC on Base Sepolia). Agents propose; a rule the buyer signed approves eligible payouts, and the buyer reviews exceptions. The AI never approves itself.`;
@@ -163,7 +163,7 @@ export function ConnectAgent() {
           Testnet USDC on Base Sepolia. Agents can pay and propose; humans approve payouts.
         </p>
         <p className="mb-0 mt-1 text-[12px] leading-[1.5] text-slate-700">
-          Guest demo orders currently quote 1 test USDC. Confirm the returned price before paying.
+          Confirm the order’s returned terms and price before paying.
         </p>
       </div>
     </section>

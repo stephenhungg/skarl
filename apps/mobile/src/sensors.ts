@@ -1,3 +1,4 @@
+import { mobileConfig } from './config';
 import { Accelerometer, Gyroscope, DeviceMotion, Magnetometer } from 'expo-sensors';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
@@ -47,12 +48,12 @@ export function startTrace(available: Sensor[], onSample?: (sample: Sample) => v
   let videoStartOffsetMs: number | null = null, lastVideoDurationMs = 0;
   const stepBoundaries: number[] = [];
   const defaultContext: CaptureContext = { mount: 'handheld', dominantHand: 'right', environment: 'other', lighting: 'bright' };
-  const labels = (options?.stepLabels ?? []).slice(0, 100).map(label => label.slice(0, 160));
+  const labels = (options?.stepLabels ?? []).slice(0, mobileConfig.maxStepLabels).map(label => label.slice(0, mobileConfig.maxStepLabelLength));
   const recordedAt = new Date().toISOString();
   function add(sensor: Sensor, value: { x: number; y: number; z: number } | null, timestampMs = Math.round(performance.now() - start)) {
     // Bound raw samples to 31 seconds (30s video plus startup), at 50 Hz.
     // Longer startup delays remain explicit gaps; never fill missing readings.
-    if (finished || stoppedAt !== null || !value || timestampMs > 31_000 || timestampMs - (last[sensor] ?? -20) < 20) return;
+    if (finished || stoppedAt !== null || !value || timestampMs > mobileConfig.traceMaxDurationMs || timestampMs - (last[sensor] ?? -mobileConfig.sensorIntervalMs) < mobileConfig.sensorIntervalMs) return;
     if (![value.x, value.y, value.z].every(Number.isFinite)) return;
     last[sensor] = timestampMs;
     const sample = { sensor, timestampMs, x: value.x, y: value.y, z: value.z };
@@ -66,19 +67,19 @@ export function startTrace(available: Sensor[], onSample?: (sample: Sample) => v
     try { subscriptions.push(register()); } catch { /* No samples means unavailable, never stationary. */ }
   };
   subscribe('accelerometer', () => {
-    Accelerometer.setUpdateInterval(20);
+    Accelerometer.setUpdateInterval(mobileConfig.sensorIntervalMs);
     return Accelerometer.addListener(value => add('accelerometer', value));
   });
   subscribe('gyroscope', () => {
-    Gyroscope.setUpdateInterval(20);
+    Gyroscope.setUpdateInterval(mobileConfig.sensorIntervalMs);
     return Gyroscope.addListener(value => add('gyroscope', value));
   });
   subscribe('magnetometer', () => {
-    Magnetometer.setUpdateInterval(20);
+    Magnetometer.setUpdateInterval(mobileConfig.sensorIntervalMs);
     return Magnetometer.addListener(value => add('magnetometer', value));
   });
   subscribe('deviceMotion', () => {
-    DeviceMotion.setUpdateInterval(20);
+    DeviceMotion.setUpdateInterval(mobileConfig.sensorIntervalMs);
     return DeviceMotion.addListener(value => {
       const timestampMs = Math.round(performance.now() - start);
       add('deviceMotion', value.acceleration, timestampMs);
@@ -127,7 +128,7 @@ export function startTrace(available: Sensor[], onSample?: (sample: Sample) => v
       const sensors = [...new Set(samples.map(sample => sample.sensor))];
       const width = metadata?.width, height = metadata?.height;
       finished = {
-        version: 2, sampleRateHz: 50, durationMs: elapsedMs,
+        version: 2, sampleRateHz: 1000 / mobileConfig.sensorIntervalMs, durationMs: elapsedMs,
         videoStartOffsetMs, videoStopOffsetMs, syncSource: 'expo-recording-progress-estimate', syncAccuracy: 'approximate',
         context: { ...(options?.context ?? defaultContext) }, unavailableSensors: SENSOR_NAMES.filter(sensor => !sensors.includes(sensor)),
         segments: boundaries.length ? [0, ...boundaries].map((startMs, index) =>

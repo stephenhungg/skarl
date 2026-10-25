@@ -1,3 +1,4 @@
+import { paymentConfig } from "./config.ts";
 import { PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK, SOLANA_USDC_MINT, USDC_ADDRESS, paymentRail } from "@skarl/contracts/chain";
 
 export type TransferIdentity = Readonly<{ network: string; txHash: string; logIndex: number }>;
@@ -10,7 +11,7 @@ export type TransferObservation = TransferIdentity & ExpectedTransfer & Readonly
   succeeded: boolean;
   observedAt: number;
 }>;
-export const REQUIRED_CONFIRMATIONS = 2;
+export const REQUIRED_CONFIRMATIONS = paymentConfig.requiredConfirmations;
 const HASH = /^0x[\da-fA-F]{64}$/;
 const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const SOLANA_SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;

@@ -1,14 +1,15 @@
+import { agentOrigin, appOrigin as configuredAppOrigin, paymentOrigin as configuredPaymentOrigin } from "./lib/config";
 import { httpAction } from "./_generated/server";
 import { checkPublicRateLimit } from "./lib/publicRateLimit";
 import { PAYMENT_NETWORK, PAYMENT_RAILS } from "@skarl/contracts/chain";
 
-export const AGENT_ORIGIN = "https://keen-marmot-986.convex.site";
-const appOrigin = "https://skarl.devshardat.work";
-const paymentOrigin = "https://skarl.vercel.app";
+export const AGENT_ORIGIN = agentOrigin();
+const appOrigin = configuredAppOrigin();
+const paymentOrigin = configuredPaymentOrigin();
 const docsUrl = "https://github.com/stephenhungg/skarl/blob/main/docs/agents.md";
 const safety = "Agents cannot approve, accept submissions, or sign payouts. The agent proposes; the buyer-signed policy (or the buyer in review) approves; the independent CDP cap guards execution. The buyer accepts work and may sign through the legacy browser-wallet path. Existing Convex mutations and role checks remain authoritative.";
 const guestTools = ["skarl_about", "skarl_list_tasks_public", "skarl_create_order_public", "skarl_public_order_status"];
-const guestAccess = "Keyless guest access works with no Authorization header: read public tasks, create a fixed testnet order, and check public funding/delivery status. Keys unlock role tools; a present invalid credential returns 401 and never falls back to guest.";
+const guestAccess = "Keyless guest access works with no Authorization header: read public tasks, create a rubric-defined testnet order, and check public funding/delivery status. Keys unlock role tools; a present invalid credential returns 401 and never falls back to guest.";
 const bearer = { type: "http", scheme: "bearer", description: `Optional for guest access. Obtain an operator-provisioned MCP bearer token out of band to unlock buyer or contributor tools (legacy controller keys alias buyer). Never use a wallet key or a payment service secret. Authorization does not grant buyer approval privileges. ${guestAccess}` };
 
 export const llmsText = `# Skarl
@@ -36,7 +37,7 @@ Connect Claude Code: claude mcp add --transport http skarl ${AGENT_ORIGIN}/mcp
 For Claude.ai, ChatGPT or another MCP client, paste ${AGENT_ORIGIN}/mcp as a custom connector with no authentication, where supported. Account and workspace connector permissions still apply.
 
 ## Buyer flow
-As a guest, read public order terms through skarl_list_tasks_public and skarl_about. Call skarl_create_order_public once and retain its returned orderId and funding URL; check skarl_public_order_status before retrying uncertain funding. Guests cannot override the fixed demo price. With a buyer key, tools/list instead advertises owned order/dataset/evidence tools, including skarl_list_tasks and skarl_create_order. Create a fixed demo order at POST ${paymentOrigin}/api/orders if needed. Fund the returned order at POST ${paymentOrigin}/api/orders/{orderId}/fund, or buy an accepted sample at GET ${paymentOrigin}/api/samples/sample-{submissionId}/evidence. These existing payment routes remain on Vercel; discovery and MCP use this Convex HTTP site.
+As a guest, read public order terms through skarl_list_tasks_public and skarl_about. Call skarl_create_order_public once and retain its returned orderId and funding URL; check skarl_public_order_status before retrying uncertain funding. Guests cannot override the fixed demo price. With a buyer key, tools/list instead advertises owned order/dataset/evidence tools, including skarl_list_tasks and skarl_create_order. Create an order with explicit task and price terms at POST ${paymentOrigin}/api/orders if needed. Fund the returned order at POST ${paymentOrigin}/api/orders/{orderId}/fund, or buy an accepted sample at GET ${paymentOrigin}/api/samples/sample-{submissionId}/evidence. These existing payment routes remain on Vercel; discovery and MCP use this Convex HTTP site.
 Use Coinbase Wallet MCP initiate_x402_request / complete_x402_request with a user-authorized cap and human wallet approval. Inspect the x402 V2 PAYMENT-REQUIRED header (base64 JSON): exact scheme, Base Sepolia ${PAYMENT_NETWORK}, canonical USDC asset, stored recipient and decimal-integer micro-USDC amount. PAYMENT-SIGNATURE is the wallet-produced payment payload; PAYMENT-RESPONSE is settlement metadata, not proof of reconciled delivery. Base is first; optional Solana Devnet is funding only. An eligible evidence purchase costs 250000 micro-USDC; a fresh fixed demo order costs 1000000. Verify current server terms before payment.
 
 ## Contributor flow
@@ -65,14 +66,14 @@ export const agentCard = {
   defaultOutputModes: ["text/plain", "application/json"],
   skills: [
     { id: "guest", name: "Connect without a key", tags: ["guest", "public-tasks", "x402"],
-      description: `${guestAccess} Tools: ${guestTools.join(", ")}. Public fields only; no buyer identities or ledger internals. Create a fixed demo order, then fund through an independently authorized x402 wallet with a tight maxPayment.`,
-      examples: ["Show the public red-cup rubric and exact testnet order price before I authorize a purchase."] },
+      description: `${guestAccess} Tools: ${guestTools.join(", ")}. Public fields only; no buyer identities or ledger internals. Create an order with explicit task and price terms, then fund through an independently authorized x402 wallet with a tight maxPayment.`,
+      examples: ["Show the public task rubric and exact testnet order price before I authorize a purchase."] },
     { id: "buyer", name: "Buy verified demonstration data", tags: ["buyer", "robot-demonstrations", "x402"],
       description: "Read terms and licensed sample availability, fund an order or purchase evidence through capped Coinbase Wallet MCP x402 requests, and inspect reconciled delivery. No acceptance or payout approval authority.",
-      examples: ["Find eligible robot-demonstration evidence and buy it for at most 0.25 test USDC on Base Sepolia."] },
+      examples: ["Find eligible robot-demonstration evidence and show its exact price before requesting payment on Base Sepolia."] },
     { id: "contributor", name: "Assist a demonstration contributor", tags: ["contributor", "evidence", "verification"],
       description: `Explain the rubric, assist consented original submission at ${appOrigin}/contribute or through available contributor tools, and track witness evidence, human review and payout status. Cannot accept work, approve or sign payouts.`,
-      examples: ["Help me contribute an original red-cup demonstration, then explain its verification and payment status."] },
+      examples: ["Help me contribute an original task demonstration, then explain its verification and payment status."] },
   ],
 };
 
@@ -108,7 +109,7 @@ const paymentResponses = {
 export const openapi = {
   openapi: "3.1.0",
   info: { title: "Skarl agent and x402 API", version: "0.1.0",
-    description: `Every claim has a witness. MCP and discovery are hosted on Convex; existing x402 payment resources remain on skarl.vercel.app. Testnet/demo only. ${safety}` },
+    description: `Every claim has a witness. MCP and discovery are hosted on Convex; existing x402 payment resources remain on ${paymentOrigin}. Testnet/demo only. ${safety}` },
   servers: [{ url: AGENT_ORIGIN, description: "Agent discovery and MCP (Convex HTTP site)" }],
   externalDocs: { description: "Agent setup, safety and illustrative workflows", url: docsUrl },
   paths: {

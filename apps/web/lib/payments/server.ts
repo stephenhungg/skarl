@@ -1,3 +1,4 @@
+import { paymentOrigin } from "../config";
 import { ConvexHttpClient } from "convex/browser";
 import { isAddress } from "viem";
 import { NextResponse } from "next/server";
@@ -42,7 +43,7 @@ export function paymentError(error: unknown) {
       message: "Set SKARL_TREASURY_ADDRESS in the web server environment to the treasury wallet receiving address before funding.",
     } : {}),
     ...(code === "payment_service_not_configured" ? {
-      message: "Use https://skarl.vercel.app/api/orders for the hosted demo. To run payment routes locally, configure NEXT_PUBLIC_CONVEX_URL and an operator-provisioned SKARL_PAYMENTS_SERVICE_SECRET matching that Convex deployment.",
+      message: `Use ${paymentOrigin()}/api/orders for the hosted service. To run payment routes locally, configure NEXT_PUBLIC_CONVEX_URL and an operator-provisioned SKARL_PAYMENTS_SERVICE_SECRET matching that Convex deployment.`,
     } : {}),
   }, code.endsWith("not_configured") ? 503 : 409);
 }

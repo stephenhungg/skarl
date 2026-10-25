@@ -1,4 +1,5 @@
-import receipts from "./receipts.json";
+import receipts from "./fixtures/receipts.json";
+import { webConfig } from "../../lib/config";
 
 /** A value cell in the Details tables, the history proof lines and the lifecycle. */
 export type ReceiptValue =
@@ -59,7 +60,7 @@ export type AssetReceipt = {
   } & Record<string, unknown>;
 };
 
-export const REFERENCE_ID = "ba6d011b-1051-5701-a368-c81ceb325b4f";
+export const REFERENCE_ID = receipts[0]!.id;
 
 /** Folds a captured hue (0..360) into Skarl's lime and sage band (90..110) so every receipt keeps its own tint. */
 export function skarlHue(raw: number): number {
@@ -90,7 +91,7 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 /** The contributing app has no audit page here, so its links go to the app itself. */
-const APP_HREF: Record<string, string> = { "/audit/skarl": "https://skarl.devshardat.work" };
+const APP_HREF: Record<string, string> = { "/audit/skarl": webConfig.publicOrigin };
 
 function toSkarl(r: AssetReceipt): AssetReceipt {
   const json = JSON.stringify(r).replace(/"(color|bg|href)":"([^"]*)"/g, (m, key: string, v: string) => {

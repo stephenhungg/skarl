@@ -1,3 +1,4 @@
+import { demoOrderPublicId, publicOrderPrefix } from "./lib/config";
 import { makeFunctionReference, type ApiFromModules, type FunctionReturnType } from "convex/server";
 import { v } from "convex/values";
 import { httpAction, internalQuery } from "./_generated/server";
@@ -12,7 +13,7 @@ import { checkPublicRateLimit } from "./lib/publicRateLimit";
  */
 export const snapshot = internalQuery({ args: { orderId: v.string() }, handler: async (ctx, args) => {
   const id = ctx.db.normalizeId("orders", args.orderId), order = id ? await ctx.db.get(id) : null;
-  if (!order || !(order.publicId === "skarl-red-cup-demo-v2" || order.publicId.startsWith("skarl-outsider-demo-"))) return null;
+  if (!order || !(order.publicId === demoOrderPublicId() || order.publicId.startsWith(publicOrderPrefix()))) return null;
   const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
   const funding = [];
   let chainObservedPayoutCount = 0;

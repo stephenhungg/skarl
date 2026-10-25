@@ -1,12 +1,13 @@
+import { scriptConfig } from "./config.mjs";
 import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 
-export const LIVE_DEPLOYMENT = "https://keen-marmot-986.convex.cloud";
+export const LIVE_DEPLOYMENT = process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL;
 const json = value => JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item);
-const buyer = "buyer";
-const agent = "finance-agent";
+const buyer = scriptConfig.buyerIdentity;
+const agent = scriptConfig.financeIdentity;
 
 // This is only a preflight. The server remains the acceptance/payment authority.
 export function reportEligible(submission, report) {
@@ -62,7 +63,7 @@ export async function runDemo({ query, mutation, log = console.log, sleep = dela
   }
   const audits = await query("dashboard:auditEvents", scope);
   const audit = audits.find(row => row.entityId === proposed.intentId && row.action === "payment_approval_refused" &&
-    row.reason === refused.code && row.actor?.identity === "demo:skarl:finance-agent");
+    row.reason === refused.code && row.actor?.identity === scriptConfig.financeTokenIdentifier);
   if (!audit) return stop(`agent approval refused (${refused.code}) but matching durable audit is missing`);
   pass(`agent approval refused; audit ${json(audit)}`);
   const approved = await mutation("finance:approve", { demoIdentity: buyer, intentId: proposed.intentId });
@@ -78,11 +79,12 @@ export async function runDemo({ query, mutation, log = console.log, sleep = dela
   pass(`payout intent ready for browser wallet signing ${json({ intentId: intent._id, paymentCommandId: proposed.paymentCommandId,
     network: intent.network, tokenAddress: intent.tokenAddress, recipientAddress: intent.recipientAddress,
     amountAtomic: intent.amountAtomic, expiresAt: intent.expiresAt, dispatchReady: true })}`);
-  log(`  buyer dashboard: usePayout({ demoIdentity: "buyer", provider }).execute("${intent._id}"); no wallet claim/signing performed by this script`);
+  log(`  buyer dashboard: usePayout({ demoIdentity: ${JSON.stringify(buyer)}, provider }).execute("${intent._id}"); no wallet claim/signing performed by this script`);
   return 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (!LIVE_DEPLOYMENT) throw new Error("set CONVEX_URL or NEXT_PUBLIC_CONVEX_URL for the intended deployment");
   console.log(`✓ live deployment ${LIVE_DEPLOYMENT}; demo identities; stops before wallet signing`);
   const client = new ConvexHttpClient(LIVE_DEPLOYMENT);
   try {

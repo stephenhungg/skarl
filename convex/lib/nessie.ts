@@ -1,8 +1,9 @@
+import { nessieEndpoint, configNumber } from "./config.ts";
 /** Nessie is a banking simulator. None of these records prove a fiat movement. */
 export const BANK_WITNESS_LABEL = "simulated bank (Capital One Nessie mock)";
-const BASE_URL = "https://prod-api.nessieisreal.com";
+const baseUrl = nessieEndpoint;
 const MAX_ATOMIC = (1n << 63n) - 1n;
-const MAX_ROWS = 5_000;
+const MAX_ROWS = configNumber("SKARL_NESSIE_MAX_ROWS");
 export type BankActivity = {
   id: string;
   kind: "deposit" | "transfer";
@@ -109,7 +110,7 @@ export function createNessieClient(options: { apiKey?: string; fetchImpl?: typeo
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8_000);
     try {
-      const response = await (options.fetchImpl ?? fetch)(`${BASE_URL}${path}?key=${encodeURIComponent(options.apiKey)}`, {
+      const response = await (options.fetchImpl ?? fetch)(`${baseUrl()}${path}?key=${encodeURIComponent(options.apiKey)}`, {
         method, headers: { "Content-Type": "application/json" }, ...(body === undefined ? {} : { body }), signal: controller.signal,
       });
       if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "nessie_unauthorized" : `nessie_http_${response.status}`);

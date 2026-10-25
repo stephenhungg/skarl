@@ -1,3 +1,4 @@
+import { paymentConfig } from "./config.ts";
 /** CDP-managed Solana Devnet funding only. All payout authority stays on Base. */
 import { constants, closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
@@ -53,14 +54,14 @@ export class SolanaFileSpendStore implements SpendStore {
 export function solanaBuyerSpendControls(treasury: string, amount: bigint, store?: SpendStore): SpendControls {
   if (!addressPattern.test(treasury)) throw new CdpBuyerError("Set SKARL_SOLANA_TREASURY_ADDRESS to the approved Solana treasury address.");
   if (amount <= 0n || amount > MAX_ATOMIC_USDC) throw new CdpBuyerError("Invalid payment amount.");
-  const cumulative = process.env.SKARL_CDP_MAX_CUMULATIVE_ATOMIC ?? "20000000";
+  const cumulative = paymentConfig.cumulativeSpendAtomic.toString();
   if (!/^[1-9][0-9]*$/.test(cumulative) || BigInt(cumulative) > MAX_ATOMIC_USDC) throw new CdpBuyerError("SKARL_CDP_MAX_CUMULATIVE_ATOMIC must be a positive integer micro-USDC amount.");
   return { allowedPayees: [treasury], allowedNetworks: [SOLANA_PAYMENT_NETWORK], allowedAssets: [SOLANA_USDC_MINT],
     maxAmountPerPayment: { atomic: amount, asset: SOLANA_USDC_MINT },
-    maxCumulativeSpend: { atomic: BigInt(cumulative), asset: SOLANA_USDC_MINT }, maxCumulativeSpendWindow: "24h", ...(store ? { store } : {}) };
+    maxCumulativeSpend: { atomic: BigInt(cumulative), asset: SOLANA_USDC_MINT }, maxCumulativeSpendWindow: paymentConfig.cumulativeSpendWindowMs, ...(store ? { store } : {}) };
 }
 export function solanaBuyerClientConfig(treasury: string, amount: bigint, store: SpendStore): CdpX402ClientConfig {
-  return { environment: "development", walletConfig: { type: "eoa", accountName: "skarl-buyer-devnet" }, networkSchemes: [
+  return { environment: "development", walletConfig: { type: "eoa", accountName: paymentConfig.solanaAccountName }, networkSchemes: [
     // CdpX402Client otherwise adds Base as a baseline even when only Solana is requested.
     { network: "base-sepolia", scheme: { exact: false, upto: false, authCapture: false, batchSettlement: false } },
     { network: "solana-devnet", rpcUrl: process.env.SOLANA_DEVNET_RPC_URL || "https://api.devnet.solana.com",
@@ -97,8 +98,8 @@ async function usdcBalance(cdp: CdpClient, payer: string): Promise<bigint> {
 }
 async function ensureFunds(cdp: CdpClient, payer: string, amount: bigint) {
   if (await usdcBalance(cdp, payer) >= amount) return;
-  // At most two USDC claims, with durable idempotency keys; never request buyer SOL.
-  for (let index = 0; index < 2; index++) {
+  // Bounded USDC claims retain durable idempotency keys; never request buyer SOL.
+  for (let index = 0; index < paymentConfig.solanaFaucetMaxClaims; index++) {
     const path = join(directory(), `cdp-solana-faucet-${payer}-${index}.json`);
     if (!existsSync(path)) writePrivate(path, { idempotencyKey: randomUUID() }, true);
     const saved: unknown = JSON.parse(readPrivate(path));
@@ -144,7 +145,7 @@ export async function payWithSolanaCdp(resource: URL, amount: bigint, orderId: s
   try {
     if (existingSolanaAttempt(resource)) throw new CdpBuyerError("A Solana attempt already exists for this resource; reconcile it instead of paying again.");
     const cdp = new CdpClient();
-    const account = await cdp.solana.getOrCreateAccount({ name: "skarl-buyer-devnet" });
+    const account = await cdp.solana.getOrCreateAccount({ name: paymentConfig.solanaAccountName });
     console.log(`CDP Solana Devnet buyer: ${account.address}`);
     await ensureFunds(cdp, account.address, amount);
     const client = new CdpX402Client(config);
@@ -186,18 +187,18 @@ export async function payWithSolanaCdp(resource: URL, amount: bigint, orderId: s
 }
 
 export async function fundOrderWithSolana(args: string[]) {
-  const orderId = args[0] ?? "skarl-red-cup-demo-sol";
+  const orderId = args[0] ?? process.env.SKARL_ORDER_ID ?? "";
   if (args.length > 1 || !/^[a-zA-Z0-9_-]+$/.test(orderId)) throw new CdpBuyerError("Usage: pnpm agent:fund --rail solana [orderId]");
   const app = buyerAppUrl();
   const resource = new URL(`/api/orders/${orderId}/fund`, app);
-  const headers = { "Content-Type": "application/json", "x-skarl-demo-identity": "buyer" };
+  const headers = { "Content-Type": "application/json", "x-skarl-demo-identity": paymentConfig.buyerIdentity };
   const status = await buyerJson(await fetch(resource, { headers, redirect: "error", signal: AbortSignal.timeout(20_000) }));
   if (status.fundingStatus === "confirmed") { console.log("Funding already confirmed; no payment sent."); printTransaction(status.txHash); return; }
   const saved = existingSolanaAttempt(resource);
   if (saved || status.fundingStatus !== "awaiting_payment" || status.attemptId) {
     const result = await buyerJson(await fetch(new URL("/api/payments/reconcile", app), {
       method: "POST", headers, redirect: "error", signal: AbortSignal.timeout(60_000),
-      body: JSON.stringify({ orderId, demoIdentity: "buyer", ...(saved?.txHash ?? status.txHash ? { txHash: saved?.txHash ?? status.txHash } : {}),
+      body: JSON.stringify({ orderId, demoIdentity: paymentConfig.buyerIdentity, ...(saved?.txHash ?? status.txHash ? { txHash: saved?.txHash ?? status.txHash } : {}),
         ...(saved?.authorizationNonce ? { authorizationNonce: saved.authorizationNonce, payerAddress: saved.payerAddress } : {}) }),
     }));
     printTransaction(result.txHash ?? saved?.txHash);
@@ -209,7 +210,7 @@ export async function fundOrderWithSolana(args: string[]) {
     !isRecord(rail) || rail.asset !== SOLANA_USDC_MINT || rail.recipientAddress !== treasury || typeof status.orderId !== "string") {
     throw new CdpBuyerError("Funding quote does not match the approved Solana rail, treasury, canonical order or amount.");
   }
-  const result = await buyerJson(await payWithSolanaCdp(resource, BigInt(status.amountAtomic), status.orderId, { method: "POST", headers, body: JSON.stringify({ demoIdentity: "buyer" }) }));
+  const result = await buyerJson(await payWithSolanaCdp(resource, BigInt(status.amountAtomic), status.orderId, { method: "POST", headers, body: JSON.stringify({ demoIdentity: paymentConfig.buyerIdentity }) }));
   printTransaction(result.txHash);
   console.log(`Funding status: ${String(result.fundingStatus ?? "unknown; reconcile before paying again")}`);
   console.log(`Facilitator: ${String(result.settledBy ?? "not reported")}`);

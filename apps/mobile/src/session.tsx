@@ -5,6 +5,7 @@ import { useConvexAuth, useMutation, useQuery } from 'convex/react';
 import { makeRedirectUri } from 'expo-auth-session';
 import { openAuthSessionAsync } from 'expo-web-browser';
 import { api } from './api';
+import { contributorIdentity } from './auth/identity';
 import { googleSignIn } from './oauth';
 import { loadDraft, type Draft } from './upload';
 
@@ -55,7 +56,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async () => {
     if (isAuthenticated || isLoading || !me?.demoMode) throw new Error('Demo entry is unavailable for this session.');
     const at = Date.now();
-    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ identity: 'contributor', signedInAt: at })).catch(() => {});
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ identity: contributorIdentity.demoIdentity, signedInAt: at })).catch(() => {});
     setSignedInAt(at);
   }, [isAuthenticated, isLoading, me?.demoMode]);
   const signInGoogle = useCallback(() => googleSignIn(authenticate,

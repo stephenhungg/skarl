@@ -6,7 +6,6 @@ import {
   submissionStatuses,
 } from "../packages/contracts/src/index";
 import { PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK, SOLANA_USDC_MINT, USDC_ADDRESS } from "../packages/contracts/src/chain";
-import { EVALUATION_VIDEO_MODELS } from "./lib/verificationReport";
 
 // Storage validators constrain types. Business invariants still require mutations.
 
@@ -25,7 +24,8 @@ export const fundingToken = v.union(v.literal(USDC_ADDRESS), v.literal(SOLANA_US
 /** EVM 0x address. Mutations must validate and lowercase before writing so equality checks hold. */
 export const evmAddress = v.string();
 export const amountAtomic = v.int64();
-export const evaluationVideoModel = literalUnion(EVALUATION_VIDEO_MODELS);
+/** Configured evaluation allowlist is enforced by the action, not frozen into storage. */
+export const evaluationVideoModel = v.string();
 /** Whole-number counters that feed bigint budget and capacity arithmetic. */
 export const count = v.int64();
 

@@ -1,5 +1,7 @@
 /// <reference types="node" />
 "use node";
+import { configNumber } from "./config.ts";
+
 
 import { Buffer } from "node:buffer";
 import { execFile } from "node:child_process";
@@ -8,15 +10,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ffmpegPath from "ffmpeg-static";
 
-const MAX_INPUT_BYTES = 25 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 12 * 1024 * 1024;
-const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
-const MAX_DURATION_MS = 30_000;
-const MAX_BINARY_BYTES = 100 * 1024 * 1024;
+const MAX_INPUT_BYTES = configNumber("SKARL_MEDIA_MAX_INPUT_BYTES");
+const MAX_VIDEO_BYTES = configNumber("SKARL_MEDIA_MAX_VIDEO_BYTES");
+const MAX_AUDIO_BYTES = configNumber("SKARL_MEDIA_MAX_AUDIO_BYTES");
+const MAX_DURATION_MS = configNumber("SKARL_MEDIA_MAX_DURATION_MS");
+const MAX_BINARY_BYTES = configNumber("SKARL_MEDIA_MAX_BINARY_BYTES");
 const FRAME_BYTES = 9 * 8;
-const FRAME_SAMPLES = 6;
-const VISUAL_SAMPLES = 12;
-const MAX_JPEG_BYTES = 100 * 1024;
+const FRAME_SAMPLES = configNumber("SKARL_MEDIA_FRAME_SAMPLES");
+const VISUAL_SAMPLES = configNumber("SKARL_MEDIA_VISUAL_SAMPLES");
+const MAX_JPEG_BYTES = configNumber("SKARL_MEDIA_MAX_JPEG_BYTES");
 
 export interface PreparedMedia {
   silentVideo: Uint8Array;

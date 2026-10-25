@@ -1,3 +1,4 @@
+import { taxReportingThreshold } from "./config.ts";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { digest } from "./finance";
@@ -16,7 +17,7 @@ export function taxYear(value = new Date().getUTCFullYear()) {
 }
 export function reportingThreshold(): bigint {
   // Thresholds change by year and jurisdiction. This configurable $600 demo default is not tax law.
-  const raw = process.env.SKARL_TAX_REPORTING_THRESHOLD_MICRO_USD ?? "600000000";
+  const raw = taxReportingThreshold();
   if (!/^[1-9][0-9]*$/.test(raw) || BigInt(raw) > 9223372036854775807n) throw new Error("invalid_tax_reporting_threshold");
   return BigInt(raw);
 }

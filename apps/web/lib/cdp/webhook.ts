@@ -1,15 +1,16 @@
+import { webConfig } from "../config.ts";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "@skarl/contracts/chain";
 
 /** v0 authenticates the exact body bytes. Reject stale AND future timestamps. */
 export function verifyCdpSignature(body: Uint8Array, header: string | null, secrets: readonly string[], now = Date.now()) {
-  if (!header || header.length > 2048) return false;
+  if (!header || header.length > webConfig.webhookHeaderMaxLength) return false;
   const fields = header.split(",").map(field => field.trim().split("="));
   const times = fields.filter(([key]) => key === "t");
   const signatures = fields.filter(([key]) => key === "v0").map(([, value]) => value);
   const timestamp = times[0]?.[1];
   if (times.length !== 1 || !timestamp || !/^\d{1,12}$/.test(timestamp) ||
-    Math.abs(now - Number(timestamp) * 1000) > 300_000) return false;
+    Math.abs(now - Number(timestamp) * 1000) > webConfig.webhookToleranceMs) return false;
   let valid = false;
   for (const secret of secrets.filter(Boolean)) {
     const expected = createHmac("sha256", secret).update(`${timestamp}.`).update(body).digest();

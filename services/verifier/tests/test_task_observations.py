@@ -38,8 +38,9 @@ def test_legacy_12_reports_remain_valid():
     payload["pipeline"]["version"] = "red-cup-evidence-1.2"
     assert validate_report_payload(payload).pipeline.version == "red-cup-evidence-1.2"
     payload["observations"] = task_report()["observations"]
-    with pytest.raises(ValueError, match="legacy observation"):
-        validate_report_payload(payload)
+    assert validate_report_payload(payload)
+    with pytest.raises(ValueError, match="not in the task spec"):
+        validate_report_payload(payload, task_spec=CUP)
     payload["observations"]["video"]["observations"][0].update(object="red_cup", target="coaster")
     assert validate_report_payload(payload).observations.video.observations[0].object == "red_cup"
 
@@ -60,3 +61,14 @@ def test_task_observation_bounds_are_checked():
     payload["observations"]["video"]["observations"][0]["endMs"] = 1001
     with pytest.raises(ValueError, match="exceeds source duration"):
         validate_report_payload(payload, task_spec=CAN)
+
+
+def test_current_acceptance_cannot_skip_pending_task_spec_even_without_observations():
+    import json
+    from pathlib import Path
+    cases_path = Path(__file__).resolve().parents[3] / "packages/contracts/schemas/fixtures/verification-cases.json"
+    payload = json.loads(cases_path.read_text())["bases"]["accept"]
+    payload["pipeline"]["version"] = "task-evidence-2.0"
+    report = validate_report_payload(payload)
+    with pytest.raises(ValueError, match="require the order task spec"):
+        validate_against_rubric(report, ["c1"])

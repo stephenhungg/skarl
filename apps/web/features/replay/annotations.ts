@@ -1,3 +1,4 @@
+import { webConfig } from "../../lib/config";
 import type { Hand, ObjectDetection } from "./models";
 import { detectorClassForObject } from "../../../../convex/lib/taskSpec";
 import { validateAnnotationFile, type AnnotationFile, type AnnotationFrame, type AnnotationKind } from "../../../../convex/lib/derivedAnnotations";
@@ -45,7 +46,7 @@ export function summarize(file: AnnotationFile, durationMs: number, pairedFrames
 }
 
 /** Strict nearest-sample window: never paint a distant detection onto an unrelated frame. */
-export function frameAt(frames: AnnotationFrame[], tMs: number, toleranceMs = 150): AnnotationFrame | undefined {
+export function frameAt(frames: AnnotationFrame[], tMs: number, toleranceMs = webConfig.replayFrameToleranceMs): AnnotationFrame | undefined {
   let best: AnnotationFrame | undefined;
   for (const frame of frames) if (Math.abs(frame.tMs - tMs) <= toleranceMs &&
     (!best || Math.abs(frame.tMs - tMs) < Math.abs(best.tMs - tMs))) best = frame;

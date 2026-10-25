@@ -1,3 +1,5 @@
+import { seedWithTaskSpecs } from "./fixtures/seedWithTaskSpecs";
+import { RED_CUP_TASK_SPEC } from "./fixtures/taskSpecs";
 import { convexTest } from "convex-test";
 import workflowTest from "@convex-dev/workflow/test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +19,7 @@ beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 async function setup() {
   const t = convexTest(schema, modules); workflowTest.register(t);
-  const seeded = await t.mutation(internal.seed.demo, {});
+  const seeded = await seedWithTaskSpecs(t);
   return { t, organizationId: seeded.organizationId, orderId: seeded.defaultOrderId, taskVersionId: seeded.defaultTaskVersionId };
 }
 type Fixture = Awaited<ReturnType<typeof setup>>;
@@ -46,9 +48,9 @@ async function licensedInference(f: Fixture, accept = false) {
       { startMs: 0, endMs: 800, text: "Apple river cloud." },
       { startMs: 1_000, endMs: 3_000, text: "I pick up the red cup." },
       { startMs: 5_000, endMs: 7_000, text: "I place it on the coaster." },
-    ], 12_000);
+    ], 12_000, RED_CUP_TASK_SPEC);
     const rubric = (await ctx.db.get(f.taskVersionId))!;
-    const report = buildVerificationReport({ submissionId, taskVersionId: f.taskVersionId, sourceHash, durationMs: 12_000,
+    const report = buildVerificationReport({ taskSpec: RED_CUP_TASK_SPEC, submissionId, taskVersionId: f.taskVersionId, sourceHash, durationMs: 12_000,
       criteria: rubric.criteria, liveness, audio, video: { visibility: "clear", observations: [
         { action: "pickup", object: "red_cup", target: "unknown", startMs: 1_000, endMs: 3_000, description: "A hand picks up the red cup." },
         { action: "place", object: "red_cup", target: "coaster", startMs: 5_000, endMs: 7_000, description: "The hand places the red cup on the coaster." },

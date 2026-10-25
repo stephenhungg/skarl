@@ -8,7 +8,8 @@ import type { SubmissionStatus } from "@skarl/contracts";
  */
 
 /** Demo selector from docs/backend.md. Impersonable on purpose; this is not authentication. */
-export const DEMO_IDENTITY = "contributor" as const;
+export { DEMO_CONTRIBUTOR as DEMO_IDENTITY } from "../../lib/auth/identities";
+import { DEMO_CONTRIBUTOR as DEMO_IDENTITY } from "../../lib/auth/identities";
 
 export type Criterion = { criterionId: string; description: string; modality: "visual" | "audio" | "cross_modal" | "temporal" };
 export type Rubric = { _id: string; version: number; taskPrompt: string; criteria: Criterion[]; contentHash: string; frozenAt?: number };

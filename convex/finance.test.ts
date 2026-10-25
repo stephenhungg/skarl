@@ -1,3 +1,4 @@
+import { seedWithTaskSpecs } from "./fixtures/seedWithTaskSpecs";
 import { convexTest, type TestConvex } from "convex-test";
 import workflowTest from "@convex-dev/workflow/test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,7 +32,7 @@ afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 async function setup(funded = true): Promise<Fixture> {
   const t = convexTest(schema, modules);
   workflowTest.register(t);
-  const seeded = await t.mutation(internal.seed.demo, {});
+  const seeded = await seedWithTaskSpecs(t);
   await t.run(async (ctx) => {
     const contributor = await ctx.db.query("memberships")
       .withIndex("by_token_identifier", (q) => q.eq("tokenIdentifier", CONTRIBUTOR)).unique();
@@ -386,6 +387,21 @@ describe("demo finance mutations against isolated Convex state", () => {
     expect(state.entries).toHaveLength(0);
     expect(state.payables).toHaveLength(0);
     expect(state.deliveries).toHaveLength(0);
+  });
+
+  it("requires a ready task spec for stored machine acceptance while preserving evidence-bound human review", async () => {
+    const fixture = await setup(), submissionId = await submission(fixture);
+    await fixture.t.run(async ctx => {
+      await ctx.db.patch(fixture.taskVersionId, { taskSpecStatus: "pending" });
+      await ctx.db.patch(fixture.orderId, { taskSpecStatus: "pending" });
+    });
+    expect(await fixture.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "controller", submissionId }))
+      .toMatchObject({ ok: false, code: "acceptance_evidence_required" });
+    expect((await snapshot(fixture)).payables).toHaveLength(0);
+    await recordHumanDecision(fixture, submissionId);
+    expect(await fixture.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "controller", submissionId }))
+      .toMatchObject({ ok: true });
+    expect((await snapshot(fixture)).payables).toHaveLength(1);
   });
 
   it("does not treat an unavailable scaffold analysis as acceptance evidence", async () => {

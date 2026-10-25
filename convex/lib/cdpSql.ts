@@ -1,3 +1,4 @@
+import { cdpSqlEndpoint, configNumber } from "./config.ts";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../../packages/contracts/src/chain.ts";
 
 /** Read-only indexed evidence; this module cannot authorize or settle a payment. */
@@ -20,8 +21,8 @@ export type CdpSqlOptions = { apiKey?: string; fetchImpl?: typeof fetch };
 const ADDRESS = /^0x[0-9a-f]{40}$/i;
 const HASH = /^0x[0-9a-f]{64}$/i;
 const INTEGER = /^(0|[1-9][0-9]*)$/;
-const MAX_ROWS = 10_000;
-const ENDPOINT = "https://api.cdp.coinbase.com/platform/v2/data/query/run";
+const MAX_ROWS = configNumber("SKARL_CDPSQL_MAX_ROWS");
+const endpoint = cdpSqlEndpoint;
 
 // The action also reserves a durable project-wide slot: module state alone cannot
 // enforce a project quota across Convex isolates/serverless instances.
@@ -119,7 +120,7 @@ export function createCdpSqlClient(options: CdpSqlOptions) {
         try {
           // Official quickstart uses a Client API key directly as the bearer token.
           // Never return provider bodies/errors: those may contain request details.
-          const response = await (options.fetchImpl ?? fetch)(ENDPOINT, {
+          const response = await (options.fetchImpl ?? fetch)(endpoint(), {
             method: "POST", headers: { Authorization: `Bearer ${options.apiKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({ sql, cache: { maxAgeMs: 1_000 } }), signal: controller.signal,
           });

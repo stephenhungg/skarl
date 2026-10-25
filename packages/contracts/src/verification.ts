@@ -45,10 +45,9 @@ export function validateVerificationReport(value: unknown, taskSpec?: Verificati
   }
   if (observations.length) {
     // The order supplies this spec. Report text and narration never define allowed labels.
-    const legacy = report.pipeline.version === "red-cup-evidence-1.2";
-    const spec = legacy ? { object: "red_cup", distractors: ["blue_cup"], target: "coaster", steps: [] } : taskSpec;
+    const spec = taskSpec;
     if (spec) {
-      const objects = new Set([spec.object, ...spec.distractors, ...(legacy ? [] : ["other"]), "unknown"]);
+      const objects = new Set([spec.object, ...spec.distractors, "other", "unknown"]);
       const targets = new Set([spec.target, "other", "unknown"]);
       for (const observation of observations) {
         if (!objects.has(observation.object)) errors.push(`object is not in the task spec: ${observation.object}`);
@@ -66,7 +65,9 @@ export function validateVerificationReportForRubric(value: unknown, rubricCriter
   const report = value as ReportShape;
   const rubric = new Set(rubricCriterionIds);
   const errors: string[] = [];
-  if (!taskSpec && report.pipeline.version === "task-evidence-2.0" && ((report.observations?.video?.observations.length ?? 0) + (report.observations?.audio?.claims.length ?? 0) > 0)) errors.push("task-scoped observations require the order task spec");
+  const hasObservations = (report.observations?.video?.observations.length ?? 0) + (report.observations?.audio?.claims.length ?? 0) > 0;
+  const currentAcceptance = report.pipeline.version === "task-evidence-2.0" && report.recommendation === "accept";
+  if (!taskSpec && (currentAcceptance || hasObservations)) errors.push("task-scoped observations require the order task spec");
   if (rubric.size === 0 || rubric.size !== rubricCriterionIds.length) errors.push("rubric criterion IDs must be nonempty and unique");
   const reported = new Set(report.criteria.map(criterion => criterion.criterionId));
   for (const id of reported) if (!rubric.has(id)) errors.push(`criterion is not in the task rubric: ${id}`);

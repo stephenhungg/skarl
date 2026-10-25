@@ -1,3 +1,4 @@
+import { scriptConfig } from "./config.mjs";
 import { CdpClient, type CreatePolicyBody, type PolicySimulationResult } from "@coinbase/cdp-sdk";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -7,8 +8,8 @@ import { loadEnvFile } from "node:process";
 import { encodeFunctionData, erc20Abi, serializeTransaction, type Address } from "viem";
 import { PAYMENT_CHAIN_ID, USDC_ADDRESS } from "../packages/contracts/src/chain.ts";
 
-export const AGENT_NAME = "skarl-finance-agent";
-export const PROBE_NAME = "skarl-policy-probe";
+export const AGENT_NAME = scriptConfig.agentAccountName;
+export const PROBE_NAME = scriptConfig.policyProbeAccountName;
 const ZERO = "0x0000000000000000000000000000000000000000";
 const EVM_OPERATIONS = new Set(["sendEvmTransaction", "signEvmTransaction", "signEvmHash", "signEvmMessage",
   "signEvmTypedData", "prepareUserOperation", "sendUserOperation"]);

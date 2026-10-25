@@ -1,3 +1,4 @@
+import { appOrigin, walletOrigins, configNumber } from "./lib/config";
 import { v } from "convex/values";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { getAddress, hashMessage, type Hex } from "viem";
@@ -8,15 +9,13 @@ import { PAYMENT_CHAIN_ID } from "../packages/contracts/src/chain";
 import { requireDemoOrganizationAuthority, requireRole } from "./lib/demoAuth";
 import { actorFor, audit, digest, normalizeAddress, requireTenant } from "./lib/finance";
 
-const DEFAULT_ORIGIN = "https://skarl.devshardat.work";
-const WALLET_ORIGINS = [DEFAULT_ORIGIN, "https://skarl.vercel.app"];
 
-function walletOrigin(origin: string = DEFAULT_ORIGIN) {
+function walletOrigin(origin: string = appOrigin()) {
   // Exact HTTPS origins only: never echo arbitrary hosts into a signing request.
-  if (!WALLET_ORIGINS.includes(origin)) throw new Error("untrusted_wallet_origin");
+  if (!walletOrigins().includes(origin)) throw new Error("untrusted_wallet_origin");
   return { domain: new URL(origin).host, uri: origin };
 }
-const CHALLENGE_TTL_MS = 5 * 60_000;
+const CHALLENGE_TTL_MS = configNumber("SKARL_WALLET_CHALLENGE_TTL_MS");
 
 async function contributorFor(ctx: MutationCtx, demoIdentity: string, tokenIdentifier: string) {
   const principal = await requireRole(ctx, demoIdentity, ["buyer", "controller", "contributor"]);

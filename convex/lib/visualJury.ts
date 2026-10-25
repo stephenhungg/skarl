@@ -55,8 +55,7 @@ export async function observeEvidence(
     });
     const unavailable = judges.some(judge => judge.failure !== undefined);
     const disagreedCriteria = input.criteria.filter(criterion => unavailable ||
-      reports[0]!.report.criteria.find(item => item.criterionId === criterion.criterionId)?.status !==
-      reports[1]!.report.criteria.find(item => item.criterionId === criterion.criterionId)?.status).map(criterion => criterion.criterionId);
+      new Set(reports.map(judge => judge.report.criteria.find(item => item.criterionId === criterion.criterionId)?.status)).size !== 1).map(criterion => criterion.criterionId);
     // Failed fallback findings are not evidence of inter-model agreement.
     jury = { advisoryOnly: true, agreementFraction: unavailable || audioFailure ? null
       : (input.criteria.length - disagreedCriteria.length) / input.criteria.length, disagreedCriteria, judges: reports };

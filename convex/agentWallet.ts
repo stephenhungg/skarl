@@ -1,4 +1,5 @@
 "use node";
+import { baseRpcUrl } from "./lib/config";
 import { randomUUID } from "node:crypto";
 import { CdpClient } from "@coinbase/cdp-sdk";
 import { makeFunctionReference } from "convex/server";
@@ -96,7 +97,7 @@ async function reconcileStored(ctx: ActionCtx, intentId: Id<"paymentIntents">, s
   if (suppliedHash && attempt.txHash && suppliedHash.toLowerCase() !== attempt.txHash.toLowerCase()) throw new Error("transaction_already_bound");
   try {
     const client = createPublicClient({ chain: baseSepolia,
-      transport: http(process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org", { timeout: 15_000, retryCount: 1 }) });
+      transport: http(baseRpcUrl(), { timeout: 15_000, retryCount: 1 }) });
     if (await client.getChainId() !== PAYMENT_CHAIN_ID) throw new Error("wrong_rpc_network");
     const receipt = await client.waitForTransactionReceipt({ hash: txHash as Hash, confirmations: 2, timeout: 20_000 });
     if (receipt.transactionHash.toLowerCase() !== txHash.toLowerCase()) throw new Error("transaction_replaced_reconcile_manually");

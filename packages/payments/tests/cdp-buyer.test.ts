@@ -35,7 +35,7 @@ describe("CDP buyer spend controls (simulated signer)", () => {
     expect(config.networkSchemes).toHaveLength(1);
     expect(config.networkSchemes![0]).toMatchObject({ network: "base-sepolia", scheme: { exact: true, upto: false, authCapture: false, batchSettlement: false } });
     expect(config.spendControls).toMatchObject({ allowedPayees: [TREASURY], allowedNetworks: [PAYMENT_NETWORK], allowedAssets: [USDC_ADDRESS],
-      maxAmountPerPayment: { atomic: amount, asset: USDC_ADDRESS }, maxCumulativeSpend: { atomic: 20_000_000n, asset: USDC_ADDRESS }, maxCumulativeSpendWindow: "24h" });
+      maxAmountPerPayment: { atomic: amount, asset: USDC_ADDRESS }, maxCumulativeSpend: { atomic: 20_000_000n, asset: USDC_ADDRESS }, maxCumulativeSpendWindow: 86_400_000 });
   });
   it.each([
     { payTo: `0x${"33".repeat(20)}` }, { asset: `0x${"44".repeat(20)}` }, { network: "eip155:8453" }, { amount: "250001" },

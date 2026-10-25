@@ -3,7 +3,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
-import { CAN_TO_HAT_TASK_SPEC, RED_CUP_TASK_SPEC } from "./lib/taskSpec";
+import { CAN_TO_HAT_TASK_SPEC, RED_CUP_TASK_SPEC } from "./fixtures/taskSpecs";
 import { audioFromTranscriptSegments, type VideoObservation } from "./lib/verificationReport";
 import { validateVerificationReportForRubric } from "../packages/contracts/src/verification";
 
@@ -50,6 +50,11 @@ async function fixture(withSpec = true) {
     quantityRequested: "1", pricePerSampleAtomic: "1000000", contributorRateAtomic: "750000", deadlineAt: Date.now() + 3_600_000,
     taskPrompt: "Pick up the can and place it closer to the hat that is next to the lamp. Narrate each action. Fixed camera; can, hat and lamp in frame; 10 to 30 seconds.",
     criteria, ...(withSpec ? { taskSpec: CAN_TO_HAT_TASK_SPEC } : {}) });
+  if (withSpec) {
+    const rubric = (await t.run(ctx => ctx.db.get(order.taskVersionId)))!;
+    await t.mutation(internal.orders.storeTaskSpec, { orderId: order.orderId, taskVersionId: rubric._id,
+      rubricHash: rubric.contentHash, version: "rubric-task-spec-v1", provider: "synthetic", model: "synthetic-extractor", taskSpec: CAN_TO_HAT_TASK_SPEC });
+  }
   const storageId = await t.run(ctx => ctx.storage.store(new Blob(["synthetic can task video"], { type: "video/mp4" })));
   const { submissionId } = await t.mutation(api.submissions.create, { demoIdentity: "contributor", orderId: order.orderId,
     storageId, clientRequestId: "can-evidence", consentAcknowledged: true, verificationOnly: true, evalRunId: "can-task-synthetic" });

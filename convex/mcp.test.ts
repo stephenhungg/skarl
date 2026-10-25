@@ -1,3 +1,4 @@
+import { seedWithTaskSpecs } from "./fixtures/seedWithTaskSpecs";
 import { convexTest } from "convex-test";
 import workflowTest from "@convex-dev/workflow/test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,7 +32,7 @@ afterEach(() => vi.unstubAllEnvs());
 async function setup() {
   const t = convexTest(schema, modules);
   workflowTest.register(t);
-  return { t, ...await t.mutation(internal.seed.demo, {}) };
+  return { t, ...await seedWithTaskSpecs(t) };
 }
 type Test = ReturnType<typeof convexTest>;
 async function request(t: Test, message: unknown, identity: Identity = "buyer") {
@@ -69,7 +70,7 @@ describe("keyless guest MCP", () => {
     for (const tool of body.result.tools) expect(tool.inputSchema.additionalProperties).toBe(false);
     const about = toolValue(await guestCall(t, "skarl_about"));
     expect(about).toMatchObject({ guestAccess: expect.stringContaining("No key required"),
-      demoOrder: { amountAtomic: "1000000", network: "eip155:84532" } });
+      demoOrder: { quoteSource: "selected public order", network: "eip155:84532" } });
     expect(about.links.contribute).toBe("https://skarl.devshardat.work/contribute");
     expect(about.safety.join(" ")).toContain("never approve, accept submissions or sign payouts");
   });
@@ -86,7 +87,7 @@ describe("keyless guest MCP", () => {
     expect(await t.run(ctx => ctx.db.query("demoOrderLimits").collect())).toHaveLength(0);
   });
 
-  it("creates fixed public orders through the same durable per-IP limits as the public payment API", async () => {
+  it("copies stored public task terms through the same durable per-IP limits as the public payment API", async () => {
     const { t } = await setup();
     const serviceSecret = "synthetic-mcp-payment-service-secret-at-least-32-chars";
     vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", serviceSecret);
@@ -98,11 +99,11 @@ describe("keyless guest MCP", () => {
       const created = toolValue(await guestCall(t, "skarl_create_order_public", {}, {
         "x-forwarded-for": ` ${ip}, 192.0.2.9`, "cf-connecting-ip": "198.51.100.8",
       }));
-      expect(created).toMatchObject({ ok: true, orderId: expect.any(String), amountAtomic: "1000000", network: "eip155:84532" });
+      expect(created).toMatchObject({ ok: true, orderId: expect.any(String), amountAtomic: "10000000", network: "eip155:84532" });
       expect(created.fundingUrl).toBe(`https://skarl.vercel.app/api/orders/${created.orderId}/fund`);
-      expect(created.paymentInstructions).toContain("tight maxPayment");
+      expect(created.paymentInstructions).toContain("maxPayment matching that quote");
       const order = await t.run(ctx => ctx.db.get(created.orderId));
-      expect(order).toMatchObject({ budgetAtomic: 1_000_000n, quantityRequested: 1n, status: "awaiting_funding" });
+      expect(order).toMatchObject({ budgetAtomic: 10_000_000n, quantityRequested: 4n, status: "awaiting_funding" });
     }
     const limited = await guestCall(t, "skarl_create_order_public", {}, { "cf-connecting-ip": ip });
     expect(limited.result.isError).toBe(true);
@@ -180,7 +181,7 @@ describe("keyless guest MCP", () => {
     const created = toolValue(await guestCall(t, "skarl_create_order_public"));
     const payerAddress = `0x${"11".repeat(20)}`, recipientAddress = `0x${"22".repeat(20)}`, authorizationNonce = `0x${"aa".repeat(32)}`;
     const { attemptId } = await t.mutation(api.payments.recordFundingAttempt, { serviceSecret, orderId: created.orderId,
-      demoIdentity: "buyer", payerAddress, recipientAddress, authorizationNonce, amountAtomic: 1_000_000n, validBefore: Date.now() + 60_000 });
+      demoIdentity: "buyer", payerAddress, recipientAddress, authorizationNonce, amountAtomic: BigInt(created.amountAtomic), validBefore: Date.now() + 60_000 });
     const status = toolValue(await guestCall(t, "skarl_public_order_status", { orderId: created.orderId }));
     expect(status).toMatchObject({ status: "awaiting_funding", acceptedCount: "0",
       funding: { status: "settlement_pending", attemptStatus: "prepared", network: "eip155:84532" } });

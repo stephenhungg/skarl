@@ -1,5 +1,5 @@
-import { sha256 } from "@noble/hashes/sha2.js";
-import { utf8ToBytes, bytesToHex } from "@noble/hashes/utils.js";
+import { digest } from "./canonical.ts";
+export { canonical, digest } from "./canonical.ts";
 import { assertBalanced, postJournal, type Journal, type LedgerState } from "../../packages/ledger/src/index";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../../packages/contracts/src/chain";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -7,16 +7,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { recordTaxThresholdAdvisory } from "./tax";
 import { hasOrderAuthority, isPolicyEngine, isFinanceAgent, type DemoPrincipal } from "./demoAuth";
 
-export function canonical(value: unknown): string {
-  if (typeof value === "bigint") return JSON.stringify(value.toString());
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-export const digest = (value: unknown) => bytesToHex(sha256(utf8ToBytes(canonical(value))));
+
 
 export function requireTenant(principal: DemoPrincipal, resource: { organizationId: Id<"organizations"> }) {
   if (principal.organizationId !== resource.organizationId) throw new Error("cross_organization_access");

@@ -1,3 +1,4 @@
+import { demoToken } from "./lib/demoAuth";
 import { internalQuery } from "./_generated/server";
 import { requireRole } from "./lib/demoAuth";
 import { feedCode, receiptUrl, type JiraFeedItem } from "./lib/jiraFeed";
@@ -21,7 +22,7 @@ export const snapshot = internalQuery({
           ...(receiptUrl(payable?.submissionId) ? { witnessReceiptUrl: receiptUrl(payable?.submissionId)! } : {}) };
       });
       for (const intent of intents) {
-        if (intent.organizationId !== principal.organizationId || intent.kind !== "contributor_payout" || intent.requesterTokenIdentifier !== "demo:skarl:finance-agent") continue;
+        if (intent.organizationId !== principal.organizationId || intent.kind !== "contributor_payout" || intent.requesterTokenIdentifier !== demoToken("finance-agent")) continue;
         const link = linked.find(row => row.entityId === intent._id)!;
         items.push({ id: `proposal:${intent._id}`, kind: "agent_proposal", status: intent.status,
           orderId: order._id, createdAt: intent._creationTime, amountMicroUsdc: link.amountMicroUsdc,
@@ -83,7 +84,7 @@ export const snapshot = internalQuery({
     }
     items.push(...scenarios.values());
     for (const event of events) {
-      if (event.actor.identity !== "demo:skarl:finance-agent" || !event.action.endsWith("_refused")) continue;
+      if (event.actor.identity !== demoToken("finance-agent") || !event.action.endsWith("_refused")) continue;
       const scope = scopes.find(row => row.orderId === event.entityId || row.linked.some(link => link.entityId === event.entityId));
       if (!scope) continue;
       const link = scope.linked.find(row => row.entityId === event.entityId);

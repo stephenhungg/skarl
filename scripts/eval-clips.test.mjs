@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { applyContentEvaluationGuard, CONTENT_EVALUATION_PROJECTION_VERSION } from "../convex/lib/verificationReport.ts";
-import { canonical, computeMetrics, criterionAgreement, riskCoverage, wilson, CRITERIA, LICENSING_WARNING, preflightManifest, runEvaluation, runModelComparison, COMPARISON_VIDEO_MODELS, validateStoredReport } from "./eval-clips.mjs";
+import { canonical, computeMetrics, criterionAgreement, riskCoverage, wilson, LICENSING_WARNING, preflightManifest, runEvaluation, runModelComparison, COMPARISON_VIDEO_MODELS, validateStoredReport } from "./eval-clips.mjs";
+const CRITERIA = ["red-cup-pickup", "coaster-placement", "narration-alignment"];
 
 const sha = value => createHash("sha256").update(value).digest("hex");
 const expected = recommendation => ({ recommendation, duplicateStatus: "clear",
@@ -15,7 +16,7 @@ const expected = recommendation => ({ recommendation, duplicateStatus: "clear",
 async function fixture(t, count = 1) {
   const dir = await mkdtemp(join(tmpdir(), "skarl-eval-test-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  const manifest = { schemaVersion: "1.0", syntheticMetadata: false, samples: [] };
+  const manifest = { schemaVersion: "1.0", syntheticMetadata: false, criterionIds: CRITERIA, samples: [] };
   for (let index = 0; index < count; index++) {
     // Deliberately not a playable recording: transport/model results are mocked.
     const bytes = Buffer.from(`synthetic-test-bytes-${index}`), mediaPath = `case-${index}.mp4`;
@@ -56,7 +57,7 @@ function transport(f, options = {}) {
   const client = {
     async query(name, args) {
       calls.push({ name, args });
-      if (name === "dashboard:demoContext") return { orderId: "demo-order", taskVersionId: "frozen-rubric" };
+      if (name === "dashboard:demoContext") return { orderId: "demo-order", taskVersionId: "frozen-rubric", criterionIds: CRITERIA };
       if (name === "dashboard:orderSummary") return { rubric: { _id: "frozen-rubric", orderId: "demo-order", frozenAt: 1,
         contentHash: "b".repeat(64), criteria: CRITERIA.map(criterionId => ({ criterionId })) } };
       if (name === "submissions:evaluationRun") return { submissions: options.contaminated ? [{ _id: "unknown", clientRequestId: "unknown" }] : rows.filter(row => row.evalRunId === args.evalRunId),
@@ -209,7 +210,7 @@ test("failed duplicate references block dependents without upload", async t => {
 test("stored quality validation rejects wrong content hash and discarded warnings", () => {
   const row = { _id: "submission", sourceHash: "a".repeat(64), evalRunId: "eval-test" };
   const item = { submissionId: row._id, contentSha256: row.sourceHash };
-  const run = { evalRunId: row.evalRunId, taskVersionId: "frozen-rubric" };
+  const run = { evalRunId: row.evalRunId, taskVersionId: "frozen-rubric", criterionIds: CRITERIA };
   const response = storedResponse(row);
   assert.equal(validateStoredReport(response, item, run).successfulAnalysis, true);
   const wrong = structuredClone(response); wrong.observations.evaluation.qualityReportHash = "b".repeat(64);
@@ -431,7 +432,7 @@ test("content-only paired arms preserve the same labels and mode through interru
 test("content-only validation refuses removed operational liveness, altered unrelated warnings, or false liveness labels", () => {
   const row = { _id: "content-submission", sourceHash: "a".repeat(64), evalRunId: "content-run", evalContentOnly: true };
   const item = { submissionId: row._id, contentSha256: row.sourceHash };
-  const run = { evalRunId: row.evalRunId, taskVersionId: "frozen-rubric", contentOnly: true };
+  const run = { evalRunId: row.evalRunId, taskVersionId: "frozen-rubric", contentOnly: true, criterionIds: CRITERIA };
   const response = storedResponse(row);
   assert.equal(validateStoredReport(response, item, run).successfulAnalysis, true);
   for (const patch of [

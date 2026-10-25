@@ -163,6 +163,7 @@ export default defineSchema({
       requireAllChecks: v.literal(true), setBy: tokenIdentifier, setAt: v.number() })),
     diversity: v.optional(diversityValidator),
     taskSpec: v.optional(taskSpecValidator),
+    taskSpecStatus: v.optional(v.union(v.literal("pending"), v.literal("ready"))),
     status: orderStatus,
     taskVersionId: v.optional(v.id("rubricVersions")),
     quantityRequested: count,
@@ -186,6 +187,9 @@ export default defineSchema({
     taskPrompt: v.string(),
     taskSpec: v.optional(taskSpecValidator),
     taskSpecHash: v.optional(v.string()),
+    taskSpecStatus: v.optional(v.union(v.literal("pending"), v.literal("ready"))),
+    taskSpecExtraction: v.optional(v.object({ version: v.string(), rubricHash: v.string(),
+      provider: v.string(), model: v.string(), extractedAt: v.number(), failure: v.optional(v.string()) })),
     criteria: v.array(
       v.object({
         criterionId: v.string(),

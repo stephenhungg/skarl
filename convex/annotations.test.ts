@@ -1,8 +1,10 @@
+import { fixtureTaskSpecFields } from "./fixtures/taskSpecs";
+import { seedWithTaskSpecs } from "./fixtures/seedWithTaskSpecs";
 import { convexTest } from "convex-test";
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
-import { frameHasObjectInHand, frameHasCupInHand, MAX_ANNOTATION_BYTES, summarizeAnnotations, validateAnnotationFile } from "./lib/derivedAnnotations";
+import { frameHasObjectInHand, MAX_ANNOTATION_BYTES, summarizeAnnotations, validateAnnotationFile } from "./lib/derivedAnnotations";
 import schema from "./schema";
 
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
@@ -39,7 +41,7 @@ function supportMutationBlobReads() {
 async function setup() {
   const t = convexTest(schema, modules);
   supportMutationBlobReads();
-  const seeded = await t.mutation(internal.seed.demo, {});
+  const seeded = await seedWithTaskSpecs(t);
   const video = await t.run(ctx => ctx.storage.store(new Blob(["synthetic-video"], { type: "video/mp4" })));
   const { submissionId } = await t.mutation(api.submissions.create, { demoIdentity: "contributor", orderId: seeded.orderId,
     storageId: video, clientRequestId: "annotation-fixture", consentAcknowledged: true });
@@ -54,7 +56,7 @@ async function setup() {
 describe("strict advisory annotation files", () => {
   it("validates all kinds and recomputes only observed summaries", () => {
     expect(summarizeAnnotations(validateAnnotationFile(file()))).toEqual({ kind: "objects", frames: 3, durationMs: 1000,
-      objectLabels: { cup: 2, hand: 1 }, cupInHandFrames: 1 });
+      objectLabels: { cup: 2, hand: 1 } });
     const hands = validateAnnotationFile({ ...file(), kind: "hands", frames: [
       { tMs: 0, hands: [{ handedness: "Left", score: 0.9, keypoints: keypoints() }] }, { tMs: 500, hands: [] },
     ] });
@@ -62,16 +64,16 @@ describe("strict advisory annotation files", () => {
     const masks = validateAnnotationFile({ ...file(), kind: "masks", frames: [{ tMs: 0, masks: [{ label: "cup",
       prompt: { x: 0.5, y: 0.5 }, score: 1, bbox: [0, 0, 1, 1], areaFrac: 0.1, polygon: [[0, 0], [1, 0], [1, 1]] }] }] });
     expect(summarizeAnnotations(masks)).toEqual({ kind: "masks", frames: 1, durationMs: 0, masks: 1 });
-    expect(summarizeAnnotations(validateAnnotationFile({ ...file(), frames: [] }))).toMatchObject({ frames: 0, durationMs: 0, cupInHandFrames: 0 });
+    expect(summarizeAnnotations(validateAnnotationFile({ ...file(), frames: [] }))).toMatchObject({ frames: 0, durationMs: 0 });
   });
   it("requires cup/hand spatial evidence and never treats a person box as a grasp", () => {
     const frame = validateAnnotationFile(file()).frames[0]!;
-    expect(frameHasCupInHand(frame)).toBe(true);
+    expect(frameHasObjectInHand(frame, "cup")).toBe(true);
     const cup = frame.objects![0]!;
-    expect(frameHasCupInHand({ tMs: 0, objects: [cup, { label: "person", score: 1, box: [0, 0, 1, 1] }] })).toBe(false);
-    expect(frameHasCupInHand({ tMs: 0, objects: [cup, { label: "hand", score: 1, box: [0, 0, 0.1, 0.1] }] })).toBe(false);
-    expect(frameHasCupInHand({ tMs: 0, objects: [cup, { label: "hand", score: 0, box: [0, 0, 1, 1] }] })).toBe(false);
-    expect(frameHasCupInHand({ tMs: 0, objects: [cup], hands: [{ handedness: "Left", score: 0.9, keypoints: keypoints() as [number, number, number][] }] })).toBe(true);
+    expect(frameHasObjectInHand({ tMs: 0, objects: [cup, { label: "person", score: 1, box: [0, 0, 1, 1] }] }, "cup")).toBe(false);
+    expect(frameHasObjectInHand({ tMs: 0, objects: [cup, { label: "hand", score: 1, box: [0, 0, 0.1, 0.1] }] }, "cup")).toBe(false);
+    expect(frameHasObjectInHand({ tMs: 0, objects: [cup, { label: "hand", score: 0, box: [0, 0, 1, 1] }] }, "cup")).toBe(false);
+    expect(frameHasObjectInHand({ tMs: 0, objects: [cup], hands: [{ handedness: "Left", score: 0.9, keypoints: keypoints() as [number, number, number][] }] }, "cup")).toBe(true);
   });
   it("matches only the requested faithful detector class, with hand evidence", () => {
     const frame = validateAnnotationFile(file()).frames[0]!;
@@ -121,7 +123,7 @@ describe("private annotation storage boundary", () => {
     const spec = { object: taskObject, distractors: [], target: "hat", steps: [`Pick up the ${taskObject}`, `Place the ${taskObject} beside the hat`] };
     await f.t.run(async ctx => {
       await ctx.db.patch(f.orderId, { taskSpec: spec });
-      await ctx.db.patch(f.taskVersionId, { taskSpec: spec });
+      await ctx.db.patch(f.taskVersionId, fixtureTaskSpecFields(spec, (await ctx.db.get(f.taskVersionId))!.contentHash));
     });
     const input = { ...f.input, frames: f.input.frames.map(frame => ({ ...frame,
       objects: frame.objects.map(item => item.label === "cup" ? { ...item, label: "bottle" } : item) })) };
@@ -132,7 +134,8 @@ describe("private annotation storage boundary", () => {
     expect(row.detectorClass).toBe(taskObject === "bottle" ? "bottle" : undefined);
     expect(row.objectInHandTimestampsMs).toEqual(taskObject === "bottle" ? [0] : []);
     expect(row.summary.objectInHandFrames).toBe(taskObject === "bottle" ? 1 : 0);
-    expect(row.summary.cupInHandFrames).toBe(0);
+    expect(row.summary.cupInHandFrames).toBeUndefined();
+    expect(row.cupInHandTimestampsMs).toBeUndefined();
   });
 
   it("reads blob bytes, ignores forged summary, retries idempotently and never changes decisions or money", async () => {
@@ -142,7 +145,7 @@ describe("private annotation storage boundary", () => {
     expect(await f.t.mutation(api.annotations.saveDerived, { ...f.args, summary: { ...forgedSummary, frames: 1 } })).toBe(annotationId);
     const row = await f.t.run(ctx => ctx.db.get(annotationId));
     expect(row).toMatchObject({ advisory: true, createdBy: "demo:skarl:contributor", kind: "objects", model: f.input.model,
-      summary: { kind: "objects", frames: 3, durationMs: 1000, cupInHandFrames: 1, objectLabels: { cup: 2, hand: 1 } }, cupInHandTimestampsMs: [0] });
+      summary: { kind: "objects", frames: 3, durationMs: 1000, objectInHandFrames: 1, objectLabels: { cup: 2, hand: 1 } }, taskObject: "red_cup", detectorClass: "cup", objectInHandTimestampsMs: [0] });
     expect(await f.t.run(ctx => ctx.db.get(f.submissionId))).toEqual(before);
     for (const table of ["derivedAnnotations", "reviewDecisions", "payables", "journalEntries"] as const) {
       const rows = await f.t.run(ctx => ctx.db.query(table).collect());

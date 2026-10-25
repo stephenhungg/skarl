@@ -1,3 +1,5 @@
+import { configNumber, evaluationVideoModels } from "./lib/config";
+import { verifierIdentity } from "./lib/config";
 import { resolveTaskSpec } from "./lib/taskSpec";
 import { makeFunctionReference } from "convex/server";
 import { v, type Infer } from "convex/values";
@@ -54,6 +56,7 @@ export const create = mutation({
     if (args.evalContentOnly && (!args.verificationOnly || args.evalRunId === undefined || args.livenessChallengeId !== undefined)) {
       throw new Error("content_evaluation_requires_unissued_scoped_verification");
     }
+    if (args.evalVideoModel !== undefined && !evaluationVideoModels().includes(args.evalVideoModel)) throw new Error("invalid_evaluation_model");
     if (args.evalVideoModel !== undefined && (!args.verificationOnly || args.evalRunId === undefined)) throw new Error("model_override_requires_scoped_evaluation");
     const existing = await ctx.db.query("submissions").withIndex("by_request", q => q.eq("organizationId", principal.organizationId)
       .eq("contributorTokenIdentifier", principal.tokenIdentifier).eq("clientRequestId", args.clientRequestId)).unique();
@@ -67,7 +70,7 @@ export const create = mutation({
     if (["closed", "cancelled", "cancelling", "fulfilled", "refunded"].includes(order.status)) throw new Error("order_closed");
     if (args.evalRunId !== undefined) {
       const scope = await ctx.db.query("submissions").withIndex("by_eval_run", q =>
-        q.eq("organizationId", principal.organizationId).eq("evalRunId", args.evalRunId)).take(201);
+        q.eq("organizationId", principal.organizationId).eq("evalRunId", args.evalRunId)).take(configNumber("SKARL_DUPLICATE_CANDIDATE_LIMIT") + 1);
       if (scope.some(submission => submission.evalVideoModel !== args.evalVideoModel)) throw new Error("evaluation_model_scope_mismatch");
       if (scope.some(submission => submission.evalContentOnly !== args.evalContentOnly)) throw new Error("evaluation_content_scope_mismatch");
     }
@@ -75,7 +78,7 @@ export const create = mutation({
     const rubric = await ctx.db.get(order.taskVersionId);
     if (!rubric || rubric.frozenAt === undefined || rubric.orderId !== order._id || rubric.organizationId !== order.organizationId) throw new Error("frozen_rubric_required");
     const metadata = await ctx.db.system.get(args.storageId);
-    if (!metadata || metadata.size <= 0 || metadata.size > 25 * 1024 * 1024) throw new Error("upload_size_invalid");
+    if (!metadata || metadata.size <= 0 || metadata.size > configNumber("SKARL_MEDIA_MAX_INPUT_BYTES")) throw new Error("upload_size_invalid");
     const uploadMime=(metadata.contentType ?? "").split(";")[0]!.trim().toLowerCase();
     if (!["video/mp4", "video/webm", "video/quicktime"].includes(uploadMime)) throw new Error("unsupported_upload_type");
     const uploadedHash = /^[a-f0-9]{64}$/.test(metadata.sha256) ? metadata.sha256 : [...atob(metadata.sha256)].map(char=>char.charCodeAt(0).toString(16).padStart(2,"0")).join("");
@@ -134,10 +137,10 @@ export const claim = internalMutation({
       rubric.organizationId !== job.organizationId || rubric._id !== submission.taskVersionId) throw new Error("job_reference_mismatch");
     if (submission.status === "accepted" || submission.currentAnalysisId) return null;
     const generation = job.leaseGeneration + 1;
-    await ctx.db.patch(job._id, { status: "leased", pipelineVersion: PIPELINE_VERSION, attempt: job.attempt + 1, leaseGeneration: generation, leaseExpiresAt: Date.now() + 5 * 60_000 });
+    await ctx.db.patch(job._id, { status: "leased", pipelineVersion: PIPELINE_VERSION, attempt: job.attempt + 1, leaseGeneration: generation, leaseExpiresAt: Date.now() + configNumber("SKARL_VERIFICATION_LEASE_MS") });
     await ctx.db.patch(submission._id, { status: "analysing", updatedAt: Date.now() });
     // Watchdog ensures interrupted actions eventually expose review, not a permanent spinner.
-    await ctx.scheduler.runAfter(5 * 60_000, internal.submissions.expire, { jobId: job._id, generation });
+    await ctx.scheduler.runAfter(configNumber("SKARL_VERIFICATION_LEASE_MS"), internal.submissions.expire, { jobId: job._id, generation });
     return { job: { ...job, pipelineVersion: PIPELINE_VERSION }, submission, rubric, asset, generation };
   },
 });
@@ -150,7 +153,7 @@ export const facts = internalMutation({
     const job = await ctx.db.get(args.jobId);
     if (!job || job.status !== "leased" || job.leaseGeneration !== args.generation || (job.leaseExpiresAt ?? 0) <= Date.now()) throw new Error("stale_analysis_attempt");
     const { submission } = await jobContributor(ctx, job);
-    if (!/^[a-f0-9]{64}$/.test(args.sourceHash) || !Number.isSafeInteger(args.durationMs) || args.durationMs < 0 || args.durationMs > 30_000) throw new Error("invalid_source_facts");
+    if (!/^[a-f0-9]{64}$/.test(args.sourceHash) || !Number.isSafeInteger(args.durationMs) || args.durationMs < 0 || args.durationMs > configNumber("SKARL_MEDIA_MAX_DURATION_MS")) throw new Error("invalid_source_facts");
     if (args.frameDHashes) validateFrameHashes(args.frameDHashes, args.durationMs || undefined);
     if (!submission?.originalAssetId) throw new Error("original_missing");
     const hashFacts = { ...(args.frameDHashes ? { frameDHashes: args.frameDHashes } : {}),
@@ -171,11 +174,11 @@ export const copies = internalQuery({
     // An explicit undefined index value excludes every scoped evaluation row from the ordinary pool.
     const candidates = await ctx.db.query("submissions").withIndex("by_eval_run", q =>
       q.eq("organizationId", submission.organizationId).eq("evalRunId", submission.evalRunId))
-      .filter(q => q.neq(q.field("simulationOnly"), true)).take(201);
+      .filter(q => q.neq(q.field("simulationOnly"), true)).take(configNumber("SKARL_DUPLICATE_CANDIDATE_LIMIT") + 1);
     if (submission.evalRunId !== undefined && candidates.some(candidate => !candidate.verificationOnly ||
       candidate.orderId !== submission.orderId || candidate.contributorTokenIdentifier !== submission.contributorTokenIdentifier ||
       candidate.evalVideoModel !== submission.evalVideoModel || candidate.evalContentOnly !== submission.evalContentOnly)) throw new Error("evaluation_scope_contaminated");
-    if (candidates.length > 200) return { status: "not_checked" as const, matches: [] };
+    if (candidates.length > configNumber("SKARL_DUPLICATE_CANDIDATE_LIMIT")) return { status: "not_checked" as const, matches: [] };
     const matches = [];
     for (const candidate of candidates) {
       if (candidate._id === submission._id || !candidate.currentAnalysisId) continue;
@@ -280,7 +283,7 @@ export async function completeFor(ctx: MutationCtx, args: Infer<typeof completeA
     const analysisId = await ctx.db.insert("analysisResults", { ...context, ...outcome });
     await ctx.db.patch(submission._id, { currentAnalysisId: analysisId, status: report.recommendation === "request_correction" ? "needs_correction" : "needs_review", updatedAt: Date.now() });
     await ctx.db.patch(job._id, { status: report.pipeline.status === "failed" ? "failed" : "completed", completedAt: Date.now(), ...(args.failureCode ? {lastErrorCode: args.failureCode} : {}) });
-    await audit(ctx, { organizationId: job.organizationId, eventKey: `analysed:${job._id}:${args.generation}`, actor: {kind:"service",identity:"gemini-verifier"},
+    await audit(ctx, { organizationId: job.organizationId, eventKey: `analysed:${job._id}:${args.generation}`, actor: {kind:"service",identity:verifierIdentity()},
       action: "analysis_stored", entityType: "submissions", entityId: submission._id, reason: context.summary, evidenceReferences: [analysisId] });
     if (!simulatedScenarioId && !submission.verificationOnly) await ctx.scheduler.runAfter(0, makeFunctionReference<"mutation", { submissionId: Id<"submissions"> }>("policy:evaluateSubmission"), { submissionId: submission._id });
     return analysisId;
@@ -357,7 +360,7 @@ export const evaluationRun = query({
     if (!order) throw new Error("order_not_found");
     requireTenant(principal, order);
     const submissions = await ctx.db.query("submissions").withIndex("by_eval_run", q =>
-      q.eq("organizationId", principal.organizationId).eq("evalRunId", args.evalRunId)).take(201);
+      q.eq("organizationId", principal.organizationId).eq("evalRunId", args.evalRunId)).take(configNumber("SKARL_DUPLICATE_CANDIDATE_LIMIT") + 1);
     if (submissions.some(submission => !submission.verificationOnly || submission.orderId !== args.orderId ||
       submission.contributorTokenIdentifier !== principal.tokenIdentifier ||
       submission.evalVideoModel !== submissions[0]?.evalVideoModel || submission.evalContentOnly !== submissions[0]?.evalContentOnly)) throw new Error("evaluation_scope_contaminated");

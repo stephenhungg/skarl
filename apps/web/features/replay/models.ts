@@ -1,3 +1,4 @@
+import { webConfig } from "../../lib/config";
 /** Browser-only advisory adapters. No payment, verdict, or acceptance APIs live here. */
 export type ModelInfo = { name: string; version: string; runtime: "browser-wasm" | "browser-webgpu" };
 export type Hand = { handedness: "Left" | "Right"; score: number; keypoints: [number, number, number][] };
@@ -15,15 +16,15 @@ export type SegmenterAdapter = {
   close(): void;
 };
 
-const MEDIAPIPE_VERSION = "1.1.1";
-const WASM_ROOT = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
-export const HAND_MODEL: ModelInfo = { name: "MediaPipe Hand Landmarker", version: "float16/1; tasks-vision@1.1.1", runtime: "browser-wasm" };
-export const OBJECT_MODEL: ModelInfo = { name: "MediaPipe EfficientDet-Lite0", version: "float32/1; tasks-vision@1.1.1", runtime: "browser-wasm" };
-export const SAM_REPOSITORY = "onnx-community/sam2.1-hiera-tiny-ONNX";
-export const SAM_REVISION = "814a066640debee5a91e70aa401fb8e17e030503";
-export const SEGMENT_MODEL: ModelInfo = { name: "SAM2.1 Hiera Tiny", version: `${SAM_REVISION}; transformers.js@4.3.1`, runtime: "browser-wasm" };
-export const HAND_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
-export const OBJECT_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float32/1/efficientdet_lite0.tflite";
+const MEDIAPIPE_VERSION = webConfig.mediapipeVersion;
+const WASM_ROOT = webConfig.mediapipeWasmRoot;
+export const HAND_MODEL: ModelInfo = { name: webConfig.handModelName, version: `${webConfig.handModelVersion}; tasks-vision@${MEDIAPIPE_VERSION}`, runtime: "browser-wasm" };
+export const OBJECT_MODEL: ModelInfo = { name: webConfig.objectModelName, version: `${webConfig.objectModelVersion}; tasks-vision@${MEDIAPIPE_VERSION}`, runtime: "browser-wasm" };
+export const SAM_REPOSITORY = webConfig.segmentModelRepository;
+export const SAM_REVISION = webConfig.segmentModelRevision;
+export const SEGMENT_MODEL: ModelInfo = { name: webConfig.segmentModelName, version: `${SAM_REVISION}; transformers.js@4.3.1`, runtime: "browser-wasm" };
+export const HAND_MODEL_URL = webConfig.handModelUrl;
+export const OBJECT_MODEL_URL = webConfig.objectModelUrl;
 
 /** v1 requires unit coordinates. MediaPipe's native signed wrist-relative z is encoded as clamp(z + .5). */
 export const HAND_DEPTH_ENCODING = "z = clamp(native wrist-relative z + 0.5, 0, 1); x/y = clamped image-normalized coordinates";
@@ -66,8 +67,8 @@ export async function loadHands(progress: ModelProgress = () => {}): Promise<Han
   progress("Starting hand landmarks in WASM");
   // MediaPipe's GPU delegate is WebGL, not WebGPU. WASM keeps runtime metadata truthful.
   const task = await HandLandmarker.createFromOptions(vision, {
-    baseOptions: { modelAssetBuffer, delegate: "CPU" }, runningMode: "VIDEO", numHands: 2,
-    minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+    baseOptions: { modelAssetBuffer, delegate: "CPU" }, runningMode: "VIDEO", numHands: webConfig.maxHands,
+    minHandDetectionConfidence: webConfig.handDetectionConfidence, minHandPresenceConfidence: webConfig.handPresenceConfidence, minTrackingConfidence: webConfig.handTrackingConfidence,
   });
   const clock = graphClock();
   progress("Hand landmarks ready", 100);
@@ -91,9 +92,9 @@ export async function loadObjects(progress: ModelProgress = () => {}): Promise<O
   const { FilesetResolver, ObjectDetector } = await import("@mediapipe/tasks-vision");
   const vision = await FilesetResolver.forVisionTasks(WASM_ROOT);
   const modelAssetBuffer = await modelBytes(OBJECT_MODEL_URL, progress, OBJECT_MODEL.name);
-  progress("Starting EfficientDet-Lite0 in WASM");
+  progress(`Starting ${OBJECT_MODEL.name} in WASM`);
   const task = await ObjectDetector.createFromOptions(vision, {
-    baseOptions: { modelAssetBuffer, delegate: "CPU" }, runningMode: "VIDEO", scoreThreshold: 0.4, maxResults: 15,
+    baseOptions: { modelAssetBuffer, delegate: "CPU" }, runningMode: "VIDEO", scoreThreshold: webConfig.objectScoreThreshold, maxResults: webConfig.objectMaxResults,
   });
   const clock = graphClock();
   progress("Object detection ready", 100);

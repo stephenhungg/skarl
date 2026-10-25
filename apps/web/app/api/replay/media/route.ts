@@ -1,3 +1,4 @@
+import { webConfig } from "../../../../lib/config";
 import { replayStorageUrl } from "@/features/replay/media-url";
 
 export const runtime = "nodejs";
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
     if (range && !/^bytes=\d*-\d*$/.test(range)) throw new Error("invalid_range");
     const upstream = await fetch(source, {
       headers: range ? { Range: range } : {}, redirect: "error", cache: "no-store",
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(webConfig.mediaFetchTimeoutMs),
     });
     const contentType = upstream.headers.get("content-type") ?? "";
     if (!upstream.ok || !upstream.body || !contentType.startsWith("video/")) throw new Error("media_unavailable");

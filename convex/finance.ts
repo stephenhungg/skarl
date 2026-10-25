@@ -1,3 +1,5 @@
+import { resolveTaskSpec } from "./lib/taskSpec";
+import { configNumber } from "./lib/config";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { workflow, controllerApproved } from "./approvalWorkflow";
@@ -66,8 +68,8 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
       q.eq("organizationId", submission.organizationId).eq("perceptualHash", submission.perceptualHash)).collect() : [];
     const frameCandidates = submission.frameDHashes?.length ? await ctx.db.query("submissions")
       .withIndex("by_org_status", q => q.eq("organizationId", submission.organizationId).eq("status", "accepted"))
-      .filter(q => q.neq(q.field("simulationOnly"), true)).take(201) : [];
-    if (frameCandidates.length > 200) return refuse(ctx, principal, submission, "acceptance", "copy_check_capacity_exceeded");
+      .filter(q => q.neq(q.field("simulationOnly"), true)).take(configNumber("SKARL_DUPLICATE_CANDIDATE_LIMIT") + 1) : [];
+    if (frameCandidates.length > configNumber("SKARL_DUPLICATE_CANDIDATE_LIMIT")) return refuse(ctx, principal, submission, "acceptance", "copy_check_capacity_exceeded");
     // Simulated replay obligations must never poison the real duplicate pool.
     const eligibleCandidates = [];
     for (const candidate of [...exact, ...perceptual, ...frameCandidates]) {
@@ -122,7 +124,7 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
         hasOrderAuthority(reviewer, order) && !reviewer.roles.includes("finance-agent") && !reviewer.roles.includes("contributor") &&
         reviewer.tokenIdentifier !== submission.contributorTokenIdentifier && reviewer.tokenIdentifier !== demoToken("finance-agent");
     }
-    const machineAccepted = analysis?.implementation === "inference" && analysis.pipelineStatus === "completed" && analysis.recommendation === "accept";
+    const machineAccepted = !!resolveTaskSpec(rubric) && analysis?.implementation === "inference" && analysis.pipelineStatus === "completed" && analysis.recommendation === "accept";
     if (!machineAccepted && !humanAccepted) return refuse(ctx, principal, submission, "acceptance", "acceptance_evidence_required");
     const original = submission.originalAssetId ? await ctx.db.get(submission.originalAssetId) : null;
     const consent = submission.consentRecordId ? await ctx.db.get(submission.consentRecordId) : null;
@@ -214,7 +216,7 @@ async function proposeAuthorizedPayment(ctx: MutationCtx, args: { payableId: Id<
     const paymentCommandId = await ctx.db.insert("paymentCommands", { ...binding, commandId: `payout:${payable._id}`,
       kind: "contributor_payout", requestedBy: actorFor(principal), bindingHash, status: "proposed", attemptCount: 0, leaseGeneration: 0, updatedAt: now });
     const intentId = await ctx.db.insert("paymentIntents", { ...binding, kind: "contributor_payout", intentId: `payout:${payable._id}`,
-      paymentCommandId, bindingHash, expiresAt: now + 60 * 60 * 1000, status: "proposed", updatedAt: now });
+      paymentCommandId, bindingHash, expiresAt: now + configNumber("SKARL_PAYMENT_APPROVAL_TTL_MS"), status: "proposed", updatedAt: now });
     const approvalWorkflowId = await workflow.start(ctx, internal.approvalWorkflow.awaitController, { intentId, bindingHash });
     await ctx.db.patch(intentId, { approvalWorkflowId });
     await audit(ctx, { organizationId: payable.organizationId, eventKey: `proposed:${payable._id}`, actor: actorFor(principal),

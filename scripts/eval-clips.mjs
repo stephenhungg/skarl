@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** Private real-clip evaluation. Labels stay local; no acceptance/payment APIs. */
+import { scriptConfig } from "./config.mjs";
 import { readFile, writeFile, stat, mkdir, rename } from "node:fs/promises";
 import { resolve, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,8 +17,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCORER = join(ROOT, "evals/evaluate.py");
 export const RUNNER_VERSION = "real-clips-v3-content-scope";
 export const COMPARISON_VIDEO_MODELS = EVALUATION_VIDEO_MODELS;
-// Compatibility default for the original frozen evaluation manifests. New tasks set criterionIds.
-export const CRITERIA = ["red-cup-pickup", "coaster-placement", "narration-alignment"];
 export const LICENSING_WARNING = "Verification-only development upload; no training license, dataset sale, or payable may be created.";
 const MIME = { ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime" };
 const sha = value => createHash("sha256").update(value).digest("hex");
@@ -27,7 +26,7 @@ export function canonical(value) {
     .sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(",")}}`;
   return JSON.stringify(value);
 }
-const sameIds = (values, expected = CRITERIA) => Array.isArray(values) && values.length === expected.length &&
+const sameIds = (values, expected) => Array.isArray(values) && values.length === expected.length &&
   new Set(values).size === values.length && expected.every(id => values.includes(id));
 const message = error => error instanceof Error ? error.message : String(error);
 
@@ -42,7 +41,7 @@ export async function preflightManifest(manifestPath, split = "test") {
   const raw = await readFile(path, "utf8"), manifest = JSON.parse(raw);
   if (manifest.syntheticMetadata !== false) throw new Error("real-clip evaluation requires syntheticMetadata:false");
   await python(["--manifest", path, "--check-manifest"]);
-  const criterionIds = manifest.criterionIds ?? CRITERIA;
+  const criterionIds = manifest.criterionIds ?? Object.keys(manifest.samples?.[0]?.expected?.criteria ?? {});
   if (!Array.isArray(criterionIds) || !criterionIds.length || criterionIds.length > 64 || new Set(criterionIds).size !== criterionIds.length || criterionIds.some(id => typeof id !== "string" || !id.trim())) throw new Error("invalid manifest criterionIds");
   const samples = manifest.samples.filter(sample => sample.split === split);
   if (samples.length < 1 || samples.length > 100) throw new Error("selected split must contain 1–100 cases");
@@ -64,7 +63,7 @@ export async function preflightManifest(manifestPath, split = "test") {
   return { path, raw, manifest, manifestSha256: sha(raw), split, criterionIds, cases };
 }
 
-export function validateStoredReport(response, item, run, rubricIds = run.rubric?.criteria?.map(criterion => criterion.criterionId) ?? CRITERIA) {
+export function validateStoredReport(response, item, run, rubricIds = run.rubric?.criteria?.map(criterion => criterion.criterionId) ?? run.criterionIds ?? []) {
   if (response.verificationOnly !== true || response.evalRunId !== run.evalRunId || response.evalVideoModel !== run.videoModel || !!response.evalContentOnly !== !!run.contentOnly) throw new Error("report evaluation scope mismatch");
   const evaluation = response.observations?.evaluation;
   if (evaluation?.evaluationOnly !== true || evaluation.projectionVersion !== (run.contentOnly ? CONTENT_EVALUATION_PROJECTION_VERSION : "prelicensing-advisory-v1") ||
@@ -184,9 +183,10 @@ async function resolveUrl() {
         const line = lines.find(line => line.startsWith(`${key}=`));
         if (line) { value = line.slice(key.length + 1).trim().replace(/^["']|["']$/g, ""); break; }
       }
-    } catch { /* Shared demo fallback does not require a local secret. */ }
+    } catch { /* A missing local file still requires an explicit deployment environment. */ }
   }
-  const url = new URL(value || "https://keen-marmot-986.convex.cloud");
+  if (!value) throw new Error("set CONVEX_URL or NEXT_PUBLIC_CONVEX_URL for the intended deployment");
+  const url = new URL(value);
   if (url.username || url.password || url.search || url.hash || url.pathname !== "/" ||
     !(url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)))) throw new Error("invalid Convex deployment URL");
   return url.origin;
@@ -289,7 +289,7 @@ export async function runEvaluation(options, injected = {}) {
     if (run.cloud.url && run.cloud.url !== url) throw new Error("resume backend URL differs");
     run.cloud.url = url; run.cloud.attempted = true; await save();
     const client = await (injected.createClient ?? defaultClient)(url);
-    const identity = { demoIdentity: "contributor" };
+    const identity = { demoIdentity: scriptConfig.contributorIdentity };
     const context = options.orderId ? { orderId: options.orderId } : await client.query("dashboard:demoContext", identity);
     if (!context?.orderId) throw new Error("seeded demo order required");
     const summary = await client.query("dashboard:orderSummary", { ...identity, orderId: context.orderId });

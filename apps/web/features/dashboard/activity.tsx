@@ -8,12 +8,8 @@ import { humanize, readableReason } from "./format";
 
 type StatusValue = "idle" | "queued" | "running" | "ok" | "warn" | "fail" | "waiting";
 
-const ACTOR: Record<string, string> = {
-  "demo:skarl:controller": "Buyer (legacy)", "demo:skarl:contributor": "Contributor", "demo:skarl:buyer": "Buyer",
-  "demo:skarl:finance-agent": "Finance agent", "finance-agent": "Finance agent", "gemini-verifier": "Gemini verifier",
-  "payments-gateway": "Payments", "policy-engine": "Buyer-signed policy", "service:skarl:policy-engine": "Buyer-signed policy", "verifier-01": "Verifier",
-};
-export const actorName = (identity: string) => ACTOR[identity] ?? humanize(identity.replace(/^demo:skarl:/, ""));
+import { knownActorName, unscopedActorName } from "../../lib/auth/identities";
+export const actorName = (identity: string) => knownActorName(identity) ?? humanize(unscopedActorName(identity));
 
 /** One event as a sentence and an outcome, the way an activity feed reads. */
 function describe(event: AuditEvent): { verb: string; outcome?: string; status: StatusValue } {

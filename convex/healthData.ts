@@ -1,12 +1,13 @@
+import { demoOrderPublicId, demoOrganizationKey } from "./lib/config";
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { healthCron, healthProbe, jiraHealth } from "./healthSchema";
 import { PAYMENT_NETWORK } from "../packages/contracts/src/chain";
 
 export const probeInputs = internalQuery({ args: {}, handler: async ctx => {
-  const org = await ctx.db.query("organizations").withIndex("by_demo_key", q => q.eq("demoKey", "skarl-demo-v1")).unique();
+  const org = await ctx.db.query("organizations").withIndex("by_demo_key", q => q.eq("demoKey", demoOrganizationKey())).unique();
   if (!org) return { treasury: null, bankAccountId: null };
-  const order = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
+  const order = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", demoOrderPublicId())).unique();
   const funding = order?.organizationId === org._id ? await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id))
     .filter(q => q.and(q.eq(q.field("network"), PAYMENT_NETWORK), q.neq(q.field("kind"), "contributor_payout"))).order("desc").first() : null;
   const bank = await ctx.db.query("bankAccounts").withIndex("by_owner", q => q.eq("organizationId", org._id).eq("owner", "treasury")).unique();

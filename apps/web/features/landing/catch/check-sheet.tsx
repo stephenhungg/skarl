@@ -10,10 +10,6 @@ import { useReducedMotionSafe } from "@/lib/use-reduced-motion";
 export type Verdict = "pass" | "fail" | "unclear";
 export type Row = { check: string; video: string; videoAt?: number; said: string; saidAt?: number; verdict: Verdict; note: string };
 
-const CHECKS: Record<string, string> = {
-  "red-cup-pickup": "Right object",
-  "placed-on-coaster": "Task completed",
-};
 
 const NOTE: Record<Verdict, string> = { pass: "Match", fail: "Mismatch", unclear: "Can't see" };
 
@@ -29,13 +25,12 @@ function overlaps(a: Evidence, b: Evidence) {
 export function rows(report: VerificationReport): Row[] {
   const allAudio = report.criteria.flatMap(c => c.evidence.filter(e => e.modality === "audio"));
   const out: Row[] = report.criteria
-    .filter(c => CHECKS[c.criterionId])
     .map(c => {
       const video = c.evidence.find(e => e.modality === "video");
       const audio = c.evidence.find(e => e.modality === "audio") ?? (video ? allAudio.find(a => overlaps(a, video)) : undefined);
       const verdict: Verdict = c.status === "supported" ? "pass" : c.status === "contradicted" ? "fail" : "unclear";
       return {
-        check: CHECKS[c.criterionId]!,
+        check: c.criterionId.replace(/[_-]/g, " "),
         video: video?.claim.replace(/\.$/, "") ?? "Nothing visible",
         videoAt: video?.startMs,
         said: audio ? stripNarration(audio.claim) : "Nothing said",

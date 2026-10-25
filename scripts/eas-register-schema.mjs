@@ -1,3 +1,4 @@
+import { scriptConfig } from "./config.mjs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { encodeFunctionData, zeroAddress, zeroHash } from "viem";
@@ -14,7 +15,7 @@ export async function registerSchema() {
   if (schema.uid === zeroHash) {
     const cdp = credentials();
     // Registration is a separate, narrowly scoped account. The attestor never gains registry permission.
-    const account = await cdp.evm.getOrCreateAccount({ name: "skarl-eas-registrar" });
+    const account = await cdp.evm.getOrCreateAccount({ name: scriptConfig.easRegistrarAccountName });
     const policy = strictContractPolicy(SCHEMA_REGISTRY_ADDRESS, REGISTRY_ABI, ["register"], "Skarl EAS Base Sepolia schema registration");
     const policyId = await applyAccountPolicy(cdp, account, policy);
     const transaction = { to: SCHEMA_REGISTRY_ADDRESS, value: 0n, data: encodeFunctionData({ abi: REGISTRY_ABI,

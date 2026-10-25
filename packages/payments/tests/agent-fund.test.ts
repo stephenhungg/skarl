@@ -64,6 +64,18 @@ afterEach(() => { process.exitCode = 0; vi.restoreAllMocks(); vi.unstubAllGlobal
 afterAll(() => { rmSync(mocks.home, { force: true, recursive: true }); });
 
 describe("buyer funding prerequisites", () => {
+  it("requires an explicit or configured order before network access or signing", async () => {
+    vi.stubEnv("SKARL_ORDER_ID", undefined);
+    await expect(fundOrder([])).rejects.toThrow("Usage:");
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    expect(mocks.getChainId).not.toHaveBeenCalled();
+  });
+  it("uses the configured order without inventing a demo default", async () => {
+    vi.stubEnv("SKARL_ORDER_ID", ORDER);
+    mocks.fetch.mockResolvedValue(Response.json({ fundingStatus: "confirmed" }));
+    await fundOrder([]);
+    expect(mocks.fetch.mock.calls[0]![0].toString()).toContain(`/api/orders/${ORDER}/fund`);
+  });
   it.each([
     { flags: [], expected: { enabled: true, maxPerClipAtomic: "1000000", requireAllChecks: true } },
     { flags: ["--no-auto-pay", "--auto-pay-cap", "500000"], expected: { enabled: false, maxPerClipAtomic: "500000", requireAllChecks: true } },
@@ -87,8 +99,8 @@ describe("buyer funding prerequisites", () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
-  it("defaults to v2 and signs 10 USDC with 20 USDC and zero buyer ETH without reading ETH", async () => {
-    await fundOrder([]);
+  it("signs the explicit order quote for 10 USDC with 20 USDC and zero buyer ETH without reading ETH", async () => {
+    await fundOrder([ORDER]);
     expect(mocks.fetch).toHaveBeenCalledTimes(3);
     expect(mocks.getBalance).not.toHaveBeenCalled();
     expect(mocks.readContract).toHaveBeenCalledWith(expect.objectContaining({ address: USDC_ADDRESS, functionName: "balanceOf" }));
@@ -97,7 +109,7 @@ describe("buyer funding prerequisites", () => {
 
   it("still refuses insufficient USDC before signing or posting", async () => {
     mocks.readContract.mockResolvedValue(9_999_999n);
-    await fundOrder([]);
+    await fundOrder([ORDER]);
     expect(process.exitCode).toBe(2);
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
     expect(mocks.getBalance).not.toHaveBeenCalled();
@@ -106,7 +118,7 @@ describe("buyer funding prerequisites", () => {
 
   it("explains missing server treasury configuration before RPC, signing or posting", async () => {
     mocks.fetch.mockResolvedValue(treasuryError());
-    await expect(fundOrder([])).rejects.toThrow("Set SKARL_TREASURY_ADDRESS in the web server environment to the treasury wallet receiving address before funding.");
+    await expect(fundOrder([ORDER])).rejects.toThrow("Set SKARL_TREASURY_ADDRESS in the web server environment to the treasury wallet receiving address before funding.");
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
     expect(mocks.getChainId).not.toHaveBeenCalled();
     expect(existsSync(savedPath)).toBe(false);
@@ -114,14 +126,14 @@ describe("buyer funding prerequisites", () => {
 
   it("also explains a quote missing its receiving address", async () => {
     mocks.fetch.mockResolvedValue(Response.json({ ...quote, recipientAddress: "" }));
-    await expect(fundOrder([])).rejects.toThrow("Set SKARL_TREASURY_ADDRESS");
+    await expect(fundOrder([ORDER])).rejects.toThrow("Set SKARL_TREASURY_ADDRESS");
     expect(mocks.getChainId).not.toHaveBeenCalled();
     expect(existsSync(savedPath)).toBe(false);
   });
 
   it("preserves configuration guidance if the treasury is unset between GET and unsigned POST", async () => {
     mocks.fetch.mockResolvedValueOnce(Response.json(quote)).mockResolvedValueOnce(treasuryError());
-    await expect(fundOrder([])).rejects.toThrow("Set SKARL_TREASURY_ADDRESS");
+    await expect(fundOrder([ORDER])).rejects.toThrow("Set SKARL_TREASURY_ADDRESS");
     expect(existsSync(savedPath)).toBe(false);
   });
 });

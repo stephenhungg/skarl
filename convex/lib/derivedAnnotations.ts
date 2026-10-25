@@ -1,6 +1,7 @@
+import { configNumber } from "./config.ts";
 /** Browser-computed, untrusted model evidence. Structural validation is not verification of a model run. */
-export const MAX_ANNOTATION_BYTES = 5 * 1024 * 1024;
-export const MAX_ANNOTATION_FRAMES = 2000;
+export const MAX_ANNOTATION_BYTES = configNumber("SKARL_DERIVEDANNOTATIONS_MAX_ANNOTATION_BYTES");
+export const MAX_ANNOTATION_FRAMES = configNumber("SKARL_DERIVEDANNOTATIONS_MAX_ANNOTATION_FRAMES");
 export type AnnotationKind = "hands" | "objects" | "masks";
 type Point = [number, number];
 type Box = [number, number, number, number];
@@ -107,11 +108,6 @@ export function frameHasObjectInHand(frame: AnnotationFrame, detectorClass: stri
     (frame.hands ?? []).some(hand => hand.score > 0 && hand.keypoints.some(([px, py]) => px >= x && px <= x + w && py >= y && py <= y + h))
   ));
 }
-/** Compatibility summary for old cup-only annotation records. */
-export function frameHasCupInHand(frame: AnnotationFrame): boolean {
-  return frameHasObjectInHand({ ...frame, objects: frame.objects?.map(item =>
-    /^(?:red[ _-]?)?cup$/i.test(item.label.trim()) ? { ...item, label: "cup" } : item) }, "cup");
-}
 export function summarizeAnnotations(file: AnnotationFile, detectorClass?: string | null) {
   const common = { kind: file.kind, frames: file.frames.length, durationMs: file.frames.at(-1)?.tMs ?? 0 };
   if (file.kind === "hands") return { ...common,
@@ -120,7 +116,7 @@ export function summarizeAnnotations(file: AnnotationFile, detectorClass?: strin
   if (file.kind === "objects") {
     const counts = new Map<string, number>();
     for (const frame of file.frames) for (const item of frame.objects ?? []) counts.set(item.label, (counts.get(item.label) ?? 0) + 1);
-    return { ...common, objectLabels: Object.fromEntries(counts), cupInHandFrames: file.frames.filter(frameHasCupInHand).length,
+    return { ...common, objectLabels: Object.fromEntries(counts),
       ...(detectorClass === undefined ? {} : { objectInHandFrames: detectorClass ? file.frames.filter(frame => frameHasObjectInHand(frame, detectorClass)).length : 0 }) };
   }
   return { ...common, masks: file.frames.reduce((sum, frame) => sum + (frame.masks?.length ?? 0), 0) };

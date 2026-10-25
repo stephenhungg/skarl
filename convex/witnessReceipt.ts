@@ -1,3 +1,4 @@
+import { demoToken } from "./lib/demoAuth";
 import { resolveTaskSpec, detectorClassForObject } from "./lib/taskSpec";
 import { v } from "convex/values";
 import { query, type QueryCtx } from "./_generated/server";
@@ -149,7 +150,7 @@ async function detectorWitness(ctx: QueryCtx, submission: Doc<"submissions">, an
   const spec = rubric ? resolveTaskSpec(rubric) : undefined;
   const detectorClass = spec ? detectorClassForObject(spec.object) : null;
   if (detectorClass === null) return witness("detector", "Object detector (advisory, client-computed)", "work", "not_applicable",
-    `No faithful detector class exists for ${spec?.object ?? "the unresolved task object"}; no cup/bottle approximation is used.`);
+    `No faithful detector class exists for ${spec?.object ?? "the unresolved task object"}; no approximate object mapping is used.`);
   const pickupCriterionId = rubric?.criteria.find(criterion => criterion.modality === "visual" && criterion.description === spec?.steps[0])?.criterionId;
   const runs = await ctx.db.query("derivedAnnotations").withIndex("by_submission", q => q.eq("submissionId", submission._id)).collect();
   if (runs.some(run => run.organizationId !== submission.organizationId)) throw new Error("annotation_reference_mismatch");
@@ -160,9 +161,10 @@ async function detectorWitness(ctx: QueryCtx, submission: Doc<"submissions">, an
   // These timestamps are recomputed from validated uploaded frames by saveDerived,
   // not accepted from a client summary. A clip-wide count cannot establish overlap.
   const scoped = run.taskObject === spec?.object && run.detectorClass === detectorClass;
-  const legacyCup = detectorClass === "cup" && run.taskObject === undefined && run.detectorClass === undefined;
-  const timestamps = scoped ? run.objectInHandTimestampsMs ?? [] : legacyCup ? run.cupInHandTimestampsMs ?? [] : [];
-  const overlapFrames = scoped ? run.summary.objectInHandFrames ?? 0 : legacyCup ? run.summary.cupInHandFrames ?? 0 : 0;
+  if (!scoped) return absent("detector", "Object detector (advisory, client-computed)", "work",
+    "The stored objects run lacks a matching frozen task object and detector class; historical unscoped overlap cannot corroborate this task.");
+  const timestamps = run.objectInHandTimestampsMs ?? [];
+  const overlapFrames = run.summary.objectInHandFrames ?? 0;
   const matching = timestamps.filter(tMs => Number.isFinite(tMs) && tMs >= 0 && intervals.length > 0 &&
     intervals.every(windows => windows.some(interval => tMs >= interval.startMs && tMs <= interval.endMs)));
   const agrees = overlapFrames > 0 && matching.length > 0;
@@ -329,12 +331,12 @@ export const forSubmission = query({
     if (!intents.length) witnesses.push(absent("bank_witness", BANK_WITNESS_LABEL, "money", "No related payout intent to compare with simulated bank activity."));
     const events = (await Promise.all(auditEntities.map(entity => ctx.db.query("auditEvents").withIndex("by_entity", q =>
       q.eq("organizationId", order.organizationId).eq("entityType", entity.type).eq("entityId", entity.id)).collect()))).flat()
-      .filter(event => event.actor.identity === "demo:skarl:finance-agent" &&
+      .filter(event => event.actor.identity === demoToken("finance-agent") &&
         ["payment_proposed", "payment_proposal_refused", "payment_approval_refused", "independent_approval_requested"].includes(event.action));
     events.sort((a, b) => a.occurredAt - b.occurredAt || a._id.localeCompare(b._id));
     for (const event of events) witnesses.push(witness(`finance:${event._id}`, "Finance-agent proposal / refusal", "judgment",
       event.action.endsWith("_refused") ? "disagree" : "pending", `${event.action}: ${event.reason.slice(0, 1000)}. A proposal is not independent approval or settlement.`));
-    const proposals = intents.filter(intent => intent.kind === "contributor_payout" && intent.requesterTokenIdentifier === "demo:skarl:finance-agent");
+    const proposals = intents.filter(intent => intent.kind === "contributor_payout" && intent.requesterTokenIdentifier === demoToken("finance-agent"));
     for (const intent of proposals) {
       if (events.some(event => event.action === "payment_proposed" && event.entityId === intent._id)) continue;
       witnesses.push(witness(`finance:proposal:${intent._id}`, "Finance-agent payout proposal", "judgment", "pending",

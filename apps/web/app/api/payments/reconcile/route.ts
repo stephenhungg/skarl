@@ -1,3 +1,5 @@
+import { webConfig } from "../../../../lib/config";
+import { DEMO_BUYER } from "../../../../lib/auth/identities";
 import { authenticateConvexRequest } from "../../../../lib/auth/server";
 import { type NextRequest } from "next/server";
 import { api, paymentError, paymentJson, paymentService } from "../../../../lib/payments/server";
@@ -16,7 +18,7 @@ export async function POST(request: NextRequest) {
     const { db, serviceSecret } = paymentService();
     await authenticateConvexRequest(db, request);
     const { order, intent, attempt } = await db.query(api.payments.fundingStatus, { serviceSecret, orderId: body.orderId,
-      demoIdentity: body.demoIdentity || "buyer" });
+      demoIdentity: body.demoIdentity || DEMO_BUYER });
     if (!intent || !attempt || !attempt.authorizationNonce) return paymentJson({ error: "funding_attempt_required" }, 409);
     if (intent.status === "confirmed") return paymentJson({ fundingStatus: "confirmed", network: intent.network, txHash: attempt.txHash,
       explorerUrl: attempt.txHash ? paymentRail(intent.network).explorerTx(attempt.txHash) : null });
@@ -26,10 +28,10 @@ export async function POST(request: NextRequest) {
       // Bound public RPC work to the recent ~5.5 hours; older attempts need an explicit explorer hash.
       const client = publicClient();
       const head = await client.getBlockNumber();
-      const lookback = 10_000n;
+      const lookback = webConfig.reconcileLookbackBlocks;
       const floor = head > lookback ? head - lookback : 0n;
       for (let end = head; end >= floor;) {
-        const start = end - 999n > floor ? end - 999n : floor;
+        const start = end - webConfig.reconcileChunkBlocks + 1n > floor ? end - webConfig.reconcileChunkBlocks + 1n : floor;
         const logs = await client.getLogs({ address: USDC_ADDRESS, event: usdcEvents[1],
           args: { authorizer: intent.buyerWalletAddress as Address, nonce: attempt.authorizationNonce as Hash }, fromBlock: start, toBlock: end });
         if (logs.length) { txHash = logs[0]!.transactionHash; break; }

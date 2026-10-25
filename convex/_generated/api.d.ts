@@ -85,6 +85,8 @@ import type * as sensorTraceValidators from "../sensorTraceValidators.js";
 import type * as sensorTraces from "../sensorTraces.js";
 import type * as statements from "../statements.js";
 import type * as submissions from "../submissions.js";
+import type * as taskSpecExtraction from "../taskSpecExtraction.js";
+import type * as taskSpecMigration from "../taskSpecMigration.js";
 import type * as tax from "../tax.js";
 import type * as validators from "../validators.js";
 import type * as verify from "../verify.js";
@@ -174,6 +176,8 @@ declare const fullApi: ApiFromModules<{
   sensorTraces: typeof sensorTraces;
   statements: typeof statements;
   submissions: typeof submissions;
+  taskSpecExtraction: typeof taskSpecExtraction;
+  taskSpecMigration: typeof taskSpecMigration;
   tax: typeof tax;
   validators: typeof validators;
   verify: typeof verify;

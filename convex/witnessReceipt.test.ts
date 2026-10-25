@@ -1,3 +1,4 @@
+import { seedWithTaskSpecs } from "./fixtures/seedWithTaskSpecs";
 import { convexTest } from "convex-test";
 import { makeFunctionReference } from "convex/server";
 import { describe, expect, it } from "vitest";
@@ -5,7 +6,7 @@ import { internal } from "./_generated/api";
 import schema from "./schema";
 import { canonical, digest, recordJournal } from "./lib/finance";
 import { createFulfillmentJournal, createFundingJournal } from "../packages/ledger/src/index";
-import { CAN_TO_HAT_TASK_SPEC } from "./lib/taskSpec";
+import { CAN_TO_HAT_TASK_SPEC, fixtureTaskSpecFields } from "./fixtures/taskSpecs";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 
 // Synthetic stored evidence only: no inference, bank request, or chain transaction occurs here.
@@ -21,7 +22,7 @@ const witness = (result: Receipt, key: string) => {
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const seeded = await t.mutation(internal.seed.demo, {});
+  const seeded = await seedWithTaskSpecs(t);
   const ids = await t.run(async ctx => {
     const submissionId = await ctx.db.insert("submissions", {
       organizationId: seeded.organizationId, orderId: seeded.orderId, taskVersionId: seeded.taskVersionId,
@@ -74,13 +75,13 @@ async function detectorFixture(times: number[] | null, intervals = [[1000, 3000]
   return f;
 }
 
-async function storeDetectorRun(f: Fixture, times: number[], createdAt = Date.now(), cupInHandFrames = times.length) {
+async function storeDetectorRun(f: Fixture, times: number[], createdAt = Date.now(), objectInHandFrames = times.length) {
   return f.t.run(async ctx => {
     const storageId = await ctx.storage.store(new Blob([canonical({ synthetic: true })], { type: "application/json" }));
     return ctx.db.insert("derivedAnnotations", { submissionId: f.submissionId, organizationId: f.organizationId,
       kind: "objects", model: { name: "Synthetic object detector", version: "fixture-v1", runtime: "browser-wasm" },
-      storageId, summary: { kind: "objects", frames: 10, durationMs: 5000, cupInHandFrames },
-      cupInHandTimestampsMs: times, createdBy: "demo:skarl:contributor", createdAt, advisory: true });
+      storageId, summary: { kind: "objects", frames: 10, durationMs: 5000, objectInHandFrames },
+      taskObject: "red_cup", detectorClass: "cup", objectInHandTimestampsMs: times, createdBy: "demo:skarl:contributor", createdAt, advisory: true });
   });
 }
 
@@ -149,7 +150,7 @@ describe("witness receipt: every claim preserves its independent evidence", () =
     await f.t.run(async ctx => {
       const spec = { object: "bottle", distractors: [], target: "hat", steps: ["Pick up the bottle", "Place the bottle beside the hat"] };
       await ctx.db.patch(f.orderId, { taskSpec: spec });
-      await ctx.db.patch(f.taskVersionId, { taskSpec: spec, criteria: [
+      await ctx.db.patch(f.taskVersionId, { ...fixtureTaskSpecFields(spec, (await ctx.db.get(f.taskVersionId))!.contentHash), criteria: [
         { criterionId: "bottle-pickup", description: spec.steps[0]!, modality: "visual" },
         { criterionId: "hat-placement", description: spec.steps[1]!, modality: "temporal" },
       ] });
@@ -168,7 +169,7 @@ describe("witness receipt: every claim preserves its independent evidence", () =
     const f = await detectorFixture(times);
     await f.t.run(async ctx => {
       await ctx.db.patch(f.orderId, { taskSpec: CAN_TO_HAT_TASK_SPEC });
-      await ctx.db.patch(f.taskVersionId, { taskSpec: CAN_TO_HAT_TASK_SPEC, criteria: [
+      await ctx.db.patch(f.taskVersionId, { ...fixtureTaskSpecFields(CAN_TO_HAT_TASK_SPEC, (await ctx.db.get(f.taskVersionId))!.contentHash), criteria: [
         { criterionId: "can-pickup", description: "Pick up the can", modality: "visual" },
         { criterionId: "hat-placement", description: "Place the can closer to the hat that is next to the lamp", modality: "temporal" },
         { criterionId: "narration-alignment", description: "Narrate each action accurately", modality: "cross_modal" },
@@ -178,6 +179,16 @@ describe("witness receipt: every claim preserves its independent evidence", () =
     expect(witness(result, "detector")).toMatchObject({ status: "not_applicable", live: false, evidenceUrl: null });
     expect(witness(result, "detector").detail).toContain("can");
     expect(result.recommendation).toBe("accept"); // Stored fixture unchanged; this witness has no verdict authority.
+  });
+
+  it("never borrows unscoped historical cup overlap as task-specific corroboration", async () => {
+    const f = await detectorFixture([2000]);
+    await f.t.run(async ctx => {
+      const run = (await ctx.db.query("derivedAnnotations").withIndex("by_submission", q => q.eq("submissionId", f.submissionId)).first())!;
+      await ctx.db.patch(run._id, { taskObject: undefined, detectorClass: undefined, objectInHandTimestampsMs: undefined,
+        cupInHandTimestampsMs: [2000], summary: { kind: "objects", frames: 10, durationMs: 5000, cupInHandFrames: 1 } });
+    });
+    expect(witness(await read(f), "detector")).toMatchObject({ status: "missing", live: false });
   });
 
   it("reports a missing advisory detector witness when no objects run exists", async () => {

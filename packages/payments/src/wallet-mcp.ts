@@ -1,3 +1,4 @@
+import { paymentConfig } from "./config.ts";
 import { PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK, USDC_ADDRESS, USDC_DECIMALS } from "@skarl/contracts/chain";
 import { parseAtomicUsdc } from "@skarl/contracts";
 
@@ -80,7 +81,7 @@ export function prepareWalletMcpFunding(input: WalletMcpFundingPreparation): Ret
   const quote = quotes[0], extra = quote.extra;
   if (quote.scheme !== "exact" || typeof quote.asset !== "string" || quote.asset.toLowerCase() !== USDC_ADDRESS.toLowerCase() ||
     fundingAddress(quote.payTo) !== payTo || fundingAmount(quote.amount) !== amount ||
-    typeof quote.maxTimeoutSeconds !== "number" || !Number.isSafeInteger(quote.maxTimeoutSeconds) || quote.maxTimeoutSeconds < 1 || quote.maxTimeoutSeconds > 300 ||
+    typeof quote.maxTimeoutSeconds !== "number" || !Number.isSafeInteger(quote.maxTimeoutSeconds) || quote.maxTimeoutSeconds < 1 || quote.maxTimeoutSeconds > paymentConfig.fundingMaxTimeoutSeconds ||
     !record(extra) || extra.name !== "USDC" || extra.version !== "2" || extra.assetTransferMethod !== "eip3009" ||
     Object.keys(extra).some(key => !["name", "version", "assetTransferMethod"].includes(key))) throw new Error("funding_quote_binding_mismatch");
   // Tighten to the approved stored budget even when the human's cap has spare room.

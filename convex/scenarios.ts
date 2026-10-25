@@ -1,3 +1,4 @@
+import { demoOrderPublicId, demoOrganizationKey } from "./lib/config";
 import { resolveTaskSpec } from "./lib/taskSpec";
 import { v } from "convex/values";
 import { action, internalMutation, internalQuery, query, type MutationCtx, type QueryCtx } from "./_generated/server";
@@ -48,7 +49,7 @@ async function scenarioPrincipal(ctx: Pick<QueryCtx | MutationCtx, "db">) {
   if (!principal || principal.status !== "active" || !principal.roles.includes("buyer") ||
     isFinanceAgent(principal) || isPolicyEngine(principal) || principal.roles.includes("contributor")) throw new Error("inactive_scenario_operator");
   const organization = await ctx.db.get(principal.organizationId);
-  if (!organization || organization.status !== "active" || organization.demoKey !== "skarl-demo-v1") throw new Error("inactive_organization");
+  if (!organization || organization.status !== "active" || organization.demoKey !== demoOrganizationKey()) throw new Error("inactive_organization");
   return principal;
 }
 async function load(ctx: QueryCtx | MutationCtx, runId: Id<"auditEvents">) {
@@ -63,7 +64,7 @@ async function load(ctx: QueryCtx | MutationCtx, runId: Id<"auditEvents">) {
 export const prepare = internalMutation({ args: { ...runArgs, scenarioId: v.string() }, handler: async (ctx, args) => {
   const principal = await requireDemoOrganizationAuthority(ctx, args.demoIdentity);
   const source = args.orderId ? await ctx.db.get(args.orderId) : await ctx.db.query("orders")
-    .withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
+    .withIndex("by_public_id", q => q.eq("publicId", demoOrderPublicId())).unique();
   if (!source) throw new Error("demo_order_required");
   requireBuyerOrder(principal, source);
   if (source.publicId.startsWith("scenario:")) throw new Error("choose_a_source_order_not_a_lab_order");

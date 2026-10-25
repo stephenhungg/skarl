@@ -1,3 +1,4 @@
+import { configNumber } from "./lib/config";
 import { makeFunctionReference, type ApiFromModules } from "convex/server";
 import { v } from "convex/values";
 import { internalAction, internalMutation, internalQuery, query, type QueryCtx } from "./_generated/server";
@@ -12,7 +13,7 @@ import { validateTransfer, type ReconciliationException } from "../packages/paym
 import { PAYMENT_CHAIN_ID } from "../packages/contracts/src/chain";
 
 export const BANK_LABEL = BANK_WITNESS_LABEL;
-export const BANK_FRESH_MS = 5 * 60_000;
+export const BANK_FRESH_MS = configNumber("SKARL_BANK_FRESH_MS");
 const scope = { demoIdentity: v.string(), orderId: v.id("orders") };
 type Scope = { demoIdentity: string; orderId: Id<"orders"> };
 type Client = ReturnType<typeof createNessieClient>;

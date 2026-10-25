@@ -1,3 +1,4 @@
+import { demoToken } from "./lib/demoAuth";
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -39,12 +40,12 @@ async function bound(ctx: QueryCtx | MutationCtx, id: Id<"paymentCommands">, mem
   if (amountAtomic <= 0n || command.amountAtomic !== amountAtomic || command.sourceVersion !== sourceVersion ||
     command.recipientAddress !== normalizeAddress(intent.buyerWalletAddress) || command.network !== PAYMENT_NETWORK || command.tokenAddress !== USDC_ADDRESS ||
     command.payableId !== undefined ||
-    ![order.buyerTokenIdentifier, "demo:skarl:finance-agent"].includes(command.requesterTokenIdentifier) ||
-    (command.requesterTokenIdentifier === "demo:skarl:finance-agent" && (command.requestedBy.kind !== "service" || proposal.actor.kind !== "service")) ||
+    ![order.buyerTokenIdentifier, demoToken("finance-agent")].includes(command.requesterTokenIdentifier) ||
+    (command.requesterTokenIdentifier === demoToken("finance-agent") && (command.requestedBy.kind !== "service" || proposal.actor.kind !== "service")) ||
     command.requestedBy.identity !== command.requesterTokenIdentifier || command.bindingHash !== paymentBinding(command)) {
     throw new Error("refund_source_changed");
   }
-  if (command.requesterTokenIdentifier === "demo:skarl:finance-agent") {
+  if (command.requesterTokenIdentifier === demoToken("finance-agent")) {
     const cancellation = await ctx.db.query("auditEvents").withIndex("by_event_key", q =>
       q.eq("organizationId", command.organizationId).eq("eventKey", `cancellation_requested:${order._id}`)).unique();
     if (proposal.actor.kind !== "service" || proposal.actor.identity !== command.requesterTokenIdentifier ||

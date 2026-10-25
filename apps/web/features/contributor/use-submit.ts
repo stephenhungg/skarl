@@ -1,4 +1,5 @@
 "use client";
+import { webConfig } from "../../lib/config";
 import { useConvex } from "convex/react";
 import { useCallback, useRef, useState } from "react";
 import { DEMO_IDENTITY, refs, type CreateSubmissionResult } from "./api";
@@ -16,7 +17,7 @@ export type SubmitState =
   | { phase: "error"; kind: SubmitErrorKind; retryable: boolean; detail?: string; sha256?: string; uncertainCreate?: boolean };
 
 // Convex upload POSTs time out after two minutes server side.
-const UPLOAD_TIMEOUT_MS = 120_000;
+const UPLOAD_TIMEOUT_MS = webConfig.uploadTimeoutMs;
 
 function uploadWithProgress(url: string, blob: Blob, onProgress: (fraction: number) => void) {
   return new Promise<string>((resolve, reject) => {
@@ -41,7 +42,7 @@ function uploadWithProgress(url: string, blob: Blob, onProgress: (fraction: numb
       }
     };
     xhr.onerror = () => reject(Object.assign(new Error("Network error during upload"), { kind: navigator.onLine ? "upload_failed" : "offline" }));
-    xhr.ontimeout = () => reject(Object.assign(new Error("Upload took longer than two minutes"), { kind: "upload_timeout" }));
+    xhr.ontimeout = () => reject(Object.assign(new Error(`Upload took longer than ${UPLOAD_TIMEOUT_MS / 1000} seconds`), { kind: "upload_timeout" }));
     xhr.send(blob);
   });
 }

@@ -1,3 +1,4 @@
+import { webConfig } from "../../../lib/config";
 import { ConvexHttpClient } from "convex/browser";
 import { PAYMENT_NETWORK } from "@skarl/contracts/chain";
 import { api } from "../../../../../convex/_generated/api";
@@ -17,7 +18,7 @@ export async function GET() {
       backend = await Promise.race([
         new ConvexHttpClient(url).query(api.health.status, {}),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("health_timeout")), 5_000);
+          timer = setTimeout(() => reject(new Error("health_timeout")), webConfig.healthTimeoutMs);
         }),
       ]);
     } catch {

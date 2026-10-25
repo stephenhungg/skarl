@@ -1,8 +1,8 @@
-export const MIN_SECONDS = 10;
-export const MAX_SECONDS = 30;
-/** Application cap from docs/deployment.md: 30 s, 720p, 25 MB. */
-export const MAX_BYTES = 25 * 1024 * 1024;
-export const VIDEO_BITS_PER_SECOND = 2_500_000;
+import { webConfig } from "../../lib/config";
+export const MIN_SECONDS = webConfig.captureMinSeconds;
+export const MAX_SECONDS = webConfig.captureMaxSeconds;
+export const MAX_BYTES = webConfig.captureMaxBytes;
+export const VIDEO_BITS_PER_SECOND = webConfig.captureVideoBitsPerSecond;
 
 // Prefer H.264 in MP4 (Safari and recent Chromium), then WebM. The recorder's actual mimeType is what we persist.
 const CANDIDATES = [
@@ -63,7 +63,7 @@ export const MEDIA_ERROR_COPY: Record<MediaErrorKind, { title: string; body: str
     body: "The browser's recorder reported an error, so retake the clip.",
   },
   too_large: {
-    title: "Clip is over 25 MB",
+    title: `Clip is over ${formatBytes(MAX_BYTES)}`,
     body: "Retake it. Shorter clips or a steadier scene keep the file under the cap.",
   },
   unknown: {

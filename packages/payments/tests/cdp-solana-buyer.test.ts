@@ -98,21 +98,21 @@ describe("Solana funding buyer boundaries (simulated CDP signer, no chain settle
     expect(mocks.signer).toHaveBeenCalledTimes(1);
     expect(mocks.faucet).not.toHaveBeenCalled();
     expect(mocks.parser).toHaveBeenCalledWith({ transaction: "simulated-not-a-transaction" }, { treasuryAddress: TREASURY, amountAtomic: amount, orderId: CANONICAL });
-    await fundOrderWithSolana([]);
+    await fundOrderWithSolana([ORDER]);
     expect(mocks.signer).toHaveBeenCalledTimes(1);
     expect(mocks.fetch.mock.calls.some(([input]) => String(input).endsWith("/reconcile"))).toBe(true);
   });
   it("never dispatches a payment rejected by local payload validation", async () => {
     mocks.parser.mockRejectedValue(new Error("wrong destination ATA"));
-    await expect(fundOrderWithSolana([])).rejects.toThrow(/saved privately/);
+    await expect(fundOrderWithSolana([ORDER])).rejects.toThrow(/saved privately/);
     expect(mocks.fetch).toHaveBeenCalledTimes(2);
     expect(existsSync(solanaAttemptPath(RESOURCE))).toBe(true);
-    await fundOrderWithSolana([]);
+    await fundOrderWithSolana([ORDER]);
     expect(mocks.signer).toHaveBeenCalledTimes(1);
   });
   it("preserves case-sensitive spend reservations and enforces the cap after restart", async () => {
     vi.stubEnv("SKARL_CDP_MAX_CUMULATIVE_ATOMIC", amount.toString());
-    await fundOrderWithSolana([]);
+    await fundOrderWithSolana([ORDER]);
     const store = new SolanaFileSpendStore(join(directory, "cdp-solana-spend.jsonl"));
     expect(await store.load()).toMatchObject([{ atomicAmount: amount, asset: SOLANA_USDC_MINT, payTo: TREASURY }]);
     const signer = vi.fn();
@@ -123,9 +123,9 @@ describe("Solana funding buyer boundaries (simulated CDP signer, no chain settle
   });
   it("retains uncertain reservations when signing fails", async () => {
     mocks.signer.mockRejectedValue(new Error("ambiguous transport"));
-    await expect(fundOrderWithSolana([])).rejects.toThrow(/saved privately/);
+    await expect(fundOrderWithSolana([ORDER])).rejects.toThrow(/saved privately/);
     expect(await new SolanaFileSpendStore(join(directory, "cdp-solana-spend.jsonl")).load()).toHaveLength(1);
-    await fundOrderWithSolana([]);
+    await fundOrderWithSolana([ORDER]);
     expect(mocks.signer).toHaveBeenCalledTimes(1);
   });
   it("finalizes each faucet transaction before the next claim and requests no SOL", async () => {
@@ -142,7 +142,7 @@ describe("Solana funding buyer boundaries (simulated CDP signer, no chain settle
       events.push(`finalized:${signature}`);
       return { value: [{ err: null, confirmationStatus: "finalized" }] };
     });
-    await fundOrderWithSolana([]);
+    await fundOrderWithSolana([ORDER]);
     expect(events).toEqual([`claim:${"2".repeat(88)}`, `finalized:${"2".repeat(88)}`, `claim:${"3".repeat(88)}`, `finalized:${"3".repeat(88)}`]);
     expect(mocks.faucet.mock.calls[0]![0].idempotencyKey).not.toBe(mocks.faucet.mock.calls[1]![0].idempotencyKey);
   });

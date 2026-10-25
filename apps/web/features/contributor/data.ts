@@ -9,7 +9,8 @@ export { api };
 export type { Id };
 
 /** Demo selector from docs/dashboard-api.md. Impersonable on purpose; this is not authentication. */
-export const CONTRIBUTOR = "contributor" as const;
+export { DEMO_CONTRIBUTOR as CONTRIBUTOR } from "../../lib/auth/identities";
+import { DEMO_CONTRIBUTOR as CONTRIBUTOR } from "../../lib/auth/identities";
 
 export type EarningRow = FunctionReturnType<typeof api.datasets.contributorEarnings>[number];
 export type SubmissionRow = FunctionReturnType<typeof api.dashboard.submissions>[number];

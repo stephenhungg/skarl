@@ -39,7 +39,7 @@ const buyerWording = (text: string) => text.replace(/\bcontroller\b/gi, word => 
 export const humanize = (code: string) => buyerWording(code.replace(/[_:]+/g, " ")).replace(/^\w/, c => c.toUpperCase());
 
 /**
- * Backend audit reasons are machine strings ("needs_review: red-cup-pickup=unobservable, ..."). Turn them into a
+ * Backend audit reasons are machine strings ("needs_review: criterion-id=unobservable, ..."). Turn them into a
  * sentence a person can scan without changing what they say.
  */
 export function readableReason(reason: string) {

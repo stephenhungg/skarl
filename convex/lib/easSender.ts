@@ -1,12 +1,13 @@
+import { configNumber, baseRpcUrl } from "./config.ts";
 import type { CdpClient } from "@coinbase/cdp-sdk";
 import { createPublicClient, decodeEventLog, http, zeroAddress, zeroHash, type Hash, type Address } from "viem";
 import { baseSepolia } from "viem/chains";
 import { ATTESTOR_NAME, EAS_ABI, EAS_ADDRESS, EAS_CHAIN_ID, EAS_NETWORK, EAS_SCHEMA_UID,
   attestTransaction, encodeAttestation, type AttestationFields } from "./eas.ts";
 
-export const IDEMPOTENCY_RETRY_MS = 23 * 60 * 60_000; // CDP keys expire after 24h; fail closed before that boundary.
+export const IDEMPOTENCY_RETRY_MS = configNumber("SKARL_IDEMPOTENCY_RETRY_MS"); // CDP keys expire after 24h; fail closed before that boundary.
 export const easClient = () => createPublicClient({ chain: baseSepolia,
-  transport: http(process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org", { timeout: 15_000, retryCount: 0 }) });
+  transport: http(baseRpcUrl(), { timeout: 15_000, retryCount: 0 }) });
 export type EasIntent = {
   attestor: string; fields: AttestationFields; requestId: string; schemaUid: string;
   txHash?: string; startBlock?: string; firstSendAt?: number;

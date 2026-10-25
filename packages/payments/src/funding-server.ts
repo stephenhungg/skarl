@@ -1,9 +1,10 @@
+import { paymentConfig } from "./config.ts";
 import { isDeepStrictEqual } from "node:util";
 import { x402ResourceServer, type FacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload, PaymentRequirements, SupportedResponse } from "@x402/core/types";
 import { SOLANA_PAYMENT_NETWORK } from "@skarl/contracts/chain";
 
-const SUPPORTED_TTL_MS = 30_000;
+const SUPPORTED_TTL_MS = paymentConfig.facilitatorCacheTtlMs;
 
 /** Only the selected facilitator's current Devnet support can authorize a fee payer. */
 export function supportedSolanaFeePayers(supported: SupportedResponse): Set<string> {

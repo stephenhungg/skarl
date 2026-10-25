@@ -1,3 +1,4 @@
+import { configNumber } from "./lib/config";
 import { v } from "convex/values";
 import { internalMutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -37,7 +38,7 @@ export const begin = internalMutation({
     const current = await source(ctx, args.submissionId, args.demoIdentity);
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,100}$/.test(args.model)) throw new Error("coach_invalid_model");
     const prior = await ctx.db.query("coachExplanations").withIndex("by_source", q => q.eq("submissionId", args.submissionId).eq("sourceKey", current.sourceKey)).unique();
-    if (prior && (prior.status !== "unavailable" || Date.now() - (prior.completedAt ?? prior.startedAt) < 60_000)) {
+    if (prior && (prior.status !== "unavailable" || Date.now() - (prior.completedAt ?? prior.startedAt) < configNumber("SKARL_COACH_RETRY_COOLDOWN_MS"))) {
       return { explanationId: prior._id, generation: prior.generation, replayed: true, snapshot: null };
     }
     const generation = (prior?.generation ?? 0) + 1;
@@ -47,7 +48,7 @@ export const begin = internalMutation({
       inputJson: JSON.stringify(current.snapshot), status: "running" as const, generation, startedAt: Date.now() };
     const explanationId = prior ? prior._id : await ctx.db.insert("coachExplanations", fields);
     if (prior) await ctx.db.patch(prior._id, { ...fields, outputJson: undefined, failureCode: undefined, completedAt: undefined });
-    await ctx.scheduler.runAfter(90_000, internal.coachData.expire, { explanationId, generation });
+    await ctx.scheduler.runAfter(configNumber("SKARL_COACH_LEASE_MS"), internal.coachData.expire, { explanationId, generation });
     return { explanationId, generation, replayed: false, snapshot: current.snapshot };
   },
 });
@@ -99,7 +100,7 @@ export const expire = internalMutation({
   args: { explanationId: v.id("coachExplanations"), generation: v.number() },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.explanationId);
-    if (!row || row.status !== "running" || row.generation !== args.generation || Date.now() - row.startedAt < 90_000) return;
+    if (!row || row.status !== "running" || row.generation !== args.generation || Date.now() - row.startedAt < configNumber("SKARL_COACH_LEASE_MS")) return;
     await ctx.db.patch(row._id, { status: "unavailable", failureCode: "coach_interrupted", completedAt: Date.now() });
   },
 });

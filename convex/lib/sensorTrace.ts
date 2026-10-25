@@ -1,7 +1,8 @@
+import { configNumber } from "./config.ts";
 /** Untrusted client IMU evidence. Validation and summaries confer no acceptance authority. */
-export const MAX_SENSOR_TRACE_BYTES = 2 * 1024 * 1024;
+export const MAX_SENSOR_TRACE_BYTES = configNumber("SKARL_SENSORTRACE_MAX_SENSOR_TRACE_BYTES");
 const NAMES = ["accelerometer", "gyroscope", "deviceMotion", "attitude", "gravity", "magnetometer"] as const;
-const STEADY_GYRO_RAD_PER_SEC = 0.15;
+const STEADY_GYRO_RAD_PER_SEC = configNumber("SKARL_SENSORTRACE_STEADY_GYRO_RAD_PER_SEC");
 export type Sensor = typeof NAMES[number];
 export interface Sample { sensor: Sensor; timestampMs: number; x: number; y: number; z: number }
 export interface Device {

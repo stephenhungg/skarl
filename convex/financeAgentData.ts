@@ -1,3 +1,4 @@
+import { configNumber } from "./lib/config";
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -21,7 +22,7 @@ async function running(ctx: MutationCtx, runId: Id<"financeAgentRuns">) {
     if (caller.tokenIdentifier !== run.requesterTokenIdentifier) throw new Error("agent_run_not_owned");
     requireTenant(caller, run);
   }
-  if (run.status !== "running" || Date.now() - run.startedAt > 180_000) throw new Error("run_not_active");
+  if (run.status !== "running" || Date.now() - run.startedAt > configNumber("SKARL_FINANCE_AGENT_LEASE_MS")) throw new Error("run_not_active");
   return { run, principal };
 }
 export const begin = internalMutation({
@@ -34,7 +35,7 @@ export const begin = internalMutation({
     requireBuyerOrder(principal, order);
     requireTenant(service, order);
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(args.requestId) || !args.prompt.trim() || args.prompt.length > 2000 ||
-      !Number.isSafeInteger(args.maxToolCalls) || args.maxToolCalls < 1 || args.maxToolCalls > 24) throw new Error("invalid_agent_request");
+      !Number.isSafeInteger(args.maxToolCalls) || args.maxToolCalls < 1 || args.maxToolCalls > configNumber("SKARL_FINANCE_AGENT_MAX_ALLOWED_TOOL_CALLS")) throw new Error("invalid_agent_request");
     const existing = await ctx.db.query("financeAgentRuns").withIndex("by_request", q => q.eq("organizationId", order.organizationId).eq("requestId", args.requestId)).unique();
     if (existing) {
       if (existing.orderId !== order._id || existing.prompt !== args.prompt || existing.requesterTokenIdentifier !== principal.tokenIdentifier) throw new Error("agent_request_conflict");
@@ -44,7 +45,7 @@ export const begin = internalMutation({
       requestId: args.requestId, prompt: args.prompt, requesterTokenIdentifier: principal.tokenIdentifier,
       provider: args.provider ?? "gemini", model: args.model, maxToolCalls: args.maxToolCalls, maxBatchAtomic: positiveAtomic(args.maxBatchAtomic), proposedAtomic: 0n,
       reservedPayableIds: [], status: "running", transcriptJson: "[]", startedAt: Date.now() });
-    await ctx.scheduler.runAfter(180_000, internal.financeAgentData.expire, { runId });
+    await ctx.scheduler.runAfter(configNumber("SKARL_FINANCE_AGENT_LEASE_MS"), internal.financeAgentData.expire, { runId });
     return { runId, replayed: false };
   },
 });
@@ -63,7 +64,7 @@ export const proposeBatch = internalMutation({
   args: { runId: v.id("financeAgentRuns"), payableIds: v.array(v.id("payables")) },
   handler: async (ctx, args) => {
     const { run } = await running(ctx, args.runId);
-    if (!args.payableIds.length || args.payableIds.length > 20 || new Set(args.payableIds).size !== args.payableIds.length) throw new Error("invalid_batch");
+    if (!args.payableIds.length || args.payableIds.length > configNumber("FINANCE_AGENT_MAX_BATCH_SIZE") || new Set(args.payableIds).size !== args.payableIds.length) throw new Error("invalid_batch");
     const rows = await Promise.all(args.payableIds.map(id => ctx.db.get(id)));
     if (rows.some(row => !row || row.organizationId !== run.organizationId || row.orderId !== run.orderId || row.status !== "accrued" || row.amountAtomic <= 0n)) throw new Error("batch_payable_not_open");
     const newRows = rows.filter(row => !run.reservedPayableIds.includes(row!._id));
@@ -120,7 +121,7 @@ export const expire = internalMutation({
     const principal = await requireFinanceService(ctx), run = await ctx.db.get(args.runId);
     if (!run) return;
     requireTenant(principal, run);
-    if (run.status === "running" && Date.now() - run.startedAt >= 180_000) await ctx.db.patch(run._id, {
+    if (run.status === "running" && Date.now() - run.startedAt >= configNumber("SKARL_FINANCE_AGENT_LEASE_MS")) await ctx.db.patch(run._id, {
       status: "failed", failureCode: "agent_interrupted", completedAt: Date.now(),
       explanation: "Agent interrupted. Inspect persisted proposals and tool results before a new request.",
     });

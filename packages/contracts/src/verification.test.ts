@@ -67,10 +67,11 @@ test("task labels validate against the owning spec and cannot leak into another 
   assert.equal(validateVerificationReportForRubric(taskReport(), ["c1"]).valid, false);
   assert.equal(validateVerificationReport(taskReport()).valid, true, "shape-only consumers can display task reports");
 });
-test("legacy 1.2 reports keep validating and legacy labels remain fixed", () => {
+test("historical reports remain readable while scoped labels require their stored spec", () => {
   const legacy = { ...report(), pipeline: { ...report().pipeline, version: "red-cup-evidence-1.2" } };
   assert.equal(validateVerificationReport(legacy).valid, true);
-  assert.equal(validateVerificationReport({ ...taskReport(), pipeline: legacy.pipeline }).valid, false);
+  assert.equal(validateVerificationReport({ ...taskReport(), pipeline: legacy.pipeline }).valid, true);
+  assert.equal(validateVerificationReportForRubric({ ...taskReport(), pipeline: legacy.pipeline }, ["c1"], cupTaskSpec).valid, false);
 });
 test("untrusted observation text cannot change allowed labels", () => {
   const value = taskReport();
@@ -83,4 +84,9 @@ test("task observation bounds and unknown fields fail closed", () => {
   value.observations.video.observations[0].endMs = 1001;
   assert.equal(validateVerificationReport(value).valid, false);
   assert.equal(validateVerificationReport({ ...taskReport(), observations: { ...taskReport().observations, taskSpec: canTaskSpec } }).valid, false);
+});
+test("current acceptance cannot bypass a pending task spec by omitting observations", () => {
+  const current = { ...report(), pipeline: { ...report().pipeline, version: "task-evidence-2.0" } };
+  assert.equal(validateVerificationReportForRubric(current, ["c1"]).valid, false);
+  assert.equal(validateVerificationReportForRubric(current, ["c1"], canTaskSpec).valid, true);
 });

@@ -1,3 +1,4 @@
+import { configNumber } from "./lib/config";
 import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 import { internalAction, internalMutation, internalQuery, query } from "./_generated/server";
@@ -5,8 +6,8 @@ import type { Doc } from "./_generated/dataModel";
 import { canonical, digest } from "./lib/finance";
 import { EAS_SCHEMA_UID, attestationLinks, attestationRequestId, buildAttestationFields } from "./lib/eas";
 
-export const LEASE_MS = 3 * 60_000;
-export const RETRY_MS = 2 * 60_000;
+export const LEASE_MS = configNumber("SKARL_LEASE_MS");
+export const RETRY_MS = configNumber("SKARL_RETRY_MS");
 const runRef = makeFunctionReference<"action">("attestationsNode:run");
 const pageRef = makeFunctionReference<"mutation", {cursor?: string}, {cursor: string | null; scheduled: number}>("attestations:enqueuePage");
 const retryRef = makeFunctionReference<"mutation", Record<string, never>, number>("attestations:enqueueRetries");

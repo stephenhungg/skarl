@@ -1,3 +1,4 @@
+import { configNumber, demoOrderPublicId, publicOrderPrefix } from "./lib/config";
 import { internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
@@ -6,15 +7,16 @@ import { PAYMENT_NETWORK } from "../packages/contracts/src/chain";
 
 // Only the published demo and orders created by the fixed public demo path are
 // public. Knowing an ID must not turn a role-created order into public data.
-const isPublic = (order: Doc<"orders">) => order.publicId === "skarl-red-cup-demo-v2" ||
-  order.publicId.startsWith("skarl-outsider-demo-");
+const isPublic = (order: Doc<"orders">) => order.publicId === demoOrderPublicId() ||
+  order.publicId.startsWith(publicOrderPrefix());
 
 export const catalog = internalQuery({
   args: {},
   handler: async ctx => {
-    const seed = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
+    const limit = configNumber("SKARL_PUBLIC_CATALOG_LIMIT");
+    const seed = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", demoOrderPublicId())).unique();
     const publicOrders = await ctx.db.query("orders").withIndex("by_public_id", q =>
-      q.gte("publicId", "skarl-outsider-demo-").lt("publicId", "skarl-outsider-demo.")).take(25);
+      q.gte("publicId", publicOrderPrefix()).lt("publicId", `${publicOrderPrefix()}\uffff`)).take(limit);
     const tasks = await Promise.all([...(seed ? [seed] : []), ...publicOrders].map(async order => {
       const rubric = order.taskVersionId ? await ctx.db.get(order.taskVersionId) : null;
       if (!rubric || rubric.orderId !== order._id || rubric.organizationId !== order.organizationId) return null;
@@ -25,8 +27,8 @@ export const catalog = internalQuery({
         quantityRequested: order.quantityRequested.toString(), acceptedCount: order.acceptedCount.toString(),
         remainingQuota: (remaining > 0n ? remaining : 0n).toString(), deadlineAt: order.deadlineAt };
     }));
-    return { tasks: tasks.filter(task => task !== null), scope: "public_demo_orders", limit: 26,
-      truncated: publicOrders.length === 25, demoOnly: true };
+    return { tasks: tasks.filter(task => task !== null), scope: "public_demo_orders", limit: limit + 1,
+      truncated: publicOrders.length === limit, demoOnly: true };
   },
 });
 

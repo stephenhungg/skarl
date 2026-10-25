@@ -5,7 +5,7 @@ import { annotationSummary } from "./annotationValidators";
 import { hasOrderAuthority, isFinanceAgent, requireRole } from "./lib/demoAuth";
 import { requireTenant } from "./lib/finance";
 import { resolveTaskSpec, detectorClassForObject } from "./lib/taskSpec";
-import { frameHasObjectInHand, frameHasCupInHand, MAX_ANNOTATION_BYTES, summarizeAnnotations, validateAnnotationFile } from "./lib/derivedAnnotations";
+import { frameHasObjectInHand, MAX_ANNOTATION_BYTES, summarizeAnnotations, validateAnnotationFile } from "./lib/derivedAnnotations";
 
 async function accessible(ctx: Pick<QueryCtx, "db" | "auth">, identity: string, submissionId: Id<"submissions">) {
   const principal = await requireRole(ctx, identity, ["buyer", "controller", "contributor"]);
@@ -64,7 +64,6 @@ export const saveDerived = mutation({
         ...(spec ? { taskObject: spec.object } : {}),
         ...(detectorClass ? { detectorClass } : {}),
         objectInHandTimestampsMs: detectorClass ? file.frames.filter(frame => frameHasObjectInHand(frame, detectorClass)).map(frame => frame.tMs) : [],
-        cupInHandTimestampsMs: file.frames.filter(frameHasCupInHand).map(frame => frame.tMs),
       } : {}),
     });
   },
