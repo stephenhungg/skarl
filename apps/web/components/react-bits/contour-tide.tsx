@@ -26,8 +26,6 @@ export interface ContourTideProps {
   horizon?: number;
   fog?: number;
   glow?: number;
-  /** 0 keeps soft round particles; 1 renders square pixels with an ordered (Bayer) dither. */
-  dither?: number;
   foam?: number;
   speed?: number;
   interactive?: boolean;
@@ -207,41 +205,19 @@ uniform vec3 uCrest;
 uniform float uGlow;
 uniform float uInk;
 uniform float uIntensity;
-uniform float uDither;
 
 varying float vBright;
 varying float vTone;
 
-// 4x4 Bayer threshold for the pixel this fragment lands on.
-float bayer4(vec2 p) {
-  vec2 q = mod(floor(p), 4.0);
-  float i = q.x + q.y * 4.0;
-  float m[16];
-  m[0]=0.0; m[1]=8.0; m[2]=2.0; m[3]=10.0; m[4]=12.0; m[5]=4.0; m[6]=14.0; m[7]=6.0;
-  m[8]=3.0; m[9]=11.0; m[10]=1.0; m[11]=9.0; m[12]=15.0; m[13]=7.0; m[14]=13.0; m[15]=5.0;
-  float t = 0.0;
-  for (int k = 0; k < 16; k++) { if (float(k) == i) t = m[k]; }
-  return (t + 0.5) / 16.0;
-}
-
 void main() {
   vec2 c = gl_PointCoord - 0.5;
-  // Round soft points blend toward hard square pixels as dither rises.
-  float r = mix(length(c) * 2.0, max(abs(c.x), abs(c.y)) * 2.0, uDither);
+  float r = length(c) * 2.0;
   float edge = 1.0 / (1.0 + uGlow * 1.6);
   float core = 1.0 - smoothstep(edge * 0.45, edge, r);
-  float halo = exp(-r * r * 7.0) * uGlow * 0.28 * (1.0 - uDither);
+  float halo = exp(-r * r * 7.0) * uGlow * 0.28;
   float amount = (core + halo) * vBright * uIntensity;
   if (amount < 0.002) discard;
   vec3 color = mix(uTrough, uCrest, vTone);
-  if (uDither > 0.0) {
-    // Ordered dither: each fragment is either fully lit or dropped, then snapped to three tone steps.
-    float lit = step(bayer4(gl_FragCoord.xy * 0.5), clamp(amount * 1.4, 0.0, 1.0));
-    if (lit < 0.5 && uDither > 0.5) discard;
-    float tone = floor(vTone * 3.0 + bayer4(gl_FragCoord.xy * 0.5)) / 3.0;
-    color = mix(color, mix(uTrough, uCrest, clamp(tone, 0.0, 1.0)), uDither);
-    amount = mix(amount, 1.0, uDither * lit);
-  }
   if (uInk > 0.5) {
     float alpha = clamp(amount * 1.6, 0.0, 1.0);
     gl_FragColor = vec4(color * alpha, alpha);
@@ -337,7 +313,6 @@ interface TideSettings {
   horizon: number;
   fog: number;
   glow: number;
-  dither: number;
   foam: number;
   speed: number;
   interactive: boolean;
@@ -444,7 +419,6 @@ const createUniforms = () => ({
   uFocal: { value: 900 },
   uPixelRatio: { value: 1 },
   uGlow: { value: 1 },
-  uDither: { value: 0 },
   uCursor: { value: new THREE.Vector4(0, -8, 0, 0) },
   uCursorRadius: { value: 1.2 },
   uRipple: {
@@ -681,7 +655,6 @@ const TideScene = ({ settings, pointerRef, wakeRef }: TideSceneProps) => {
     values.uFocal.value = size.height / 2 / tanHalf;
     values.uPixelRatio.value = pixelRatio;
     values.uGlow.value = clamp(s.glow, 0, 2);
-    values.uDither.value = clamp(s.dither, 0, 1);
     values.uCursor.value.set(
       motion.cursorX,
       motion.cursorZ,
@@ -738,7 +711,6 @@ export const ContourTide = ({
   horizon = 0.1,
   fog = 1,
   glow = 0.35,
-  dither = 0,
   foam = 1,
   speed = 1,
   interactive = true,
@@ -786,7 +758,6 @@ export const ContourTide = ({
     horizon,
     fog,
     glow,
-    dither,
     foam,
     speed,
     interactive,
