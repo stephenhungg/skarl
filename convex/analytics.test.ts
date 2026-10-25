@@ -9,7 +9,6 @@ import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
 const overview = makeFunctionReference<"query">("analytics:overview"), timeSeries = makeFunctionReference<"query">("analytics:timeSeries");
-const contributors = makeFunctionReference<"query">("activity:contributors"), payouts = makeFunctionReference<"query">("activity:payoutHistory"), feed = makeFunctionReference<"query">("activity:feed");
 const CONTRIBUTOR = "demo:skarl:contributor";
 async function setup() { const t = convexTest(schema, modules); return { t, ...await t.mutation(internal.seed.demo, {}) }; }
 type Fixture = Awaited<ReturnType<typeof setup>>;
