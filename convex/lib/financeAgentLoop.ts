@@ -50,10 +50,12 @@ export async function runFinanceLoop(options: {
     for (const call of response.calls) {
       if (steps.length >= options.maxToolCalls) return { status: "capped" as const, steps, explanation: "Tool-call limit reached. Review persisted results; no further actions were taken." };
       if (!call.id || call.id.length > 128 || ids.has(call.id)) throw new Error("duplicate_model_call_id");
-      if (call.name.length > 100 || JSON.stringify(call.arguments ?? null).length > 4000) throw new Error("invalid_tool_arguments");
       ids.add(call.id);
       let result: unknown;
-      try { validateToolCall(call); result = await options.execute(call); }
+      try {
+        if (call.name.length > 100 || JSON.stringify(call.arguments ?? null).length > 4000) throw new Error("invalid_tool_arguments");
+        validateToolCall(call); result = await options.execute(call);
+      }
       catch (error) { result = { ok: false, code: error instanceof Error && ["tool_not_allowed", "invalid_tool_arguments"].includes(error.message) ? error.message : "tool_refused" }; }
       steps.push({ call, result });
       if (JSON.stringify(steps).length > 100_000) throw new Error("agent_transcript_limit");

@@ -4,11 +4,11 @@
 
 The target agent fills two financial seats: settlement accountant and accounts-payable clerk. It explains obligations, proposes bounded payments and identifies reconciliation exceptions (period close is deferred). It does not decide whether a clip contains the right action, approve its own payment, hold a wallet key or rewrite the ledger.
 
-The Convex `financeAgent.run` action implements a real Gemini function-calling loop over six allowlisted tools. Tool results and the final advisory explanation persist in `financeAgentRuns` for the controller dashboard. Server mutations enforce cumulative exact proposal limits and existing independent-approval rules. A Convex Workflow waits for independent controller approval, revalidates the stored proposal and releases the execution outbox; wallet execution remains separate. Mocked responses test policy boundaries; live provider measurements are recorded in [status](status.md).
+The Convex `financeAgent.run` action implements a configurable Gemini/Claude function-calling loop over the same six allowlisted tools. Tool results, provider/model and the final advisory explanation persist in `financeAgentRuns` for the controller dashboard. Server mutations enforce cumulative exact proposal limits and existing independent-approval rules. A Convex Workflow waits for independent controller approval, revalidates the stored proposal and releases the execution outbox; wallet execution remains separate. Mocked responses test policy boundaries; live Gemini measurements are recorded in [status](status.md). Claude currently has synthetic provider coverage only; deployment, credentials and live inference remain pending in the [Anthropic handoff](anthropic.md).
 
 ## Bounded tool surface
 
-Implement tools as typed application operations, not arbitrary SQL, shell, generic HTTP fetch or unrestricted Convex calls. Each tool resolves authenticated membership and organization on the server. Use one currently available tool-calling model, with the Gemini provider already needed for the verifier as a reasonable first choice; keep the provider configurable. No additional model SDK is installed for this component yet.
+Implement tools as typed application operations, not arbitrary SQL, shell, generic HTTP fetch or unrestricted Convex calls. Each tool resolves authenticated membership and organization on the server. `FINANCE_AGENT_PROVIDER` selects `gemini` (default) or `claude`; Claude uses the installed `@anthropic-ai/sdk` with the same dispatcher and strict tool schemas. See [provider configuration and limits](anthropic.md#how-claude-is-constrained).
 
 | Tool | Input and result | Authority |
 | --- | --- | --- |
@@ -82,10 +82,10 @@ Flash for interactive latency. `FINANCE_AGENT_MAX_TOOL_CALLS` defaults to 12
 `FINANCE_AGENT_MAX_BATCH_ATOMIC` defaults to `10000000` micro-USDC. The existing
 server-only `GEMINI_API_KEY` is reused. No key reaches model input or transcript.
 The run has a two-minute overall budget, at most 30 seconds per provider round,
-a bounded transcript and a three-minute interruption watchdog. The shared
+a bounded transcript and a three-minute interruption watchdog. The Gemini
 transport permits at most three transient attempts within that single 30-second
 round deadline, including response reads and backoff; retries do not restart the
-clock. Billing is now enabled; the latest 3.8 Flash Interactions probe returned
+clock. Claude disables automatic SDK retries. Billing is now enabled for Gemini; the latest 3.8 Flash Interactions probe returned
 HTTP 200 with a correct visual response in about 2.1 seconds. Earlier free-tier
 stalls are historical, not a current availability blocker. This probe is not a
 finance-agent benchmark. Reusing the same

@@ -673,3 +673,104 @@ have `licensed: false`. Check the linked EAS record for current revocation state
 the query records confirmation and does not continuously poll revocations.
 Schema/account/policy setup is live; deployment and report backfill evidence are
 tracked in [build status](status.md).
+
+## Claude provider and Contributor Coach
+
+**Source implementation; deployment pending.** This addition has synthetic
+provider coverage, with no live Claude response claimed. The Anthropic key was
+absent at the October 25 checkpoint. The deployment operator deploys merged
+`origin/main`; see [Claude setup and evidence status](anthropic.md). These
+contracts apply after that deployment and generated API update.
+
+### Finance provider fields
+
+`financeAgent.run({demoIdentity,orderId,requestId,prompt})` retains its arguments
+and `{runId,replayed}` result. Provider selection is server configuration, not a
+caller argument: `FINANCE_AGENT_PROVIDER=gemini|claude`, default `gemini`.
+`financeAgentData.runs({demoIdentity,orderId})` adds `provider: "gemini" | "claude"`
+to each row. Existing records without a stored provider project as `gemini`.
+`model` records the selected model; Claude defaults to `claude-sonnet-5-5`, with
+`ANTHROPIC_FINANCE_MODEL` then `ANTHROPIC_MODEL` overrides. Display provider and
+model next to the run without implying agreement between providers: one provider
+executes each run, and this option does not create an independent visual witness.
+
+The transcript stays `[{call:{id,name,arguments},result}]`. Statuses remain
+`running`, `completed`, `failed`, `capped`. Tool refusals remain results such as
+`{ok:false,code:"tool_not_allowed"}` or `invalid_tool_arguments`; the Claude
+conversation receives those as error tool results. Approval tools are not
+advertised. Existing exact amount limits, proposal idempotency and independent
+controller approval are unchanged.
+
+New sanitized failure codes include `anthropic_key_missing`, `claude_refusal`,
+`claude_timeout`, `claude_http_<status>`, `claude_request_failed`,
+`claude_response_invalid`, and `claude_response_incomplete`.
+`invalid_agent_provider` rejects invalid server configuration before starting a
+run. Show persisted tool results even if a later provider turn fails. Reusing a
+request ID returns its original run; switching providers does not rerun it.
+
+### Contributor Coach for web and iOS
+
+Both endpoints require the stored contributor role, active organization and
+ownership of the submission. Controller, buyer and finance-agent selectors do
+not gain access to the contributor's coach response. The existing demo selector
+is impersonable; these role checks are not production authentication.
+
+| Function | Kind | Arguments and result |
+| --- | --- | --- |
+| `coach.explainOutcome` | Action | `{demoIdentity:"contributor",submissionId:Id<"submissions">}` → `{explanationId,replayed}`. Generates or reuses the persisted explanation. |
+| `coachData.forSubmission` | Query | Same arguments → `null` or the current record described below. Subscribe to this query for completion. |
+
+```ts
+{
+  explanationId, submissionId, analysisId, reportHash,
+  provider: "claude", model, promptVersion,
+  status: "running" | "completed" | "unavailable",
+  startedAt, completedAt?, failureCode?,
+  advisory: true, demoOnly: true,
+  explanation: null | {
+    advisory: true,
+    introduction, submissionStatus, recommendation, pipelineStatus,
+    warnings: string[], paymentNotice,
+    items: Array<{
+      criterionId,
+      status: "supported" | "contradicted" | "unobservable",
+      explanation: string,
+      nextStep: string,
+      uncertain: boolean,
+      citation: null | { modality: string; startMs: number; endMs: number; label: string }
+    }>
+  }
+}
+```
+
+Treat this shape as illustrative; use the generated API return types. Date fields
+are Unix milliseconds. Citation ranges are milliseconds within the original
+recording, with a server-rendered `label` such as `0:04.000–0:05.000`. Seek to
+`citation.startMs / 1000` in a video player. A null citation means no cited
+evidence exists; do not invent a seek target. Keep `uncertain`, stored warnings,
+the authoritative status/recommendation and `paymentNotice` visible. Render all
+strings as plain text, never executable HTML or instructions.
+
+Call the action from an explicit contributor request, not during render. A
+`{explanationId,replayed}` response does not mean generation succeeded. In React,
+use `useAction(api.coach.explainOutcome)` and
+`useQuery(api.coachData.forSubmission,{demoIdentity:"contributor",submissionId})`.
+In iOS, invoke the same action and subscribe to the query. `undefined` means
+loading in React; `null` means no current explanation. Show a loading state for
+`running`, guidance for `completed`, and an unavailable state with a retry
+option for `unavailable`. Continue showing the stored report if coaching fails.
+
+The persisted binding includes the current analysis, report hash, submission
+status, decision and prompt version. A rerun or changed outcome hides the older
+explanation. Concurrent requests reuse one generation; completed output is
+cached, while an unavailable result can be retried after 60 seconds. A 90-second
+watchdog marks interrupted work unavailable. Coaching does not mutate a verdict,
+create a payable or promise payment.
+
+Missing reports reject with `coach_report_unavailable`; mismatched stored source
+bindings reject with `analysis_reference_mismatch`. Ownership failures include
+`submission_not_owned`, alongside the existing role/tenant errors. Persisted
+coach failures include `coach_invalid_output`, `coach_source_changed`,
+`coach_interrupted` and `coach_unavailable`; provider failures use the Claude
+codes above. Do not display a mock fallback as a live Claude response or describe
+an unavailable coach as successful inference.

@@ -17,7 +17,7 @@ async function running(ctx: MutationCtx, runId: Id<"financeAgentRuns">) {
   return { run, principal };
 }
 export const begin = internalMutation({
-  args: { demoIdentity: v.string(), orderId: v.id("orders"), requestId: v.string(), prompt: v.string(), model: v.string(), maxToolCalls: v.number(), maxBatchAtomic: v.string() },
+  args: { demoIdentity: v.string(), orderId: v.id("orders"), requestId: v.string(), prompt: v.string(), provider: v.optional(v.union(v.literal("gemini"), v.literal("claude"))), model: v.string(), maxToolCalls: v.number(), maxBatchAtomic: v.string() },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
     await requireRole(ctx, "finance-agent", "finance-agent");
@@ -33,7 +33,7 @@ export const begin = internalMutation({
     }
     const runId = await ctx.db.insert("financeAgentRuns", { organizationId: order.organizationId, orderId: order._id,
       requestId: args.requestId, prompt: args.prompt, requesterTokenIdentifier: principal.tokenIdentifier,
-      model: args.model, maxToolCalls: args.maxToolCalls, maxBatchAtomic: positiveAtomic(args.maxBatchAtomic), proposedAtomic: 0n,
+      provider: args.provider ?? "gemini", model: args.model, maxToolCalls: args.maxToolCalls, maxBatchAtomic: positiveAtomic(args.maxBatchAtomic), proposedAtomic: 0n,
       reservedPayableIds: [], status: "running", transcriptJson: "[]", startedAt: Date.now() });
     await ctx.scheduler.runAfter(180_000, internal.financeAgentData.expire, { runId });
     return { runId, replayed: false };
@@ -89,7 +89,7 @@ export const runs = query({
     if (!order) throw new Error("order_not_found");
     requireTenant(principal, order);
     const rows = await ctx.db.query("financeAgentRuns").withIndex("by_order", q => q.eq("orderId", order._id)).order("desc").take(20);
-    return rows.map(row => ({ ...row, maxBatchAtomic: row.maxBatchAtomic.toString(), proposedAtomic: row.proposedAtomic.toString(),
+    return rows.map(row => ({ ...row, provider: row.provider ?? "gemini", maxBatchAtomic: row.maxBatchAtomic.toString(), proposedAtomic: row.proposedAtomic.toString(),
       transcript: JSON.parse(row.transcriptJson), transcriptJson: undefined }));
   },
 });

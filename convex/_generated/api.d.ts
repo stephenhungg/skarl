@@ -17,6 +17,8 @@ import type * as attestations from "../attestations.js";
 import type * as attestationsNode from "../attestationsNode.js";
 import type * as approvalWorkflow from "../approvalWorkflow.js";
 import type * as chainWitness from "../chainWitness.js";
+import type * as coach from "../coach.js";
+import type * as coachData from "../coachData.js";
 import type * as contributorWallet from "../contributorWallet.js";
 import type * as crons from "../crons.js";
 import type * as dashboard from "../dashboard.js";
@@ -69,6 +71,8 @@ declare const fullApi: ApiFromModules<{
   attestationsNode: typeof attestationsNode;
   approvalWorkflow: typeof approvalWorkflow;
   chainWitness: typeof chainWitness;
+  coach: typeof coach;
+  coachData: typeof coachData;
   contributorWallet: typeof contributorWallet;
   crons: typeof crons;
   dashboard: typeof dashboard;
