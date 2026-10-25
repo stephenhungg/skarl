@@ -1,12 +1,13 @@
 "use client";
-import { useConvexConnectionState, useQuery } from "convex/react";
-import { Component, useEffect, useState, type ReactNode } from "react";
+import { useConvexConnectionState, useMutation, useQuery } from "convex/react";
+import { Component, useCallback, useEffect, useState, type ReactNode } from "react";
 import { useConvexConfig } from "@/components/convex-provider";
-import { DEMO_IDENTITY, refs, type OrderSummary, type Payable, type Submission } from "./api";
+import { DEMO_IDENTITY, refs, type LivenessChallenge, type OrderSummary, type Payable, type Submission } from "./api";
 import { CONSENT_ITEMS, type ConsentId } from "./consent";
 import { Studio } from "./studio";
 import { useRecorder, type Clip } from "./use-recorder";
 import { useSubmit, type SubmitState } from "./use-submit";
+import { useLiveness } from "./use-liveness";
 
 const UNREACHABLE_AFTER_MS = 8000;
 
@@ -43,23 +44,39 @@ type ShellProps = {
   summary: OrderSummary | null | undefined;
   history?: Submission[];
   payables?: Payable[];
-  submitter?: { state: SubmitState; submit: (clip: Clip) => void; reset: () => void };
+  submitter?: { state: SubmitState; submit: (clip: Clip) => void; reset: () => void; canRetake: boolean };
+  issueChallenge?: () => Promise<LivenessChallenge>;
 };
 
 /** Local recording works without a backend; uploading needs `submitter`. */
-function Shell({ backend, summary, history, payables, submitter }: ShellProps) {
+function Shell({ backend, summary, history, payables, submitter, issueChallenge }: ShellProps) {
   const recorder = useRecorder();
+  const liveness = useLiveness(recorder.state.phase === "ready", issueChallenge);
   const [consent, setConsent] = useState(NO_CONSENT);
   const clip = recorder.state.phase === "recorded" ? recorder.state.clip : null;
   const submitState: SubmitState = submitter?.state ?? { phase: "idle" };
   const current = clip && history
     ? history.find(item => item.clientRequestId === clip.clientRequestId || (submitState.phase === "queued" && item._id === submitState.submissionId)) ?? null
     : null;
-  const retake = () => { submitter?.reset(); void recorder.retake(); };
+  const busy = ["hashing", "uploading", "finalizing"].includes(submitState.phase);
+  const retake = () => {
+    if (busy || submitter?.canRetake === false) return;
+    submitter?.reset(); liveness.clear(); void recorder.retake();
+  };
+  const start = () => { liveness.clear(); void recorder.start(); };
+  const record = () => {
+    if (liveness.phase === "loading") return;
+    if (liveness.challenge && liveness.challenge.expiresAt - Date.now() < 60_000) {
+      void liveness.refresh();
+      return; // Require a second tap so the contributor sees the fresh words.
+    }
+    recorder.record(liveness.challenge);
+  };
   return (
     <Studio live={backend.kind === "ready"} unavailable={backend.kind === "ready" ? undefined : unavailableCopy(backend)}
       summary={summary} history={history} payables={payables} recorder={recorder} consent={consent} onConsent={setConsent}
-      submitState={submitState} onSubmit={submitter ? clip => submitter.submit(clip) : null} onRetake={retake} current={current} />
+      submitState={submitState} onSubmit={submitter ? clip => submitter.submit(clip) : null} onRetake={retake} current={current}
+      onStart={start} onRecord={record} liveness={liveness} canRetake={submitter?.canRetake ?? true} />
   );
 }
 
@@ -72,6 +89,8 @@ function LiveFlow({ url }: { url: string }) {
   const history = useQuery(refs.submissions, orderArgs);
   const payables = useQuery(refs.payables, orderArgs);
   const submitter = useSubmit(context?.orderId ?? null);
+  const issue = useMutation(refs.issueChallenge);
+  const issueChallenge = useCallback(() => issue({ demoIdentity: DEMO_IDENTITY }), [issue]);
 
   useEffect(() => {
     if (connection.hasEverConnected) return;
@@ -85,7 +104,7 @@ function LiveFlow({ url }: { url: string }) {
         : timedOut && !connection.hasEverConnected ? { kind: "unreachable", url }
           : { kind: "connecting", url };
 
-  return <Shell backend={backend} summary={context === null ? null : backend.kind === "unreachable" ? null : summary} history={history} payables={payables} submitter={submitter} />;
+  return <Shell backend={backend} summary={context === null ? null : backend.kind === "unreachable" ? null : summary} history={history} payables={payables} submitter={submitter} issueChallenge={issueChallenge} />;
 }
 
 class QueryBoundary extends Component<{ url: string; children: ReactNode }, { detail: string | null }> {

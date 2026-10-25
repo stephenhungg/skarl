@@ -43,7 +43,9 @@ export type Payable = { _id: string; submissionId: string; amountAtomic: string;
 
 export type CreateSubmissionArgs = {
   demoIdentity: string; orderId: string; storageId: string; clientRequestId: string; consentAcknowledged: boolean;
+  livenessChallengeId?: string;
 };
+export type LivenessChallenge = { challengeId: string; words: string[]; expiresAt: number };
 /** The create mutation's return is not documented yet; the caller normalizes every shape it might take. */
 export type CreateSubmissionResult = string | { ok?: boolean; code?: string; submissionId?: string; replayed?: boolean; [key: string]: unknown };
 
@@ -53,6 +55,7 @@ export const refs = {
   submissions: makeFunctionReference<"query", { demoIdentity: string; orderId: string }, Submission[]>("dashboard:submissions"),
   payables: makeFunctionReference<"query", { demoIdentity: string; orderId: string }, Payable[]>("dashboard:payables"),
   generateUploadUrl: makeFunctionReference<"mutation", { demoIdentity: string }, string>("submissions:generateUploadUrl"),
+  issueChallenge: makeFunctionReference<"mutation", { demoIdentity: string }, LivenessChallenge>("liveness:issueChallenge"),
   createSubmission: makeFunctionReference<"mutation", CreateSubmissionArgs, CreateSubmissionResult>("submissions:create"),
 };
 

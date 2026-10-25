@@ -14,6 +14,7 @@ import { CONSENT_ITEMS, type ConsentId } from "./consent";
 import { MAX_SECONDS, MEDIA_ERROR_COPY, MIN_SECONDS, formatBytes, formatClock } from "./media";
 import type { Clip, useRecorder } from "./use-recorder";
 import type { SubmitState } from "./use-submit";
+import type { useLiveness } from "./use-liveness";
 
 type StatusValue = "idle" | "queued" | "running" | "ok" | "warn" | "fail" | "waiting";
 type Recorder = ReturnType<typeof useRecorder>;
@@ -30,6 +31,10 @@ export type StudioProps = {
   submitState: SubmitState;
   onSubmit: ((clip: Clip) => void) | null;
   onRetake: () => void;
+  onStart: () => void;
+  onRecord: () => void;
+  liveness: ReturnType<typeof useLiveness>;
+  canRetake: boolean;
   current: Submission | null;
 };
 
@@ -39,7 +44,7 @@ const SUBMIT_ERROR: Record<Extract<SubmitState, { phase: "error" }>["kind"], str
   upload_failed: "The upload failed partway.",
   upload_timeout: "The upload took over two minutes and was stopped.",
   offline: "You are offline. Reconnect, then try again.",
-  create_failed: "The clip uploaded but the submission was not created. Trying again reuses the same upload.",
+  create_failed: "The clip uploaded, but creation is unconfirmed. Retry reuses the same take and upload.",
   refused: "The server refused this submission.",
 };
 
@@ -140,8 +145,8 @@ function TaskRail({ summary }: { summary: OrderSummary | null | undefined }) {
   );
 }
 
-function RecorderCard({ recorder, consent, onConsent, submitState, onSubmit, onRetake, live }: StudioProps) {
-  const { state, stream, elapsedMs, start, record, stop } = recorder;
+function RecorderCard({ recorder, consent, onConsent, submitState, onSubmit, onRetake, onStart, onRecord, liveness, canRetake, live }: StudioProps) {
+  const { state, stream, elapsedMs, stop } = recorder;
   const preview = useRef<HTMLVideoElement>(null);
   const consented = CONSENT_ITEMS.every(item => consent[item.id]);
   const busy = ["hashing", "uploading", "finalizing"].includes(submitState.phase);
@@ -150,6 +155,7 @@ function RecorderCard({ recorder, consent, onConsent, submitState, onSubmit, onR
   const liveView = state.phase === "ready" || recording;
   const canStop = recording && elapsedMs >= MIN_SECONDS * 1000;
   const clip = state.phase === "recorded" ? state.clip : null;
+  const retryable = submitState.phase !== "error" || submitState.retryable;
 
   useEffect(() => {
     const video = preview.current;
@@ -192,8 +198,19 @@ function RecorderCard({ recorder, consent, onConsent, submitState, onSubmit, onR
               </>}
             </div>
           )}
+          {liveView && (
+            <div className="pointer-events-none absolute inset-x-3 top-3 rounded-panel bg-paper px-3 py-2 text-text-1">
+              <p className="type-body-sm text-text-2">Say these words while recording</p>
+              <p className="mt-1 type-title" aria-live="polite">
+                {liveness.challenge?.words.join(" · ") ?? (liveness.phase === "loading" ? "Getting fresh words…" : "Words unavailable")}
+              </p>
+              <p className="mt-1 type-label-sm text-text-2">
+                {liveness.challenge ? "Say all three in order, then narrate. Submit promptly." : liveness.phase === "loading" ? "Getting a new code for this take." : "You can still record and submit for human review."}
+              </p>
+            </div>
+          )}
           {recording && (
-            <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between p-3 type-label-sm text-text-inverse">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between p-3 type-label-sm text-text-inverse">
               <span className="rounded-tag bg-ink/70 px-2 py-1">Recording</span>
               <span className="rounded-tag bg-ink/70 px-2 py-1 tabular-nums">{formatClock(elapsedMs)} / {formatClock(MAX_SECONDS * 1000, false)}</span>
             </div>
@@ -224,7 +241,13 @@ function RecorderCard({ recorder, consent, onConsent, submitState, onSubmit, onR
 
         {busy && submitState.phase === "uploading" && <Progress value={Math.round(submitState.progress * 100)} aria-label="Upload progress" />}
         {submitState.phase === "error" && (
-          <Alert status="fail"><AlertTitle>Not submitted</AlertTitle><AlertDescription>{SUBMIT_ERROR[submitState.kind]}{submitState.detail ? ` ${submitState.detail}` : ""}</AlertDescription></Alert>
+          <Alert status="fail"><AlertTitle>{canRetake ? "Not submitted" : "Submission unconfirmed"}</AlertTitle><AlertDescription>{SUBMIT_ERROR[submitState.kind]}{submitState.detail ? ` ${submitState.detail}` : ""}</AlertDescription></Alert>
+        )}
+        {clip && (clip.livenessChallengeId || !canRetake) && !done && (
+          <p className="type-body-sm text-text-2">
+            {!canRetake ? "Retry this same take to resolve creation before recording another."
+              : "These words expire two minutes after issue, including review and upload time. If they expire, retake with fresh words."}
+          </p>
         )}
         {done && <Alert status="ok"><AlertTitle>Submitted</AlertTitle><AlertDescription>Your clip is in the queue. Follow it below; this page updates on its own.</AlertDescription></Alert>}
       </div>
@@ -232,22 +255,22 @@ function RecorderCard({ recorder, consent, onConsent, submitState, onSubmit, onR
       <div className="shell-foot flex flex-wrap items-center gap-2">
         {(state.phase === "idle" || state.phase === "requesting") && <>
           <span className="me-auto type-label-sm text-text-3">{consented ? "Check framing and sound before you record." : "All three are required."}</span>
-          <Button size="sm" disabled={!consented || state.phase === "requesting"} onClick={() => void start()}>{state.phase === "requesting" ? "Waiting for permission" : "Turn on camera"}</Button>
+          <Button size="sm" disabled={!consented || state.phase === "requesting"} onClick={onStart}>{state.phase === "requesting" ? "Waiting for permission" : "Turn on camera"}</Button>
         </>}
-        {state.phase === "error" && state.retryable && <Button size="sm" className="ms-auto" onClick={() => void start()}>Try again</Button>}
+        {state.phase === "error" && state.retryable && <Button size="sm" className="ms-auto" onClick={onStart}>Try again</Button>}
         {state.phase === "ready" && <>
           <span className="me-auto type-label-sm text-text-3">Both cups and the coaster in frame?</span>
-          <Button size="sm" onClick={() => record()}>Start recording</Button>
+          <Button size="sm" onClick={onRecord} disabled={liveness.phase === "loading"}>{liveness.phase === "loading" ? "Getting fresh words" : "Start recording"}</Button>
         </>}
         {recording && <>
           <Button variant="secondary" size="sm" className="me-auto" onClick={onRetake}>Discard</Button>
           <Button size="sm" disabled={!canStop} onClick={() => stop()}>{canStop ? "Stop" : `Stop in ${Math.ceil(MIN_SECONDS - elapsedMs / 1000)}s`}</Button>
         </>}
         {clip && <>
-          <Button variant="secondary" size="sm" className="me-auto" disabled={busy} onClick={onRetake}>{done ? "Record another" : "Retake"}</Button>
+          <Button variant="secondary" size="sm" className="me-auto" disabled={busy || !canRetake} onClick={onRetake}>{done ? "Record another" : "Retake"}</Button>
           {onSubmit && live
-            ? <Button size="sm" disabled={busy || done} onClick={() => onSubmit(clip)}>
-                {submitState.phase === "hashing" ? "Preparing" : submitState.phase === "uploading" ? "Uploading" : submitState.phase === "finalizing" ? "Submitting" : done ? "Submitted" : submitState.phase === "error" ? "Try again" : "Submit clip"}
+            ? <Button size="sm" disabled={busy || done || !retryable} onClick={() => onSubmit(clip)}>
+                {submitState.phase === "hashing" ? "Preparing" : submitState.phase === "uploading" ? "Uploading" : submitState.phase === "finalizing" ? "Submitting" : done ? "Submitted" : submitState.phase === "error" ? (retryable ? "Try again" : "Retake required") : "Submit clip"}
               </Button>
             : <span className="type-label-sm text-text-3">Uploads are off right now. The take stays in this browser.</span>}
         </>}
