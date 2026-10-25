@@ -79,8 +79,8 @@ const STAGES: { key: keyof Draft; text: string }[] = [
 export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
   const insets = useSafeAreaInsets();
   const convex = useConvex();
-  const { context, task } = useLiveTask();
   const { draft, setDraft, restoreError } = useSession();
+  const { context, task } = useLiveTask(draft?.orderId ?? route.params?.orderId);
   const [cameraPermission, askCamera] = useCameraPermissions();
   const [micPermission, askMic] = useMicrophonePermissions();
   const consent = route.params?.consented === true || !!draft;

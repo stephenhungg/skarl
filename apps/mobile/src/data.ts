@@ -19,25 +19,44 @@ function categoryOf(title: string) {
   return noun.charAt(0).toUpperCase() + noun.slice(1);
 }
 
-export function useLiveTask() {
+function toTask(orderId: string, summary: Summary | undefined, network: string): LiveTask | null {
+  if (!summary?.rubric) return null;
+  const { order, rubric } = summary;
+  const open = BigInt(order.quantityRequested) - BigInt(order.acceptedCount);
+  return {
+    orderId, title: order.title, prompt: rubric.taskPrompt.replace(/\s*[–-]\s*(?=\d)/g, ' to '),
+    category: categoryOf(order.title), rateAtomic: order.contributorRateAtomic, status: order.status,
+    closed: CLOSED.includes(order.status), openSpots: (open < 0n ? 0n : open).toString(), quantity: order.quantityRequested,
+    isNew: Date.now() - order._creationTime < 7 * DAY, criteria: rubric.criteria,
+    rubricVersion: rubric.version, rubricHash: rubric.contentHash, network: order.network ?? network,
+  };
+}
+
+/** One task: the order passed in, otherwise the default demo order. */
+export function useLiveTask(orderId?: string) {
   const connection = useConvexConnectionState();
-  const context = useQuery(api.context, identity);
+  const base = useQuery(api.context, identity);
+  const context = base && orderId ? { ...base, orderId } : base;
   const summary = useQuery(api.summary, context ? { ...identity, orderId: context.orderId } : 'skip');
-  const task = useMemo<LiveTask | null>(() => {
-    if (!context || !summary?.rubric) return null;
-    const { order, rubric } = summary;
-    const open = BigInt(order.quantityRequested) - BigInt(order.acceptedCount);
-    return {
-      orderId: context.orderId, title: order.title, prompt: rubric.taskPrompt.replace(/\s*[–-]\s*(?=\d)/g, ' to '),
-      category: categoryOf(order.title), rateAtomic: order.contributorRateAtomic, status: order.status,
-      closed: CLOSED.includes(order.status), openSpots: (open < 0n ? 0n : open).toString(), quantity: order.quantityRequested,
-      isNew: Date.now() - order._creationTime < 7 * DAY, criteria: rubric.criteria,
-      rubricVersion: rubric.version, rubricHash: rubric.contentHash, network: order.network ?? context.network,
-    };
-  }, [context, summary]);
+  const task = useMemo(() => context ? toTask(context.orderId, summary, context.network) : null, [context?.orderId, context?.network, summary]);
   const loading = context === undefined || (context !== null && summary === undefined);
   return { task, loading, missing: context === null || (summary !== undefined && !summary?.rubric), summary, context,
     live: !!task && connection.isWebSocketConnected };
+}
+
+/** Every open task, newest first. Falls back to the default order if the backend has no task list yet. */
+export function useOpenTasks() {
+  const context = useQuery(api.context, identity);
+  const listed = useQueries({ ids: { query: api.openTasks, args: identity } }).ids as string[] | Error | undefined;
+  const ids = useMemo(() => Array.isArray(listed) ? listed : context ? [context.orderId] : [], [listed, context?.orderId]);
+  const queries = useMemo(() => Object.fromEntries(ids.map(orderId => [orderId, { query: api.summary, args: { ...identity, orderId } }])), [ids]);
+  const summaries = useQueries(queries) as Record<string, Summary | Error | undefined>;
+  const tasks = useMemo(() => ids.map(orderId => {
+    const summary = summaries[orderId];
+    return summary instanceof Error ? null : toTask(orderId, summary, context?.network ?? '');
+  }).filter((task): task is LiveTask => !!task), [ids, summaries, context?.network]);
+  const loading = context === undefined || (listed === undefined) || ids.some(orderId => summaries[orderId] === undefined);
+  return { tasks, loading };
 }
 
 export type Earnings = { rows: EarningRow[] | undefined; error: Error | null };

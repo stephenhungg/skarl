@@ -6,7 +6,7 @@ import { Wordmark } from '../components/Mark';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { colors as c, fonts as f, gutter, radius } from '../../theme';
 import { money } from '../api';
-import { useLiveTask, type LiveTask } from '../data';
+import { useOpenTasks, type LiveTask } from '../data';
 import { useSession } from '../session';
 import { Empty, H1, Pill, Section, t } from '../components/Primitives';
 import { PressableScale } from '../components/PressableScale';
@@ -40,11 +40,10 @@ function TaskCard({ task, onPress, index }: { task: LiveTask; onPress(): void; i
 
 export function TasksScreen({ navigation }: RootProps<'Tasks'>) {
   const insets = useSafeAreaInsets();
-  const { task, loading, missing, live } = useLiveTask();
+  const { tasks, loading } = useOpenTasks();
   const { draft } = useSession();
   const [chip, setChip] = useState<Chip | null>(null);
   const [category, setCategory] = useState<string | null>(null);
-  const tasks = useMemo(() => task ? [task] : [], [task]);
   const categories = useMemo(() => [...new Set(tasks.map(item => item.category))].map(name => {
     const items = tasks.filter(item => item.category === name);
     const top = items.reduce((max, item) => BigInt(item.rateAtomic) > max ? BigInt(item.rateAtomic) : max, 0n);
@@ -107,9 +106,9 @@ export function TasksScreen({ navigation }: RootProps<'Tasks'>) {
 
     <Section title={category ? `${category} tasks` : 'All tasks'} aside={!loading && <Text style={t.meta}>{visible.length} open</Text>} />
     {loading && <View style={{ gap: 10 }}>{[0, 1].map(i => <View key={i} style={[s.task, s.skeleton, { height: 96 }]} />)}</View>}
-    {!loading && (missing || !visible.length) && <Empty title="No open tasks" />}
+    {!loading && !visible.length && <Empty title="No open tasks" />}
     <View style={{ gap: 10 }}>
-      {visible.map((item, index) => <TaskCard key={item.orderId} task={item} index={index} onPress={() => navigation.navigate('TaskDetail')} />)}
+      {visible.map((item, index) => <TaskCard key={item.orderId} task={item} index={index} onPress={() => navigation.navigate('TaskDetail', { orderId: item.orderId })} />)}
     </View>
   </ScrollView>;
 }

@@ -28,9 +28,9 @@ function Checkbox({ checked, label, onPress, disabled }: { checked: boolean; lab
   </PressableScale>;
 }
 
-export function TaskDetailScreen({ navigation }: RootProps<'TaskDetail'>) {
+export function TaskDetailScreen({ navigation, route }: RootProps<'TaskDetail'>) {
   const insets = useSafeAreaInsets();
-  const { task, loading } = useLiveTask();
+  const { task, loading } = useLiveTask(route.params?.orderId);
   const { draft } = useSession();
   const [sheet, setSheet] = useState(false);
   const [agreed, setAgreed] = useState<boolean[]>(CONSENT.map(() => false));
@@ -101,7 +101,7 @@ export function TaskDetailScreen({ navigation }: RootProps<'TaskDetail'>) {
           onPress={() => setAgreed(previous => previous.map((value, i) => i === index ? !value : value))} />)}
       </View>
       <Button title={all ? 'Open camera' : `Agree ${agreed.filter(Boolean).length} of ${CONSENT.length}`} disabled={!all}
-        onPress={() => { setSheet(false); navigation.navigate('Capture', { consented: true }); }} style={{ minHeight: 56, marginTop: 6 }} />
+        onPress={() => { setSheet(false); navigation.navigate('Capture', { consented: true, orderId: task?.orderId }); }} style={{ minHeight: 56, marginTop: 6 }} />
       <PressableScale accessibilityRole="button" onPress={() => setAgreed(CONSENT.map(() => true))} style={{ alignSelf: 'center', padding: 8 }}>
         <Text style={s.agreeAll}>Agree to all</Text>
       </PressableScale>
