@@ -16,11 +16,11 @@ export function HowItWorks() {
       <div className="frame">
         <SectionHeader id="how-it-works-title" eyebrow="How Skarl works" title="From task to payout" />
       </div>
-      <div className="mt-6 h-[640px] w-full max-[809px]:h-[420px]">
+      <div className="mt-6 h-[480px] w-full max-[809px]:h-[360px]">
         <VerticalReel
           items={STEPS}
           aspect={14 / 11}
-          size={0.82}
+          size={0.6}
           edgeFade={0.12}
           dim={0.3}
           autoplay="step"
