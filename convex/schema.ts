@@ -55,6 +55,13 @@ export default defineSchema({
     status: v.union(v.literal("acknowledged"), v.literal("resolved")), reason: v.string(),
     actorTokenIdentifier: tokenIdentifier, updatedAt: v.number(),
   }).index("by_exception", ["organizationId", "orderId", "exceptionKey"]).index("by_order", ["orderId"]),
+  agentChats: defineTable({
+    ...tenant, orderId: v.id("orders"), requestId: v.string(), requesterTokenIdentifier: tokenIdentifier,
+    question: v.string(), model: v.string(),
+    status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed"), v.literal("capped")),
+    transcriptJson: v.string(), answer: v.optional(v.string()), citedRecordIds: v.array(v.string()),
+    failureCode: v.optional(v.string()), startedAt: v.number(), completedAt: v.optional(v.number()),
+  }).index("by_request", ["organizationId", "requesterTokenIdentifier", "requestId"]).index("by_order", ["orderId"]),
   financeAgentRuns: defineTable({
     ...tenant, orderId: v.id("orders"), requestId: v.string(), prompt: v.string(),
     requesterTokenIdentifier: tokenIdentifier, model: v.string(), maxToolCalls: v.number(),
