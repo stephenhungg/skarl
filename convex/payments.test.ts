@@ -1,4 +1,5 @@
 import { convexTest } from "convex-test";
+import workflowTest from "@convex-dev/workflow/test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
@@ -18,11 +19,12 @@ const NONCE = `0x${"aa".repeat(32)}`;
 const TX_HASH = `0x${"bb".repeat(32)}`;
 const OTHER_HASH = `0x${"cc".repeat(32)}`;
 
-beforeEach(() => { vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", SERVICE_SECRET); });
-afterEach(() => { vi.unstubAllEnvs(); });
+beforeEach(() => { vi.useFakeTimers(); vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", SERVICE_SECRET); });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 async function setup() {
   const t = convexTest(schema, modules);
+  workflowTest.register(t);
   const seeded = await t.mutation(internal.seed.demo, {});
   const funding = { serviceSecret: SERVICE_SECRET, orderId: seeded.orderId, demoIdentity: "buyer",
     payerAddress: PAYER, recipientAddress: TREASURY, authorizationNonce: NONCE,
@@ -198,20 +200,29 @@ describe("payment service and funding invariants", () => {
 });
 
 describe("approved payout execution", () => {
-  it("requires independent approval and correct treasury, then reserves exactly one attempt", async () => {
+  it("requires independent approval, Workflow dispatch and correct treasury before reserving exactly one attempt", async () => {
     const fixture = await payoutFixture();
     await expect(fixture.t.mutation(api.payments.claimPayout, fixture.claim)).rejects.toThrow("payout_not_executable");
     await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: fixture.proposal.intentId });
+    const beforeDispatch = await snapshot(fixture);
+    await expect(fixture.t.mutation(api.payments.claimPayout, fixture.claim)).rejects.toThrow("dispatch_not_ready");
+    expect(await snapshot(fixture)).toEqual(beforeDispatch);
+    expect(beforeDispatch.attempts).toHaveLength(1); // Only the confirmed funding attempt exists.
+    await fixture.t.finishAllScheduledFunctions(vi.runAllTimers);
     await expect(fixture.t.mutation(api.payments.claimPayout, { ...fixture.claim, senderAddress: PAYER })).rejects.toThrow("wrong_treasury_wallet");
     const claim = await fixture.t.mutation(api.payments.claimPayout, fixture.claim);
     expect(claim).toMatchObject({ recipientAddress: RECIPIENT, amountAtomic: "7500000", network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS });
     await expect(fixture.t.mutation(api.payments.claimPayout, fixture.claim)).rejects.toThrow("payout_not_executable");
     expect((await snapshot(fixture)).attempts).toHaveLength(2); // Funding plus one payout, never two payouts.
+    const dispatch = await fixture.t.run(ctx => ctx.db.query("outboxEvents").withIndex("by_event_key", q =>
+      q.eq("organizationId", fixture.organizationId).eq("eventKey", `dispatch:${fixture.proposal.paymentCommandId}`)).unique());
+    expect(dispatch).toMatchObject({ status: "delivered", attempt: 1, paymentIntentId: fixture.proposal.intentId });
   });
 
   it("refuses dispatch when the payable source changes after independent approval", async () => {
     const fixture = await payoutFixture();
     await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: fixture.proposal.intentId });
+    await fixture.t.finishAllScheduledFunctions(vi.runAllTimers);
     await fixture.t.run(ctx => ctx.db.patch(fixture.payableId, { contributorTokenIdentifier: "demo:skarl:changed-contributor" }));
     const before = await snapshot(fixture);
     await expect(fixture.t.mutation(api.payments.claimPayout, fixture.claim)).rejects.toThrow("approved_source_changed");
@@ -222,6 +233,7 @@ describe("approved payout execution", () => {
     const fixture = await payoutFixture();
     const approved = await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: fixture.proposal.intentId });
     if (!approved.ok) throw new Error(approved.code);
+    await fixture.t.finishAllScheduledFunctions(vi.runAllTimers);
     await fixture.t.run(async ctx => {
       if (kind === "expired") await ctx.db.patch(approved.approvalId, { expiresAt: Date.now() - 1 });
       else if (kind === "approval-binding") await ctx.db.patch(approved.approvalId, { bindingHash: "changed-binding" });
@@ -235,6 +247,7 @@ describe("approved payout execution", () => {
   it("rejects a transfer mined before this payout was approved and claimed", async () => {
     const fixture = await payoutFixture();
     await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: fixture.proposal.intentId });
+    await fixture.t.finishAllScheduledFunctions(vi.runAllTimers);
     const claim = await fixture.t.mutation(api.payments.claimPayout, fixture.claim);
     const attempt = await fixture.t.run(ctx => ctx.db.get(claim.attemptId));
     const before = await snapshot(fixture);
@@ -249,8 +262,10 @@ describe("approved payout execution", () => {
   it("pays the payable only after exact chain confirmation and reconciles an idempotent payout", async () => {
     const fixture = await payoutFixture();
     await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: fixture.proposal.intentId });
+    await fixture.t.finishAllScheduledFunctions(vi.runAllTimers);
     const claim = await fixture.t.mutation(api.payments.claimPayout, fixture.claim);
-    const evidence = { ...fixture.observation, txHash: OTHER_HASH, fromAddress: TREASURY, toAddress: RECIPIENT, amountAtomic: 7_500_000n };
+    const evidence = { ...fixture.observation, txHash: OTHER_HASH, fromAddress: TREASURY, toAddress: RECIPIENT,
+      amountAtomic: 7_500_000n, observedAt: Date.now() };
     const args = { serviceSecret: SERVICE_SECRET, attemptId: claim.attemptId, observation: evidence };
     await expect(fixture.t.mutation(api.payments.recordPayoutObservation, { ...args,
       observation: { ...evidence, amountAtomic: 7_500_001n } })).rejects.toThrow("wrong_amount");

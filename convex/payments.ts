@@ -159,6 +159,11 @@ export const claimPayout = mutation({
     const approver = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", approval.approverTokenIdentifier)).unique();
     if (!approver || approver.status !== "active" || approver.organizationId !== intent.organizationId || !approver.roles.includes("controller") ||
       approver.roles.includes("finance-agent") || approver.roles.includes("contributor")) throw new Error("approval_invalidated");
+    const dispatch = await ctx.db.query("outboxEvents").withIndex("by_event_key", q =>
+      q.eq("organizationId", intent.organizationId).eq("eventKey", `dispatch:${command._id}`)).unique();
+    if (!dispatch || dispatch.kind !== "dispatch_settlement" || dispatch.paymentCommandId !== command._id ||
+      dispatch.paymentIntentId !== intent._id || dispatch.orderId !== intent.orderId || dispatch.status !== "pending" ||
+      dispatch.availableAt > Date.now()) throw new Error("dispatch_not_ready");
     const senderAddress = normalizeAddress(args.senderAddress);
     if (senderAddress !== normalizeAddress(args.treasuryAddress)) throw new Error("wrong_treasury_wallet");
     if (!/^[a-zA-Z0-9-]{16,80}$/.test(args.claimId)) throw new Error("invalid_claim_id");
@@ -166,6 +171,8 @@ export const claimPayout = mutation({
     const attemptId = await ctx.db.insert("paymentAttempts", { organizationId: intent.organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
       paymentIntentId: intent._id, paymentCommandId: command._id, attemptId: args.claimId, attempt: 1, amountAtomic: intent.amountAtomic,
       payerAddress: senderAddress, status: "prepared", createdAt: now, updatedAt: now });
+    // The durable attempt now owns execution; this queue row means dispatched, never settled.
+    await ctx.db.patch(dispatch._id, { status: "delivered", attempt: dispatch.attempt + 1 });
     await ctx.db.patch(command._id, { attemptCount: 1, status: "reconciling", updatedAt: now });
     await ctx.db.patch(intent._id, { status: "reconciling", updatedAt: now });
     return { intentId: intent._id, recipientAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic.toString(),

@@ -22,6 +22,7 @@
     "verify:sample": "node scripts/verify-sample.mjs"
   },
   "dependencies": {
+    "@convex-dev/workflow": "0.4.10",
     "@noble/hashes": "2.4.0",
     "@skarl/contracts": "workspace:*",
     "convex": "1.48.0",

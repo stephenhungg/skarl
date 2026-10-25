@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as approvalWorkflow from "../approvalWorkflow.js";
 import type * as dashboard from "../dashboard.js";
 import type * as finance from "../finance.js";
 import type * as financeAgent from "../financeAgent.js";
@@ -33,6 +34,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  approvalWorkflow: typeof approvalWorkflow;
   dashboard: typeof dashboard;
   finance: typeof finance;
   financeAgent: typeof financeAgent;
@@ -78,4 +80,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
+};

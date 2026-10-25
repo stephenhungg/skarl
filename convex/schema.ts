@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { vWorkflowId } from "@convex-dev/workflow";
 import {
   actor,
   amountAtomic,
@@ -340,6 +341,7 @@ export default defineSchema({
       intentId: v.string(),
       payableId: v.id("payables"),
       paymentCommandId: v.id("paymentCommands"),
+      approvalWorkflowId: v.optional(vWorkflowId),
       requesterTokenIdentifier: tokenIdentifier,
       recipientAddress: evmAddress,
       amountAtomic,

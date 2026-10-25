@@ -1,17 +1,17 @@
 # Build Status
 
-Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 finance and Task 2 verification run on the shared Convex cloud dev deployment below. Audio inference succeeded; successful visual inference remains externally blocked as detailed below. Payment adapters are implemented but no live transfer is confirmed. Update this file when another integration becomes demonstrable.
+Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 finance and Task 2 verification run on the shared Convex cloud dev deployment below. Audio inference succeeded; successful visual inference remains externally blocked as detailed below. Payment adapters are implemented; the payment owner recorded a first live x402 funding below. Live payout remains unconfirmed. Update this file when another integration becomes demonstrable.
 
 | Area | Implemented now | Remaining for the [demo path](workstreams.md) |
 | --- | --- | --- |
 | Web | Next.js landing/contributor recorder, Convex upload/status wiring, health and payment API routes; production build passes | Controller dashboard, live browser/wallet integration and HTTPS deployment verification |
 | Shared contracts | Base Sepolia chain constants (`chain.ts`), funding/payout status lists, JSON Schema, TS report validation, `parseAtomicUsdc` | Rubric-membership check wired into acceptance |
-| Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads, verified contributor wallets, Workflow approval wait; production auth is out of demo scope |
+| Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads and verified contributor wallets; production auth is out of demo scope |
 | Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; live audio measured | Successful live visual response blocked by Flash 503/timeouts and Argon zero quota; real demonstration quality/copy calibration unmeasured; Python worker deferred |
 | Evaluation | Scoring scaffolding | Deferred: no labeled corpus. Staged demo clips only |
 | Ledger | Audited pure helpers plus atomic Convex journal/line persistence, fulfillment accrual, event fingerprints and replay protection | Live funding/payout settlement and reconciliation evidence |
-| Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | Supply controller treasury address; complete Wallet MCP authentication; run real funding/payout. Live buyer balance verified at 20 USDC; v2 seeded and awaiting funding; no live transfer yet |
-| Finance agent | Gemini function-calling action; six typed tools; persisted transcript/explanation; cumulative exact batch and call caps; existing proposal and refused approval audits | Live model measurement below; Workflow wait and wallet execution remain separate |
+| Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | First x402 funding recorded below; v2 read-back is funded with 10000000 micro-USDC cash and deferred revenue. Complete the independent approval, wallet payout and reconciliation demo |
+| Finance agent | Gemini function-calling action; six typed tools; persisted transcript/explanation; cumulative exact batch and call caps; existing proposal and refused approval audits | Live model measurement below; durable Workflow approval wait implemented; wallet execution remains separate |
 | Sponsors | Requirements checked against Devpost and the briefs | Working integrations; Coinbase eligibility checklist per member |
 
 Local tests prove only the behavior they execute. They do not prove settlement, inference quality, authorization or sponsor eligibility.
@@ -171,3 +171,25 @@ cloud action deployed successfully. A live read-only Flash request timed out
 after **60,423 ms**, stored run `mx765vzkc04sqfqe66jjxx1ssd8gyhff` as failed with
 `gemini_timeout`, and executed no tools. No complete live agent loop or payment
 is claimed from this attempt.
+
+## Task 3 — durable approval Workflow
+
+Payout proposals start the real `@convex-dev/workflow` component and persist its
+ID. Controller approval sends a durable event; the resumed mutation revalidates
+current independent-controller membership, the binding/source snapshot, exact
+amount/recipient/asset and expiry before queuing dispatch once. The payment claim
+now requires this pending outbox entry. Dashboard payables expose `dispatchReady`;
+clients must wait for it after approval. No Workflow step signs or sends funds.
+
+Tests use the component's actual `convex-test` registration, not a fake Workflow
+stub. They exercise waiting, early events, refused approval, replay, stale or
+revoked authority and the pre-dispatch execution fence. Live payout remains
+unperformed by this work; this component is a durable authorization coordinator,
+not a wallet executor.
+
+Workflow validation: `pnpm check` passed 74 package, 147 Convex and 24 payment-route
+tests, typechecks, docs and production build. The 21 added Workflow tests include
+actual event wait/resume through the component test adapter. The shared cloud
+deployment installed `workflow`, its Workpool and batch worker successfully.
+A separate live query read v2 as funded with exactly `10000000` micro-USDC cash
+and customer prepayments; that read does not demonstrate a live approval/payout.

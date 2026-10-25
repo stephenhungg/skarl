@@ -4,7 +4,7 @@
 
 The target agent fills two financial seats: settlement accountant and accounts-payable clerk. It explains obligations, proposes bounded payments and identifies reconciliation exceptions (period close is deferred). It does not decide whether a clip contains the right action, approve its own payment, hold a wallet key or rewrite the ledger.
 
-The Convex `financeAgent.run` action implements a real Gemini function-calling loop over six allowlisted tools. Tool results and the final advisory explanation persist in `financeAgentRuns` for the controller dashboard. Server mutations enforce cumulative exact proposal limits and existing independent-approval rules. Approval Workflow integration is the next quality item; wallet execution remains separate. Mocked responses test policy boundaries; live provider measurements are recorded in [status](status.md).
+The Convex `financeAgent.run` action implements a real Gemini function-calling loop over six allowlisted tools. Tool results and the final advisory explanation persist in `financeAgentRuns` for the controller dashboard. Server mutations enforce cumulative exact proposal limits and existing independent-approval rules. A Convex Workflow waits for independent controller approval, revalidates the stored proposal and releases the execution outbox; wallet execution remains separate. Mocked responses test policy boundaries; live provider measurements are recorded in [status](status.md).
 
 ## Bounded tool surface
 
@@ -91,3 +91,25 @@ the provider conversation in action memory and is not persisted. Explanations
 remain advisory model text; authoritative cash, proposal and approval state
 comes from the deterministic query/tool results. A killed run is marked failed;
 it does not resume money-related tools automatically.
+
+## Durable approval wait
+
+`@convex-dev/workflow` starts one `approvalWorkflow.awaitController` per payout
+proposal. Proposal replay reuses its stored Workflow ID. `finance.approve` keeps
+its existing controller/independence/binding checks, records the approval and
+sends `controllerApproved` in the same transaction. An early event is retained
+until the Workflow reaches `awaitEvent`.
+
+The event is a wake-up signal. The queue mutation reloads the approval, current
+controller membership, exact recipient/amount/asset, source version and expiry
+before inserting `dispatch:<commandId>` once. The component never signs or
+sends a transfer. A changed, revoked or expired approval cannot release dispatch.
+Unanswered workflows remain suspended; payment expiry still blocks execution.
+There is no automatic wallet retry or automatic re-approval.
+
+Approval returns before the asynchronous queue step completes. Dashboard
+clients should wait for `dashboard.payables[].dispatchReady === true` before
+claiming execution. A premature claim returns `dispatch_not_ready` without
+creating a payment attempt. Claiming consumes the outbox and creates the durable
+attempt in one mutation; `delivered` means handed to the executor, never paid.
+The existing wallet/reconciliation path remains responsible for settlement.

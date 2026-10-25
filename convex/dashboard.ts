@@ -69,7 +69,10 @@ export const payables = query({
         if (reference && reference.organizationId !== order.organizationId) throw new Error("cross_organization_reference");
       }
       if ((intent && intent.orderId !== order._id) || (command && command.orderId !== order._id)) throw new Error("payment_reference_mismatch");
-      return { ...payable, amountAtomic: payable.amountAtomic.toString(),
+      const dispatch = command ? await ctx.db.query("outboxEvents").withIndex("by_event_key", q =>
+        q.eq("organizationId", order.organizationId).eq("eventKey", `dispatch:${command._id}`)).unique() : null;
+      return { ...payable, dispatchReady: command?.status === "approved" && dispatch?.status === "pending" && dispatch.availableAt <= Date.now(),
+        amountAtomic: payable.amountAtomic.toString(),
         intent: intent ? { ...intent, amountAtomic: intent.amountAtomic.toString() } : null,
         command: command ? { ...command, amountAtomic: command.amountAtomic.toString() } : null, approval };
     }));

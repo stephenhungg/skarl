@@ -1,5 +1,6 @@
 import { convexTest, type TestConvex } from "convex-test";
-import { describe, expect, it } from "vitest";
+import workflowTest from "@convex-dev/workflow/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
@@ -23,8 +24,12 @@ const CONTROLLER = "demo:skarl:controller";
 const AGENT = "demo:skarl:finance-agent";
 const RECIPIENT = "0x1111111111111111111111111111111111111111";
 
+beforeEach(() => { vi.useFakeTimers(); });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+
 async function setup(funded = true): Promise<Fixture> {
   const t = convexTest(schema, modules);
+  workflowTest.register(t);
   const seeded = await t.mutation(internal.seed.demo, {});
   await t.run(async (ctx) => {
     const contributor = await ctx.db.query("memberships")
@@ -431,6 +436,7 @@ describe("demo finance mutations against isolated Convex state", () => {
     const approved = await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: proposed.intentId });
     expect(approved.ok).toBe(true);
     if (!approved.ok) throw new Error(approved.code);
+    await fixture.t.finishAllScheduledFunctions(vi.runAllTimers);
     const replay = await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: proposed.intentId });
     expect(replay).toEqual({ ...approved, replayed: true });
     state = await snapshot(fixture);
@@ -513,6 +519,7 @@ describe("demo finance mutations against isolated Convex state", () => {
     if (!proposed.ok) throw new Error(proposed.code);
     const approved = await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: proposed.intentId });
     if (!approved.ok) throw new Error(approved.code);
+    await fixture.t.finishAllScheduledFunctions(vi.runAllTimers);
     await fixture.t.run((ctx) => ctx.db.patch(proposed.paymentCommandId, { status: "cancelled" }));
     const refused = await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: proposed.intentId });
     expect(refused).toMatchObject({ ok: false, code: "approval_invalidated" });

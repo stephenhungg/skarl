@@ -98,8 +98,9 @@ recipient, source-version/binding hash and one-hour expiry. Existing funding
 intents retain their original shape (`kind` absent or `funding`); payment owners
 must narrow this discriminant. Proposal replay returns the original intent and
 requester. The intended demo flow is finance-agent proposal followed by controller approval. A controller-created proposal cannot be self-approved; expired or blocked proposals require a separate explicit recovery path (not implemented in Task 1), rather than silently rewriting the requester. Approval checks the exact payable/command/intent bindings, refuses
-changed or expired proposals, updates intent/command and writes one dispatch
-outbox event. The payable becomes `payout_in_progress`, **not paid**. Replaying
+changed or expired proposals, updates intent/command and atomically signals the
+Convex approval Workflow. The Workflow revalidates and queues one dispatch
+outbox event asynchronously. The payable becomes `payout_in_progress`, **not paid**. Replaying
 approval creates no second approval or dispatch. No wallet call occurs.
 
 The payment integration must consume an approved command, validate its binding
@@ -335,3 +336,12 @@ transactions, even when one action awaits all of them.
 - [Canonical x402 source](https://github.com/x402-foundation/x402)
 - [CDP x402 facilitator](https://docs.cdp.coinbase.com/x402/seller/facilitator)
 - [Circle USDC addresses](https://developers.circle.com/stablecoins/usdc-contract-addresses)
+
+## Approval dispatch readiness
+
+Payout proposals now carry `approvalWorkflowId`. The controller's successful
+`finance.approve` response means approval was recorded and signaled, not that
+the execution outbox is already ready. Observe `dashboard.payables[].dispatchReady`
+before calling the payment executor. `payments.claimPayout` refuses with
+`dispatch_not_ready` until the Workflow releases that exact command; no attempt
+is created by the refusal. See [durable approval wait](finance-agent.md#durable-approval-wait).

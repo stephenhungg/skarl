@@ -90,3 +90,9 @@ export const paymentBinding = (command: Pick<Doc<"paymentCommands">,
     amountAtomic: command.amountAtomic, sourceVersion: command.sourceVersion,
     requesterTokenIdentifier: command.requesterTokenIdentifier,
   });
+
+export const sourceVersion = (payable: Doc<"payables">) => digest({
+  payableId: payable._id, orderId: payable.orderId, submissionId: payable.submissionId, decisionId: payable.decisionId,
+  contributor: payable.contributorTokenIdentifier, recipientAddress: normalizeAddress(payable.recipientAddress),
+  amountAtomic: payable.amountAtomic, network: payable.network, tokenAddress: payable.tokenAddress, createdAt: payable.createdAt,
+});

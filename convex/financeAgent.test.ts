@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { convexTest } from "convex-test";
+import workflowTest from "@convex-dev/workflow/test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -27,6 +28,7 @@ function provider(respond: (body: ProviderBody, index: number) => unknown) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
   vi.stubEnv("GEMINI_API_KEY", "unit-test-placeholder");
   vi.stubEnv("GEMINI_FINANCE_MODEL", "gemini-3.8-flash");
   vi.stubEnv("FINANCE_AGENT_MAX_TOOL_CALLS", "12");
@@ -38,6 +40,7 @@ afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals()
 
 async function setup() {
   const t = convexTest(schema, modules);
+  workflowTest.register(t);
   const seeded = await t.mutation(internal.seed.demo, {});
   return { t, ...seeded };
 }

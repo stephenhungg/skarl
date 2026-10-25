@@ -1,9 +1,11 @@
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
+import { workflow, controllerApproved } from "./approvalWorkflow";
 import { mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { DemoRoleError, demoToken, requireRole, type DemoPrincipal, type DemoRole } from "./lib/demoAuth";
-import { actorFor, audit, digest, normalizeAddress, paymentBinding, recordJournal } from "./lib/finance";
+import { actorFor, audit, digest, normalizeAddress, paymentBinding, recordJournal, sourceVersion } from "./lib/finance";
 import { compareFrameHashes } from "./lib/copyDetection";
 import { createFulfillmentJournal } from "../packages/ledger/src/index";
 import { MAX_ATOMIC_USDC, PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
@@ -24,11 +26,7 @@ async function refuse(ctx: MutationCtx, principal: DemoPrincipal, entity: { _id:
   // Returning a refusal commits its audit event. Throwing here would roll it back.
   return { ok: false as const, code };
 }
-const sourceVersion = (payable: Doc<"payables">) => digest({
-  payableId: payable._id, orderId: payable.orderId, submissionId: payable.submissionId, decisionId: payable.decisionId,
-  contributor: payable.contributorTokenIdentifier, recipientAddress: normalizeAddress(payable.recipientAddress),
-  amountAtomic: payable.amountAtomic, network: payable.network, tokenAddress: payable.tokenAddress, createdAt: payable.createdAt,
-});
+
 
 export const acceptAndPublish = mutation({
   args: { demoIdentity: v.string(), submissionId: v.id("submissions") },
@@ -163,6 +161,10 @@ export async function proposePaymentFor(ctx: MutationCtx, args: { demoIdentity: 
     const existing = await ctx.db.query("paymentIntents").withIndex("by_payable", q => q.eq("payableId", payable._id)).unique();
     if (existing) {
       if (existing.kind !== "contributor_payout" || existing.sourceVersion !== version) return refuse(ctx, principal, payable, "payment_proposal", "payable_changed");
+      if (!existing.approvalWorkflowId && existing.status === "proposed") {
+        const approvalWorkflowId = await workflow.start(ctx, internal.approvalWorkflow.awaitController, { intentId: existing._id, bindingHash: existing.bindingHash });
+        await ctx.db.patch(existing._id, { approvalWorkflowId });
+      }
       return { ok: true as const, intentId: existing._id, paymentCommandId: existing.paymentCommandId, replayed: true };
     }
     if (payable.status !== "accrued" || payable.amountAtomic <= 0n) return refuse(ctx, principal, payable, "payment_proposal", "payable_not_open");
@@ -177,6 +179,8 @@ export async function proposePaymentFor(ctx: MutationCtx, args: { demoIdentity: 
       kind: "contributor_payout", requestedBy: actorFor(principal), bindingHash, status: "proposed", attemptCount: 0, leaseGeneration: 0, updatedAt: now });
     const intentId = await ctx.db.insert("paymentIntents", { ...binding, kind: "contributor_payout", intentId: `payout:${payable._id}`,
       paymentCommandId, bindingHash, expiresAt: now + 60 * 60 * 1000, status: "proposed", updatedAt: now });
+    const approvalWorkflowId = await workflow.start(ctx, internal.approvalWorkflow.awaitController, { intentId, bindingHash });
+    await ctx.db.patch(intentId, { approvalWorkflowId });
     await audit(ctx, { organizationId: payable.organizationId, eventKey: `proposed:${payable._id}`, actor: actorFor(principal),
       action: "payment_proposed", entityType: "paymentIntents", entityId: intentId,
       reason: "Proposal derived from the stored payable; independent controller approval required.", evidenceReferences: [payable._id, paymentCommandId] });
@@ -232,9 +236,10 @@ export const approve = mutation({
     await ctx.db.patch(command._id, { status: "approved", approvalId, updatedAt: now });
     await ctx.db.patch(intent._id, { status: "approved", updatedAt: now });
     await ctx.db.patch(payable._id, { status: "payout_in_progress" });
-    await ctx.db.insert("outboxEvents", { organizationId: intent.organizationId, eventKey: `dispatch:${command._id}`,
-      kind: "dispatch_settlement", orderId: intent.orderId, paymentCommandId: command._id, paymentIntentId: intent._id,
-      status: "pending", availableAt: now, attempt: 0, leaseGeneration: 0 });
+    const approvalWorkflowId = intent.approvalWorkflowId ?? await workflow.start(ctx, internal.approvalWorkflow.awaitController, { intentId: intent._id, bindingHash: intent.bindingHash });
+    if (!intent.approvalWorkflowId) await ctx.db.patch(intent._id, { approvalWorkflowId });
+    await workflow.sendEvent(ctx, { ...controllerApproved, workflowId: approvalWorkflowId,
+      value: { approvalId, bindingHash: intent.bindingHash } });
     await audit(ctx, { organizationId: intent.organizationId, eventKey: `approved:${intent._id}`, actor: actorFor(principal),
       action: "payment_approved", entityType: "paymentIntents", entityId: intent._id,
       reason: "Independent approval recorded; wallet execution and chain reconciliation remain separate.", evidenceReferences: [approvalId, command._id] });

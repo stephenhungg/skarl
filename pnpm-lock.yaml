@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@convex-dev/workflow':
+        specifier: 0.4.10
+        version: 0.4.10(@convex-dev/workpool@0.4.14(convex-helpers@0.1.129(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(hono@4.13.14)(react@19.3.1)(typescript@7.0.2)(zod@4.6.7))(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(react@19.3.1))(convex-helpers@0.1.129(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(hono@4.13.14)(react@19.3.1)(typescript@7.0.2)(zod@4.6.7))(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))
       '@noble/hashes':
         specifier: 2.4.0
         version: 2.4.0
@@ -195,6 +198,25 @@ packages:
 
   '@coinbase/x402@2.1.0':
     resolution: {integrity: sha512-aKeM+cz//+FjzPVu/zgz7830x0KLtKarwCyxoeC71QgCn+Xcf0NhFpn3Qyw0H496y5YOuR/IQ67gP8DZ/hXFqQ==}
+
+  '@convex-dev/batch-worker@0.2.2':
+    resolution: {integrity: sha512-3knigElzTVhWw1sN28EYkGBTdrJZ03vMj2PJPuFq3V0Tg41i7tcv/EWDBFQWcUaKzBWWVw693hcJtxCF3CRtEw==}
+    peerDependencies:
+      convex: ^1.36.1
+      react: ^18.3.1 || ^19.0.0
+
+  '@convex-dev/workflow@0.4.10':
+    resolution: {integrity: sha512-BHEDZEJUhZQOuqtop4bZRgomoKFA+JNECat+c9/cAuQmCegn7F0xlAiFiCPtYNm2xyUh3Rv+fJuNhnqs4th1cw==}
+    peerDependencies:
+      '@convex-dev/workpool': ^0.4.4
+      convex: ^1.46.0
+      convex-helpers: ^0.1.127
+
+  '@convex-dev/workpool@0.4.14':
+    resolution: {integrity: sha512-uTgOlLo7/Sv5OYhb6jjQ/+COAgLhOd1sMfHtJbN5qB298SHJQGoUUab66f6kqfEb8ugD1FnkL0oNZmk6fMqkow==}
+    peerDependencies:
+      convex: ^1.36.1
+      convex-helpers: ^0.1.94
 
   '@derhuerst/http-basic@8.2.4':
     resolution: {integrity: sha512-F9rL9k9Xjf5blCz8HsJRO4diy111cayL2vkY2XE4r4t3n0yPXVYy3KD3nJ1qbrSn9743UWSXH4IwuCa/HWlGFw==}
@@ -2523,6 +2545,9 @@ packages:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
     engines: {node: '>=12'}
 
+  async-channel@0.2.0:
+    resolution: {integrity: sha512-BJyjI/sfKlyijaBt2hbOSxT28xGNtLR0QLzAKO1Hlnv5BULY7sAoYoTPW3lfr1ZIC7y+FxabxO9T8GXpyoofGg==}
+
   async-mutex@0.2.6:
     resolution: {integrity: sha512-Hs4R+4SPgamu6rSGW8C7cV9gaWUKEHykfzCCvIRuaVv636Ju10ZdeUbvb4TBEW0INuq2DHZqXbK4Nd3yG4RaRw==}
 
@@ -2671,6 +2696,28 @@ packages:
   concat-stream@2.0.0:
     resolution: {integrity: sha512-MWufYdFw53ccGjCA+Ol7XJYpAlW6/prSMzuPOTRnJGcGzuhLn4Scrz7qf6o8bROZ514ltazcIFJZevcfbo0x7A==}
     engines: {'0': node >= 6.0}
+
+  convex-helpers@0.1.129:
+    resolution: {integrity: sha512-8QJLbym0fKsf3tYcF2ZTX37NeYt/BkOFBjBwB2LR1fXUAajeYaTLV11gi/0IVOU/jCdH2j/VseHhHid1qQcqFw==}
+    hasBin: true
+    peerDependencies:
+      '@standard-schema/spec': ^1.0.0
+      convex: ^1.46.0
+      hono: ^4.0.5
+      react: ^17.0.2 || ^18.0.0 || ^19.0.0
+      typescript: ^5.5 || ^6.0.0 || ^7.0.0
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      '@standard-schema/spec':
+        optional: true
+      hono:
+        optional: true
+      react:
+        optional: true
+      typescript:
+        optional: true
+      zod:
+        optional: true
 
   convex-test@0.0.65:
     resolution: {integrity: sha512-2FgHlLGraM2O3tEVpOfvoHSleK0x92J8xjQ/qClWzNJX3NcmgvuNeWBrmma7sLJ8lB3ENPxx6ykJTfvZmWg3BQ==}
@@ -4485,6 +4532,26 @@ snapshots:
       - supports-color
       - typescript
       - utf-8-validate
+
+  '@convex-dev/batch-worker@0.2.2(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(react@19.3.1)':
+    dependencies:
+      convex: 1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10)
+      react: 19.3.1
+
+  '@convex-dev/workflow@0.4.10(@convex-dev/workpool@0.4.14(convex-helpers@0.1.129(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(hono@4.13.14)(react@19.3.1)(typescript@7.0.2)(zod@4.6.7))(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(react@19.3.1))(convex-helpers@0.1.129(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(hono@4.13.14)(react@19.3.1)(typescript@7.0.2)(zod@4.6.7))(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))':
+    dependencies:
+      '@convex-dev/workpool': 0.4.14(convex-helpers@0.1.129(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(hono@4.13.14)(react@19.3.1)(typescript@7.0.2)(zod@4.6.7))(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(react@19.3.1)
+      async-channel: 0.2.0
+      convex: 1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10)
+      convex-helpers: 0.1.129(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(hono@4.13.14)(react@19.3.1)(typescript@7.0.2)(zod@4.6.7)
+
+  '@convex-dev/workpool@0.4.14(convex-helpers@0.1.129(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(hono@4.13.14)(react@19.3.1)(typescript@7.0.2)(zod@4.6.7))(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(react@19.3.1)':
+    dependencies:
+      '@convex-dev/batch-worker': 0.2.2(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(react@19.3.1)
+      convex: 1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10)
+      convex-helpers: 0.1.129(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(hono@4.13.14)(react@19.3.1)(typescript@7.0.2)(zod@4.6.7)
+    transitivePeerDependencies:
+      - react
 
   '@derhuerst/http-basic@8.2.4':
     dependencies:
@@ -7913,6 +7980,8 @@ snapshots:
 
   assertion-error@2.0.1: {}
 
+  async-channel@0.2.0: {}
+
   async-mutex@0.2.6:
     dependencies:
       tslib: 2.8.1
@@ -8044,6 +8113,15 @@ snapshots:
       inherits: 2.0.4
       readable-stream: 3.6.2
       typedarray: 0.0.6
+
+  convex-helpers@0.1.129(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(hono@4.13.14)(react@19.3.1)(typescript@7.0.2)(zod@4.6.7):
+    dependencies:
+      convex: 1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10)
+    optionalDependencies:
+      hono: 4.13.14
+      react: 19.3.1
+      typescript: 7.0.2
+      zod: 4.6.7
 
   convex-test@0.0.65(convex@1.48.0(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10)):
     dependencies:
