@@ -59,6 +59,30 @@ Sepolia RPC is the default), and treasury identity comes from the canonical
 demo order's stored funding intent. Web-only webhook/origin configuration is
 outside this Convex environment inventory and still needs separate verification.
 
+## Task-scoped verifier — October 25, 2026 (source; deployment pending)
+
+- Replaced the red-cup-only pipeline with `task-evidence-2.0`, frozen order/rubric
+  task specs, task-generated silent video/general audio prompts and task-scoped
+  TypeScript/Python observation validation. Legacy `red-cup-evidence-1.2` reports
+  remain readable. Native timestamped transcription uses deterministic task-aware
+  claim extraction.
+- Read the existing rubrics without changing deployment state. The can order
+  `kh7c6cy844fyjxzpsg945v0c618gzsha` asks for movement **closer to the hat next to
+  the lamp**. The spec preserves this relationship. Can detector evidence is
+  `not_applicable`; cup/bottle detections cannot corroborate a can.
+- Mocked can evidence traverses both visual judges, audio, canonical storage and
+  scoped validation. Cross-task labels and narration instructions are rejected;
+  an unknown spec persists a failed/review report. No fixture result establishes
+  live task accuracy, licensing or payment authority.
+- Operator needs: deploy Convex and web, then run
+  `pnpm exec convex run taskSpecMigration:backfill '{}'` against that deployment.
+  The internal migration is idempotent and preserves existing financial/rubric
+  hashes and historical reports. No deployment or migration was run here; live
+  Gemini on a licensed can clip and physical-phone validation remain outstanding.
+- Local verification: `pnpm check` and 59 Python verifier tests passed. Mobile
+  dependencies are absent in this worktree, so standalone Expo typecheck/runtime
+  capture remain unverified. See [task-spec handoff](ai-verification.md#task-scoped-evidence-source-implementation-october-25).
+
 ## Sponsor review integration — October 25, 2026
 
 - Browser payout signing/recovery now use the Convex intent document ID, not the business event key. Proposal actions open the real finance-agent loop rather than impersonating an agent with a demo selector; existing buyer rejection and policy execution controls are preserved.

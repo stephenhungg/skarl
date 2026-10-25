@@ -2,7 +2,7 @@
 
 The shared Convex dev deployment now has a scheduled Node verification pipeline,
 private upload workflow, server-computed original SHA-256, separate visual/audio
-observations, deterministic red-cup comparison and canonical report validation.
+observations, deterministic task-scoped comparison and canonical report validation.
 The measured live run and remaining limits are recorded below. Tests use mocked
 Gemini outputs except the separately identified cloud sample. No training-data
 quality benchmark or real human demonstration evaluation has been completed.
@@ -53,10 +53,11 @@ establish Skarl accuracy.
    those into narrated action claims. Zero-duration quantized words are grouped
    with adjacent provider-timed words while preserving transcript text and
    provider interval endpoints; new word timing is not invented.
-7. Deterministic code compares red-cup pickup, coaster placement/order and
-   speech/action agreement (two-second alignment tolerance). Only the three
-   known seeded criteria, descriptions and modalities are supported. Unknown
-   rubric semantics, ambiguous objects, missing modalities, instruction-like
+7. Deterministic code compares the frozen task's pickup, destination placement/order
+   and speech/action agreement (two-second alignment tolerance). A structured
+   `taskSpec` supplies the object, distractors, target, ordered steps and narration
+   expectations. Supported two-step pickup/place criteria must match those steps;
+   unknown semantics, ambiguous objects, missing modalities, instruction-like
    narration, duplicate candidates or failures route to review. A contradiction
    may request correction. Model text never sets financial state.
 8. `validateVerificationReportForRubric` checks every report against the shared
@@ -68,6 +69,79 @@ establish Skarl accuracy.
    report/projection and moving the submission to review/correction. It creates
    no payable, acceptance decision or payment. A five-minute watchdog handles
    interrupted jobs by exposing review rather than leaving a spinner.
+
+## Task-scoped evidence (source implementation, October 25)
+
+`task-evidence-2.0` replaces the red-cup-only pipeline. Orders may supply optional
+`taskSpec: { object, distractors, target, steps, narration? }` through
+`orders:createOrder` or `skarl_create_order`. Labels are bounded snake-case strings;
+`other` and `unknown` are reserved fallbacks. New explicit specs participate in
+the frozen rubric content hash and order replay binding. The rubric stores a
+`taskSpecHash` binding its spec to `contentHash`; verification reads the submission's
+frozen rubric, never a mutable title, model output or narration. Only the exact
+legacy rubric gets the implicit red-cup default. Unstructured unrelated orders
+remain createable but produce failed/review-only reports until given a supported
+frozen spec.
+
+Both silent visual judges receive the same spec and criterion descriptions in
+separate image-only requests. General audio models receive an independently
+constructed audio-only prompt. Native Transcribe retains its existing verbatim,
+word-timestamp request; deterministic claim extraction uses the frozen spec.
+No visual request receives narration or an audio observation. Media text cannot
+change labels, tools, payment rules or roles. Prompts require the complete
+placement relationship before returning the target label, with `other` for a
+clearly wrong relationship and `unknown` for uncertainty.
+
+The live can order `kh7c6cy844fyjxzpsg945v0c618gzsha` requires picking up the can
+and placing it **closer to the hat that is next to the lamp**. This is relative
+movement toward a landmark, not placing the can on or inside a hat. Its frozen
+spec retains that exact step. Timestamped before/after visual evidence must
+support the relationship; target-label validation alone does not prove spatial
+accuracy. The deterministic comparator currently implements two-step pickup/place
+and standard action-aligned narration, including this relative-placement template.
+Additional actions or unsupported criterion/narration semantics require review.
+
+Canonical reports can carry `observations.video` / `observations.audio`. Shared
+TypeScript and Python shape validation remains available for reading artifacts;
+scoped validation additionally takes the trusted order spec and rejects labels
+from another task. `red-cup-evidence-1.2` retains its legacy label validation and
+old reports without embedded observations remain readable. Historical reports
+are never rewritten. Liveness still compares the issued random words independently
+of task vocabulary. Coach explanations and dataset `language_instruction` already
+use report evidence and the frozen rubric respectively.
+
+The detector witness uses exact supported classes, with no can-to-bottle/cup
+approximation. A can has no faithful class and returns `not_applicable`, even if
+legacy cup detections exist. New derived runs bind task object/class and compute
+overlap timestamps from validated uploaded frames. These browser observations
+remain advisory and client-computed, never authority for acceptance or payment.
+Legacy stored cup summaries remain available for compatible tasks.
+
+### Operator handoff (no deployment performed by this change)
+
+Deploy the Convex schema/functions and web changes, then run this internal,
+idempotent migration against the intended deployment:
+
+```sh
+pnpm exec convex run taskSpecMigration:backfill '{}'
+```
+
+It enriches the seeded red-cup v1/v2 and exact hash-guarded can rubric, preserving
+existing commercial terms, rubric content hashes and reports. Its added spec hash
+and audit event record the binding. Unrelated orders are skipped. It does not
+rerun old submissions, create a payable, or perform a chain transaction. Re-record
+or submit a licensed can demonstration after migration to obtain new evidence.
+
+Synthetic tests cover can/hat acceptance against its spec, cross-task rejection,
+legacy report compatibility, task prompts, injection resistance, both visual jury
+members and unavailable-spec persistence. These are not live Gemini accuracy.
+A live can clip, physical-phone capture and deployed behavior remain unverified.
+For private, verification-only evaluation, set manifest `criterionIds` to
+`["can-pickup", "hat-placement", "narration-alignment"]`, then run:
+
+```sh
+pnpm eval:clips /private/manifest.json --order-id kh7c6cy844fyjxzpsg945v0c618gzsha
+```
 
 ## Historical Task 3 smoke test (3.8 Flash)
 

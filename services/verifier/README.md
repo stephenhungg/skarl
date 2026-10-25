@@ -23,6 +23,7 @@ The `ml` extra is a candidate dependency set for later implementation. PyTorch, 
 ```sh
 skarl-verifier validate-report path/to/report.json
 skarl-verifier validate-report path/to/report.json --schema packages/contracts/schemas/verification-report.schema.json
+skarl-verifier validate-report path/to/report.json --task-spec path/to/trusted-order-task-spec.json --criterion-id task-adherence
 skarl-verifier scaffold-report --submission-id demo --task-version-id red-cup-v1 --sha256 0000000000000000000000000000000000000000000000000000000000000000 --duration-ms 12000
 skarl-verifier analyze path/to/recording.mp4
 ```
@@ -36,5 +37,7 @@ The canonical schema is `packages/contracts/schemas/verification-report.schema.j
 For the demo, analysis runs as Gemini calls in a Convex action; this package supplies the canonical report validation and tests. The deferred future worker receives a narrowly authorized media reference, immutable task version, and submission ID; runs bounded analysis; and returns a validated report through an authenticated, report-only callback. Its credentials must not allow accepting a submission, changing a price, creating a payable, approving a payment, or invoking any wallet signer.
 
 Reports use `schemaVersion: "1.0"`, criterion findings of `supported`, `contradicted`, or `unobservable`, and an advisory recommendation. Scaffold, failed, incomplete, or unavailable runs must recommend `needs_review`. Acceptance recommendations require completed inference, all criteria supported, and a clear duplicate check. Application code also checks timestamp bounds and duplicate references.
+
+`task-evidence-2.0` reports may include separate `observations.video` and `observations.audio` records with timestamped object and target labels. Shape validation allows bounded strings; scoped validation additionally checks labels against the trusted order's `object`, `distractors`, and `target`, with `other` and `unknown` fallbacks. Supply `--task-spec` with the rubric criteria when validating these reports for an order. Report text and narration cannot provide the spec. `red-cup-evidence-1.2` reports retain their original labels and remain readable without adding observation metadata. Python remains a contract validator; the live Convex action owns inference.
 
 See [AI architecture](../../docs/ai-verification.md) and [evaluation protocol](../../docs/evaluation.md). Skarl's payment implementation is Base Sepolia only; this package has no blockchain implementation.

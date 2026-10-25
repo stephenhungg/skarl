@@ -68,8 +68,8 @@ or an iOS export.
 
 1. Read the live task and all consent terms, including sensor sharing. The camera
    stays off until consent. Enable camera/mic and allow Motion & Fitness if asked.
-2. Keep the phone fixed, as the live red-cup rubric asks. Record yourself picking
-   up the red cup and placing it on the coaster while narrating; only consenting
+2. Keep the phone fixed and follow the selected task’s rubric. Record its
+   requested objects, destination and ordered steps while narrating; only consenting
    participants may be visible/audible. Stop after 10 seconds; native recording
    stops at 30 seconds or the 24 MiB safety cap.
 3. Review video/audio and the sensor sample count. Submit only when satisfied.
