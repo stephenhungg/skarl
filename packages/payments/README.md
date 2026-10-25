@@ -1,7 +1,7 @@
 # @skarl/payments
 
-Base Sepolia-only payment boundary. This package exports the canonical network and asset configuration from `@skarl/contracts/chain` (`PAYMENT_NETWORK` = `eip155:84532`, `USDC_ADDRESS` = Circle's Base Sepolia USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`, `USDC_DECIMALS` = 6), network and asset guards, and a runtime status that explicitly says **unimplemented**. `requirePaymentRuntime()` always throws. It does not connect a wallet, call a facilitator, charge a buyer, send a payout, refund a payment, or fabricate a receipt.
+Base Sepolia-only x402 funding configuration, EIP-3009 authorization parsing, transfer validation and three-way reconciliation. Constants come from `@skarl/contracts/chain`; amounts are bigint micro-USDC and decimal integer strings in JSON.
 
-`assertPaymentAsset(network, asset, decimals)` checks all three together and compares EVM addresses case-insensitively (EIP-55 casing is a checksum, not identity).
+The Next route adapters live under `apps/web/lib/payments` and `apps/web/app/api`. Convex owns durable attempts, nonce claims, approvals and financial transitions in `convex/payments.ts`. `getPaymentRuntimeStatus()` describes implemented code but does not infer configured credentials or live evidence. The old generic `requirePaymentRuntime()` remains closed; call the explicit adapters.
 
-Installed for the planned adapter (imports typecheck; nothing is wired): `@x402/core`, `@x402/evm`, `@x402/fetch` at 2.28.0 and `viem` 2.57.11 (`@x402/evm` depends on `viem ^2.48.11`). Buyer funding uses x402 v2 `exact` on Base Sepolia. Contributor payouts and buyer refunds are independently approved USDC transfers, not automatic x402 chargebacks. Coinbase MCP for Agents is not installed or wired here.
+See [payment setup and integration](../../docs/payments.md). No fixture or passing test proves onchain execution. Refunds are deferred.

@@ -2,17 +2,17 @@ import { PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS, USDC_DECIMALS } from "
 
 export { PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS, USDC_DECIMALS };
 
-/** A scaffold status, never a successful payment or evidence of a configured provider. */
+/** Capability inventory only. Runtime configuration and receipt checks remain mandatory. */
 export function getPaymentRuntimeStatus() {
   return {
-    implemented: false as const,
+    implemented: true as const,
     network: PAYMENT_NETWORK,
     usdcAddress: USDC_ADDRESS,
     decimals: USDC_DECIMALS,
     fundingAvailable: false as const,
     payoutsAvailable: false as const,
     refundsAvailable: false as const,
-    reason: "The Base Sepolia x402 facilitator, signer, settlement verification, payouts, and refunds are not implemented.",
+    reason: "Funding and browser payout adapters are implemented; configure the payment service and treasury before use. Refunds are deferred.",
   };
 }
 
@@ -23,7 +23,7 @@ export class PaymentIntegrationNotConfiguredError extends Error {
   }
 }
 
-/** Every attempted runtime payment path must fail closed until an adapter is implemented and tested. */
+/** Legacy generic entry point stays closed: use the explicit funding or approved-payout adapters. */
 export function requirePaymentRuntime(): never {
   throw new PaymentIntegrationNotConfiguredError();
 }
@@ -43,3 +43,6 @@ export function assertPaymentAsset(network: string, asset: string, decimals: num
   }
   if (decimals !== USDC_DECIMALS) throw new Error("Base Sepolia USDC must use six decimals");
 }
+
+export { fundingRouteConfig, parseFundingAuthorization } from "./funding.ts";
+export { validateTransfer, reconcilePayments, chainIdentity } from "./reconciliation.ts";

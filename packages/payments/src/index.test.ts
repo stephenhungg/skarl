@@ -5,9 +5,9 @@ import {
   PaymentIntegrationNotConfiguredError, assertPaymentAsset, assertPaymentNetwork, getPaymentRuntimeStatus, requirePaymentRuntime,
 } from "./index.ts";
 
-test("payment scaffold explicitly reports every payment capability unavailable", () => {
+test("unconfigured payment status reports implemented adapters but no enabled runtime", () => {
   const status = getPaymentRuntimeStatus();
-  assert.equal(status.implemented, false);
+  assert.equal(status.implemented, true);
   assert.equal(status.fundingAvailable, false);
   assert.equal(status.payoutsAvailable, false);
   assert.equal(status.refundsAvailable, false);
