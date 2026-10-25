@@ -3,7 +3,7 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/button";
-import { SpectralDrape } from "@/components/react-bits/spectral-drape";
+import { ContourTide } from "@/components/react-bits/contour-tide";
 import { BuiltOn } from "./built-on";
 import { DEMO_VIDEO_URL } from "./evidence";
 
@@ -31,7 +31,7 @@ export function Hero() {
           maskImage: "linear-gradient(180deg, #000 0%, #000 55%, transparent 88%)",
         }}
       >
-        <SpectralDrape className="h-full w-full" colors={["#e9f6dd", "#d0e9bf", "#b4d89c", "#f7fcf1"]} backgroundColor="#10120e" />
+        <ContourTide className="h-full w-full" colors={["#7d8c76", "#eef8e3"]} backgroundColor="#10120e" horizon={0.12} />
       </motion.div>
 
       <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(60% 40% at 50% 45%, rgb(var(--ink) / .4), transparent 75%)" }} />
