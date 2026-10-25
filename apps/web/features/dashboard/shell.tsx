@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { GlazePortalProvider } from "@/lib/glaze/portal";
 import { cn } from "@/lib/glaze/utils";
@@ -14,11 +14,14 @@ import { LogoMark } from "@/components/logo-mark";
 import { useConvexConfig } from "@/components/convex-provider";
 import { Lordicon, type LordiconName } from "./lordicon";
 import { AccountMenu } from "@/features/auth/account-menu";
-import { needsYou, useOrderData, useOrderId } from "./data";
-import { OrderSwitcher } from "./order-switcher";
+import { chooseOrder, needsYou, useOrderData, useOrderId, useOrders } from "./data";
+import { orderTitle } from "./order-switcher";
 import { PROOF_SECTIONS } from "./proof/sections";
 
-export type NavItem = { href: string; label: string; icon: LordiconName; count?: string; loud?: boolean; children?: { href: string; label: string }[] };
+export type NavChild = { href: string; label: string; current?: boolean; dot?: "ok" | "idle"; onSelect?: () => void };
+export type NavItem = { href: string; label: string; icon: LordiconName; count?: string; loud?: boolean; children?: NavChild[];
+  /** The row only opens and closes its children; it is not a page. */
+  toggleOnly?: boolean };
 export type ShellConfig = {
   /** The role's home route; also the breadcrumb root. */
   home: string;
@@ -82,8 +85,26 @@ function Count({ loud, value, collapsed }: { loud?: boolean; value: number; coll
 export function DashboardShell({ children }: { children: ReactNode }) {
   const { status } = useConvexConfig();
   return status === "ready"
-    ? <ControllerCounts>{counts => <AppShell config={CONTROLLER_SHELL} counts={counts} header={<OrderSwitcher />}>{children}</AppShell>}</ControllerCounts>
+    ? <ControllerCounts>{counts => <WithTasks>{config => <AppShell config={config} counts={counts}>{children}</AppShell>}</WithTasks>}</ControllerCounts>
     : <AppShell config={CONTROLLER_SHELL} counts={{}}>{children}</AppShell>;
+}
+
+/** Every task the buyer posted, as the first sidebar group. Picking one switches every page to it. */
+function WithTasks({ children }: { children: (config: ShellConfig) => ReactNode }) {
+  const orders = useOrders();
+  const orderId = useOrderId();
+  const { summary } = useOrderData(orderId);
+  const router = useRouter();
+  const rows = orders ?? [];
+  // The seeded demo order can sit outside the buyer's list; it is still the task every page shows.
+  const listed = summary && !rows.some(order => order._id === summary.order._id) ? [{ _id: summary.order._id, title: summary.order.title, status: summary.order.status }, ...rows] : rows;
+  const tasks: NavItem = { href: "#tasks", label: "Tasks", icon: "folder", toggleOnly: true, children: [
+    ...listed.map(order => ({ href: `/dashboard?orderId=${order._id}`, label: orderTitle(order.title), current: order._id === orderId,
+      dot: order.status === "awaiting_funding" || order.status === "draft" ? "idle" as const : "ok" as const,
+      onSelect: () => { chooseOrder(order._id); router.push("/dashboard"); } })),
+    { href: "/dashboard/post", label: "Post a task" },
+  ] };
+  return <>{children({ ...CONTROLLER_SHELL, nav: [{ items: [tasks] }, ...CONTROLLER_SHELL.nav] })}</>;
 }
 
 /** The shared app frame: sidebar, breadcrumbs, mobile bar and toaster, for any role. */
@@ -156,14 +177,25 @@ export function AppShell({ config, counts, header, children }: { config: ShellCo
                           <Count loud={item.loud} value={value} collapsed={collapsed} />
                         </Link>
                       );
+                      if (collapsed && item.toggleOnly) return (
+                        <Tooltip key={item.href}><TooltipTrigger render={
+                          <button type="button" onClick={toggle} aria-label={`Expand sidebar to see ${item.label}`} className="flex h-8 items-center justify-center rounded-tag text-text-2 hover:bg-hover hover:text-text-1">
+                            <Lordicon name={item.icon} size={16} />
+                          </button>} /><TooltipContent side="right">{item.label}</TooltipContent></Tooltip>
+                      );
                       if (collapsed) return <Tooltip key={item.href}><TooltipTrigger render={link} /><TooltipContent side="right">{item.label}</TooltipContent></Tooltip>;
                       if (!item.children) return <div key={item.href}>{link}</div>;
                       // A group opens on its own while you are inside it; the chevron toggles it otherwise.
-                      const open = expanded[item.href] ?? active;
+                      const open = expanded[item.href] ?? (item.toggleOnly ? true : active);
                       return (
                         <div key={item.href}>
                           <div className="relative">
-                            {link}
+                            {item.toggleOnly
+                              ? <button type="button" onClick={() => setExpanded(state => ({ ...state, [item.href]: !open }))} aria-expanded={open}
+                                  className="flex h-8 w-full items-center gap-2 rounded-tag px-2 pe-8 type-label text-text-2 hover:bg-hover hover:text-text-1">
+                                  <Lordicon name={item.icon} size={16} /><span className="truncate">{item.label}</span>
+                                </button>
+                              : link}
                             <button type="button" onClick={() => setExpanded(state => ({ ...state, [item.href]: !open }))} aria-expanded={open}
                               aria-label={`${open ? "Collapse" : "Expand"} ${item.label}`}
                               className="absolute inset-y-0 end-0 grid w-8 place-items-center rounded-tag text-text-3 hover:bg-hover hover:text-text-1">
@@ -173,11 +205,15 @@ export function AppShell({ config, counts, header, children }: { config: ShellCo
                           {open && (
                             <div className="ms-[15px] mt-px flex flex-col gap-px border-s border-line-faint ps-2">
                               {item.children.map(child => {
-                                const here = pathname === child.href;
+                                const here = child.current ?? pathname === child.href;
                                 return (
-                                  <Link key={child.href} href={child.href} aria-current={here ? "page" : undefined}
-                                    className={cn("flex h-7 items-center rounded-tag px-2 type-label-sm transition-colors duration-(--dur-state)",
-                                      here ? "bg-pressed text-text-1" : "text-text-2 hover:bg-hover hover:text-text-1")}>{child.label}</Link>
+                                  <Link key={child.href} href={child.href} aria-current={here ? "page" : undefined} title={child.label}
+                                    onClick={child.onSelect ? event => { event.preventDefault(); child.onSelect!(); } : undefined}
+                                    className={cn("flex h-7 items-center gap-2 rounded-tag px-2 type-label-sm transition-colors duration-(--dur-state)",
+                                      here ? "bg-pressed text-text-1" : "text-text-2 hover:bg-hover hover:text-text-1")}>
+                                    {child.dot && <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", child.dot === "ok" ? "bg-ok-text" : "bg-text-disabled")} />}
+                                    <span className="truncate">{child.label}</span>
+                                  </Link>
                                 );
                               })}
                             </div>
