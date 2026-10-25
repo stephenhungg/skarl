@@ -9,15 +9,16 @@ import { Kbd } from "@/components/glaze/ui/kbd";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/glaze/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLinkItem, DropdownMenuTrigger } from "@/components/glaze/ui/dropdown-menu";
 import { Toaster } from "@/components/glaze/ui/toast";
-import { ChevronSort, Icon } from "@/components/glaze/icon";
+import { ChevronDown, ChevronSort, Icon } from "@/components/glaze/icon";
 import { LogoMark } from "@/components/logo-mark";
 import { useConvexConfig } from "@/components/convex-provider";
 import { Lordicon, type LordiconName } from "./lordicon";
 import { AccountMenu } from "@/features/auth/account-menu";
 import { needsYou, useOrderData, useOrderId } from "./data";
 import { OrderSwitcher } from "./order-switcher";
+import { PROOF_SECTIONS } from "./proof/sections";
 
-export type NavItem = { href: string; label: string; icon: LordiconName; count?: string; loud?: boolean };
+export type NavItem = { href: string; label: string; icon: LordiconName; count?: string; loud?: boolean; children?: { href: string; label: string }[] };
 export type ShellConfig = {
   /** The role's home route; also the breadcrumb root. */
   home: string;
@@ -43,6 +44,8 @@ const CONTROLLER_NAV: ShellConfig["nav"] = [
   ] },
   { group: "System", items: [
     { href: "/dashboard/agent", label: "Finance agent", icon: "browser-terminal" },
+    { href: "/dashboard/proof", label: "Proof", icon: "badge-ribbon",
+      children: PROOF_SECTIONS.map(section => ({ href: `/dashboard/proof/${section.slug}`, label: section.title })) },
     { href: "/dashboard/audit", label: "Audit log", icon: "fingerprint-circle" },
     { href: "/dashboard/scenarios", label: "Scenario lab", icon: "wrench" },
     { href: "/dashboard/integrations", label: "Integrations", icon: "globe" },
@@ -51,7 +54,8 @@ const CONTROLLER_NAV: ShellConfig["nav"] = [
 export const CONTROLLER_SHELL: ShellConfig = {
   home: "/dashboard", role: "Buyer", homeLabel: "Overview", nav: CONTROLLER_NAV,
   mobile: [CONTROLLER_NAV[0]!.items[0]!, CONTROLLER_NAV[0]!.items[1]!, CONTROLLER_NAV[1]!.items[0]!, CONTROLLER_NAV[1]!.items[1]!],
-  titles: { receipt: "Receipt", inbox: "Exceptions", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log", scenarios: "Scenario lab", reconciliation: "Reconciliation", integrations: "Integrations" },
+  titles: { receipt: "Receipt", inbox: "Exceptions", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log", scenarios: "Scenario lab", reconciliation: "Reconciliation", integrations: "Integrations",
+    proof: "Proof", ...Object.fromEntries(PROOF_SECTIONS.filter(section => section.slug !== "agent").map(section => [section.slug, section.title])) },
   switchTo: { label: "Open contributor view", href: "/contribute" },
 };
 const STORE = "skarl:dashboard:sidebar";
@@ -86,6 +90,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 export function AppShell({ config, counts, header, children }: { config: ShellConfig; counts: Counts; header?: ReactNode; children: ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => { try { setCollapsed(localStorage.getItem(STORE) === "1"); } catch { /* storage unavailable */ } }, []);
   const toggle = useCallback(() => setCollapsed(value => {
@@ -144,15 +149,41 @@ export function AppShell({ config, counts, header, children }: { config: ShellCo
                       const link = (
                         <Link href={item.href} aria-current={active ? "page" : undefined}
                           className={cn("relative flex h-8 items-center gap-2 rounded-tag px-2 type-label transition-colors duration-(--dur-state)",
-                            active ? "bg-pressed text-text-1" : "text-text-2 hover:bg-hover hover:text-text-1", collapsed && "justify-center px-0")}>
+                            (item.children && !collapsed ? pathname === item.href : active) ? "bg-pressed text-text-1" : "text-text-2 hover:bg-hover hover:text-text-1",
+                            item.children && !collapsed && "pe-8", collapsed && "justify-center px-0")}>
                           <Lordicon name={item.icon} size={16} />
                           {!collapsed && <span className="truncate">{item.label}</span>}
                           <Count loud={item.loud} value={value} collapsed={collapsed} />
                         </Link>
                       );
-                      return collapsed
-                        ? <Tooltip key={item.href}><TooltipTrigger render={link} /><TooltipContent side="right">{item.label}</TooltipContent></Tooltip>
-                        : <div key={item.href}>{link}</div>;
+                      if (collapsed) return <Tooltip key={item.href}><TooltipTrigger render={link} /><TooltipContent side="right">{item.label}</TooltipContent></Tooltip>;
+                      if (!item.children) return <div key={item.href}>{link}</div>;
+                      // A group opens on its own while you are inside it; the chevron toggles it otherwise.
+                      const open = expanded[item.href] ?? active;
+                      return (
+                        <div key={item.href}>
+                          <div className="relative">
+                            {link}
+                            <button type="button" onClick={() => setExpanded(state => ({ ...state, [item.href]: !open }))} aria-expanded={open}
+                              aria-label={`${open ? "Collapse" : "Expand"} ${item.label}`}
+                              className="absolute inset-y-0 end-0 grid w-8 place-items-center rounded-tag text-text-3 hover:bg-hover hover:text-text-1">
+                              <Icon icon={ChevronDown} size={12} className={cn("transition-transform duration-(--dur-state)", !open && "-rotate-90")} />
+                            </button>
+                          </div>
+                          {open && (
+                            <div className="ms-[15px] mt-px flex flex-col gap-px border-s border-line-faint ps-2">
+                              {item.children.map(child => {
+                                const here = pathname === child.href;
+                                return (
+                                  <Link key={child.href} href={child.href} aria-current={here ? "page" : undefined}
+                                    className={cn("flex h-7 items-center rounded-tag px-2 type-label-sm transition-colors duration-(--dur-state)",
+                                      here ? "bg-pressed text-text-1" : "text-text-2 hover:bg-hover hover:text-text-1")}>{child.label}</Link>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
                     })}
                   </div>
                 ))}
