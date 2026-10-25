@@ -13,6 +13,9 @@ export const status = query({
     productionAuthenticationImplemented: false,
     workerGatewayImplemented: false,
     livePaymentsImplemented: false,
-    inferenceImplemented: false,
+    inferenceImplemented: true,
+    mediaUploadsImplemented: true,
+    modelAvailabilityCheckedByHealth: false,
+    visualInput: "timestamped_jpeg_frames" as const,
   }),
 });

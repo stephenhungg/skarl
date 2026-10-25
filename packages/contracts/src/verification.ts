@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs";
 import Ajv2020 from "ajv/dist/2020.js";
-const schema = JSON.parse(readFileSync(new URL("../schemas/verification-report.schema.json", import.meta.url), "utf8"));
+import schema from "../schemas/verification-report.schema.json" with { type: "json" };
 // Cross-field conditions intentionally refine nested schemas. Base objects require fields.
-const validateShape = new Ajv2020({ allErrors: true, strict: false }).compile(schema);
+const validateShape = new Ajv2020({ allErrors: true, strict: false }).compile<ReportShape>(schema);
 const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 export interface VerificationResult { valid: boolean; errors: string[] }

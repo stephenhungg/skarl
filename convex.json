@@ -3,5 +3,11 @@
   "functions": "convex/",
   "aiFiles": {
     "enabled": false
+  },
+  "node": {
+    "nodeVersion": "22",
+    "externalPackages": [
+      "ffmpeg-static"
+    ]
   }
 }

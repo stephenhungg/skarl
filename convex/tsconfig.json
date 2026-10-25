@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
@@ -11,8 +13,17 @@
     "allowImportingTsExtensions": true,
     "allowJs": true,
     "jsx": "react-jsx",
-    "types": []
+    "types": [
+      "node"
+    ],
+    "resolveJsonModule": true,
+    "esModuleInterop": true
   },
-  "include": ["./**/*"],
-  "exclude": ["./_generated", "./**/*.test.ts"]
+  "include": [
+    "./**/*"
+  ],
+  "exclude": [
+    "./_generated",
+    "./**/*.test.ts"
+  ]
 }

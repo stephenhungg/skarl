@@ -4,6 +4,7 @@ import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { DemoRoleError, demoToken, requireRole, type DemoPrincipal, type DemoRole } from "./lib/demoAuth";
 import { actorFor, audit, digest, normalizeAddress, paymentBinding, recordJournal } from "./lib/finance";
+import { compareFrameHashes } from "./lib/copyDetection";
 import { createFulfillmentJournal } from "../packages/ledger/src/index";
 import { MAX_ATOMIC_USDC, PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
 
@@ -39,6 +40,7 @@ export const acceptAndPublish = mutation({
     if (!submission || submission.organizationId !== principal.organizationId) return { ok: false as const, code: "not_found" };
     if (auth.denied) return refuse(ctx, principal, submission, "acceptance", auth.denied);
     if (submission.contributorTokenIdentifier === principal.tokenIdentifier) return refuse(ctx, principal, submission, "acceptance", "self_review_refused");
+    if (submission.verificationOnly) return refuse(ctx, principal, submission, "acceptance", "verification_only_not_licensed");
     const eventKey = `fulfillment:${submission._id}`;
     const previous = await ctx.db.query("payables").withIndex("by_source_event", q =>
       q.eq("organizationId", submission.organizationId).eq("sourceEventKey", eventKey)).unique();
@@ -58,7 +60,12 @@ export const acceptAndPublish = mutation({
       q.eq("organizationId", submission.organizationId).eq("sourceHash", submission.sourceHash)).collect();
     const perceptual = submission.perceptualHash ? await ctx.db.query("submissions").withIndex("by_perceptual_hash", q =>
       q.eq("organizationId", submission.organizationId).eq("perceptualHash", submission.perceptualHash)).collect() : [];
-    const matching = [...exact, ...perceptual].find(candidate => candidate._id !== submission._id && candidate.status === "accepted");
+    const frameCandidates = submission.frameDHashes?.length ? await ctx.db.query("submissions")
+      .withIndex("by_contributor", q => q.eq("organizationId", submission.organizationId)).take(201) : [];
+    if (frameCandidates.length > 200) return refuse(ctx, principal, submission, "acceptance", "copy_check_capacity_exceeded");
+    const matching = [...exact, ...perceptual, ...frameCandidates].find(candidate => candidate._id !== submission._id && candidate.status === "accepted" &&
+      (candidate.sourceHash === submission.sourceHash || (!!candidate.perceptualHash && candidate.perceptualHash === submission.perceptualHash) ||
+        compareFrameHashes(submission.frameDHashes ?? [], candidate.frameDHashes ?? []) !== null));
     if (matching) {
       await ctx.db.patch(submission._id, { status: "needs_review", updatedAt: Date.now() });
       const result = await refuse(ctx, principal, submission, "acceptance", "duplicate_submission", [matching._id, submission.sourceHash,

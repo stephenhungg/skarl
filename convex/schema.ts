@@ -43,6 +43,10 @@ const analysisContext = {
   reportHash: v.string(),
   evidenceAssetIds: v.array(v.id("mediaAssets")),
   completedAt: v.number(),
+  reportJson: v.optional(v.string()),
+  observationsJson: v.optional(v.string()),
+  processingElapsedMs: v.optional(v.number()),
+  perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))),
 };
 export default defineSchema({
   organizations: defineTable({
@@ -138,6 +142,10 @@ export default defineSchema({
     expectedSourceHash: v.optional(v.string()),
     sourceHash: v.optional(v.string()),
     perceptualHash: v.optional(v.string()),
+    perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))),
+    frameDHashes: v.optional(v.array(v.object({ timestampMs: v.number(), hash: v.string() }))),
+    clientFrameDHashes: v.optional(v.array(v.object({ timestampMs: v.number(), hash: v.string() }))),
+    verificationOnly: v.optional(v.boolean()),
     currentAnalysisId: v.optional(v.id("analysisResults")),
     currentDecisionId: v.optional(v.id("reviewDecisions")),
     supersedesSubmissionId: v.optional(v.id("submissions")),
