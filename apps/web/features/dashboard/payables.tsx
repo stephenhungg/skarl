@@ -11,6 +11,8 @@ import { usePayout } from "@/lib/payments/use-payout";
 import { getPayoutRecovery } from "@/lib/payments/payout";
 import { api, CONTROLLER, FINANCE_AGENT, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type PayableRow } from "./data";
 import { basescanAddress, basescanTx, formatTime, humanize, parseChainIdentity, shortHash } from "./format";
+import { ReceiptRule } from "@/components/ui/payment-receipt-printer";
+import { Receipt } from "./receipt";
 import { Amount, Loading, PageHeader, Unavailable } from "./ui";
 
 const STEPS = ["Accrued", "Proposed", "Approved", "Submitted", "Paid"] as const;
@@ -76,6 +78,17 @@ function PayableCard({ payable, audit, matches }: { payable: PayableRow; audit: 
             <p className="type-body-sm"><span className="type-label">{humanize(event.reason)}</span> <span className="text-text-2">{event.actor.identity} tried to {humanize(event.action.replace(/_refused$/, "")).toLowerCase()}. Separation of duties held. {formatTime(event.occurredAt)}</span></p>
           </div>
         ))}
+        {chain && payable.status === "paid" && (
+          <div className="max-w-sm">
+            <Receipt printKey={chain.txHash} label="Payout receipt">
+              <div className="flex items-baseline justify-between"><span className="type-label">Paid</span><Amount value={payable.amountAtomic} className="type-label" /></div>
+              <p className="mt-1 type-body-sm text-text-2">To {shortHash(payable.recipientAddress, 8, 6)} for clip {payable.submissionId.slice(0, 8)}</p>
+              <ReceiptRule className="my-3" />
+              <p className="type-label-sm text-text-2">Base Sepolia, log {chain.logIndex}</p>
+              <p className="break-all type-label-sm text-text-3">{chain.txHash}</p>
+            </Receipt>
+          </div>
+        )}
         {chain && (
           <a href={basescanTx(chain.txHash)} target="_blank" rel="noreferrer" className="flex items-center gap-2 type-label-sm text-text-2 underline underline-offset-4">
             <Status status="ok" size="sm">Reconciled</Status><span className="mono">{shortHash(chain.txHash, 10, 6)}</span> log {chain.logIndex} on BaseScan

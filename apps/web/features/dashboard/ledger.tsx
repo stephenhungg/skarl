@@ -3,6 +3,7 @@ import { Status } from "@/components/glaze/ui/status";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/glaze/ui/table";
 import { useExceptions, useJournal, useOrderId, useStatements } from "./data";
 import { formatTime, formatUsdc, humanize } from "./format";
+import { JournalReceipt } from "./receipt";
 import { Amount, Loading, PageHeader, Section, Unavailable } from "./ui";
 
 const ACCOUNT_LABEL: Record<string, string> = {
@@ -69,6 +70,7 @@ export function Ledger() {
 
       <Section title="Journal" meta={journal ? `${journal.length} posted ${journal.length === 1 ? "entry" : "entries"}` : undefined}>
         {journal === undefined ? <Loading rows={3} /> : journal.length === 0 ? <p className="type-body-sm text-text-2">Nothing posted yet.</p> : (
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="flex flex-col gap-3">
             {[...journal].sort((a, b) => b.recordedAt - a.recordedAt).map(entry => (
               <div key={entry._id} className="rounded-panel border border-line-faint">
@@ -90,6 +92,10 @@ export function Ledger() {
                 </table>
               </div>
             ))}
+          </div>
+          <div className="lg:sticky lg:top-16 lg:self-start">
+            <JournalReceipt entry={[...journal].sort((a, b) => b.recordedAt - a.recordedAt)[0]!} />
+          </div>
           </div>
         )}
       </Section>
