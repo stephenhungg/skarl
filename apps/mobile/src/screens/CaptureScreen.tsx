@@ -80,7 +80,9 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
   const insets = useSafeAreaInsets();
   const convex = useConvex();
   const { draft, setDraft, restoreError } = useSession();
-  const { context, task } = useLiveTask(draft?.orderId ?? route.params?.orderId);
+  // Only an unsent take pins capture to its own task; a finished one must not override the task just opened.
+  const unsent = draft && !draft.attached && !draft.attachmentClosed ? draft : null;
+  const { context, task } = useLiveTask(unsent?.orderId ?? route.params?.orderId ?? draft?.orderId);
   const [cameraPermission, askCamera] = useCameraPermissions();
   const [micPermission, askMic] = useMicrophonePermissions();
   const consent = route.params?.consented === true || !!draft;
