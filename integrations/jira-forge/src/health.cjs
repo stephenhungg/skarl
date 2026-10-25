@@ -19,14 +19,19 @@ async function rememberSuccessfulSync(store, result) {
 
 /** Canonical audit pages only: issue/run indexes contain duplicate copies.
  * An incomplete inventory is a lower bound, never a clean bill of health. */
-async function uncertainActions(store) {
+async function uncertainActions(store, now = Date.now()) {
+  // Lazy: reconcile -> sync -> health would otherwise be a require cycle.
+  const { SETTLE_MS } = require('./reconcile.cjs');
   let cursor, uncertainCount = 0;
   try {
     for (let page = 0; page < MAX_AUDIT_PAGES; page++) {
       const result = await store.listActions(cursor ? { cursor } : {});
       if (!Array.isArray(result.actions)) break;
-      // A pending durable write can have reached Jira before its worker died.
-      uncertainCount += result.actions.filter(entry => ['pending', 'uncertain'].includes(entry.state) || ['pending', 'uncertain'].includes(entry.rollback?.status)).length;
+      // A pending durable write can have reached Jira before its worker died; one still inside the
+      // reconciler's settle window is in flight, not yet uncertain.
+      const settled = entry => !(Number.isFinite(entry.timestamp) && now - entry.timestamp < SETTLE_MS);
+      uncertainCount += result.actions.filter(entry => entry.state === 'uncertain' || entry.rollback?.status === 'uncertain'
+        || ((entry.state === 'pending' || entry.rollback?.status === 'pending') && settled(entry))).length;
       if (!result.nextCursor) return { uncertainCount, truncated: false };
       if (result.nextCursor === cursor) break;
       cursor = result.nextCursor;

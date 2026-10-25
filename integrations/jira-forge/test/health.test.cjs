@@ -112,3 +112,14 @@ test('failed success bookkeeping cannot make completed writes retry because heal
   await rememberSuccessfulSync({ kvs: { set: async () => { throw new Error('private storage failure'); } } }, { at: Date.now(), errors: [] });
   assert.equal(await publishJiraHealth({ store: storage(), config: { ...config, feedSecret: '' }, fetcher: () => assert.fail('missing telemetry credential must not send') }), false);
 });
+
+test('treats a pending write inside the reconcile settle window as in flight, not uncertain', async () => {
+  // Every sync leaves just-created issues pending for a few minutes; counting them kept health degraded after every successful sync.
+  const now = 10_000_000;
+  const count = await uncertainActions({ listActions: async () => ({ actions: [
+    { state: 'pending', timestamp: now - 60_000 },
+    { state: 'pending', timestamp: now - 6 * 60_000 },
+    { state: 'uncertain', timestamp: now - 1_000 },
+  ] }) }, now);
+  assert.deepEqual(count, { uncertainCount: 2, truncated: false });
+});
