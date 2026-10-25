@@ -45,7 +45,7 @@ function Hairline() {
 
 export function Footer() {
   const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
-  const legal = ["Built at Cal Hacks 13.0", sha ? `commit ${sha}` : null, "Base Sepolia", "test tokens only"].filter(Boolean).join(" · ");
+  const legal = ["Built at Cal Hacks 13.0", sha ? `commit ${sha}` : null, "Base Sepolia"].filter(Boolean).join(" · ");
 
   return (
     <footer className="relative overflow-clip bg-ink">

@@ -96,7 +96,6 @@ export const PaymentReceiptPrinter: React.FC<PaymentReceiptPrinterProps> = ({
                 transition={{ repeat: printing ? Infinity : 0, duration: 0.8 }}
                 className={cn('size-1.5 rounded-full', state === 'idle' ? 'bg-fog' : 'bg-accent')}
               />
-              <span className="mono text-[12px] leading-none text-slate-700">{printing ? 'FEED' : state === 'completed' ? 'POSTED' : 'STANDBY'}</span>
             </span>
           </div>
           {/* Feed slot */}

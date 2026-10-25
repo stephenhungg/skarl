@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { formatDuration, formatMs } from "@/components/evidence-timeline";
-import { StatusPill } from "@/components/status-pill";
 import { useReducedMotionSafe } from "@/lib/use-reduced-motion";
 import { CATCH_CARDS } from "../evidence";
 import { rows, type Verdict } from "./check-sheet";
@@ -80,7 +79,7 @@ export function CheckConsole() {
         <div className="mono overflow-hidden rounded-[14px] bg-ink text-[13px] leading-[1.4] text-paper" aria-live="polite">
           <div className="flex items-center justify-between gap-3 border-b border-[rgb(var(--paper)/.1)] px-5 py-3 text-[12px] text-[rgb(var(--paper)/.5)]">
             <span>skarl verify · clip {formatDuration(card.report.source.durationMs)} · {card.report.taskVersionId}</span>
-            <span className="flex items-center gap-2">{card.report.pipeline.modelRuns[0]?.model}<StatusPill status={card.provenance} /></span>
+            <span>{card.report.pipeline.modelRuns[0]?.model}</span>
           </div>
 
           <div className="px-5 py-5 max-[640px]:px-4">
@@ -122,7 +121,6 @@ export function CheckConsole() {
               style={{ opacity: verdictShown ? 1 : 0 }}
             >
               <span className="flex items-center gap-3">
-                <StatusPill status={card.status} />
                 <span className="cut-regular text-[17px] tracking-normal">{card.result}</span>
               </span>
               <span className="cut-book text-[13px] tracking-normal text-[rgb(var(--paper)/.55)]">{card.title}</span>

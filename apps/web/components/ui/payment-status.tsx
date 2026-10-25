@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { StatusPill, type EvidenceStatus } from '../status-pill';
+import type { EvidenceStatus } from '../status-pill';
 import { cn } from '../../lib/utils';
 import { motionTransitions } from '../../lib/motion-tokens';
 import { useReducedMotionSafe } from "@/lib/use-reduced-motion";
@@ -91,7 +91,6 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
                 <h3 className="cut-regular text-[16px] leading-[1.2] tracking-[0.01em] text-ink">{title}</h3>
-                {status && <StatusPill status={status} />}
               </div>
               {detail && <p className="mt-1.5 text-[14px] leading-[1.3] tracking-[0.01em] text-slate-500">{detail}</p>}
             </div>
