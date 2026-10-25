@@ -72,7 +72,7 @@ export function Money() {
             <p className="mt-8 max-w-[520px] text-[14px] leading-[1.3] tracking-[0.01em] text-slate-500">{MONEY_SEATS}</p>
           </div>
 
-          <div className="min-w-0 rounded-[12px] bg-mist p-3 min-[810px]:p-4">
+          <div className="min-h-[740px] min-w-0 rounded-[12px] bg-mist p-3 min-[810px]:p-4 min-[1024px]:min-h-[640px]">
             <PaymentReceiptPrinter printKey={step.id} active={seen} deviceLabel="Journal" receiptClassName="min-h-[300px]">
               <JournalSheet step={step} index={current} total={MONEY_STEPS.length} run={seen} />
             </PaymentReceiptPrinter>
