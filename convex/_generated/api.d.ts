@@ -119,6 +119,8 @@ import type * as publicSecuritySchema from "../publicSecuritySchema.js";
 import type * as refunds from "../refunds.js";
 import type * as review from "../review.js";
 import type * as scenarios from "../scenarios.js";
+import type * as solanaLicense from "../solanaLicense.js";
+import type * as solanaLicenseData from "../solanaLicenseData.js";
 import type * as scheduledData from "../scheduledData.js";
 import type * as scheduledJobs from "../scheduledJobs.js";
 import type * as seed from "../seed.js";
@@ -251,6 +253,8 @@ declare const fullApi: ApiFromModules<{
   refunds: typeof refunds;
   review: typeof review;
   scenarios: typeof scenarios;
+  solanaLicense: typeof solanaLicense;
+  solanaLicenseData: typeof solanaLicenseData;
   scheduledData: typeof scheduledData;
   scheduledJobs: typeof scheduledJobs;
   seed: typeof seed;
