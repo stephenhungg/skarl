@@ -20,9 +20,21 @@ function Rise({ delay, duration, children, className }: { delay: number; duratio
 export function Hero() {
   return (
     <section id="hero" className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-clip bg-ink pb-[180px] pt-24" aria-labelledby="hero-title">
-      <motion.div className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.25, duration: 0.65, ease: SETTLE }}>
+      <motion.div
+        className="absolute inset-0"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.25, duration: 0.65, ease: SETTLE }}
+        style={{
+          filter: "blur(3px)",
+          WebkitMaskImage: "linear-gradient(180deg, #000 0%, #000 55%, transparent 88%)",
+          maskImage: "linear-gradient(180deg, #000 0%, #000 55%, transparent 88%)",
+        }}
+      >
         <SpectralDrape className="h-full w-full" colors={["#c7f18e", "#8fe3b4", "#5f7d6a", "#e9f9cf"]} backgroundColor="#10120e" />
       </motion.div>
+
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(60% 40% at 50% 45%, rgb(var(--ink) / .55), transparent 75%)" }} />
 
       <div className="pointer-events-none relative z-10 flex w-full max-w-[800px] flex-col items-center px-[18px] text-center [&_a]:pointer-events-auto">
         <Rise delay={0.25} duration={0.6}>
