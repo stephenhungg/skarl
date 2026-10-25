@@ -54,6 +54,20 @@ describe("Nessie bank witness (simulated provider responses)", () => {
     await expect(client.deposit(accountId, { amountAtomic: "1", description: "intent", transactionDate: "2026-10-25" }))
       .rejects.toThrow("nessie_credentials_unverified");
   });
+  // Live Nessie returns 404 "No transfers found" for a verified account with zero transfers; treating it as an
+  // outage hid every bank snapshot. Only the transfers listing gets this treatment; a deposits 404 still fails.
+  it("treats a transfers-list 404 on a verified account as no transfers, but not a deposits 404", async () => {
+    const empty = mock().mockResolvedValueOnce(response('{"_id":"treasury"}'))
+      .mockImplementation(async url => String(url).includes("/transfers") ? response('{"message":"No transfers found for this account"}', 404) : response("[]"));
+    const client = createNessieClient({ apiKey: "test-key", fetchImpl: empty });
+    await client.verifyAccount(accountId);
+    expect(await client.activity(accountId)).toEqual([]);
+    const missingDeposits = mock().mockResolvedValueOnce(response('{"_id":"treasury"}'))
+      .mockImplementation(async url => String(url).includes("/deposits") ? response("{}", 404) : response("[]"));
+    const broken = createNessieClient({ apiKey: "test-key", fetchImpl: missingDeposits });
+    await broken.verifyAccount(accountId);
+    await expect(broken.activity(accountId)).rejects.toThrow("nessie_http_404");
+  });
   it("requires the exact known account and clears a prior credential verification on failure", async () => {
     const fetchImpl = mock().mockResolvedValueOnce(response('{"_id":"treasury"}'))
       .mockResolvedValueOnce(response('{"_id":"foreign"}'));

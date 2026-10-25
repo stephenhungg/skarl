@@ -159,7 +159,13 @@ export function createNessieClient(options: { apiKey?: string; fetchImpl?: typeo
       verified();
       const account = id(accountId);
       const [deposits, transfers] = await Promise.all([
-        request(`/accounts/${account}/deposits`, "GET"), request(`/accounts/${account}/transfers`, "GET"),
+        request(`/accounts/${account}/deposits`, "GET"),
+        // Live Nessie answers an existing account with no transfers as HTTP 404 ("No transfers found"),
+        // not []. verified() already bound this key to the account, so that 404 is an empty list.
+        request(`/accounts/${account}/transfers`, "GET").catch((error: unknown) => {
+          if (error instanceof Error && error.message === "nessie_http_404") return [];
+          throw error;
+        }),
       ]);
       return [...activityRows(deposits, account, "deposit"), ...activityRows(transfers, account, "transfer")];
     },
