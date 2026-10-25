@@ -75,6 +75,23 @@ describe("CDP buyer orchestration (simulated external services)", () => {
     expect(mocks.sign).toHaveBeenCalledTimes(1);
     expect(existsSync(join(dir, "cdp-buyer.lock"))).toBe(false);
   });
+  it("uses the explicitly approved evidence wallet instead of the funding treasury", async () => {
+    const revenue = `0x${"33".repeat(20)}`;
+    const original = mocks.fetch.getMockImplementation()!;
+    mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await original(input, init);
+      if (response.status !== 402) return response;
+      const quote = await response.json();
+      quote.accepts[0].payTo = revenue;
+      return Response.json(quote, { status: 402, headers: { "PAYMENT-REQUIRED": Buffer.from(JSON.stringify(quote)).toString("base64") } });
+    });
+    expect((await payWithCdp(resource, 250_000n, { method: "GET" }, revenue)).status).toBe(202);
+    expect(JSON.parse(readFileSync(attemptPath(resource), "utf8")).recipientAddress).toBe(revenue);
+  });
+  it("refuses the treasury quote when evidence revenue is approved", async () => {
+    await expect(payWithCdp(resource, 250_000n, { method: "GET" }, `0x${"33".repeat(20)}`)).rejects.toThrow();
+    expect(mocks.sign).not.toHaveBeenCalled();
+  });
   it("requests USDC with durable idempotency when empty and rechecks balance", async () => {
     mocks.readContract.mockResolvedValueOnce(0n).mockResolvedValueOnce(1_000_000n);
     await payWithCdp(resource, 250_000n, { method: "GET" });

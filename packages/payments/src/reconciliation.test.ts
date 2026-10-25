@@ -118,3 +118,20 @@ test("Solana evidence requires its stored rail and preserves base58 case in iden
   const identity = { network: SOLANA_PAYMENT_NETWORK, txHash: "Ab".repeat(44), logIndex: 2 };
   assert.notEqual(chainIdentity(identity), chainIdentity({ ...identity, txHash: identity.txHash.toLowerCase() }));
 });
+
+test("evidence receipts reconcile to their revenue wallet and cannot masquerade as order funding", () => {
+  const sale: PaymentObligation = { ...obligation, kind: "evidence_sale" };
+  for (const kind of ["evidence_sale", "evidence_sale_deferred"] as const) {
+    const saleJournal: PaymentJournal = { ...journal, kind, recipientAddress: obligation.toAddress, lines: [
+      { account: "asset:evidence_usdc", side: "debit", amountAtomic: obligation.amountAtomic },
+      { account: kind === "evidence_sale" ? "revenue:evidence_sales" : "liability:evidence_receipts", side: "credit", amountAtomic: obligation.amountAtomic },
+    ] };
+    assert.equal(reconcilePayments({ ...input, obligations: [sale], journals: [saleJournal] }).matches.length, 1);
+    for (const wrong of [journal, { ...saleJournal, recipientAddress: obligation.fromAddress },
+      { ...saleJournal, lines: saleJournal.lines.map(line => line.side === "debit" ? { ...line, account: "asset:usdc" } : line) }]) {
+      const result = reconcilePayments({ ...input, obligations: [sale], journals: [wrong] });
+      assert.equal(result.matches.length, 0);
+      assert.ok(result.exceptions.some(row => row.code === "ledger_mismatch"));
+    }
+  }
+});

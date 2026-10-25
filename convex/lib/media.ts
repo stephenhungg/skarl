@@ -25,6 +25,8 @@ export interface PreparedMedia {
   /** Original-clip seek targets; decoded image timing is approximate within one source frame. */
   videoFrames: { timestampMs: number; bytes: Uint8Array; mimeType: "image/jpeg" }[];
   frameDHashes: { timestampMs: number; hash: string }[];
+  /** JPEGs of the exact decoded silent-video frames used for dHash, not nearby visual samples. */
+  hashFrames: { timestampMs: number; bytes: Uint8Array; mimeType: "image/jpeg"; frameIndex: number; sampleIndex: number }[];
   /** Six ordered 64-bit frame dHashes, not a cryptographic content hash. */
   perceptualHash: string;
   warnings: string[];
@@ -211,6 +213,7 @@ export async function prepareMedia(bytes: Uint8Array, mimeType: string): Promise
     ], { maxBuffer: 32 * 1024 });
     const frameCount = raw.stdout.length / FRAME_BYTES;
     if (!Number.isInteger(frameCount) || frameCount < 1 || frameCount > 182) throw new MediaPreparationError("invalid_fingerprint_output");
+    const hashFrames: PreparedMedia["hashFrames"] = [];
     const frameDHashes = Array.from({ length: FRAME_SAMPLES }, (_, index) => {
       const relative = (index + 0.5) / FRAME_SAMPLES;
       const frameIndex = Math.min(frameCount - 1, Math.floor(relative * frameCount));
@@ -219,8 +222,17 @@ export async function prepareMedia(bytes: Uint8Array, mimeType: string): Promise
         hash: frameDHash(raw.stdout.subarray(frameIndex * FRAME_BYTES, (frameIndex + 1) * FRAME_BYTES)),
       };
     });
+    for (let sampleIndex = 0; sampleIndex < FRAME_SAMPLES; sampleIndex++) {
+      const frameIndex = Math.min(frameCount - 1, Math.floor((sampleIndex + 0.5) / FRAME_SAMPLES * frameCount));
+      const jpeg = (await runFfmpeg([
+        "-v", "error", "-threads", "1", "-protocol_whitelist", "file,pipe", "-f", "mov", "-i", videoPath,
+        "-vf", `select=eq(n\\,${frameIndex})`, "-frames:v", "1", "-an", "-c:v", "mjpeg", "-q:v", "5", "-f", "image2pipe", "pipe:1",
+      ], { maxBuffer: MAX_JPEG_BYTES })).stdout;
+      if (jpeg.length < 4 || jpeg[0] !== 255 || jpeg[1] !== 216 || jpeg[jpeg.length - 2] !== 255 || jpeg[jpeg.length - 1] !== 217) throw new MediaPreparationError("invalid_fingerprint_frame_image");
+      hashFrames.push({ timestampMs: frameDHashes[sampleIndex]!.timestampMs, bytes: jpeg, mimeType: "image/jpeg", frameIndex, sampleIndex });
+    }
     return {
-      silentVideo, audio, durationMs, videoFrames, frameDHashes,
+      silentVideo, audio, durationMs, videoFrames, frameDHashes, hashFrames,
       perceptualHash: frameDHashes.map((frame) => frame.hash).join(""),
       warnings: hasAudio ? [] : ["audio_stream_missing"],
     };

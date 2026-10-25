@@ -47,6 +47,7 @@ const analysisContext = {
   reportStorageId: v.id("_storage"),
   reportHash: v.string(),
   evidenceAssetIds: v.array(v.id("mediaAssets")),
+  dHashFrameIndices: v.optional(v.array(v.number())),
   completedAt: v.number(),
   reportJson: v.optional(v.string()),
   observationsJson: v.optional(v.string()),
@@ -54,6 +55,9 @@ const analysisContext = {
   perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))),
 };
 export default defineSchema({
+  // Trusted web ingress supplies a keyed IP digest, never a raw IP. Atomic with order creation.
+  demoOrderLimits: defineTable({ key: v.string(), windowStart: v.number(), count: v.number() })
+    .index("by_key", ["key"]),
   // CDP is an advisory witness. These records never authorize or post money.
   cdpWebhookReceipts: defineTable({
     ...tenant, treasury: v.string(), eventId: v.string(), transferKey: v.string(),
@@ -240,6 +244,9 @@ export default defineSchema({
     sizeBytes: v.number(),
     durationMs: v.optional(v.number()),
     sourceTimestampMs: v.optional(v.number()),
+    frameKind: v.optional(v.union(v.literal("visual"), v.literal("dhash"))),
+    sampleIndex: v.optional(v.number()),
+    decodedFrameIndex: v.optional(v.number()),
     width: v.optional(v.number()),
     height: v.optional(v.number()),
   })
@@ -498,6 +505,8 @@ export default defineSchema({
     kind: v.union(
       v.literal("funding"),
       v.literal("fulfillment"),
+      v.literal("evidence_sale"),
+      v.literal("evidence_sale_deferred"),
       v.literal("payout"),
       v.literal("refund_reserved"),
       v.literal("refund_paid"),
@@ -506,6 +515,7 @@ export default defineSchema({
     status: v.literal("posted"),
     memo: v.string(),
     sourceReference: v.string(),
+    recipientAddress: v.optional(evmAddress),
     contributorTokenIdentifier: v.optional(tokenIdentifier),
     reference: v.optional(v.string()),
     fingerprint: v.optional(v.string()),

@@ -1,6 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { isAddress } from "viem";
 import { NextResponse } from "next/server";
+export { evidencePayTo } from "../../../../packages/payments/src/evidence-payee";
 export { api } from "../../../../convex/_generated/api";
 export type { Id } from "../../../../convex/_generated/dataModel";
 
@@ -32,13 +33,16 @@ export function paymentJson(value: unknown, status = 200) {
 export function paymentError(error: unknown) {
   // Convex error wrappers can carry request details. Never echo them (or secrets) to a browser.
   const message = error instanceof Error ? error.message : "";
-  const code = ["solana_treasury_not_configured", "treasury_not_configured", "payment_service_not_configured", "wrong_treasury_wallet", "payout_not_executable",
+  const code = ["evidence_payto_not_configured", "evidence_accounting_not_configured", "solana_treasury_not_configured", "treasury_not_configured", "payment_service_not_configured", "wrong_treasury_wallet", "payout_not_executable",
     "dispatch_not_ready", "approved_source_changed", "approval_invalidated",
     "claim_not_found", "order_not_found", "order_not_fundable", "transaction_already_bound", "funding_already_pending_reconcile_first"]
     .find(c => message.includes(c)) ?? "payment_request_refused";
   return paymentJson({ ok: false, error: code,
     ...(code === "treasury_not_configured" ? {
       message: "Set SKARL_TREASURY_ADDRESS in the web server environment to the human controller's Coinbase Wallet receiving address before funding.",
+    } : {}),
+    ...(code === "payment_service_not_configured" ? {
+      message: "Use https://skarl.vercel.app/api/orders for the hosted demo. To run payment routes locally, configure NEXT_PUBLIC_CONVEX_URL and an operator-provisioned SKARL_PAYMENTS_SERVICE_SECRET matching that Convex deployment.",
     } : {}),
   }, code.endsWith("not_configured") ? 503 : 409);
 }

@@ -8,11 +8,12 @@ import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { digest, normalizeAddress, recordJournal } from "../../../convex/lib/finance";
 import type { VerificationReport } from "../../../convex/lib/verificationReport";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../../contracts/src/chain";
-import { createFundingJournal } from "../../ledger/src/index";
+import { createEvidenceSaleJournal } from "../../ledger/src/index";
+import { evidencePayTo } from "./evidence-payee";
 import { chainIdentity, validateTransfer } from "./reconciliation";
 
 export const EVIDENCE_PRICE_ATOMIC = 250_000n;
-export const EVIDENCE_ACCOUNTING = "funding_like_inflow_revenue_recognition_deferred" as const;
+export const EVIDENCE_ACCOUNTING = "evidence_sale_inflow" as const;
 type Context = QueryCtx | MutationCtx;
 export interface SampleEvidence {
   sampleId: string; submissionId: Id<"submissions">; organizationId: Id<"organizations">; orderId: Id<"orders">;
@@ -82,7 +83,7 @@ async function eligibleSample(ctx: Context, sampleId: string): Promise<SampleEvi
 /** Server-only original URL; the Next route returns an expiring proxy URL instead. */
 export const sample = query({ args: { ...secretArg, sampleId: v.string() }, handler: async (ctx, args) => {
   service(args.serviceSecret);
-  return eligibleSample(ctx, args.sampleId);
+  return { ...await eligibleSample(ctx, args.sampleId), accountingVersion: 2 as const, recipientAddress: evidencePayTo() };
 } });
 
 export interface SaleTerms {
@@ -131,6 +132,7 @@ export const claim = mutation({ args: { ...lookupArgs, recipientAddress: v.strin
     return { attemptId: prior._id, replayed: true, binding: terms.binding };
   }
   if (!Number.isSafeInteger(args.validBefore) || args.validBefore <= Date.now()) throw new Error("authorization_expired");
+  if (recipientAddress !== evidencePayTo()) throw new Error("quote_changed");
   const eligible = await eligibleSample(ctx, args.sampleId);
   const now = Date.now();
   const attemptId = await ctx.db.insert("paymentAttempts", { organizationId: eligible.organizationId, network: PAYMENT_NETWORK,
@@ -170,11 +172,14 @@ export const confirm = mutation({ args: { ...secretArg, attemptId: v.id("payment
     const observationId = await ctx.db.insert("chainObservations", { ...args.observation, organizationId: attempt.organizationId,
       paymentAttemptId: attempt._id, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS, txHash,
       fromAddress: normalizeAddress(args.observation.fromAddress), toAddress: normalizeAddress(args.observation.toAddress) });
-    // Existing ledger kinds cannot recognize standalone evidence revenue without
-    // inventing a second contributor obligation. Keep the real cash as deferred
-    // income. The order and its fulfillment/payable counts never change here.
-    const journalEntryId = await recordJournal(ctx, attempt.organizationId, createFundingJournal({
-      eventId: `evidence:${attempt._id}`, orderId: terms.orderId, amountMicroUsdc: EVIDENCE_PRICE_ATOMIC }));
+    // The receipt is real even if content was quarantined after the claim.
+    // Recognize revenue only while the purchased, bound evidence is available.
+    let delivered = false;
+    try { delivered = (await eligibleSample(ctx, terms.sampleId)).binding === terms.binding; }
+    catch { /* Preserve the inflow as a separate liability, never order funding. */ }
+    const journalEntryId = await recordJournal(ctx, attempt.organizationId, createEvidenceSaleJournal({
+      eventId: `evidence:${attempt._id}`, orderId: terms.orderId, amountMicroUsdc: EVIDENCE_PRICE_ATOMIC,
+      sampleId: terms.sampleId, recipientAddress: terms.recipientAddress, delivered }));
     await ctx.db.patch(journalEntryId, { sourceReference: chainIdentity(args.observation) });
     await ctx.db.patch(attempt._id, { txHash, status: "confirmed", updatedAt: Date.now() });
     return { observationId, journalEntryId, replayed: false, accountingTreatment: EVIDENCE_ACCOUNTING };

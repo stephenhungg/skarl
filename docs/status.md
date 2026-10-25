@@ -565,4 +565,288 @@ Validation for this follow-up: `pnpm check` passed all typechecks, **466 tests**
 
 ## Solana funding rail (October 25)
 
-Implemented optional Solana Devnet x402 funding with Base first, durable message-hash claims, strict RPC reconciliation, a bounded CDP buyer, and an idempotent 1 USDC demo seed. Base payouts and human approval remain unchanged. Receive-only treasury `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh` and its canonical USDC ATA are live; the treasury address is configured in Vercel production and Convex. This is setup evidence, not a funding claim. Live x402 funding awaits the deployment owner's Convex deploy of `origin/main` and is not yet demonstrated. See [Solana rail](payments.md#solana-rail).
+Implemented optional Solana Devnet x402 funding with Base first, durable message-hash claims, strict RPC reconciliation, a bounded CDP buyer, and an idempotent 1 USDC demo seed. Base payouts and human approval remain unchanged. Receive-only treasury `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh` and its canonical USDC ATA are live; the treasury address is configured in Vercel production and Convex. This is setup evidence, not a funding claim. The backend deployment is complete, but the first live request was rejected before settlement because the CDP fee payer changed between challenges; funding is not demonstrated. See [Solana rail](payments.md#solana-rail).
+
+## Wallet MCP buyer-to-agent revenue path — October 25, 03:12 PDT
+
+Code commit `ab2a5fe` was pushed to `main` after the required rebase and `pnpm check`: TypeScript, **518 tests** (122 Node, 280 Convex, 116 payments), documentation links and production build passed. Concurrent payment changes on main were preserved. Vercel Git deployment `dpl_BGDpDrnHWQ79dyvDT5gLQf3ELZGA` reached READY and the production alias `https://skarl.vercel.app` was confirmed against that commit before validation.
+
+- Evidence `payTo`: **`0x0A9EfDF66c58543538824906aE267B969Ed651c5`**, the existing `skarl-finance-agent` address read from live Convex `CDP_AGENT_ADDRESS`. Set as `SKARL_EVIDENCE_PAYTO` in the linked Vercel **skarl** production project and Convex `dev:keen-marmot-986`. No second CDP account was created.
+- Funding remains directed to **`0x8408a922ea400af33d7c2080a9edd5d3495b695f`**. The deployed v2 funding GET returned HTTP 200, `fundingStatus:"confirmed"`, `amountAtomic:"10000000"`, and that treasury recipient. No new payment was made.
+- Dedicated `evidence_sale` / `evidence_sale_deferred` journals retain the revenue wallet, keep its cash separate from treasury cash, and do not change order prepayments or accrue another contributor payable. Reconciliation checks the standalone claim, receipt and journal. These changes require the backend owner to deploy the new Convex schema/handlers from `ab2a5fe` or later. **This worktree did not deploy Convex.** Web refuses payment against older accounting capability or a mismatched backend recipient.
+- Actual middleware tests verify an anonymous, header-free GET produces a v2 JSON body and `PAYMENT-REQUIRED` header with exact Base Sepolia canonical USDC, `250000` atomic amount, and the separate revenue recipient. The pinned adapter normally sends `{}` as the body; the evidence route now mirrors its public challenge into JSON. Tests are synthetic service/receipt evidence, not a live sale.
+- Live inventory: all three organization orders have `acceptedCount:"0"`; the three v2 submissions remain verification-only, `needs_review`, with no delivery. No useful verified-sample catalog exists to sell, so no empty paid catalog was added. A fresh consented contribution, completed inference and authorized acceptance/delivery remain necessary.
+- [Exact Claude Code prompts and approval/journal checks](wallet-mcp-demo.md) and the [Wallet MCP plugin](wallet-mcp-plugin/skarl.md) are updated. Search explicitly uses `network:"base-sepolia"` because Wallet MCP defaults to Base mainnet. Evidence GET requires no custom headers. No Wallet MCP purchase, human approval, new transfer or Bazaar indexing is claimed.
+
+### Deployed Bazaar validation output
+
+At `2026-10-25T10:12:45.672101+00:00`, POST `https://api.cdp.coinbase.com/platform/v2/x402/validate` with:
+
+```json
+{
+  "resource": "https://skarl.vercel.app/api/samples/sample-mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j/evidence",
+  "method": "GET"
+}
+```
+
+returned **HTTP 200** with **`valid:false`**, endpoint **404 `sample_unavailable`**, `bazaarExtension:null`, `index:null`, `x402Version:null`, and `simulation.outcome:"rejected"`. URL validity, HTTPS and reachability passed; `returns_402` failed because this existing verification-only sample is not saleable. Payload/schema checks were skipped. The validator's simulation is not a blockchain transaction. Successful live 402 validation remains pending an eligible sample and the backend deployment.
+
+<details>
+<summary>Exact validator response</summary>
+
+```json
+{
+  "bazaarExtension": null,
+  "index": null,
+  "paymentRequirements": {
+    "error": "sample_unavailable"
+  },
+  "preflight": [
+    {
+      "check": "url_valid",
+      "detail": "URL is well-formed",
+      "passed": true,
+      "severity": "required"
+    },
+    {
+      "actual": "https",
+      "check": "url_https",
+      "detail": "Resource URL uses HTTPS",
+      "expected": "https",
+      "passed": true,
+      "severity": "required"
+    },
+    {
+      "check": "endpoint_reachable",
+      "detail": "Endpoint responded with status 404",
+      "passed": true,
+      "severity": "required"
+    },
+    {
+      "actual": "404",
+      "check": "returns_402",
+      "detail": "Endpoint returned HTTP 404 instead of 402",
+      "expected": "402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "valid_json",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "x402_version",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "payment_required_header",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "has_accepts",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].shape",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].scheme",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].network",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].asset",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].amount",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].payTo",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "accepts[0].maxTimeoutSeconds",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "has_resource",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "has_bazaar_extension",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "bazaar.info",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "bazaar.info.input",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "bazaar.info.input.type",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "bazaar.info.input.method",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "bazaar.info.output",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "advisory"
+    },
+    {
+      "check": "bazaar.info.output.example",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "advisory"
+    },
+    {
+      "check": "bazaar.schema",
+      "detail": "Skipped: endpoint did not return 402",
+      "passed": false,
+      "severity": "required"
+    },
+    {
+      "check": "parse",
+      "detail": "Skipped: preflight checks failed",
+      "passed": false,
+      "severity": "required"
+    }
+  ],
+  "simulation": {
+    "outcome": "rejected",
+    "rejectionReason": "endpoint failed preflight checks"
+  },
+  "statusCode": 404,
+  "valid": false,
+  "x402Version": null
+}
+```
+
+</details>
+
+
+### Solana live attempt — October 25, 2026, 03:13–03:15 PDT
+
+**Outcome: no funding transaction and no Solana Explorer funding link.** The single bounded CDP buyer authorization received HTTP 402 before any Convex funding intent was created. The order correctly remained `awaiting_funding`; this run does not demonstrate a successful transition to `funded` or live RPC-confirmed funding.
+
+| Check | Observed result |
+| --- | --- |
+| Deployment | The deployment owner reported `ff79f59` deployed to `keen-marmot-986`. Vercel's production alias was independently observed READY on `ff79f59`, deployment `dpl_51qWCiyDm2Kx68SiGvBCZVuwWfgA`, before the buyer ran. No manual deployment was performed. |
+| Seed | `seed:solanaDemo` returned order `kh70wdg1psv4np16bfkq4hkc6d8gz715`, public ID `skarl-red-cup-demo-sol`, one sample costing `1000000` micro-USDC. |
+| Production configuration | Vercel production lists `SKARL_SOLANA_TREASURY_ADDRESS`; the live quote and Convex environment both match `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh`. |
+| Live challenge | At 03:13:22 PDT, HTTP 402 advertised Base Sepolia `exact` first and Solana Devnet `exact` second, each for `1000000` micro-USDC. `X-Skarl-Facilitator: cdp`; Solana memo `skarl:kh70wdg1psv4np16bfkq4hkc6d8gz715`. |
+| Buyer attempt | Managed buyer `35pgsKg8sUYQRbLuWSmgYnham9rWhqNuG1JJhGKN6TWy`; approved treasury, canonical mint and Devnet allowlisted; per-payment and 24-hour cumulative cap both `1000000`. One authorization was saved before dispatch. Its signed request returned HTTP 402. One recovery replay of that identical authorization also returned 402; no second authorization was created. |
+| Diagnosis | CDP read-only verification returned `isValid:true` for the saved payload. Its accepted fee payer was `BENrLoUbndxoNMUS5JXApGMtNykLjFXXixMtpDwDR9SP`; later live challenges advertised different fee payers. The installed x402 requirement matcher returned false against a fresh live challenge and true when only that challenge's fee payer was restored to the original. This reproduces a quote-matching failure before settlement. |
+| Convex reconciliation | `payments:reconciliation` returned `{"exceptions":[],"matches":[]}`; `dashboard:journal` returned `[]`. The funding endpoint had no attempt or transaction hash. Empty matches are absence of funding, not successful reconciliation. |
+| Independent RPC | At 03:15:14 PDT, finalized reads showed buyer USDC `2000000`, buyer SOL `0`, treasury USDC `1000000` from its earlier setup faucet, and no later treasury ATA transaction. The signed message's recent blockhash was no longer valid. No setup faucet is counted as order funding. |
+
+Private authorization, spend reservation, response and RPC records are retained. The original replay did not settle and no replacement authorization was signed. The next implementation must preserve a facilitator-authorized fee payer across the challenge/payment round trip without weakening mint, amount, payee, memo or signature validation. A successful live funding attempt remains required before claiming MLH Best Use of Solana with live funding evidence.
+## Outsider reuse check (October 25, 2026, 03:15 PDT)
+
+Implementation `68148a6` adds public `GET /api/orders` documentation and
+`POST /api/orders` creation: fixed red-cup task, one sample, exactly `1000000`
+micro-USDC (1 USDC) on Base Sepolia, labeled demo/testnet. No identity header or
+server credentials are needed by the caller. Convex stores atomic hourly caps of
+3 creations per IP and 30 globally; caller-supplied terms are rejected. Wallet
+MCP instructions cap this flow at `1.000000` USDC. The CLI also funds without an
+identity header. The dashboard navigation link remains in place.
+
+Local verification passed: `pnpm check` (122 package tests, 285 Convex tests,
+141 payment-route tests, TypeScript, documentation links and production build).
+Rate-limit, fixed-term, configuration and funding tests use synthetic services;
+they are not evidence of live settlement.
+
+A fresh temporary clone of `68148a6` passed `pnpm install --frozen-lockfile`,
+`cp apps/web/.env.example apps/web/.env.local` and web typecheck under the pinned
+Node 22.21.1 / pnpm 10.19.0. The system Node 26 was correctly rejected before
+switching with `nvm use`. The local homepage and API documentation returned
+HTTP 200 without private keys. Local funding returned HTTP 503 with explicit
+hosted-demo/operator configuration guidance. Next regenerated its ignored
+declaration file; the optional-build-script warning did not block startup.
+
+Live requests from that clone to `https://skarl.vercel.app`, after Vercel served
+the new route, observed:
+
+- `GET /api/orders`: **200**, exact 1 USDC demo terms and creation instructions.
+- `GET /api/health`: **503 degraded**, Convex reachable, treasury configured,
+  facilitator `cdp`; the old backend did not expose the new service/inference
+  readiness fields yet. This is configuration evidence, not an inference probe.
+- `POST /api/orders` with `{}` and **no identity header**: **503
+  `demo_orders_unavailable`**. The public creation mutation and `demoOrderLimits`
+  table still need the designated deployment owner's Convex deployment from
+  `origin/main` at `68148a6` or newer. This task did not deploy Convex.
+
+The live outsider create → 402 → funding check is therefore **blocked on the
+Convex deployment**, not complete. No order or payment was claimed from this
+failed request, and no new payment was attempted. After deployment, repeat
+creation once, retain its returned order ID, verify the 1 USDC x402 challenge,
+and only then perform the authorized single testnet funding and read back its
+reconciled transaction. Record that result here; do not substitute the already
+funded seeded order as proof of outsider creation.
+## Backend batch — persisted verifier frames
+
+New verification actions store the twelve sampled visual JPEGs and six additional
+JPEGs of the exact decoded 6-fps frames underlying the existing dHashes. Sample
+timestamps and decoded fingerprint indices are persisted as private storage
+assets linked to the job and analysis in the report-completion transaction.
+Storage hash/size/type, sample indices, source times and current job generation
+are checked before linking. The existing fingerprint algorithm is unchanged.
+
+`media.submissionEvidence` now exposes role-checked `frames` (12), `dHashFrames`
+(6), `dHashFrameIndices` and `framesAvailable`; `media.duplicatePair` returns both
+sides' matching fingerprint frame URLs and per-frame Hamming distances. These
+are bearer URLs issued only after both submissions' tenant/ownership checks.
+Older analyses are not backfilled and retain honest unavailable states. Failed
+storage/analysis work cannot become acceptance evidence. An ambiguous completion
+failure retains private blobs for recovery instead of deleting possibly linked
+assets. No real media or storage URLs are committed.
+
+The source change requires the orchestrator's deployment of clean `origin/main`;
+no cloud sync was run from this checkout.
+
+Frame commit validation ran against an isolated snapshot of the staged tree, excluding other in-progress batch changes: `pnpm check` passed **550 tests** (122 Node, 287 Convex, 141 payment-route), typechecks, docs and production build. Actual local FFmpeg extraction ran; provider observations and chain evidence in tests are synthetic. The persistence regression verifies all 18 assets, both duplicate sides, exact indices/distances, role refusal, replay and invalid frame-binding refusals.

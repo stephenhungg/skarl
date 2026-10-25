@@ -218,6 +218,23 @@ describe("submission lifecycle and evidence boundaries", () => {
     expect((await f.t.run(ctx => ctx.db.get(mismatched.job._id)))?.status).toBe("pending");
   });
 
+  it("binds frame storage, timestamps and sample indices before linking private evidence", async () => {
+    const f = await setup(), item = await create(f, "frame-binding"), claimed = await claimAndFacts(f, item);
+    const value = await completion(f, item, claimed.generation), bytes = new Uint8Array([255,216,255,217]);
+    const storageId = await f.t.run(ctx => ctx.storage.store(new Blob([bytes], {type:"image/jpeg"})));
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))).map(n => n.toString(16).padStart(2,"0")).join("");
+    const frame = {storageId, timestampMs:1000, contentHash:hash, sizeBytes:4, kind:"dhash" as const, sampleIndex:0, decodedFrameIndex:1};
+    for (const patch of [{timestampMs:1001}, {sampleIndex:6}, {decodedFrameIndex:-1}]) {
+      await expect(f.t.mutation(internal.submissions.complete, {...value.args, evidenceFrames:[{...frame,...patch}]})).rejects.toThrow("invalid_evidence_frames");
+    }
+    await expect(f.t.mutation(internal.submissions.complete, {...value.args, evidenceFrames:[frame,frame]})).rejects.toThrow("invalid_evidence_frames");
+    await expect(f.t.mutation(internal.submissions.complete, {...value.args, evidenceFrames:[{...frame,contentHash:"f".repeat(64)}]})).rejects.toThrow("evidence_frame_storage_mismatch");
+    const analysisId = await f.t.mutation(internal.submissions.complete, {...value.args, evidenceFrames:[frame]});
+    const analysis = await f.t.run(ctx => ctx.db.get(analysisId));
+    expect(analysis!.evidenceAssetIds).toHaveLength(2); expect(analysis!.dHashFrameIndices).toEqual([1]);
+    expect((await f.t.query(api.media.submissionEvidence, {demoIdentity:"controller",submissionId:item.submissionId})).dHashFrames).toHaveLength(1);
+  });
+
   it("stores a canonical report once, binds it to source/rubric/pipeline and never publishes or pays from completion", async () => {
     const f = await setup();
     const item = await create(f);

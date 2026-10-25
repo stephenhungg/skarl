@@ -15,7 +15,8 @@ vi.mock("../../../apps/web/lib/payments/server", async importOriginal => {
 });
 vi.mock("../../../apps/web/lib/payments/chain", () => ({ observeTransfer: mocks.observeTransfer }));
 
-const TREASURY = `0x${"22".repeat(20)}`;
+const REVENUE = `0x${"22".repeat(20)}`;
+const TREASURY = `0x${"44".repeat(20)}`;
 const PAYER = `0x${"11".repeat(20)}`;
 const NONCE = `0x${"aa".repeat(32)}`;
 const TX_HASH = `0x${"bb".repeat(32)}`;
@@ -24,11 +25,11 @@ const ENDPOINT = `https://skarl.example/api/samples/${SAMPLE_ID}/evidence`;
 const context = { params: Promise.resolve({ id: SAMPLE_ID }) };
 const report = { syntheticFixture: "stored-private-verification-evidence" };
 const sample = { sampleId: SAMPLE_ID, report, storageUrl: "https://private.convex.cloud/api/storage/private-original",
-  mimeType: "video/webm", binding: "synthetic-evidence-binding" };
+  accountingVersion: 2, recipientAddress: REVENUE, mimeType: "video/webm", binding: "synthetic-evidence-binding" };
 const extensions = { bazaar: { status: "processing" } };
 const extensionHeader = Buffer.from(JSON.stringify(extensions)).toString("base64");
 const observation = { network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS, txHash: TX_HASH, logIndex: 1,
-  blockNumber: 100n, blockHash: `0x${"cc".repeat(32)}`, fromAddress: PAYER, toAddress: TREASURY,
+  blockNumber: 100n, blockHash: `0x${"cc".repeat(32)}`, fromAddress: PAYER, toAddress: REVENUE,
   amountAtomic: 250_000n, confirmations: 2, succeeded: true, observedAt: Date.now() };
 const events: string[] = [];
 let claimed = false;
@@ -46,12 +47,13 @@ async function challenge() {
 async function payload() {
   const { required } = await challenge();
   return { x402Version: 2, resource: required.resource, accepted: required.accepts[0], extensions: required.extensions,
-    payload: { signature: `0x${"ff".repeat(65)}`, authorization: { from: PAYER, to: TREASURY, value: "250000",
+    payload: { signature: `0x${"ff".repeat(65)}`, authorization: { from: PAYER, to: REVENUE, value: "250000",
       validAfter: "0", validBefore: String(Math.floor(Date.now() / 1000) + 240), nonce: NONCE } } };
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.stubEnv("SKARL_EVIDENCE_PAYTO", REVENUE);
   vi.stubEnv("SKARL_TREASURY_ADDRESS", TREASURY);
   vi.stubEnv("CDP_API_KEY_ID", undefined);
   vi.stubEnv("CDP_API_KEY_SECRET", undefined);
@@ -80,7 +82,7 @@ beforeEach(() => {
       events.push("facilitator:settle");
       expect(claimed).toBe(true);
       expect(JSON.parse(options!.body as string).paymentRequirements).toMatchObject({ scheme: "exact", network: PAYMENT_NETWORK,
-        amount: "250000", payTo: TREASURY, asset: USDC_ADDRESS });
+        amount: "250000", payTo: REVENUE, asset: USDC_ADDRESS });
       return Response.json({ success: true, transaction: TX_HASH, network: PAYMENT_NETWORK, payer: PAYER },
         { headers: { "EXTENSION-RESPONSES": extensionHeader } });
     }
@@ -94,9 +96,11 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 describe("paid evidence route", () => {
   it("offers anonymous exact 0.25 USDC discovery without private report or media", async () => {
     const { response, required } = await challenge();
+    expect(required.x402Version).toBe(2);
     expect(required.accepts).toHaveLength(1);
+    expect(required.accepts[0].payTo).not.toBe(TREASURY);
     expect(required.accepts[0]).toMatchObject({ scheme: "exact", network: PAYMENT_NETWORK, asset: USDC_ADDRESS,
-      amount: "250000", payTo: TREASURY, maxTimeoutSeconds: 300 });
+      amount: "250000", payTo: REVENUE, maxTimeoutSeconds: 300 });
     expect(required.extensions.bazaar.info.input).toMatchObject({ type: "http", method: "GET" });
     expect(required.extensions.bazaar.schema.properties.output).toBeTruthy();
     expect(response.headers.get("X-Skarl-Facilitator")).toBe("x402.org");
@@ -104,6 +108,41 @@ describe("paid evidence route", () => {
     const text = await response.text();
     expect(text).not.toContain(sample.storageUrl);
     expect(text).not.toContain(report.syntheticFixture);
+    expect(mocks.mutation).not.toHaveBeenCalled();
+  });
+
+  it("returns a JSON v2 challenge with no request headers at all", async () => {
+    const bare = Object.assign(new Request(ENDPOINT), { nextUrl: new URL(ENDPOINT) }) as Parameters<typeof GET>[0];
+    const response = await GET(bare, context);
+    expect(response.status).toBe(402);
+    expect(response.headers.get("Content-Type")).toContain("application/json");
+    const body = await response.json();
+    expect(body.x402Version).toBe(2);
+    expect(body.accepts[0]).toMatchObject({ network: PAYMENT_NETWORK, scheme: "exact", amount: "250000", payTo: REVENUE });
+  });
+
+  it.each([undefined, "", "invalid", `0x${"00".repeat(20)}`, TREASURY])("fails closed for invalid or treasury evidence payTo %s", async payTo => {
+    vi.stubEnv("SKARL_EVIDENCE_PAYTO", payTo);
+    const response = await GET(request(), context);
+    expect(response.status).toBe(503);
+    expect(response.headers.get("PAYMENT-REQUIRED")).toBeNull();
+    expect(mocks.mutation).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([{ accountingVersion: undefined }, { recipientAddress: TREASURY }])("refuses stale or mismatched backend accounting configuration", async changed => {
+    mocks.query.mockResolvedValue({ ...sample, ...changed });
+    const response = await GET(request(), context);
+    expect(response.status).toBe(503);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("never settles an authorization addressed to the funding treasury", async () => {
+    const payment = await payload();
+    payment.payload.authorization.to = TREASURY;
+    const response = await GET(request(payment), context);
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(events).not.toContain("facilitator:settle");
     expect(mocks.mutation).not.toHaveBeenCalled();
   });
 
@@ -150,7 +189,7 @@ describe("paid evidence route", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toMatchObject({ sampleId: SAMPLE_ID, report, settlement: { status: "confirmed", txHash: TX_HASH, facilitator: "x402.org" },
-      accountingTreatment: "funding_like_inflow" });
+      accountingTreatment: "evidence_sale_inflow" });
     expect(JSON.stringify(body)).not.toContain(sample.storageUrl);
     expect(body.media.expiresAt).toBeGreaterThanOrEqual(before + 300_000);
     expect(body.media.expiresAt).toBeLessThanOrEqual(Date.now() + 300_000);

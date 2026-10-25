@@ -4,7 +4,8 @@ import { mkdtemp, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { canonical, computeMetrics, CRITERIA, LICENSING_WARNING, preflightManifest, runEvaluation, runModelComparison, COMPARISON_VIDEO_MODELS, validateStoredReport } from "./eval-clips.mjs";
+import { execFileSync } from "node:child_process";
+import { canonical, computeMetrics, criterionAgreement, riskCoverage, wilson, CRITERIA, LICENSING_WARNING, preflightManifest, runEvaluation, runModelComparison, COMPARISON_VIDEO_MODELS, validateStoredReport } from "./eval-clips.mjs";
 
 const sha = value => createHash("sha256").update(value).digest("hex");
 const expected = recommendation => ({ recommendation, duplicateStatus: "clear",
@@ -234,8 +235,57 @@ test("failure-adjusted metrics preserve negative denominators and nearest-rank p
   assert.equal(result.failureAdjustedDecisionAccuracy, 1 / 3);
   assert.equal(result.conditionalDecisionAccuracy, .5);
   assert.equal(result.falseAcceptance.rate, .5);
+  assert.deepEqual(result.failureAdjustedDecisionAccuracyCi95, wilson(1, 3));
+  assert.deepEqual(result.conditionalDecisionAccuracyCi95, wilson(1, 2));
+  assert.deepEqual(result.falseAcceptance.ci95, wilson(1, 2));
+  assert.deepEqual(result.riskCoverage, { autoDecidedCount: 2, errorCount: 1, coverage: 2 / 3, risk: .5 });
   assert.equal(result.latency.clientTerminalReportMs.p50, 200);
   assert.equal(result.latency.clientTerminalReportMs.p95, 900);
+});
+
+test("Wilson intervals bound small negative sets and leave empty denominators undefined", () => {
+  for (const [k, n, bounds] of [[0, 15, [0, .204]], [0, 20, [0, .161]], [1, 15, [.012, .298]]]) {
+    wilson(k, n).forEach((value, index) => assert.ok(Math.abs(value - bounds[index]) < .0005));
+  }
+  assert.equal(wilson(0, 0), null);
+  assert.equal(wilson(15, 15)[1], 1);
+  for (const [k, n] of [[-1, 5], [6, 5], [1.5, 5], [true, 5]]) assert.throws(() => wilson(k, n));
+  const empty = computeMetrics([]);
+  assert.equal(empty.falseAcceptance.ci95, null);
+  assert.equal(empty.riskCoverage.coverage, null);
+  assert.equal(empty.riskCoverage.risk, null);
+});
+
+test("criterion kappa reports expected-row confusion and undefined degenerate cases", () => {
+  const agreement = criterionAgreement([["supported", "supported"], ["contradicted", "contradicted"],
+    ["unobservable", "supported"], ["unobservable", "unobservable"]]);
+  assert.equal(agreement.confusionMatrix.unobservable.supported, 1);
+  assert.ok(Math.abs(agreement.cohenKappa - 7 / 11) < 1e-12);
+  assert.equal(criterionAgreement([]).cohenKappa, null);
+  assert.equal(criterionAgreement([["supported", "supported"]]).cohenKappa, null);
+  assert.deepEqual(riskCoverage([["accept", "needs_review"]], 1),
+    { autoDecidedCount: 0, errorCount: 0, coverage: 0, risk: null });
+});
+
+test("Python and JavaScript agree on uncertainty, criterion agreement and selective risk including failures", () => {
+  const decisions = [["accept", "accept", true], ["needs_review", "accept", true], ["request_correction", "request_correction", true],
+    ["needs_review", "needs_review", true], ["accept", "needs_review", false]];
+  const cases = decisions.map(([human, actual, successfulAnalysis], index) => ({ sampleId: `parity-${index}`, expected: expected(human), successfulAnalysis,
+    qualityReport: { recommendation: actual, criteria: Object.entries(expected(actual).criteria).map(([criterionId, status]) => ({ criterionId, status })) } }));
+  const manifest = { schemaVersion: "1.0", syntheticMetadata: true, samples: cases.map(item => ({ sampleId: item.sampleId, split: "test",
+    actorId: "parity-actor", sessionId: "parity-session", originRecordingId: item.sampleId, variant: "synthetic-test-only", expected: item.expected })) };
+  const predictions = cases.map(item => ({ sampleId: item.sampleId, successfulAnalysis: item.successfulAnalysis,
+    ...expected(item.qualityReport.recommendation) }));
+  const py = JSON.parse(execFileSync("python3", ["-c", "import json,sys; from evals.evaluate import score_predictions; m,p=json.load(sys.stdin); print(json.dumps(score_predictions(m,p,'test')))"],
+    { input: JSON.stringify([manifest, predictions]), encoding: "utf8" }));
+  const js = computeMetrics(cases);
+  for (const key of ["failureAdjustedDecisionAccuracy", "failureAdjustedDecisionAccuracyCi95", "conditionalDecisionAccuracy",
+    "conditionalDecisionAccuracyCi95", "criterionAgreement", "riskCoverage"]) assert.deepEqual(js[key], py[key], key);
+  assert.deepEqual(js.falseAcceptance.ci95, py.falseAcceptance.ci95);
+  assert.equal(js.falseAcceptance.rate, py.falseAcceptance.rate);
+  assert.equal(js.riskCoverage.coverage, .6);
+  assert.equal(js.riskCoverage.risk, 1 / 3);
+  assert.equal(js.criterionAgreement.count, 12);
 });
 
 

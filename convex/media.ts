@@ -51,13 +51,17 @@ async function evidence(ctx: QueryCtx, submission: Doc<"submissions">) {
     if (asset.status !== "verified" || asset.sourceTimestampMs === undefined || !analysis ||
       asset.jobId !== analysis.jobId || !analysis.evidenceAssetIds.includes(asset._id)) continue;
     frames.push({ assetId: asset._id, timestampMs: asset.sourceTimestampMs, mimeType: asset.mimeType,
+      kind: asset.frameKind ?? "legacy", sampleIndex: asset.sampleIndex ?? null, decodedFrameIndex: asset.decodedFrameIndex ?? null,
       url: await ctx.storage.getUrl(asset.storageId) });
   }
   frames.sort((a, b) => a.timestampMs - b.timestampMs || a.assetId.localeCompare(b.assetId));
   return { submissionId: submission._id, analysisId: analysis?._id ?? null,
     clip: original && original.status !== "quarantined" ? { assetId: original._id, mimeType: original.mimeType,
       status: original.status, durationMs: original.durationMs ?? null, url: await ctx.storage.getUrl(original.storageId) } : null,
-    frames, framesAvailable: frames.some(frame => frame.url !== null),
+    frames: frames.filter(frame => frame.kind !== "dhash"),
+    dHashFrames: frames.filter(frame => frame.kind === "dhash"),
+    dHashFrameIndices: analysis?.dHashFrameIndices ?? [],
+    framesAvailable: frames.some(frame => frame.url !== null),
     transcriptSegments: transcript(analysis?.observationsJson),
     perceptualHashSource: submission.perceptualHashSource ?? null,
   };
@@ -83,10 +87,12 @@ export const duplicatePair = query({
     // dHashes and persisted visual samples may use different timestamps. Return
     // both explicitly; the UI must not label a nearest frame as the hash's frame.
     const matchedFrames = leftHashes.length === rightHashes.length ? leftHashes.map((frame, index) => ({
-      leftTimestampMs: frame.timestampMs, rightTimestampMs: rightHashes[index]!.timestampMs,
+      sampleIndex: index, leftTimestampMs: frame.timestampMs, rightTimestampMs: rightHashes[index]!.timestampMs,
       distance: hamming(frame.hash, rightHashes[index]!.hash),
-      leftFrame: leftEvidence.frames.find(asset => asset.timestampMs === frame.timestampMs) ?? null,
-      rightFrame: rightEvidence.frames.find(asset => asset.timestampMs === rightHashes[index]!.timestampMs) ?? null,
+      leftFrame: leftEvidence.dHashFrames.find(asset => asset.sampleIndex === index && asset.timestampMs === frame.timestampMs)
+        ?? leftEvidence.frames.find(asset => asset.kind === "legacy" && asset.timestampMs === frame.timestampMs) ?? null,
+      rightFrame: rightEvidence.dHashFrames.find(asset => asset.sampleIndex === index && asset.timestampMs === rightHashes[index]!.timestampMs)
+        ?? rightEvidence.frames.find(asset => asset.kind === "legacy" && asset.timestampMs === rightHashes[index]!.timestampMs) ?? null,
     })) : [];
     return { left: leftEvidence, right: rightEvidence, matchedFrames, score,
       exactSourceMatch: !!left.sourceHash && left.sourceHash === right.sourceHash,

@@ -43,6 +43,7 @@ export async function loadLedger(ctx: Pick<QueryCtx | MutationCtx, "db">, organi
     journals.push({
       eventId: entry.eventKey, orderId: entry.orderId, kind: entry.kind, description: entry.memo,
       ...(entry.contributorTokenIdentifier ? { contributorId: entry.contributorTokenIdentifier } : {}),
+      ...(entry.recipientAddress ? { recipientAddress: entry.recipientAddress } : {}),
       ...(entry.reference ? { reference: entry.reference } : {}),
       lines: lines.map(line => ({ account: line.account, debit: line.side === "debit" ? line.amountAtomic : 0n,
         credit: line.side === "credit" ? line.amountAtomic : 0n })),
@@ -68,6 +69,7 @@ export async function recordJournal(ctx: MutationCtx, organizationId: Id<"organi
     organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
     orderId: journal.orderId as Id<"orders">, eventKey: journal.eventId, kind: journal.kind,
     status: "posted", memo: journal.description, sourceReference: journal.reference ?? journal.orderId,
+    ...(journal.recipientAddress ? { recipientAddress: journal.recipientAddress } : {}),
     ...(journal.reference ? { reference: journal.reference } : {}),
     ...(journal.contributorId ? { contributorTokenIdentifier: journal.contributorId } : {}),
     fingerprint, effectiveAt: now, recordedAt: now,

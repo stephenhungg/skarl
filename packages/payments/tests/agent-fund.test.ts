@@ -43,6 +43,7 @@ beforeEach(() => {
   mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
     expect(request.url).toBe(RESOURCE);
+    expect(request.headers.has("x-skarl-demo-identity")).toBe(false);
     if (request.method === "GET") return Response.json(quote);
     const signature = request.headers.get("PAYMENT-SIGNATURE");
     if (!signature) {

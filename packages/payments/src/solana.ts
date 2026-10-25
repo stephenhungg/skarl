@@ -36,7 +36,7 @@ function decodeTransaction(transaction: unknown) {
   return decoded;
 }
 
-export type SolanaFundingTerms = Readonly<{ treasuryAddress: string; amountAtomic: bigint; orderId: string }>;
+export type SolanaFundingTerms = Readonly<{ treasuryAddress: string; amountAtomic: bigint; orderId: string; feePayer?: string }>;
 
 /** Hash message bytes, not signatures: the facilitator adds its fee-payer signature after this claim. */
 export async function parseSolanaFundingAuthorization(payload: Readonly<Record<string, unknown>>, terms: SolanaFundingTerms) {
@@ -48,6 +48,7 @@ export async function parseSolanaFundingAuthorization(payload: Readonly<Record<s
   if (compiled.version !== 0 && compiled.version !== "legacy") throw new Error("unsupported_solana_transaction_version");
   if ("addressTableLookups" in compiled && compiled.addressTableLookups?.length) throw new Error("solana_lookup_tables_not_supported");
   const message = decompileTransactionMessage(compiled);
+  if (terms.feePayer !== undefined && message.feePayer.address !== terms.feePayer) throw new Error("wrong_solana_fee_payer");
   const instructions: readonly Instruction[] = message.instructions;
   const transfers = instructions.map((instruction, index) => ({ instruction, index }))
     .filter(({ instruction }) => instruction.programAddress === SOLANA_TOKEN_PROGRAM);

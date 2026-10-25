@@ -253,6 +253,58 @@ describe("optional Solana funding adapter", () => {
     expect(quote.rails).toEqual([{ network: PAYMENT_NETWORK, recipientAddress: TREASURY, asset: USDC_ADDRESS },
       { network: SOLANA_PAYMENT_NETWORK, recipientAddress: SOLANA_TREASURY, asset: SOLANA_USDC_MINT }]);
   });
+  function rotateSupportedFeePayer(includeOriginal = true) {
+    const previous = mocks.fetch.getMockImplementation()!;
+    mocks.fetch.mockImplementation(async (input: string | Request, options?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.endsWith("/supported")) return Response.json({ kinds: [
+        { x402Version: 2, scheme: "exact", network: PAYMENT_NETWORK },
+        { x402Version: 2, scheme: "exact", network: SOLANA_PAYMENT_NETWORK, extra: { feePayer: SOLANA_TREASURY } },
+      ], extensions: [], signers: { "solana:*": includeOriginal ? [SOLANA_PAYER, SOLANA_TREASURY] : [SOLANA_TREASURY] } });
+      if (url.endsWith("/verify") || url.endsWith("/settle")) {
+        const body = JSON.parse(options!.body as string);
+        expect(body.paymentRequirements.extra.feePayer).toBe(SOLANA_PAYER);
+        expect(body.paymentPayload.accepted.extra.feePayer).toBe(SOLANA_PAYER);
+      }
+      return previous(input, options);
+    });
+  }
+  it("accepts a rotated quote fee payer still in the current supported set", async () => {
+    const payload = await solanaPayload();
+    rotateSupportedFeePayer();
+    expect((await POST(request(payload), context)).status).toBe(202);
+    expect(events).toEqual(["facilitator:verify", "payments:recordFundingAttempt", "facilitator:settle", "payments:recordTransaction"]);
+    expect(mocks.parseSolana).toHaveBeenCalledWith(payload.payload, expect.objectContaining({ feePayer: SOLANA_PAYER }));
+  });
+  it("rejects a previously quoted fee payer absent from current support before verify or claim", async () => {
+    const payload = await solanaPayload();
+    rotateSupportedFeePayer(false);
+    expect((await POST(request(payload), context)).status).toBe(402);
+    expect(events).toEqual([]);
+    expect(mocks.mutation).not.toHaveBeenCalled();
+  });
+  it.each([
+    { network: "solana:wrong" }, { asset: SOLANA_TREASURY }, { payTo: SOLANA_PAYER },
+    { amount: "1" }, { scheme: "upto" }, { maxTimeoutSeconds: 61 },
+    { extra: { feePayer: SOLANA_PAYER, memo: "skarl:another-order" } },
+    { extra: { feePayer: SOLANA_PAYER } },
+    { extra: { feePayer: SOLANA_PAYER, memo: `skarl:${ORDER_ID}`, unexpected: true } },
+  ])("rejects other quote mismatches even with a supported rotated fee payer: %j", async change => {
+    const payload = await solanaPayload();
+    rotateSupportedFeePayer();
+    payload.accepted = { ...payload.accepted, ...change };
+    expect((await POST(request(payload), context)).status).toBe(402);
+    expect(events).toEqual([]);
+    expect(mocks.mutation).not.toHaveBeenCalled();
+  });
+  it("still refuses an already claimed Solana authorization after rotation", async () => {
+    const payload = await solanaPayload();
+    rotateSupportedFeePayer();
+    mocks.mutation.mockResolvedValue({ attemptId: "previous-attempt", replayed: true });
+    expect((await POST(request(payload), context)).status).toBeGreaterThanOrEqual(400);
+    expect(events).toEqual(["facilitator:verify"]);
+    expect(mocks.observeSolana).not.toHaveBeenCalled();
+  });
   it("claims the message before settlement, preserves signature case, and waits for RPC", async () => {
     const response = await POST(request(await solanaPayload()), context);
     expect(response.status).toBe(202);

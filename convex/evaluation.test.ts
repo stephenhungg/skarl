@@ -31,13 +31,14 @@ const audio = audioFromTranscriptSegments([
 ], 12_000);
 const run = { provider: "mock", model: "synthetic", promptVersion: "test-v1", elapsedMs: 10 };
 beforeEach(() => {
+  vi.stubEnv("VERIFIER_JURY", "on");
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-25T08:00:00Z"));
   mocked.prepare.mockReset().mockResolvedValue({ silentVideo: new Uint8Array([1]), audio: new Uint8Array([2]),
     durationMs: 12_000, videoFrames: [], frameDHashes: frames, perceptualHash: frames.map(f => f.hash).join(""), warnings: [] });
   mocked.video.mockReset().mockImplementation(async (_frames, _duration, evalModel) => ({ observation: video, run: { ...run, model: evalModel ?? run.model } }));
   mocked.audio.mockReset().mockResolvedValue({ observation: audio, run });
 });
-afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 async function setup() { const t = convexTest(schema, modules); return { t, ...await t.mutation(internal.seed.demo, {}) }; }
 type Fixture = Awaited<ReturnType<typeof setup>>;
 async function create(f: Fixture, request: string, evalRunId?: string, evalVideoModel?: EvaluationVideoModel) {
@@ -102,6 +103,8 @@ describe("evaluation corpus isolation and advisory projection", () => {
     const f = await setup(), item = await create(f, "selected-model", "selected-run", "gemini-3.8-flash");
     const stored = await finish(f, item);
     expect(mocked.video).toHaveBeenCalledWith([], 12_000, "gemini-3.8-flash");
+    expect(mocked.video).toHaveBeenCalledTimes(1);
+    expect(stored.observations.jury).toBeUndefined();
     expect(stored.report.pipeline.modelRuns[0].model).toBe("gemini-3.8-flash");
     const failed = await create(f, "failed-model", "failed-run", "gemini-4-argon");
     mocked.video.mockRejectedValueOnce(new Error("synthetic provider failure"));
@@ -109,6 +112,38 @@ describe("evaluation corpus isolation and advisory projection", () => {
     expect(failedReport.report.pipeline.modelRuns[0].model).toBe("gemini-4-argon");
     expect(failedReport.observations.failureCode).toBe("video_unavailable");
     expect(failedReport.report.recommendation).toBe("needs_review");
+  });
+
+  it("persists twelve visual samples and six exact fingerprint frames linked to each analysis", async () => {
+    const f = await setup();
+    const hashes = Array.from({length: 6}, (_, i) => ({timestampMs: (i + 1) * 1000, hash: frames[i % frames.length]!.hash}));
+    const bytes = new Uint8Array([255, 216, 255, 217]);
+    mocked.prepare.mockResolvedValue({durationMs:12_000, silentVideo:bytes, audio:bytes, warnings:[], frameDHashes:hashes,
+      perceptualHash:hashes.map(f => f.hash).join(""),
+      videoFrames:Array.from({length:12}, (_, i) => ({timestampMs:(i+1)*900, bytes, mimeType:"image/jpeg"})),
+      hashFrames:hashes.map((frame, sampleIndex) => ({...frame, bytes, mimeType:"image/jpeg", sampleIndex, frameIndex:sampleIndex*2+1}))});
+    const left = await create(f, "stored-left", "stored-frames");
+    await finish(f, left);
+    const right = await create(f, "stored-right", "stored-frames");
+    await finish(f, right);
+    const evidence = await f.t.query(api.media.submissionEvidence, {demoIdentity:"controller", submissionId:left.submissionId});
+    expect(evidence.framesAvailable).toBe(true);
+    expect(evidence.frames).toHaveLength(12); expect(evidence.dHashFrames).toHaveLength(6);
+    expect(evidence.dHashFrameIndices).toEqual([1,3,5,7,9,11]);
+    for (const frame of [...evidence.frames, ...evidence.dHashFrames]) expect(frame.url).toMatch(/^https?:/);
+    const pair = await f.t.query(api.media.duplicatePair, {demoIdentity:"controller", submissionId:left.submissionId, matchingSubmissionId:right.submissionId});
+    expect(pair.matchedFrames).toHaveLength(6);
+    for (const [i, frame] of pair.matchedFrames.entries()) {
+      expect(frame.distance).toBe(0); expect(frame.sampleIndex).toBe(i);
+      expect(frame.leftFrame).toMatchObject({kind:"dhash", sampleIndex:i, decodedFrameIndex:i*2+1});
+      expect(frame.rightFrame).toMatchObject({kind:"dhash", sampleIndex:i});
+      expect(frame.leftFrame!.url).toMatch(/^https?:/); expect(frame.rightFrame!.url).toMatch(/^https?:/);
+    }
+    await f.t.action(internal.verify.run, {jobId:left.job._id});
+    expect(await f.t.run(async ctx => (await ctx.db.query("mediaAssets").withIndex("by_submission_purpose", q => q.eq("submissionId", left.submissionId).eq("purpose", "evidence_frame")).collect()).length)).toBe(18);
+    const analysis = await f.t.run(async ctx => (await ctx.db.get((await ctx.db.get(left.submissionId))!.currentAnalysisId!))!);
+    expect(analysis.evidenceAssetIds).toHaveLength(19);
+    await expect(f.t.query(api.media.submissionEvidence, {demoIdentity:"finance-agent", submissionId:left.submissionId})).rejects.toThrow();
   });
 
   it("binds scope on replay and rejects invalid or non-verification scopes", async () => {
@@ -264,4 +299,58 @@ describe("evaluation corpus isolation and advisory projection", () => {
     expect(stored.report.warnings).toContain(VERIFICATION_ONLY_WARNING);
   });
 
+});
+
+describe("default two-model visual jury (mocked providers)", () => {
+  it("preserves a supported decision and records both judges when they agree", async () => {
+    vi.stubEnv("VERIFIER_JURY", undefined);
+    const f = await setup(), stored = await finish(f, await create(f, "jury-agrees"));
+    expect(mocked.video.mock.calls.map(call => call[2])).toEqual(["gemini-4-argon", "gemini-3.8-flash"]);
+    expect(mocked.audio).toHaveBeenCalledTimes(1);
+    expect(stored.report).toMatchObject({ recommendation: "accept", pipeline: { status: "completed" }, warnings: [] });
+    expect(stored.report.pipeline.modelRuns).toHaveLength(3);
+    expect(stored.observations.jury).toMatchObject({ advisoryOnly: true, agreementFraction: 1, disagreedCriteria: [] });
+    expect(stored.observations.jury.judges).toHaveLength(2);
+    for (const judge of stored.observations.jury.judges) {
+      expect(validateVerificationReportForRubric(judge.report, stored.report.criteria.map((c: {criterionId:string}) => c.criterionId)).valid).toBe(true);
+    }
+  });
+
+  it("keeps Argon observations but reviews per-criterion disagreement", async () => {
+    const other = structuredClone(video); other.observations[1]!.target = "other";
+    mocked.video.mockImplementation(async (_frames, _duration, model) => ({
+      observation: model === "gemini-3.8-flash" ? other : video, run: { ...run, model },
+    }));
+    const f = await setup(), stored = await finish(f, await create(f, "jury-disagrees"));
+    expect(stored.observations.video).toEqual(video);
+    expect(stored.report).toMatchObject({ recommendation: "needs_review", pipeline: { status: "needs_review" } });
+    expect(stored.report.warnings).toContain("Visual judges disagree: coaster-placement, narration-alignment");
+    expect(stored.observations.jury.agreementFraction).toBe(1 / 3);
+    expect(stored.observations.jury.judges.map((judge: {report:{recommendation:string}}) => judge.report.recommendation))
+      .toEqual(["accept", "request_correction"]);
+  });
+
+  it.each(["gemini-4-argon", "gemini-3.8-flash", "both"])("reviews a failed %s without counting fallback agreement", async failedModel => {
+    mocked.video.mockImplementation(async (_frames, _duration, model) => {
+      if (failedModel === "both" || model === failedModel) throw new Error("synthetic failure");
+      return { observation: video, run: { ...run, model } };
+    });
+    const f = await setup(), stored = await finish(f, await create(f, `jury-failed-${failedModel}`));
+    expect(stored.report).toMatchObject({ recommendation: "needs_review", pipeline: { status: "failed" } });
+    expect(stored.report.warnings).toContain("Visual judges disagree: red-cup-pickup, coaster-placement, narration-alignment");
+    expect(stored.report.pipeline.modelRuns.map((item: {model:string}) => item.model).slice(0, 2))
+      .toEqual(["gemini-4-argon", "gemini-3.8-flash"]);
+    expect(stored.observations.jury.agreementFraction).toBeNull();
+    expect(stored.observations.failureCode).toBe("video_unavailable");
+    if (failedModel === "gemini-3.8-flash") expect(stored.observations.video).toEqual(video);
+  });
+
+  it("supports an explicit off switch without changing the single-model path", async () => {
+    vi.stubEnv("VERIFIER_JURY", "off");
+    const f = await setup(), stored = await finish(f, await create(f, "jury-off"));
+    expect(mocked.video).toHaveBeenCalledExactlyOnceWith([], 12_000, undefined);
+    expect(stored.report.recommendation).toBe("accept");
+    expect(stored.report.pipeline.modelRuns).toHaveLength(2);
+    expect(stored.observations.jury).toBeUndefined();
+  });
 });

@@ -1,11 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { withX402, x402ResourceServer } from "@x402/next";
+import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { PAYMENT_NETWORK } from "@skarl/contracts/chain";
 import { paymentFacilitator } from "../../../../../../../packages/payments/src/facilitator";
 import { evidenceRouteConfig, bazaarResourceServerExtension, EVIDENCE_PRICE_ATOMIC } from "../../../../../../../packages/payments/src/evidence";
 import { parseFundingAuthorization } from "../../../../../../../packages/payments/src/funding";
-import { api, paymentJson, paymentError, paymentService, treasuryAddress, type Id } from "../../../../../lib/payments/server";
+import { api, paymentJson, paymentError, paymentService, evidencePayTo, type Id } from "../../../../../lib/payments/server";
 import { evidenceApi } from "../../../../../lib/payments/evidence-service";
 import { observeTransfer } from "../../../../../lib/payments/chain";
 import { issueMediaToken } from "../../../../../lib/payments/media-token";
@@ -19,9 +20,11 @@ export async function GET(request: NextRequest, context: Context) {
   try {
     const sampleId = (await context.params).id;
     if (!/^sample-[a-zA-Z0-9]+$/.test(sampleId)) return paymentJson({ error: "sample_unavailable" }, 404);
-    const treasury = treasuryAddress(), { db, serviceSecret } = paymentService();
+    const payTo = evidencePayTo(), { db, serviceSecret } = paymentService();
     // Never challenge for unavailable/rejected/private work; this service read exposes nothing to the caller.
     const sample = await db.query(evidenceApi.sample, { serviceSecret, sampleId });
+    // Refuse to charge against an older backend that books sales as order funding.
+    if (sample.accountingVersion !== 2 || sample.recipientAddress !== payTo) throw new Error("evidence_accounting_not_configured");
     const facilitator = paymentFacilitator();
     const server = new x402ResourceServer(facilitator.client).register(PAYMENT_NETWORK, new ExactEvmScheme())
       .registerExtension(bazaarResourceServerExtension);
@@ -32,7 +35,7 @@ export async function GET(request: NextRequest, context: Context) {
     server.onBeforeSettle(async ({ paymentPayload }) => {
       try {
         const auth = parseFundingAuthorization(paymentPayload.payload);
-        if (auth.amountAtomic !== EVIDENCE_PRICE_ATOMIC || auth.recipientAddress.toLowerCase() !== treasury.toLowerCase()) {
+        if (auth.amountAtomic !== EVIDENCE_PRICE_ATOMIC || auth.recipientAddress.toLowerCase() !== payTo.toLowerCase()) {
           return { abort: true, reason: "quote_changed" };
         }
         const claim = await db.mutation(evidenceApi.claim, { serviceSecret, sampleId, ...auth, facilitator: facilitator.id });
@@ -55,9 +58,15 @@ export async function GET(request: NextRequest, context: Context) {
     });
     // Middleware settles after the handler. Do not put paid evidence in its pre-settlement response.
     const response = await withX402(async () => NextResponse.json({ sampleId, status: "settlement_pending" }),
-      { [`GET ${request.nextUrl.pathname}`]: evidenceRouteConfig(treasury) }, server)(request);
+      { [`GET ${request.nextUrl.pathname}`]: evidenceRouteConfig(payTo) }, server)(request);
     response.headers.set("Cache-Control", "private, no-store");
     response.headers.set("X-Skarl-Facilitator", facilitator.id);
+    // v2 clients use PAYMENT-REQUIRED. Also expose the same public challenge in
+    // JSON for bare GET probes; the pinned Next adapter otherwise sends {}.
+    const required = response.headers.get("PAYMENT-REQUIRED");
+    if (response.status === 402 && required && !request.headers.has("PAYMENT-SIGNATURE")) {
+      return NextResponse.json(decodePaymentRequiredHeader(required), { status: 402, headers: response.headers });
+    }
     if (!attemptId || !authorization) return response;
     const headers = new Headers({ "X-Skarl-Facilitator": facilitator.id });
     if (extensionResponses) headers.set("EXTENSION-RESPONSES", extensionResponses);
@@ -69,7 +78,7 @@ export async function GET(request: NextRequest, context: Context) {
     if (txHash) {
       try {
         const observation = await observeTransfer(txHash as Hash, { fromAddress: authorization.payerAddress,
-          toAddress: treasury, amountAtomic: EVIDENCE_PRICE_ATOMIC }, authorization.authorizationNonce);
+          toAddress: payTo, amountAtomic: EVIDENCE_PRICE_ATOMIC }, authorization.authorizationNonce);
         await db.mutation(evidenceApi.confirm, { serviceSecret, attemptId, authorizationNonce: authorization.authorizationNonce, observation });
         confirmed = true;
       } catch { /* Unknown receipt/import outcome: the durable claim owns reconciliation. */ }
@@ -84,7 +93,7 @@ export async function GET(request: NextRequest, context: Context) {
         mediaUrl.searchParams.set("token", grant.token);
         result = paymentJson({ sampleId, report: current.report,
           media: { url: mediaUrl.toString(), expiresAt: grant.expiresAt, mimeType: current.mimeType },
-          settlement: { status: "confirmed", txHash, facilitator: facilitator.id }, accountingTreatment: "funding_like_inflow" });
+          settlement: { status: "confirmed", txHash, facilitator: facilitator.id }, accountingTreatment: "evidence_sale_inflow" });
       } catch {
         // Quarantine/revocation does not undo payment. Preserve its receipt without releasing content.
         result = paymentJson({ sampleId, status: "paid_content_unavailable", attemptId,

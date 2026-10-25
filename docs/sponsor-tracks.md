@@ -2,16 +2,16 @@
 
 Pitch: **Skarl is the AP/settlement seat for a human-data company.** It verifies narrated demonstrations with multimodal AI, then pays contributors and keeps the books, with x402 payments on Base Sepolia. The prize list on [Devpost](https://cal-hacks-13-0.devpost.com/) is authoritative. The deadline is October 25, 2026, 12:00 PM EDT (9:00 AM PDT).
 
-Current scope is **Base Sepolia primary, with Solana Devnet as a second funding-only rail**. Repository docs and fixture tests are not evidence of a working sponsor integration.
+Demonstrated payments are **Base Sepolia test USDC**. An optional Solana Devnet funding rail is implemented, but no live Solana funding transaction is recorded. Repository docs and fixture tests are not evidence of a working sponsor integration.
 
 ## Targeted tracks
 
 | Track (Devpost name) | What we demonstrate |
 | --- | --- |
 | [Hyphenate] The Hyphenated Enterprise: Autonomous Systems for Finance (**primary**) | The duplicate-clip catch, the blocked second payable, the agent's refused self-approval, a reconciled payout and balanced books |
-| [Coinbase] Best Use of x402, **Payment Agents** track | A buyer agent funds orders via x402 and the finance agent pays contributors, both through Coinbase Wallet MCP within approved caps |
+| [Coinbase] Best Use of x402, **Payment Agents** track | Live x402 funding via CDP, a reusable Wallet MCP approval plugin, and live CDP wallet cap/allowlist rejections; contributor payout and MCP purchase still pending |
 | [Convex] Best use of Convex | Convex as the system of record: live queries, atomic financial mutations, file storage, and a Workflow for the approval wait |
-| [MLH] Best Use of Solana | Solana Devnet x402 order funding settled by CDP, with strict RPC reconciliation; Base stays primary |
+| [MLH] Best Use of Solana | Pending live evidence: optional Solana Devnet x402 funding and strict RPC reconciliation are implemented; Base stays primary |
 | [MLH] Best Use of Gemini API | Two independent Gemini calls (silent video, audio) producing schema-validated, timestamped evidence |
 
 ## Hyphenate
@@ -46,8 +46,8 @@ $500 USDC plus a recruiter call per eligible team member, per track. There are t
 
 **What we build:** see [payments](payments.md#where-coinbase-for-agents-fits).
 
-- **x402 funding:** the order-funding endpoint is a real x402 V2 `exact` resource on Base Sepolia, using `https://x402.org/facilitator` by default, or the authenticated CDP facilitator when both CDP API credentials are configured. The public production deployment is now configured for CDP using `createCdpFacilitatorClient` (`@coinbase/cdp-sdk` 1.60.0; `@x402/*` 2.28.0). Its authenticated supported-schemes probe succeeded, but the existing v2 funding transaction predates this switch; no CDP settlement is claimed from that probe. A buyer agent pays it through [Wallet MCP](https://docs.cdp.coinbase.com/ai-agents/coinbase-for-agents/wallet-mcp) `initiate_x402_request`/`complete_x402_request` with a `maxPayment` cap.
-- **Payouts:** the finance agent pays contributors via Wallet MCP `send`, only for a stored, approved intent. Every write needs the controller's approval in Coinbase Wallet.
+- **x402 funding:** production uses the authenticated CDP facilitator. A 0.01-test-USDC payment settled through CDP and its real signed webhook was processed and reconciled; see [the trace](status.md#confirmed-webhook-delivery-and-cdp-settlement--0254-pdt). The earlier 10-USDC v2 funding used x402.org. These CLI payments are not evidence of Wallet MCP execution. The reusable [plugin](wallet-mcp-plugin/skarl.md) prepares `initiate_x402_request` / `complete_x402_request` with a `maxPayment` cap and human approval.
+- **Payouts and policy:** the default controller-wallet / Wallet MCP `send` adapter executes only a stored independently approved intent. The optional CDP executor has a live 2-USDC cap and recipient allowlist, with real over-cap/non-allowlisted `403 policy_violation` results. A licensed submission and payable are still missing, so **no contributor payout is claimed**. [Policy evidence](status.md#live-retry-after-recovery-deployment--october-25-2026-0305-pdt).
 - **Coinbase MCP (retail):** separate from Wallet MCP and outside this demo path. The previously cited 5 USDC limit is unverified in the current documentation; do not present it as a guaranteed product limit.
 
 **Evidence mapped to Payment Agents judging:**
@@ -96,7 +96,7 @@ Current configurable defaults are `gemini-4-argon` for visual evidence, `gemini-
 
 ## Solana
 
-**MLH Best Use of Solana** is targeted again through Solana Devnet x402 funding, settled by CDP. Base/Coinbase remain primary; payouts remain Base-only. Implementation and treasury ATA setup are complete; live funding evidence is pending the backend deployment. See [Solana rail](payments.md#solana-rail).
+**MLH Best Use of Solana** remains a pending submission claim through the optional CDP-backed Solana Devnet x402 funding path. Base/Coinbase remain primary; payouts remain Base-only. The backend is deployed and the production challenge advertises Base first and Solana second through CDP. The October 25, 03:13 PDT bounded buyer attempt returned HTTP 402 before settlement because changing fee-payer metadata prevented quote matching. Convex has zero funding matches and no journal; the order remains unfunded. This is live integration/debugging evidence, not live Solana funding evidence, and no Explorer funding link exists. See the [recorded attempt and RPC checks](status.md#solana-live-attempt--october-25-2026-03130315-pdt). See [Solana rail](payments.md#solana-rail).
 
 ## Not targeted
 
@@ -113,8 +113,27 @@ Current configurable defaults are `gemini-4-argon` for visual evidence, `gemini-
 
 Do not contact sponsors or send feedback through messaging tools without the user's authorization.
 
-## Live CDP builder feedback — SQL API, October 25
+## Coinbase builder feedback — October 25
 
-At approximately 02:54 PDT, the SQL witness retry and both minimal `SELECT 1` authentication variants returned HTTP 500 at `/platform/v2/data/query/run`. CDP returned `internal_server_error`: “An internal server error occurred. Please try again later.” Correlation IDs: client-key Bearer `a50055b9eb2f354e-IAD`, API-secret JWT `a50055baacf2354e-SJC`, and the scoped Base Sepolia Transfer query `a50055bbcc0b7851-IAD`. These are live provider errors, not simulated tests.
+Mirrored from the [Coinbase submission](coinbase-submission.md#4-builder-feedback). Observed incidents, dependency inspection and documentation research are labeled separately.
 
-The workaround is to retain the existing RPC-confirmed reconciliation and display `witness_unavailable`; SQL cannot authorize payouts or substitute for receipt validation. Desired capability: actionable query-service health/error diagnostics tied to the returned correlation ID. No feedback was sent externally.
+### Biggest observed blocker: SQL unavailable even for SELECT 1
+
+At approximately 02:54 PDT, every recorded query to `/platform/v2/data/query/run` returned HTTP 500, including client-key and API-secret-JWT `SELECT 1`. CDP returned `internal_server_error`. Correlation IDs: client-key **`a50055b9eb2f354e-IAD`**, JWT **`a50055baacf2354e-SJC`**, scoped Base Sepolia Transfer query **`a50055bbcc0b7851-IAD`**. These are actual provider errors in [status](status.md#live-cdp-verification), not fixtures.
+
+**Workaround:** keep RPC-verified reconciliation and signed webhooks as the operational path; show `witness_unavailable` for SQL. The CDP funding/webhook transaction above still reconciled and posted one balanced journal. SQL failure never became a payout approval or a false match.
+
+### Other friction, with provenance
+
+| Friction | Evidence and workaround |
+| --- | --- |
+| Wallet MCP approval mode | Live preflight recorded authentication/OAuth waits, not a completed MCP payment. Official [approval-mode documentation](https://docs.cdp.coinbase.com/coinbase-for-agents/wallet-mcp/references/approval-mode) requires human approval for every write. Preserve returned request IDs and make the approval handoff explicit. This is a Wallet MCP limitation, not a claim that Coinbase has no autonomous wallet products. |
+| Wallet MCP x402 Base coverage | The [Wallet MCP reference](https://docs.cdp.coinbase.com/coinbase-for-agents/wallet-mcp/skill) documents USDC x402 on Base, not Solana. Skarl targets Base Sepolia and stops if the connected tools cannot support it. No failed Solana MCP transaction was recorded. |
+| Solana devnet data coverage | [Onchain activity webhooks](https://docs.cdp.coinbase.com/webhooks/onchain-activity/overview) list Base mainnet/Sepolia; [SQL quickstart](https://docs.cdp.coinbase.com/data/sql-api/quickstart) describes Solana token coverage on Mainnet. Solana devnet webhook/SQL parity was not documented in these references; this is platform research, not a live outage. Base plus RPC keeps the demo on a supported path. |
+| Faucet-sized budgets | [Circle](https://faucet.circle.com/) advertises 20 test USDC per two hours per address/blockchain; [CDP](https://docs.cdp.coinbase.com/faucets/introduction/welcome) lists 1 USDC per claim. The demo uses a 10-USDC order and a 0.01-USDC webhook probe. Status records a 20-USDC buyer balance and three actual 1-USDC CDP claims funding the policy wallet; no faucet rate-limit error is invented. |
+| Solana dependency version split | The [lockfile](../pnpm-lock.yaml) resolves `@solana/kit` 5.5.1 under `@coinbase/cdp-sdk` 1.60.0 and 6.10.0 for `@x402/svm` 2.28.0. This is a dependency observation, not a proven Solana payment failure. Keep the pinned graph, externalize CDP for Convex and keep Solana funding evidence separate from the demonstrated Base path. |
+| Bazaar indexing latency and visibility | [CDP documents](https://docs.cdp.coinbase.com/x402/seller/get-discovered) asynchronous indexing after settlement, up to 15 minutes, and `success`/`processing`/`rejected` extension responses. We forward `EXTENSION-RESPONSES` explicitly and support direct resource inspection. Our live validator stopped at an ineligible sample's 404; **no actual indexing delay or successful listing was measured**. |
+
+### One capability we most want
+
+**Policy-bound autonomous agent wallets usable through Wallet MCP without a human click for each already-authorized transaction.** Let the operator define a revocable network/token/recipient/budget policy once, then allow bounded execution under that policy with a stable request ID. Skarl would still require its own independent business approval; this would remove the second manual signing handoff and the separate CDP SDK executor solely for bounded execution. Today's Wallet MCP remains in approval mode. No feature request has been sent externally.

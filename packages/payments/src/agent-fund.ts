@@ -90,7 +90,7 @@ export async function fundOrder(args = process.argv.slice(2)) {
     throw new BuyerError("SKARL_APP_URL must use HTTPS, or HTTP on localhost.");
   }
   const resource = new URL(`/api/orders/${encodeURIComponent(orderId)}/fund`, app);
-  const headers = { "Content-Type": "application/json", "x-skarl-demo-identity": "buyer" };
+  const headers = { "Content-Type": "application/json" };
   const status = await jsonResponse(await fetch(resource, { headers, redirect: "error", signal: AbortSignal.timeout(20_000) }));
   const savedPath = join(configurationDirectory, `funding-${orderId}.json`);
   const saved: unknown = existsSync(savedPath) ? JSON.parse(privateRead(savedPath)) : null;
@@ -161,7 +161,7 @@ export async function fundOrder(args = process.argv.slice(2)) {
     return fetch(request, { redirect: "error", signal: AbortSignal.timeout(90_000) });
   };
   try {
-    const response = await wrapFetchWithPayment(restrictedFetch, client)(resource, { method: "POST", headers, body: JSON.stringify({ demoIdentity: "buyer" }) });
+    const response = await wrapFetchWithPayment(restrictedFetch, client)(resource, { method: "POST", headers, body: "{}" });
     const paymentResponse = response.headers.get("PAYMENT-RESPONSE");
     if (paymentResponse && savedAuthorization) {
       const settlement = decodePaymentResponseHeader(paymentResponse);

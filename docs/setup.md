@@ -15,10 +15,15 @@ Use Node **22.18+ on the Node 22 line** (the repository pins 22.21.1) and pnpm 1
 nvm use
 corepack prepare pnpm@10.19.0 --activate
 pnpm install
+cp apps/web/.env.example apps/web/.env.local
 pnpm dev
 ```
 
-Open `http://localhost:3000`; inspect `http://localhost:3000/api/health`. The server should explicitly report scaffold capabilities with payments and inference disabled. No environment file is needed to boot it.
+Open `http://localhost:3000`; inspect `http://localhost:3000/api/health` for live configuration and backend readiness. The example contains the public demo Convex URL and receiving treasury address, so browsing the local UI requires no private API keys. Use `https://skarl.vercel.app/api/orders` to create and fund a fresh outsider demo order. Local payment mutations need an operator-configured `SKARL_PAYMENTS_SERVICE_SECRET` matching the Convex deployment; do not copy a team secret to try the public demo. A read-only funding request without treasury configuration returns HTTP 503 with the exact variable to set.
+
+The pnpm “ignored build scripts” warning for `@coinbase/x402`, `@tailwindcss/oxide`, `bufferutil`, `keccak`, and `utf-8-validate` is harmless for this quickstart. The workspace already allows required `esbuild` and `ffmpeg-static` scripts; no blanket approval is needed.
+
+Next.js generates `apps/web/next-env.d.ts` and may generate `apps/web/AGENTS.md`; both are ignored. `pnpm typecheck` runs `next typegen` before the web TypeScript check, so a fresh clone does not need a tracked generated declaration file. See the [Next.js TypeScript guidance](https://nextjs.org/docs/app/api-reference/config/typescript#next-envdts).
 
 ```sh
 pnpm typecheck
@@ -29,7 +34,7 @@ pnpm build
 pnpm check
 ```
 
-The lockfile pins JavaScript dependencies. CI uses frozen installs. The initial web app has no external fonts, analytics, wallet SDK or model client. `pnpm build` should not require API secrets.
+The lockfile pins JavaScript dependencies. CI uses frozen installs. `pnpm build` does not require API secrets; live payment and inference capabilities depend on deployment configuration.
 
 ## Python verifier
 

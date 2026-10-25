@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import json
+from math import sqrt
 from pathlib import Path
 import re
 import sys
@@ -97,6 +98,43 @@ def validate_manifest(manifest: Any) -> list[dict[str, Any]]:
     return samples
 
 
+def wilson(k: int, n: int) -> list[float] | None:
+    """Two-sided Wilson score interval, 95%; no estimate without observations."""
+    if isinstance(k, bool) or isinstance(n, bool) or not isinstance(k, int) or not isinstance(n, int) or not 0 <= k <= n:
+        raise ValueError("Wilson counts must be integers with 0 <= k <= n")
+    if n == 0:
+        return None
+    z = 1.959963984540054
+    p = k / n
+    denominator = 1 + z * z / n
+    center = (p + z * z / (2 * n)) / denominator
+    radius = z * sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denominator
+    return [0.0 if k == 0 else max(0.0, center - radius), 1.0 if k == n else min(1.0, center + radius)]
+
+
+def criterion_agreement(pairs: list[tuple[str, str]]) -> dict:
+    labels = sorted(CRITERION_STATUSES)
+    matrix = {label: {actual: 0 for actual in labels} for label in labels}
+    for expected, actual in pairs:
+        matrix[expected][actual] += 1
+    n = len(pairs)
+    correct = sum(matrix[label][label] for label in labels)
+    observed = correct / n if n else None
+    chance = sum(sum(matrix[label].values()) * sum(matrix[row][label] for row in labels) for label in labels) / (n * n) if n else None
+    return {"labels": labels, "count": n, "confusionMatrix": matrix,
+            "matrixOrientation": "rows=human/expected, columns=predicted",
+            "observedAgreement": observed, "expectedAgreement": chance,
+            "cohenKappa": (observed - chance) / (1 - chance) if chance is not None and chance < 1 else None}
+
+
+def risk_coverage(pairs: list[tuple[str, str]], total: int) -> dict:
+    decided = [(expected, actual) for expected, actual in pairs if actual in {"accept", "request_correction"}]
+    errors = sum(expected != actual for expected, actual in decided)
+    return {"autoDecidedCount": len(decided), "errorCount": errors,
+            "coverage": len(decided) / total if total else None,
+            "risk": errors / len(decided) if decided else None}
+
+
 def classification_summary(pairs: list[tuple[str, str]], classes: set[str]) -> dict:
     rows = {}
     for name in sorted(classes):
@@ -117,6 +155,7 @@ def classification_summary(pairs: list[tuple[str, str]], classes: set[str]) -> d
         "count": len(pairs),
         "correct": correct,
         "accuracy": correct / len(pairs) if pairs else None,
+        "accuracyCi95": wilson(correct, len(pairs)),
         "perClass": rows,
     }
 
@@ -136,6 +175,8 @@ def score_predictions(manifest: dict, predictions: Any, split: str) -> dict:
         if sample_id in by_id:
             raise ValueError(f"duplicate prediction for {sample_id}")
         validate_outcome(prediction, f"predictions[{index}]")
+        if "successfulAnalysis" in prediction and not isinstance(prediction["successfulAnalysis"], bool):
+            raise ValueError(f"predictions[{index}].successfulAnalysis must be boolean")
         by_id[sample_id] = prediction
 
     expected_ids = {sample["sampleId"] for sample in samples}
@@ -147,6 +188,8 @@ def score_predictions(manifest: dict, predictions: Any, split: str) -> dict:
     decision_pairs = []
     duplicate_pairs = []
     criterion_pairs = []
+    successful_decision_pairs = []
+    successful_criterion_pairs = []
     for sample in samples:
         expected = sample["expected"]
         actual = by_id[sample["sampleId"]]
@@ -158,9 +201,14 @@ def score_predictions(manifest: dict, predictions: Any, split: str) -> dict:
             (expected_status, actual["criteria"][name])
             for name, expected_status in expected["criteria"].items()
         )
+        # Legacy supplied labels have no provider metadata; they remain unverified.
+        if actual.get("successfulAnalysis", True):
+            successful_decision_pairs.append((expected["recommendation"], actual["recommendation"]))
+            successful_criterion_pairs.extend((status, actual["criteria"][name]) for name, status in expected["criteria"].items())
 
     invalid = [(expected, actual) for expected, actual in decision_pairs if expected != "accept"]
-    false_accepts = sum(actual == "accept" for _, actual in invalid)
+    false_accepts = sum(expected != "accept" and actual == "accept" for expected, actual in successful_decision_pairs)
+    correct = sum(expected == actual for expected, actual in successful_decision_pairs)
     return {
         "assessment": "synthetic_plumbing_only" if manifest["syntheticMetadata"] else "supplied_prediction_scores",
         "syntheticMetadata": manifest["syntheticMetadata"],
@@ -170,10 +218,17 @@ def score_predictions(manifest: dict, predictions: Any, split: str) -> dict:
         "recommendations": classification_summary(decision_pairs, DECISIONS),
         "duplicates": classification_summary(duplicate_pairs, DUPLICATE_STATUSES),
         "criteria": classification_summary(criterion_pairs, CRITERION_STATUSES),
+        "criterionAgreement": criterion_agreement(successful_criterion_pairs),
+        "failureAdjustedDecisionAccuracy": correct / len(samples),
+        "failureAdjustedDecisionAccuracyCi95": wilson(correct, len(samples)),
+        "conditionalDecisionAccuracy": correct / len(successful_decision_pairs) if successful_decision_pairs else None,
+        "conditionalDecisionAccuracyCi95": wilson(correct, len(successful_decision_pairs)),
+        "riskCoverage": risk_coverage(successful_decision_pairs, len(samples)),
         "falseAcceptance": {
             "count": false_accepts,
             "nonAcceptableCount": len(invalid),
             "rate": false_accepts / len(invalid) if invalid else None,
+            "ci95": wilson(false_accepts, len(invalid)),
         },
         "reviewRate": sum(actual == "needs_review" for _, actual in decision_pairs) / len(samples),
         "warning": (

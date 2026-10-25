@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { withX402, x402ResourceServer } from "@x402/next";
+import { withX402 } from "@x402/next";
+import { FundingResourceServer } from "../../../../../../../packages/payments/src/funding-server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { parseSolanaFundingAuthorization, observeSolanaTransfer } from "../../../../../../../packages/payments/src/solana";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest, context: Context) {
       txHash: attempt?.txHash ?? null, attemptId: attempt?._id, reconcileUrl: "/api/payments/reconcile" }, intent.status === "confirmed" ? 200 : 202);
     if (!["draft", "awaiting_funding"].includes(order.status) || Date.now() > order.deadlineAt) throw new Error("order_not_fundable");
     const facilitator = paymentFacilitator();
-    const server = new x402ResourceServer(facilitator.client).register(PAYMENT_NETWORK, new ExactEvmScheme());
+    const server = new FundingResourceServer(facilitator.client).register(PAYMENT_NETWORK, new ExactEvmScheme());
     if (solanaTreasury) server.register(SOLANA_PAYMENT_NETWORK, new ExactSvmScheme());
     let claimedNetwork: string = PAYMENT_NETWORK;
     let settledBy: string | null = null;
@@ -53,7 +54,8 @@ export async function POST(request: NextRequest, context: Context) {
         const network = paymentPayload.accepted.network;
         if (network !== PAYMENT_NETWORK && (network !== SOLANA_PAYMENT_NETWORK || !solanaTreasury)) return { abort: true, reason: "unsupported_payment_network" };
         const parsed = network === SOLANA_PAYMENT_NETWORK
-          ? await parseSolanaFundingAuthorization(paymentPayload.payload, { treasuryAddress: solanaTreasury!, amountAtomic: order.budgetAtomic, orderId: order._id })
+          ? await parseSolanaFundingAuthorization(paymentPayload.payload, { treasuryAddress: solanaTreasury!, amountAtomic: order.budgetAtomic, orderId: order._id,
+            feePayer: paymentPayload.accepted.extra.feePayer as string })
           : parseFundingAuthorization(paymentPayload.payload);
         const { payerAddress, recipientAddress, authorizationNonce: nonce, amountAtomic, validBefore } = parsed;
         const authorization = { payerAddress, recipientAddress, authorizationNonce: nonce, amountAtomic, validBefore };

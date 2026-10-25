@@ -122,6 +122,14 @@ describe("actual bounded FFmpeg preprocessing", () => {
     }
     expect(new Set(result.videoFrames.map((frame) => Buffer.from(frame.bytes).toString("base64"))).size).toBeGreaterThan(1);
     expect(result.frameDHashes).toHaveLength(6);
+    expect(result.hashFrames).toHaveLength(6);
+    for (const [sampleIndex, frame] of result.hashFrames.entries()) {
+      expect(frame.sampleIndex).toBe(sampleIndex);
+      expect(frame.frameIndex).toBeGreaterThanOrEqual(0);
+      expect(frame.timestampMs).toBe(result.frameDHashes[sampleIndex]!.timestampMs);
+      expect([...frame.bytes.subarray(0, 2)]).toEqual([255, 216]);
+      expect([...frame.bytes.subarray(-2)]).toEqual([255, 217]);
+    }
     expect(result.perceptualHash).toMatch(/^[0-9a-f]{96}$/);
     expect(new Set(result.frameDHashes.map((frame) => frame.hash)).size).toBeGreaterThan(1);
     for (const frame of result.frameDHashes) {
