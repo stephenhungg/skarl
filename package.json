@@ -24,7 +24,9 @@
     "eval:clips": "node scripts/eval-clips.mjs",
     "test:eval": "node --test scripts/eval-clips.test.mjs",
     "cdp:policy:apply": "node scripts/cdp-policy-apply.ts",
-    "demo:policy": "node scripts/cdp-policy-demo.ts"
+    "demo:policy": "node scripts/cdp-policy-demo.ts",
+    "agent:buy-evidence": "node packages/payments/src/agent-buy-evidence.ts",
+    "agent:validate-evidence": "node packages/payments/src/agent-validate-evidence.ts"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "1.60.0",

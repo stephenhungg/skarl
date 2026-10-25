@@ -64,6 +64,10 @@ async function jsonResponse(response: Response): Promise<Record<string, unknown>
 
 export async function fundOrder(args = process.argv.slice(2)) {
   validateEnvironment();
+  if (args.includes("--cdp")) {
+    const { fundOrderWithCdp } = await import("./cdp-buyer.ts");
+    return fundOrderWithCdp(args.filter(arg => arg !== "--cdp"));
+  }
   const orderId = args[0] ?? "skarl-red-cup-demo-v2";
   if (args.length > 1 || (!/^[a-zA-Z0-9_-]+$/.test(orderId) && orderId !== "--address")) {
     throw new BuyerError("Usage: pnpm agent:fund [orderId] (default: skarl-red-cup-demo-v2; or --address)");
@@ -173,7 +177,7 @@ export async function fundOrder(args = process.argv.slice(2)) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   fundOrder().catch(error => {
-    console.error(error instanceof BuyerError ? error.message : "Buyer agent stopped. Check the application/RPC connection and private configuration; no automatic retry was made.");
+    console.error((error instanceof BuyerError || (error instanceof Error && error.name === "CdpBuyerError")) ? error.message : "Buyer agent stopped. Check the application/RPC connection and private configuration; no automatic retry was made.");
     process.exitCode = 1;
   });
 }

@@ -197,4 +197,13 @@ describe("actual POST /api/orders/[id]/fund x402 adapter", () => {
     expect(events).toEqual(["facilitator:verify", "payments:recordFundingAttempt"]);
     expect(mocks.observeTransfer).not.toHaveBeenCalled();
   });
+  it("aborts explicitly if durable nonce persistence throws (SDK hook errors alone do not stop settlement)", async () => {
+    const payment = await signedPayload();
+    mocks.mutation.mockRejectedValue(new Error("synthetic database failure"));
+    const response = await POST(request(payment), context);
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(events).not.toContain("facilitator:settle");
+    expect(mocks.observeTransfer).not.toHaveBeenCalled();
+  });
+
 });
