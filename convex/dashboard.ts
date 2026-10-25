@@ -106,13 +106,15 @@ export const auditEvents = query({
 });
 
 /** Discovery for the shared synthetic demo; no hard-coded Convex document IDs needed in the UI. */
-/** Tasks a contributor can record for, newest first. Scenario fixtures and the retired v1 order stay hidden. */
+const FIXTURE_PREFIXES = ["scenario:", "skarl-outsider-demo-", "skarl-red-cup-demo-sol", "skarl-red-cup-demo-v1"];
+/** Tasks a contributor can record for, newest first. Test fixtures, payment checks and the retired v1 order stay hidden. */
 export const openTasks = query({
   args: { demoIdentity: v.string() },
   handler: async (ctx, input) => {
     const principal = await requireRole(ctx, input.demoIdentity, ["contributor", "controller"]);
     const orders = await ctx.db.query("orders").withIndex("by_org_buyer", q => q.eq("organizationId", principal.organizationId)).collect();
-    return orders.filter(order => order.taskVersionId && !order.publicId.startsWith("scenario:") && order.publicId !== "skarl-red-cup-demo-v1" &&
+    return orders.filter(order => order.taskVersionId && !FIXTURE_PREFIXES.some(prefix => order.publicId.startsWith(prefix)) &&
+      !/webhook verification/i.test(order.title) &&
       !["closed", "cancelled", "cancelling", "fulfilled", "refunded"].includes(order.status))
       .sort((a, b) => b._creationTime - a._creationTime).slice(0, 20).map(order => order._id);
   },

@@ -19,6 +19,10 @@ function categoryOf(title: string) {
   return noun.charAt(0).toUpperCase() + noun.slice(1);
 }
 
+// Mirrors the backend filter so leftover test orders stay hidden even before it deploys.
+const FIXTURE = /^(scenario:|skarl-outsider-demo-|skarl-red-cup-demo-sol|skarl-red-cup-demo-v1)/;
+const isFixture = (order: Summary['order']) => FIXTURE.test(order.publicId ?? '') || /webhook verification/i.test(order.title);
+
 function toTask(orderId: string, summary: Summary | undefined, network: string): LiveTask | null {
   if (!summary?.rubric) return null;
   const { order, rubric } = summary;
@@ -55,7 +59,7 @@ export function useOpenTasks() {
   const summaries = useQueries(queries) as Record<string, Summary | Error | undefined>;
   const tasks = useMemo(() => ids.map(orderId => {
     const summary = summaries[orderId];
-    return summary instanceof Error ? null : toTask(orderId, summary, context?.network ?? '');
+    return summary instanceof Error || (summary && isFixture(summary.order)) ? null : toTask(orderId, summary, context?.network ?? '');
   }).filter((task): task is LiveTask => !!task), [ids, summaries, context?.network]);
   const loading = context === undefined || (listed === undefined) || ids.some(orderId => summaries[orderId] === undefined);
   return { tasks, loading };
