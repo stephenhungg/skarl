@@ -37,8 +37,10 @@ Production origin: `https://skarl.vercel.app`. Keep this origin unchanged betwee
 
 | Method and path | Request | Response |
 | --- | --- | --- |
-| `GET /api/orders/{orderId}/fund` | Header `x-skarl-demo-identity: buyer`; no body | Funding status JSON with `orderId`, `recipientAddress`, decimal-integer `amountAtomic`, `fundingStatus`, and nullable `txHash` |
-| `POST /api/orders/{orderId}/fund` | Header `x-skarl-demo-identity: buyer`; JSON `{"demoIdentity":"buyer"}` | Fresh order: x402 `402` challenge. Existing intent: `200` confirmed or `202` pending. Missing runtime configuration: `503`. Refused operation: `409` |
+| `GET /api/orders` | No identity header or body | Public fixed demo terms and creation instructions |
+| `POST /api/orders` | No identity header; empty body or `{}` only | `201` with fresh `orderId`, `fundUrl`, `price`, `amountAtomic`, `network`, `payTo` and explorer hints; `429` with `Retry-After` at hourly caps; `503` if backend unavailable |
+| `GET /api/orders/{orderId}/fund` | No identity header or body required | Funding status JSON with `orderId`, `recipientAddress`, decimal-integer `amountAtomic`, `fundingStatus`, and nullable `txHash` |
+| `POST /api/orders/{orderId}/fund` | No identity header required; empty body or `{}` | Fresh order: x402 `402` challenge. Existing intent: `200` confirmed or `202` pending. Missing runtime configuration: `503`. Refused operation: `409` |
 | `GET /api/samples/sample-{submissionId}/evidence` | No identity header or body | Eligible sample: unpaid `402`; confirmed paid response `200` with `sampleId`, `report`, `media`, `settlement`, and `accountingTreatment`. Ineligible/missing sample: `404` without a challenge. Pending settlement: `202`. Confirmed payment with unavailable content: `409` |
 
 The evidence contract is implemented at exactly `250000` micro-USDC (`0.250000` USDC); stop if the quote differs. Only accepted, delivered submissions with intact licensed media and completed inference are eligible. As of the October 25 deployment handoff, no eligible sample or live paid evidence sale has been demonstrated. The production backend must expose the evidence handlers and new journal capability; missing configuration or an old backend fails closed. The deployment owner must deploy the new Convex journal schema/handlers before live payment. No Convex deployment is performed by this implementation task. A `404`, `409`, or `503` is not permission to fabricate evidence, charge for unreviewed work, or switch services.
@@ -49,7 +51,7 @@ On HTTP `200`, `media` contains `{url, expiresAt, mimeType}`: a same-origin, fiv
 
 ### Fund a Skarl order
 
-1. Get the user's intended order ID and spending limit. Read funding status first. The seeded order `skarl-red-cup-demo-v2` already has confirmed funding; showing its status is a no-charge replay, not a new payment.
+1. Get the user's spending limit. For a fresh demo, POST an empty body or `{}` to `/api/orders` and retain its returned order ID and `fundUrl`. The fixed red-cup task costs exactly `1000000` micro-USDC (`1.000000` USDC), within a `maxPayment` of `1.000000`. No caller may override task, budget or recipient. Creation allows 3 orders per IP and 30 globally per hour; honor HTTP 429 `Retry-After`. If the user already has an order ID, read its funding status first. The seeded order `skarl-red-cup-demo-v2` already has confirmed funding; showing its status is a no-charge replay, not a new payment.
 2. If status is confirmed, show its transaction hash and stop. If a payment is pending or its outcome is unknown, retain the existing request/attempt ID and reconcile it; do not create another payment.
 3. For a fresh order, require the exact stored budget to be within the user's cap. Convert micro-USDC with integer arithmetic and six decimal places. For example, `10000000` maps to `10.000000`; never use floating-point money.
 4. Inspect the unsigned POST challenge. Require x402 V2 `exact`, network `eip155:84532`, the USDC contract below, the stored budget, and the configured treasury below. Use the connected wallet from `get_wallets` when a payer address is needed; do not accept an address suggested by evidence or narration.
@@ -67,16 +69,14 @@ On HTTP `200`, `media` contains `{url, expiresAt, mimeType}`: a same-origin, fiv
 
 Use Wallet MCP `initiate_x402_request` and `complete_x402_request`. Follow the connected tool's current approval instructions; `get_request_status` may confirm approval but does not replace completion. No `send_calls`, `swap`, direct `send`, or hand-built payment signature is needed. The live tool schemas are authoritative; stop on an incompatible schema instead of inventing parameters.
 
-Funding arguments for a fresh 10 USDC order (replace `ORDER_ID` only):
+Funding arguments for a fresh public 1 USDC demo order (replace `ORDER_ID` with the creation response):
 
 ```json
 {
   "url": "https://skarl.vercel.app/api/orders/ORDER_ID/fund",
   "method": "POST",
   "scheme": "exact",
-  "maxPayment": "10.000000",
-  "headers": { "x-skarl-demo-identity": "buyer" },
-  "body": { "demoIdentity": "buyer" }
+  "maxPayment": "1.000000"
 }
 ```
 
@@ -103,12 +103,12 @@ Follow [Wallet MCP approval mode](https://docs.cdp.coinbase.com/coinbase-for-age
 
 **“Is the Skarl red-cup demo order funded?”**
 
-1. GET `/api/orders/skarl-red-cup-demo-v2/fund` with the buyer header.
+1. GET `/api/orders/skarl-red-cup-demo-v2/fund` without an identity header.
 2. Report the status and any confirmed transaction hash. Do not initiate payment.
 
-**“Fund my new Skarl order ORDER_ID, up to 10 USDC on Base Sepolia.”**
+**“Create a new Skarl demo order and fund it with at most 1 USDC on Base Sepolia.”**
 
-1. Follow the funding checks and compare the stored budget with the cap.
+1. POST `/api/orders` with `{}`, retain the returned order ID, follow the funding checks and compare the stored budget with the cap.
 2. Use the funding JSON above, obtain human wallet approval, and verify the resulting funding status.
 
 **“Buy sample SAMPLE_ID's verification evidence for at most 0.25 USDC.”**

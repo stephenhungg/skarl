@@ -54,6 +54,9 @@ const analysisContext = {
   perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))),
 };
 export default defineSchema({
+  // Trusted web ingress supplies a keyed IP digest, never a raw IP. Atomic with order creation.
+  demoOrderLimits: defineTable({ key: v.string(), windowStart: v.number(), count: v.number() })
+    .index("by_key", ["key"]),
   // CDP is an advisory witness. These records never authorize or post money.
   cdpWebhookReceipts: defineTable({
     ...tenant, treasury: v.string(), eventId: v.string(), transferKey: v.string(),

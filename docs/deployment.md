@@ -132,8 +132,10 @@ does not override an existing `CONVEX_DEPLOYMENT` configuration: it can sync the
 cloud backend. Use convex-test for isolated validation and let the designated
 backend owner deploy merged `origin/main`.
 
-`/api/health` currently returns HTTP 200 with a **static scaffold capability
-payload**. It is a routing/liveness check, not an integration readiness probe.
+`/api/health` returns HTTP 200 when configured and ready, or 503 when degraded.
+It probes Convex reachability and reports treasury, payment-service, facilitator
+(`cdp`, `x402.org`, or a configured custom service) and backend inference configuration.
+It does not execute inference, contact the facilitator or prove settlement.
 The funding **GET is a status read**, not the x402 challenge: funded v2 returns
 HTTP 200 with its stored amount and transaction hash. Funding **POST** returns
 402 only for an eligible, unfunded order; an existing confirmed intent returns

@@ -26,19 +26,19 @@ The SDK pins are `@coinbase/cdp-sdk` 1.60.0 and `@x402/*` 2.28.0. Both paid rout
 
 ## Discover and buy
 
-With Coinbase Wallet MCP connected, use `search_x402_services` to search for Skarl accepted sample evidence and inspect the returned resource URL and price. Follow the connected server's current tool schema for search arguments. If search finds nothing, this is not evidence of indexing: use the published sample URL to inspect the 402 directly. The funding route requires buyer identity and is not the listed resource.
+With Coinbase Wallet MCP connected, use `search_x402_services` to search for Skarl accepted sample evidence and inspect the returned resource URL and price. Follow the connected server's current tool schema for search arguments. If search finds nothing, this is not evidence of indexing: use the published sample URL to inspect the 402 directly. The funding route defaults to the demo buyer without an identity header and is not the listed resource. Create a fresh fixed 1 USDC red-cup demo with `POST https://skarl.vercel.app/api/orders` (empty body or `{}`), then use its returned `fundUrl`.
 
 Invoke `initiate_x402_request` with the discovered HTTPS URL, `method: "GET"`, and `maxPayment: "0.250000"`. The human approves the request in Coinbase Wallet on Base Sepolia. Call `complete_x402_request` with its returned `requestId` once approved. Preserve the returned payment receipt and read the result; do not initiate a second payment after a timeout. Wallet MCP is an approval flow, not unattended wallet authority. The separate public Bazaar MCP server exposes `search_resources`; it is a different tool interface. [Coinbase MCP discovery guide](https://docs.cdp.coinbase.com/x402/buyer/mcp-payments)
 
 For the CDP-managed buyer, privately load credentials and the approved treasury, then run:
 
 ```sh
-set -a
-. "$HOME/.config/skarl/cdp.env"
-set +a
-export SKARL_APP_URL='https://YOUR_PRODUCTION_HOST'
+export CDP_API_KEY_ID='YOUR_CDP_API_KEY_ID'
+export CDP_API_KEY_SECRET='YOUR_CDP_API_KEY_SECRET'
+export CDP_WALLET_SECRET='YOUR_CDP_WALLET_SECRET'
+export SKARL_APP_URL='https://skarl.vercel.app'
 export SKARL_EVIDENCE_PAYTO='0x0A9EfDF66c58543538824906aE267B969Ed651c5'
-export SKARL_TREASURY_ADDRESS='YOUR_APPROVED_FUNDING_TREASURY'
+export SKARL_TREASURY_ADDRESS='0x8408a922ea400af33d7c2080a9edd5d3495b695f'
 pnpm agent:buy-evidence sample-YOUR_ACCEPTED_SUBMISSION_ID
 # Separately, funding a stored collection order:
 pnpm agent:fund --cdp YOUR_AWAITING_FUNDING_ORDER_ID
@@ -57,7 +57,7 @@ pnpm agent:validate-evidence sample-YOUR_ACCEPTED_SUBMISSION_ID
 # Or directly:
 curl -X POST https://api.cdp.coinbase.com/platform/v2/x402/validate \
   -H 'Content-Type: application/json' \
-  -d '{"resource":"https://YOUR_PRODUCTION_HOST/api/samples/sample-YOUR_ACCEPTED_SUBMISSION_ID/evidence","method":"GET"}'
+  -d '{"resource":"https://skarl.vercel.app/api/samples/sample-YOUR_ACCEPTED_SUBMISSION_ID/evidence","method":"GET"}'
 ```
 
 Without `SKARL_APP_URL`, the validation command polls `docs/status.md` for a `Production URL` line for up to 45 minutes. It makes no payment and requires no API key. Preserve the actual API response, especially `valid`, `preflight`, `bazaarExtension`, and `simulation.outcome`. The API's `simulation` is validator output, not a live chain transaction.

@@ -15,7 +15,17 @@ A bounded finance agent proposes payouts; a human approves, and chain receipts r
    claude mcp add --transport http --scope user base-mcp https://wallet-mcp.coinbase.com
    ```
 2. Give your agent [the Skarl plugin instructions](docs/wallet-mcp-plugin/skarl.md). They pin Base Sepolia, the test USDC contract, approved payee and payment cap; no Skarl server credentials are needed.
-3. Ask: **“Check whether Skarl order `skarl-red-cup-demo-v2` is funded.”** It already has confirmed 10 USDC funding, so this completes a no-charge status check. For a new payment, supply a fresh unfunded order ID and explicit cap, approve in Coinbase Wallet, then let the agent complete the same request and verify confirmed funding. [Exact requests and recovery](docs/wallet-mcp-plugin/README.md).
+3. Ask: **“Create a fresh Skarl demo order with POST https://skarl.vercel.app/api/orders, then fund its returned fundUrl with at most 1 USDC on Base Sepolia.”** Creation accepts an empty body or `{}` and requires no identity header. Each order has a fixed red-cup task and exactly 1 USDC budget. Inspect the terms, approve in Coinbase Wallet, then verify confirmed funding. Creation allows 3 orders per IP and 30 globally per hour; HTTP 429 includes `Retry-After`. For a no-charge replay, check `skarl-red-cup-demo-v2`, already funded. [Exact requests and recovery](docs/wallet-mcp-plugin/README.md).
+
+The API documents itself at [GET /api/orders](https://skarl.vercel.app/api/orders).
+For the local testnet buyer CLI, use the returned order ID:
+
+```sh
+SKARL_APP_URL=https://skarl.vercel.app pnpm agent:fund ORDER_ID
+```
+
+The CLI prints its testnet buyer address and stops if it needs faucet USDC; buyer
+ETH is not required. Wallet MCP and the CLI use the same x402 funding endpoint.
 
 The 0.25 USDC evidence-purchase endpoint is implemented, with Bazaar discovery metadata. A licensed, accepted and delivered sample is still needed: **no live evidence sale, Bazaar listing or completed Wallet MCP payment is verified**. A missing sample stops before payment. The agent plugin is a custom instruction file, not a Coinbase-approved integration.
 

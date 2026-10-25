@@ -8,6 +8,8 @@ import { digest, normalizeAddress, paymentBinding, recordJournal, requireTenant 
 import { PAYMENT_NETWORK, paymentRail, SOLANA_PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { createFundingJournal, createPayoutJournal } from "../packages/ledger/src/index";
 import { chainIdentity, validateTransfer, reconcilePayments, type TransferObservation, type PaymentObligation, type PaymentJournal } from "../packages/payments/src/reconciliation";
+import { DEMO_ORDER_BUDGET, DEMO_ORDER_CONTRIBUTOR_RATE, DEMO_ORDER_GLOBAL_LIMIT, DEMO_ORDER_IP_LIMIT, DEMO_ORDER_WINDOW_MS } from "../packages/payments/src/demo-order";
+import { audit } from "./lib/finance";
 
 // Trusted Next server reads RPC receipts; browsers cannot submit settlement facts directly.
 function service(secret: string) {
@@ -18,6 +20,53 @@ function service(secret: string) {
   if (mismatch) throw new Error("payment_service_unauthorized");
 }
 const secretArg = { serviceSecret: v.string() };
+
+/** Public HTTP entry point calls this with trusted ingress metadata. No caller-supplied terms. */
+export const createDemoOrder = mutation({
+  args: { ...secretArg, ipDigest: v.string(), requestId: v.string() },
+  handler: async (ctx, args) => {
+    service(args.serviceSecret);
+    if (!/^[a-f0-9]{64}$/.test(args.ipDigest) || !/^[a-f0-9-]{36}$/.test(args.requestId)) throw new Error("invalid_demo_request");
+    const buyer = await requireRole(ctx, "buyer", "buyer");
+    const source = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
+    const rubric = source?.taskVersionId ? await ctx.db.get(source.taskVersionId) : null;
+    if (!source || !rubric || source.organizationId !== buyer.organizationId || rubric.orderId !== source._id) throw new Error("demo_seed_required");
+    const now = Date.now(), windowStart = Math.floor(now / DEMO_ORDER_WINDOW_MS) * DEMO_ORDER_WINDOW_MS;
+    const limits = await Promise.all([
+      { key: `ip:${args.ipDigest}`, limit: DEMO_ORDER_IP_LIMIT },
+      { key: "global", limit: DEMO_ORDER_GLOBAL_LIMIT },
+    ].map(async limit => {
+      const row = await ctx.db.query("demoOrderLimits").withIndex("by_key", q => q.eq("key", limit.key)).unique();
+      return { ...limit, row, count: row?.windowStart === windowStart ? row.count : 0 };
+    }));
+    if (limits.some(limit => limit.count >= limit.limit)) return { ok: false as const, code: "demo_order_rate_limited" as const,
+      retryAfterSeconds: Math.max(1, Math.ceil((windowStart + DEMO_ORDER_WINDOW_MS - now) / 1000)) };
+    for (const limit of limits) {
+      const value = { key: limit.key, windowStart, count: limit.count + 1 };
+      if (limit.row) await ctx.db.patch(limit.row._id, value);
+      else await ctx.db.insert("demoOrderLimits", value);
+    }
+    const publicId = `skarl-outsider-demo-${args.requestId}`;
+    const termsHash = digest({ contentHash: rubric.contentHash, quantityRequested: 1n, pricePerSampleAtomic: DEMO_ORDER_BUDGET,
+      contributorRateAtomic: DEMO_ORDER_CONTRIBUTOR_RATE, licenseVersion: "demo-consent-v1" });
+    const orderId = await ctx.db.insert("orders", {
+      organizationId: buyer.organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS, publicId,
+      buyerTokenIdentifier: buyer.tokenIdentifier, buyerWalletAddress: "0x0000000000000000000000000000000000000001",
+      title: "DEMO / TESTNET — red-cup narrated demonstration", status: "awaiting_funding", quantityRequested: 1n,
+      pricePerSampleAtomic: DEMO_ORDER_BUDGET, contributorRateAtomic: DEMO_ORDER_CONTRIBUTOR_RATE,
+      budgetAtomic: DEMO_ORDER_BUDGET, acceptedCount: 0n, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS, termsHash, updatedAt: now,
+    });
+    const taskVersionId = await ctx.db.insert("rubricVersions", {
+      organizationId: buyer.organizationId, orderId, version: 1, taskPrompt: rubric.taskPrompt,
+      criteria: rubric.criteria, contentHash: rubric.contentHash, createdByTokenIdentifier: buyer.tokenIdentifier, frozenAt: now,
+    });
+    await ctx.db.patch(orderId, { taskVersionId });
+    await audit(ctx, { organizationId: buyer.organizationId, eventKey: `outsider_demo_created:${orderId}`,
+      actor: { kind: "service", identity: "public-demo-orders" }, action: "demo_order_created", entityType: "orders", entityId: orderId,
+      reason: "Public 1 USDC testnet demo order; no payment or inference performed. Actual payer binds during funding.", evidenceReferences: [taskVersionId, termsHash] });
+    return { ok: true as const, orderId, publicId, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS };
+  },
+});
 const evidence = v.object({ network: v.string(), tokenAddress: v.string(), txHash: v.string(), logIndex: v.number(),
   blockNumber: v.int64(), blockHash: v.string(), fromAddress: v.string(), toAddress: v.string(), amountAtomic: v.int64(),
   confirmations: v.number(), succeeded: v.boolean(), observedAt: v.number() });
