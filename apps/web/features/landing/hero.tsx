@@ -27,8 +27,8 @@ export function Hero() {
         transition={{ delay: 0.25, duration: 0.65, ease: SETTLE }}
         style={{
           filter: "blur(1.5px)",
-          WebkitMaskImage: "linear-gradient(180deg, #000 0%, #000 68%, transparent 97%)",
-          maskImage: "linear-gradient(180deg, #000 0%, #000 68%, transparent 97%)",
+          WebkitMaskImage: "linear-gradient(180deg, #000 0%, #000 55%, transparent 88%)",
+          maskImage: "linear-gradient(180deg, #000 0%, #000 55%, transparent 88%)",
         }}
       >
         <SpectralDrape className="h-full w-full" colors={["#c7f18e", "#8fe3b4", "#5f7d6a", "#e9f9cf"]} backgroundColor="#10120e" />
