@@ -169,7 +169,7 @@ export function Agent() {
       {orderId && <QueryBoundary><BackgroundJobs orderId={orderId} /></QueryBoundary>}
 
       {earlier.length > 0 && (
-        <Section title="Earlier runs" meta={`${earlier.length} more`}>
+        <Section title="Earlier runs">
           <ul className="divide-y divide-line-faint rounded-panel border border-line-faint">{earlier.map(item => <EarlierRun key={item._id} run={item} />)}</ul>
         </Section>
       )}

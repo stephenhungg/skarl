@@ -82,7 +82,7 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
         description={<span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
           <SubmissionStatus value={report.status} />
           {report.verificationOnly && <Badge variant="outline">Test upload, not licensed</Badge>}
-          {parsed && <span>AI recommends {humanize(parsed.recommendation)}</span>}
+          {parsed && parsed.recommendation !== "needs_review" && <span>AI recommends {humanize(parsed.recommendation).toLowerCase()}</span>}
           {parsed?.pipeline.modelRuns.map(run => <span key={run.model} className="text-text-3">{run.model}{run.elapsedMs ? ` ${formatMs(run.elapsedMs)}` : ""}</span>)}
         </span>}
         actions={<>
@@ -102,7 +102,7 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
           <EvidenceTrack criteria={criteria.map(c => c.finding).filter((f): f is Finding => !!f)} durationMs={durationMs} now={now}
             focus={focus} onFocus={setFocus} onSeek={seek} />
           <Transcript segments={segments} now={now} onSeek={seek} />
-          {parsed?.warnings?.length ? <ul className="flex flex-col gap-1">{parsed.warnings.map(w => <li key={w} className="type-body-sm text-text-2">{w}</li>)}</ul> : null}
+          {!report.verificationOnly && parsed?.warnings?.length ? <ul className="flex flex-col gap-1">{parsed.warnings.map(w => <li key={w} className="type-body-sm text-text-2">{w}</li>)}</ul> : null}
         </div>
         <aside className="flex flex-col gap-3 lg:sticky lg:top-16 lg:self-start">
           <h2 className="type-heading-sm">Criteria</h2>
@@ -127,7 +127,7 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
                           </button>
                         ))}
                       </div>
-                    ) : finding ? <p className="type-label-sm text-text-3">No timestamped evidence.</p> : null}
+                    ) : null}
                   </li>
                 );
               })}
@@ -151,7 +151,7 @@ function EvidenceTrack({ criteria, durationMs, now, focus, onFocus, onSeek }: {
   return (
     <div className="rounded-panel border border-line-faint p-3" aria-label="Evidence timeline">
       <div className="mb-2 flex items-baseline justify-between type-label-sm text-text-3">
-        <span>Evidence by modality</span><span className="tabular-nums">{formatMs(now)} / {formatMs(durationMs)}</span>
+        <span className="ms-auto tabular-nums">{formatMs(now)} / {formatMs(durationMs)}</span>
       </div>
       <div className="relative flex flex-col gap-2">
         {lanes.map(lane => (

@@ -67,14 +67,13 @@ export function Submissions() {
                   <TableHead>Clip</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>AI recommendation</TableHead>
-                  <TableHead>Copy check</TableHead>
                   <TableHead numeric>Analysis time</TableHead>
                   <TableHead sort={sort} onSort={() => setSort(sort === "desc" ? "asc" : "desc")}>Uploaded</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.length === 0
-                  ? <TableRow><TableCell colSpan={6} className="py-6 text-center text-text-2">No clips match. Clear the search or pick another view.</TableCell></TableRow>
+                  ? <TableRow><TableCell colSpan={5} className="py-6 text-center text-text-2">No clips match. Clear the search or pick another view.</TableCell></TableRow>
                   : rows.map(row => <Row key={row._id} row={row} onOpen={() => router.push(`/dashboard/submissions/${row._id}`)} />)}
               </TableBody>
             </Table>
@@ -96,7 +95,6 @@ function Row({ row, onOpen }: { row: SubmissionRow; onOpen: () => void }) {
       </TableCell>
       <TableCell><SubmissionStatus value={row.status} /></TableCell>
       <TableCell className="text-text-2">{analysis ? humanize(analysis.recommendation) : "Pending"}</TableCell>
-      <TableCell className="text-text-2">{row.perceptualHashSource ? "Checked" : "Not checked"}</TableCell>
       <TableCell numeric className="text-text-2">{analysis?.processingElapsedMs ? formatMs(analysis.processingElapsedMs) : "\u2014"}</TableCell>
       <TableCell className="text-text-2">{formatTime(row._creationTime)}</TableCell>
     </TableRow>

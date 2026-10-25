@@ -8,7 +8,7 @@ function Inbox() {
   const { submissions, payables } = useOrderData(orderId);
   return (
     <>
-      <PageHeader title="Needs you" description="Reviews, approvals, signatures and reconciliation exceptions that wait on a controller." />
+      <PageHeader title="Needs you" />
       {orderId ? <NeedsYouList standalone orderId={orderId} submissions={submissions} payables={payables} /> : <Loading />}
     </>
   );

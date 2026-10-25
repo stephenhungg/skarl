@@ -54,7 +54,7 @@ export function Ledger() {
               <TableFooter><TableRow><TableCell>Total</TableCell><TableCell numeric>{formatUsdc(statements.trialBalance.totalDebitAtomic)}</TableCell><TableCell numeric>{formatUsdc(statements.trialBalance.totalCreditAtomic)}</TableCell></TableRow></TableFooter>
             </Table>
             <dl className="mt-4 grid grid-cols-2 gap-y-3 md:grid-cols-4">
-              {([["Cash", statements.cashAtomic], ["Deferred revenue", statements.deferredRevenueAtomic], ["Revenue", statements.revenueAtomic], ["Net income", statements.netIncomeAtomic]] as const).map(([label, value]) => (
+              {([["Revenue", statements.revenueAtomic], ["Net income", statements.netIncomeAtomic]] as const).map(([label, value]) => (
                 <div key={label}><dt className="type-label-sm text-text-2">{label}</dt><dd><Amount value={value} className="type-heading-sm" /></dd></div>
               ))}
             </dl>

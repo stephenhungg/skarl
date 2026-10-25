@@ -48,10 +48,10 @@ export function clipStatus(submission: Submission, payable?: Payable): { status:
   if (isDuplicate(submission)) return { status: "fail", label: "Copy found", note: "This clip matches one already submitted, so it cannot be paid twice." };
   const reason = submission.decision?.reason?.replace(/^[a-z_]+:\s*/, "");
   switch (submission.status) {
-    case "uploading": return { status: "queued", label: "Uploading", note: "The upload is not confirmed yet." };
-    case "queued": return { status: "queued", label: "Queued", note: "Waiting for the AI check to start." };
-    case "analysing": return { status: "running", label: "Checking", note: "The AI is watching the video and listening to the narration separately." };
-    case "needs_review": return { status: "waiting", label: "With a reviewer", note: "A person looks at every clip before anything is accepted." };
+    case "uploading": return { status: "queued", label: "Uploading", note: "" };
+    case "queued": return { status: "queued", label: "Queued", note: "" };
+    case "analysing": return { status: "running", label: "Checking", note: "" };
+    case "needs_review": return { status: "waiting", label: "With a reviewer", note: "" };
     case "needs_correction": return { status: "warn", label: "Retake requested", note: reason ?? "The reviewer asked for a new take." };
     case "rejected": return { status: "fail", label: "Not accepted", note: reason ?? "This clip was not accepted for the order." };
     case "accepted":
@@ -125,7 +125,6 @@ function TaskRail({ summary }: { summary: OrderSummary | null | undefined }) {
             </ul>
           </div>
         </div>
-        <div className="shell-foot type-label-sm text-text-2">Pay is sent only after a person approves an accepted clip.</div>
       </div>
       <div className="px-1">
         <p className="mb-2 type-label">Tips for a take that passes</p>
@@ -188,7 +187,6 @@ function RecorderCard({ recorder, consent, onConsent, submitState, onSubmit, onR
                 <p className="type-body-sm text-text-inverse/70">Your browser is asking for both.</p>
               </> : <>
                 <p className="type-label-lg text-text-inverse">{consented ? "Ready when you are" : "Agree below to turn on the camera"}</p>
-                <p className="type-body-sm text-text-inverse/70">{MIN_SECONDS} to {MAX_SECONDS} seconds, one take, narrated.</p>
               </>}
             </div>
           )}
@@ -231,7 +229,7 @@ function RecorderCard({ recorder, consent, onConsent, submitState, onSubmit, onR
 
       <div className="shell-foot flex flex-wrap items-center gap-2">
         {(state.phase === "idle" || state.phase === "requesting") && <>
-          <span className="me-auto type-label-sm text-text-3">{consented ? "Check framing and sound before you record." : "All three are required."}</span>
+          <span className="me-auto type-label-sm text-text-3">{consented ? "Check framing and sound before you record." : ""}</span>
           <Button size="sm" disabled={!consented || state.phase === "requesting"} onClick={() => void start()}>{state.phase === "requesting" ? "Waiting for permission" : "Turn on camera"}</Button>
         </>}
         {state.phase === "error" && state.retryable && <Button size="sm" className="ms-auto" onClick={() => void start()}>Try again</Button>}

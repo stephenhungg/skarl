@@ -100,7 +100,7 @@ function Funding({ orderId }: { orderId: Id<"orders"> }) {
             <Status status="ok">Reconciled</Status>
             <Amount value={funding.amountAtomic} className="type-label" />
             <a href={basescanTx(chain.txHash)} target="_blank" rel="noreferrer" className="flex items-center gap-1 type-label-sm text-text-2 underline underline-offset-4">
-              <span className="mono">{shortHash(chain.txHash, 10, 6)}</span> log {chain.logIndex} on BaseScan
+              View on BaseScan
             </a>
           </div>
         )}
