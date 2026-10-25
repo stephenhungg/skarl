@@ -63,7 +63,52 @@ Report raw counts and sample counts alongside rates:
 
 Treat an `unobservable` or review outcome separately from an acceptance or rejection. Show AI-only recommendations separately from human-reviewed final results. Do not hide failures behind a human-corrected headline score.
 
-The starter scorer reports only classification counts from supplied predictions. It does not calculate confidence calibration, localization, model latency, or costs unless an implementation and data for those metrics are added.
+The offline scorer reports classification counts, Wilson intervals, criterion
+agreement and a selective-prediction operating point from supplied predictions.
+It never runs or independently verifies inference. The cloud runner separately
+records measured request/report latency; neither tool establishes confidence
+calibration, localization accuracy or cost without the corresponding data.
+
+### Uncertainty, agreement and selective prediction
+
+Both Python and JavaScript use two-sided Wilson 95% intervals (`z = 1.959963984540054`).
+Report the count and denominator alongside each interval. Zero false acceptances
+in a small test set is not proof of a zero false-acceptance rate:
+
+| False accepts / negative cases | Wilson 95% interval |
+| --- | --- |
+| 0 / 15 | [0.000, 0.204] |
+| 0 / 20 | [0.000, 0.161] |
+| 1 / 15 | [0.012, 0.298] |
+
+`falseAcceptance.ci95` uses every labeled non-accept case as its denominator,
+including failed analyses. `failureAdjustedDecisionAccuracyCi95` uses all cases
+and credits only successful correct decisions. `conditionalDecisionAccuracyCi95`
+uses successful analyses only. Empty denominators produce `null`, not zero.
+The offline raw classification summaries remain descriptive supplied-label
+agreement; exported `successfulAnalysis` metadata makes the operational metrics
+agree with the cloud runner, without turning that metadata into independent proof.
+
+`criterionAgreement` pools successful-analysis criterion pairs against the
+supplied human/expected labels. It records Cohen's kappa and a confusion matrix:
+rows are human/expected statuses, columns are predicted statuses, ordered as
+`contradicted`, `supported`, `unobservable`. Kappa is `null` with no pairs or
+degenerate single-class perfect agreement. Keep the matrix and pair count with
+kappa; high agreement on a dominant class alone is not enough.
+
+`riskCoverage` reports one operating point: coverage is successful `accept` or
+`request_correction` recommendations divided by all cases; risk is incorrect
+recommendations divided by those auto-decided cases. `needs_review`, failed and
+incomplete analyses abstain. With no auto-decisions, risk is `null`. These are
+advisory recommendations, not authorization to accept work or move money.
+
+The Markdown reports display these intervals, kappa/confusion matrix and
+risk-coverage counts; the paired-model table compares the same metrics across
+the frozen case inventory. These are descriptive binomial intervals, not
+conformal abstention guarantees. Derived clips and criteria within a clip are
+correlated; do not present pooled criterion pairs as independent trials or
+claim calibrated safety from a small staged corpus. Conformal guarantees remain
+future work requiring a suitable held-out calibration set and assumptions.
 
 ## Finance integration checks
 
@@ -131,6 +176,27 @@ failures in failure-adjusted accuracy and show conditional accuracy separately.
 A faster model or a clearer visibility response in a small frame probe does
 not establish better labeled task accuracy. The current Argon video default
 comes from the team’s directional frame probe, not a completed corpus evaluation.
+
+### Default jury versus model-specific evaluation
+
+Ordinary submissions with no `evalVideoModel` use a default-on panel:
+`gemini-4-argon` and `gemini-3.8-flash` independently observe the same silent
+frames while one separate model transcribes audio. Deterministic reports compare
+each model's criterion statuses. Disagreement or either visual failure forces
+review, with Argon retained as the primary observations. `observations.jury`
+records both advisory reports and the agreeing-criteria fraction; failed visual
+or audio analysis has `null` agreement. Both visual attempts remain in model-run
+metadata. Agreement from two Gemini models is not proof of correctness.
+
+`VERIFIER_JURY=off` selects the prior single-model deployment path. Explicit
+`evalVideoModel` overrides always bypass the panel, so paired Argon/Flash
+experiments remain isolated single-model runs. The default clip-runner invocation
+without an override measures the configured deployment panel. Report that mode,
+all actual model IDs, review coverage and request counts with results; never
+compare a panel arm to a single-model arm under an unlabeled common name.
+
+The panel has mocked regression coverage for agreement, disagreement and provider
+failure. No labeled human corpus measurement or live panel-quality claim is made.
 
 ## Implemented cloud clip runner
 

@@ -7,14 +7,48 @@ Truthful state as of October 25, 2026, after the adversarial audit and the move 
 | Web | Next.js landing/contributor recorder, Convex upload/status wiring, health and payment API routes; production build passes | Controller dashboard, live browser/wallet integration and HTTPS deployment verification |
 | Shared contracts | Base Sepolia chain constants (`chain.ts`), funding/payout status lists, JSON Schema, TS report validation, `parseAtomicUsdc` | Rubric-membership check wired into acceptance |
 | Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads and verified contributor wallets; production auth is out of demo scope |
-| Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; both stages completed on a real YouTube-origin negative (Flash 4,893 ms, audio 1,322 ms) | Human red-cup acceptance, model accuracy and copy calibration remain unmeasured; provider failures route to review |
-| Evaluation | Cloud clip runner; pre-labeled/source-hashed manifest; isolated copy scope; advisory quality projection; resumable paired Argon/Flash comparison with per-model accuracy, false accepts and latency | No consented labeled human corpus or measured accuracy run yet; earlier provider quota blockers resolved after billing was enabled |
+| Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; deterministic rubric comparison; validated reports. Default Argon/Flash jury and monotonic trim-candidate alignment are implemented and locally tested; historical live negative timings below predate the jury | Deploy the jury/alignment changes from `origin/main`; human red-cup acceptance, model accuracy and copy calibration remain unmeasured; provider failures route to review |
+| Evaluation | Cloud clip runner; frozen labels/source hashes; isolated copy scopes; advisory projection; paired Argon/Flash comparison; Python/JS Wilson 95% intervals, criterion kappa/confusion matrix and risk-coverage operating point | No consented labeled human corpus or measured accuracy run yet; intervals and agreement tests establish scoring behavior, not model quality |
 | Ledger | Atomic journal persistence; journal-derived trial balance, cash, deferred revenue, revenue/expense and payables by contributor; exact replay protection | Live payout settlement and end-to-end reconciliation evidence |
 | Payments | Live Base Sepolia x402 funding succeeded: **10 USDC** to treasury `0x8408a922ea400af33d7c2080a9edd5d3495b695f` ([transaction](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757)); funding journal/reconciliation and payout adapters implemented | Independent controller approval, wallet payout and payout reconciliation remain to demonstrate |
 | Finance agent | Gemini function-calling action; six typed tools; persisted transcript/explanation; cumulative exact batch and call caps; existing proposal and refused approval audits | Live model measurement below; durable Workflow approval wait implemented; wallet execution remains separate |
 | Sponsors | Requirements checked against Devpost and the briefs | Working integrations; Coinbase eligibility checklist per member |
 
 Local tests prove only the behavior they execute. They do not prove settlement, inference quality, authorization or sponsor eligibility.
+
+## Verifier jury and evaluation honesty — October 25, 2026
+
+Implemented and pushed for operator deployment:
+
+- Default-on `VERIFIER_JURY` runs Argon and Flash on the same silent frames in
+  parallel with separate audio. Argon stays primary; per-criterion disagreement
+  or a failed visual request produces review. Both model attempts and advisory
+  per-model reports are retained; agreement is `null` on failed analysis.
+  Explicit evaluation model overrides remain single-model; `VERIFIER_JURY=off`
+  restores the configured single-model deployment path.
+- Python/JS scorers agree on Wilson 95% intervals, criterion Cohen's kappa with
+  confusion matrices, and risk/coverage. The requested 0/15, 0/20 and 1/15
+  interval regressions pass. Failures and review abstentions do not masquerade
+  as successful automatic decisions; undefined denominators remain `null`.
+- Approximate duplicate candidates use one-to-one monotonic informative-frame
+  alignment, at least three matches, mean Hamming distance <=6 and maximum <=10.
+  The evidence query returns the actual aligned indices/assets. Local FFmpeg
+  re-encode, synthetic one-second shift, unrelated/static/blank fingerprints,
+  non-reuse and a second-payable refusal regression pass. dHash does not cover
+  crop, flip, overlay or screen recapture; real trim recall and retake false
+  positives remain uncalibrated.
+
+Validation after the code changes: `pnpm check` passed typechecks, 126 package/
+script tests, 302 Convex tests, 168 payment tests, docs checks and the web build.
+The eval suite passed 14 Python unit tests; the installed verifier environment
+passed 54 pytest tests. Provider behavior in the jury tests is mocked. No live
+inference, new labeled-corpus measurement or chain transaction ran for these
+upgrades. No Convex deploy was performed; the operator must deploy `origin/main`
+to activate the backend changes. The jury adds a second visual request by
+default, so its live cost/latency and review rate still need measurement.
+
+See [verification rationale](ai-verification.md#why-these-choices) and
+[metric definitions](evaluation.md#uncertainty-agreement-and-selective-prediction).
 
 ## Initial scaffold verification (October 24, 2026)
 
