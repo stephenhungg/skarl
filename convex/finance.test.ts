@@ -725,3 +725,42 @@ describe("demo finance mutations against isolated Convex state", () => {
     expect(buyerPayables).toHaveLength(1);
   });
 });
+
+describe("Solana Token-2022 license claims", () => {
+  it("schedules exactly one license mint per published delivery and never re-mints a minted or in-flight license", async () => {
+    // A license token is a one-of-one claim; a replayed acceptance or concurrent worker must not mint a second token for the same clip.
+    const f = await acceptedFixture();
+    const scheduled = await f.t.run(ctx => ctx.db.system.query("_scheduled_functions").collect());
+    expect(scheduled.filter(row => row.name.startsWith("solanaLicense"))).toHaveLength(1);
+    const deliveryId = f.accepted.deliveryId;
+    const first = await f.t.mutation(internal.solanaLicenseData.prepare, { deliveryId });
+    if (!first.ok) throw new Error(first.code);
+    expect(first.terms.fields.license).toMatch(/^[0-9a-f]{64}$/);
+    expect(await f.t.mutation(internal.solanaLicenseData.prepare, { deliveryId })).toEqual({ ok: false, code: "mint_in_flight" });
+    await f.t.mutation(internal.solanaLicenseData.record, { licenseId: first.licenseId, outcome: { status: "failed", error: "rpc down" } });
+    const retry = await f.t.mutation(internal.solanaLicenseData.prepare, { deliveryId });
+    expect(retry).toMatchObject({ ok: true, licenseId: first.licenseId });
+    if (!retry.ok) throw new Error(retry.code);
+    expect(retry.idempotencyKey).not.toBe(first.idempotencyKey);
+    await f.t.mutation(internal.solanaLicenseData.record, { licenseId: first.licenseId,
+      outcome: { status: "minted", mintAddress: "Mint1111", signature: "Sig1111", holderAddress: "Holder1111" } });
+    expect(await f.t.mutation(internal.solanaLicenseData.prepare, { deliveryId })).toEqual({ ok: false, code: "already_minted" });
+  });
+
+  it("binds the on-chain digest to the consent receipt and refuses to mint once revocation is recorded", async () => {
+    // The token must prove which consent it licenses; a contributor who asked to revoke must not get a fresh on-chain license.
+    const f = await acceptedFixture();
+    const deliveryId = f.accepted.deliveryId;
+    const before = await f.t.mutation(internal.solanaLicenseData.prepare, { deliveryId });
+    if (!before.ok) throw new Error(before.code);
+    await f.t.mutation(internal.solanaLicenseData.record, { licenseId: before.licenseId, outcome: { status: "failed", error: "x" } });
+    const consent = await f.t.run(ctx => ctx.db.query("consentRecords").withIndex("by_submission", q => q.eq("submissionId", f.submissionId)).unique());
+    await f.t.run(ctx => ctx.db.patch(consent!._id, { receiptHash: "f".repeat(64) }));
+    const after = await f.t.mutation(internal.solanaLicenseData.prepare, { deliveryId });
+    if (!after.ok) throw new Error(after.code);
+    expect(after.terms.fields.license).not.toBe(before.terms.fields.license);
+    await f.t.mutation(internal.solanaLicenseData.record, { licenseId: after.licenseId, outcome: { status: "failed", error: "x" } });
+    await f.t.run(ctx => ctx.db.patch(consent!._id, { revocationStatus: "requested" }));
+    expect(await f.t.mutation(internal.solanaLicenseData.prepare, { deliveryId })).toEqual({ ok: false, code: "consent_revocation_recorded" });
+  });
+});

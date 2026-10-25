@@ -15,10 +15,12 @@ export const PAYMENT_RAILS = {
   [PAYMENT_NETWORK]: {
     token: USDC_ADDRESS, decimals: USDC_DECIMALS,
     explorerTx: (hash: string) => `https://sepolia.basescan.org/tx/${encodeURIComponent(hash)}`,
+    explorerAddress: (value: string) => `https://sepolia.basescan.org/address/${encodeURIComponent(value)}`,
   },
   [SOLANA_PAYMENT_NETWORK]: {
     token: SOLANA_USDC_MINT, decimals: USDC_DECIMALS,
     explorerTx: (signature: string) => `https://explorer.solana.com/tx/${encodeURIComponent(signature)}?cluster=devnet`,
+    explorerAddress: (value: string) => `https://explorer.solana.com/address/${encodeURIComponent(value)}?cluster=devnet`,
   },
 } as const;
 export type PaymentNetwork = keyof typeof PAYMENT_RAILS;

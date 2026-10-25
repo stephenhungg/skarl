@@ -7,7 +7,7 @@ import type * as attestationsApi from "./attestations";
 import { financeScope, orderRows } from "./lib/dashboardRead";
 import { isFinanceAgent } from "./lib/demoAuth";
 import { requireBuyerOrder } from "./lib/finance";
-import { paymentRail, PAYMENT_NETWORK } from "../packages/contracts/src/chain";
+import { paymentRail, PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK } from "../packages/contracts/src/chain";
 import { validateTransfer } from "../packages/payments/src/reconciliation";
 import { walletEvidence, juryEvidence, toolRefusals } from "./lib/proofEvidence";
 import crons from "./crons";
@@ -163,6 +163,21 @@ async function attestationsModel(ctx: QueryCtx, args: Scope) {
 }
 export const attestations = query({ args: orderArgs, handler: attestationsModel });
 
+async function solanaLicensesModel(ctx: QueryCtx, args: Scope) {
+  const { order } = await scopedOrder(ctx, args);
+  const rail = paymentRail(SOLANA_PAYMENT_NETWORK);
+  const rows = (await ctx.db.query("solanaLicenses").withIndex("by_order", q => q.eq("orderId", order._id)).collect()).map(row => {
+    if (row.organizationId !== order.organizationId) throw new Error("cross_organization_reference");
+    return { submissionId: row.submissionId, deliveryId: row.deliveryId, status: row.status, licenseDigest: row.licenseDigest,
+      standard: "Token-2022 (MetadataPointer + TokenMetadata, supply 1, mint authority revoked)", network: row.network,
+      mintAddress: row.mintAddress ?? null, holderAddress: row.holderAddress ?? null, testnetOnly: true as const,
+      tokenUrl: row.mintAddress ? rail.explorerAddress(row.mintAddress) : null,
+      transactionUrl: row.signature ? rail.explorerTx(row.signature) : null, lastError: row.lastError ?? null };
+  });
+  return { rows, missing: rows.some(row => row.status === "minted") ? null : rows.length ? "No confirmed license mint yet" : "No published delivery yet" };
+}
+export const solanaLicenses = query({ args: orderArgs, handler: solanaLicensesModel });
+
 async function guardModel(ctx: QueryCtx, demoIdentity: string) {
   const scope = await proofScope(ctx, demoIdentity);
   const exceptions = (await Promise.all(scope.orders.map(order => ctx.db.query("scheduledCheckpoints")
@@ -255,11 +270,11 @@ export const agentRuns = query({ args: orderArgs, handler: agentRunsModel });
 export const summary = query({ args: orderArgs, handler: async (ctx, args) => {
   const { order } = await scopedOrder(ctx, args);
   const submissions = await ctx.db.query("submissions").withIndex("by_order_status", q => q.eq("orderId", args.orderId)).collect();
-  const [bank4Way, payouts, fundingTimeline, attestations, guard, convexFeatures, agentRuns, juries] = await Promise.all([
+  const [bank4Way, payouts, fundingTimeline, attestations, guard, convexFeatures, agentRuns, juries, solanaLicenses] = await Promise.all([
     bankModel(ctx, args), payoutsModel(ctx, args), fundingModel(ctx, args), attestationsModel(ctx, args),
     guardModel(ctx, args.demoIdentity), featuresModel(ctx, args.demoIdentity), agentRunsModel(ctx, args),
-    Promise.all(submissions.map(row => juryModel(ctx, args.demoIdentity, row._id))),
+    Promise.all(submissions.map(row => juryModel(ctx, args.demoIdentity, row._id))), solanaLicensesModel(ctx, args),
   ]);
   return { orderId: order._id, simulated: order.publicId.startsWith("scenario:"), bank4Way, agentWallet: walletEvidence(), payouts,
-    fundingTimeline, attestations, guard, convexFeatures, agentRuns, jury: { rows: juries, missing: juries.length ? null : "No submission yet" } };
+    fundingTimeline, attestations, guard, convexFeatures, agentRuns, jury: { rows: juries, missing: juries.length ? null : "No submission yet" }, solanaLicenses };
 } });

@@ -1,5 +1,5 @@
 import { resolveTaskSpec } from "./lib/taskSpec";
-import { configNumber } from "./lib/config";
+import { configNumber, envString } from "./lib/config";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { workflow, controllerApproved } from "./approvalWorkflow";
@@ -165,6 +165,9 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
       recipientAddress, amountAtomic: order.contributorRateAtomic, sourceEventKey: eventKey, status: "accrued", createdAt: now,
     });
     await ctx.db.patch(submission._id, { status: "accepted", currentDecisionId: decisionId, updatedAt: now });
+    if (envString("SKARL_SOLANA_LICENSES", "on") !== "off") {
+      await ctx.scheduler.runAfter(0, internal.solanaLicense.mintForDelivery, { deliveryId });
+    }
     const acceptedCount = order.acceptedCount + 1n;
     await ctx.db.patch(order._id, { acceptedCount, status: acceptedCount === order.quantityRequested ? "fulfilled" : "collecting", updatedAt: now });
     await audit(ctx, { organizationId: submission.organizationId, eventKey: `accepted:${submission._id}`, actor: actorFor(principal),

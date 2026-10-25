@@ -411,6 +411,24 @@ export default defineSchema({
     .index("by_order", ["orderId"])
     .index("by_submission", ["submissionId"]),
 
+  // Devnet Token-2022 license token per published delivery: supply 1, minting revoked, metadata binds the off-chain license.
+  solanaLicenses: defineTable({
+    ...tenant,
+    orderId: v.id("orders"),
+    submissionId: v.id("submissions"),
+    deliveryId: v.id("deliveries"),
+    licenseDigest: v.string(),
+    status: v.union(v.literal("pending"), v.literal("minted"), v.literal("unconfirmed"), v.literal("failed"), v.literal("skipped")),
+    attempts: v.number(),
+    network: v.string(),
+    mintAddress: v.optional(v.string()),
+    signature: v.optional(v.string()),
+    holderAddress: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_delivery", ["deliveryId"]).index("by_order", ["orderId"]),
+
   payables: defineTable({
     ...tenant,
     ...asset,

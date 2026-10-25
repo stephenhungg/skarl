@@ -2,7 +2,7 @@ import { demoOrderPublicId, publicOrderPrefix } from "./lib/config";
 import { makeFunctionReference, type ApiFromModules, type FunctionReturnType } from "convex/server";
 import { v } from "convex/values";
 import { httpAction, internalQuery } from "./_generated/server";
-import { PAYMENT_NETWORK, paymentRail } from "../packages/contracts/src/chain";
+import { PAYMENT_NETWORK, paymentRail, SOLANA_PAYMENT_NETWORK } from "../packages/contracts/src/chain";
 import { validateTransfer } from "../packages/payments/src/reconciliation";
 import { attestationLinks } from "./lib/eas";
 import { checkPublicRateLimit } from "./lib/publicRateLimit";
@@ -55,12 +55,19 @@ export const snapshot = internalQuery({ args: { orderId: v.string() }, handler: 
       attestations.push({ uid: row.attestationUid, ...attestationLinks(row.attestationUid, row.txHash) });
     }
   }
+  // License tokens are custodial devnet mints: publish the token and its creation tx, never holder or contributor linkage.
+  const solanaRail = paymentRail(SOLANA_PAYMENT_NETWORK);
+  const licenses = (await ctx.db.query("solanaLicenses").withIndex("by_order", q => q.eq("orderId", order._id)).collect())
+    .filter(row => row.organizationId === order.organizationId && row.status === "minted" && row.mintAddress && row.signature)
+    .map(row => ({ standard: "Token-2022", licenseDigest: row.licenseDigest, mintAddress: row.mintAddress!,
+      tokenUrl: solanaRail.explorerAddress(row.mintAddress!), transactionUrl: solanaRail.explorerTx(row.signature!) }));
   return { version: 1, orderId: order._id, demoOnly: true, network: order.network,
     acceptedCount: order.acceptedCount.toString(), quantityRequested: order.quantityRequested.toString(),
     funding: { rows: funding, missing: funding.length ? null : "No signed funding attempt yet" },
     payouts: { chainObservedCount: chainObservedPayoutCount.toString(), missing: chainObservedPayoutCount ? null : "No exact confirmed contributor payout yet" },
     attestations: { rows: attestations, missing: attestations.length ? null : "No confirmed EAS attestation for a current analysis" },
     bank: { label: "Mock bank (Capital One Nessie)", simulated: true },
+    solanaLicenses: { rows: licenses, testnetOnly: true, missing: licenses.length ? null : "No confirmed Token-2022 license mint yet" },
   };
 } });
 
