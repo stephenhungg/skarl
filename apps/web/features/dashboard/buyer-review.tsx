@@ -27,7 +27,7 @@ export function BuyerReview() {
   const count = open.length + legacySubmissions.length + legacyPayables.length;
   return <>
     <PageHeader title="Exceptions"
-      actions={<Link href="/orders/new" className="type-label underline underline-offset-4">Post a task</Link>} />
+      actions={<Link href="/dashboard/post" className="type-label underline underline-offset-4">Post a task</Link>} />
     {count === 0 ? <div className="flex items-center gap-2 rounded-panel border border-line-faint p-4 type-body-sm"><StatusMark status="ok" />Nothing needs you. Clips and payouts within your rule pay automatically.</div> : null}
     <div className="flex flex-col gap-3">
       {open.map(item => <ExceptionCard key={item.exceptionKey} orderId={orderId} item={item} />)}

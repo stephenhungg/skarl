@@ -54,7 +54,7 @@ const CONTROLLER_NAV: ShellConfig["nav"] = [
 export const CONTROLLER_SHELL: ShellConfig = {
   home: "/dashboard", role: "Buyer", homeLabel: "Overview", nav: CONTROLLER_NAV,
   mobile: [CONTROLLER_NAV[0]!.items[0]!, CONTROLLER_NAV[0]!.items[1]!, CONTROLLER_NAV[1]!.items[0]!, CONTROLLER_NAV[1]!.items[1]!],
-  titles: { receipt: "Receipt", inbox: "Exceptions", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log", scenarios: "Scenario lab", reconciliation: "Reconciliation", integrations: "Integrations",
+  titles: { receipt: "Receipt", inbox: "Exceptions", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log", scenarios: "Scenario lab", reconciliation: "Reconciliation", integrations: "Integrations", post: "Post a task",
     proof: "Proof", ...Object.fromEntries(PROOF_SECTIONS.filter(section => section.slug !== "agent").map(section => [section.slug, section.title])) },
   switchTo: { label: "Open contributor view", href: "/contribute" },
 };

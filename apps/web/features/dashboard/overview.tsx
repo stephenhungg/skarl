@@ -19,6 +19,9 @@ export function Overview() {
   return (
     <>
       <PageHeader title={order.title}
+        actions={order.status === "awaiting_funding"
+          ? <Link href={`/dashboard/post?order=${orderId}`} className="rounded-pill bg-[rgb(199_241_142)] px-3.5 py-1.5 type-label text-[rgb(22_32_12)] hover:brightness-95">Fund this task</Link>
+          : <Link href="/dashboard/post" className="rounded-pill border border-line-control px-3.5 py-1.5 type-label hover:bg-hover">Post a task</Link>}
         description={<>Order <span className="mono">{order.publicId}</span> &middot; {humanize(order.status)} &middot; {order.acceptedCount} of {order.quantityRequested} samples accepted</>} />
       <NeedsYouList orderId={orderId!} submissions={submissions} payables={payables} />
       <AtAGlance orderId={orderId!} budget={order.budgetAtomic} funded={!["draft", "awaiting_funding", "funding_failed"].includes(order.status)} balances={balances} />
