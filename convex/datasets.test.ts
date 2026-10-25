@@ -189,6 +189,10 @@ describe("buyer dataset delivery (synthetic evidence)", () => {
       evidence: [{ modality: "video", startMs: 1000, endMs: 2000 }] });
     expect(result.samples[0].transcriptSegments).toEqual([{ startMs: 1000, endMs: 2000, text: "red cup" }]);
     expect(result.samples[0]).not.toHaveProperty("contributorTokenIdentifier");
+    expect(result.samples[0].provenance).toMatchObject({ schemaVersion: "skarl.provenance.v1",
+      sourceSha256: sample.sourceHash, sourceHashBasis: "verified_original",
+      revocation: { status: "not_requested" }, privacyReview: "not_checked" });
+    expect(JSON.stringify(result)).not.toContain(CONTRIBUTOR);
     expect(() => JSON.stringify(result)).not.toThrow();
     expect((await f.t.query(forOrder, args(f, "controller"))).samples).toHaveLength(1);
   });
@@ -366,6 +370,18 @@ describe("buyer dataset delivery (synthetic evidence)", () => {
 const originalMedia = makeFunctionReference<"query">("datasets:originalMedia");
 
 describe("expiring buyer original-media grants (synthetic storage)", () => {
+  it.each(["requested", "revoked"] as const)("refuses fresh exports and old grants after consent is %s without erasing earned obligations", async revocationStatus => {
+    const f = await setup(), sample = await delivered(f);
+    const exported = (await f.t.query(forOrder, args(f))).samples[0];
+    await f.t.run(ctx => ctx.db.patch(sample.consentRecordId, { revocationStatus }));
+    // A grant was valid when issued; serving must check consent again instead
+    // of treating its unexpired signature as permanent licensing authority.
+    expect((await f.t.query(forOrder, args(f))).samples).toEqual([]);
+    await expect(f.t.query(originalMedia, { ...args(f), serviceSecret: SERVICE_SECRET,
+      submissionId: sample.submissionId, binding: exported.media.binding })).rejects.toThrow("sample_not_available");
+    expect(await f.t.run(ctx => ctx.db.get(sample.payableId))).toMatchObject({ status: "accrued" });
+  });
+
   it("publishes a five-minute signed proxy URL instead of exposing a native storage bearer URL", async () => {
     const f = await setup(), sample = await delivered(f);
     const before = Date.now();

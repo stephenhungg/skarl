@@ -1120,6 +1120,10 @@ signature, expiry, order, caller's current membership/ownership and the current
 licensed delivery binding before streaming only the original asset. Changes to
 consent, delivery, source or eligibility invalidate an old grant. URLs are bearer
 credentials: do not publish or cache them.
+Requested/revoked consent excludes the sample from fresh exports and blocks old
+grants at serving time; existing downloaded copies cannot be recalled. Every
+sample includes `provenance: skarl.provenance.v1` from the delivered analysis
+snapshot and current consent. Historical payables are preserved.
 
 The HTTP route changes the query's optional `refreshKey` each minute so an
 unchanged dataset still receives fresh grants. Direct query clients should pass

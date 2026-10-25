@@ -11,6 +11,7 @@ import { validateTransfer } from "../packages/payments/src/reconciliation";
 import { createDatasetMediaToken } from "../packages/payments/src/dataset-media-token";
 import { service } from "./payments";
 import { deriveSampleQuality } from "./lib/sampleQuality";
+import { buildProvenance } from "./lib/provenance";
 
 /** A confirmed commitment must match the evidence being scored, not just exist. */
 function attestationMatches(attestation: Doc<"attestations"> | null, submission: Doc<"submissions">,
@@ -97,6 +98,7 @@ async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Do
     original.contentHash !== submission.sourceHash || !original.mimeType.startsWith("video/") ||
     consent.submissionId !== submission._id || consent.contributorTokenIdentifier !== submission.contributorTokenIdentifier ||
     consent.licenseVersion !== "demo-consent-v1" || manifest.licenseVersion !== consent.licenseVersion || !consent.scope.trim() ||
+    consent.revocationStatus !== undefined ||
     consent.licenseHash !== digest({ licenseVersion: consent.licenseVersion, scope: consent.scope }) ||
     decision.submissionId !== submission._id || decision.taskVersionId !== rubric._id || decision.decision !== "accepted" ||
     decision.analysisResultId !== manifest.analysisResultId || decision.evidenceHash !== (analysis?.reportHash ?? submission.sourceHash)) return null;
@@ -150,6 +152,7 @@ async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Do
     task: { id: rubric._id, version: rubric.version, languageInstruction: rubric.taskPrompt, criterionIds: rubric.criteria.map(row => row.criterionId) },
     acceptedAt: decision.decidedAt, acceptance: { basis: machine ? "machine" as const : "human_controller" as const, decisionId: decision._id },
     license: { version: consent.licenseVersion, scope: consent.scope },
+    provenance: await buildProvenance(ctx, { ...submission, currentAnalysisId: analysis?._id }),
     diversity: { environment: submission.environment ?? null, variant: submission.variant ?? null,
       source: "contributor_self_reported" as const },
     criteria, transcriptSegments, ...quality,

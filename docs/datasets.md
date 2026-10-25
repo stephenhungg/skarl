@@ -33,6 +33,9 @@ All formats retain each sample's quality breakdown, usable bounds, consent
 license, source hash, decision basis, duplicate status, optional attestation and
 reconciled payout evidence. Monetary values remain decimal integer micro-USDC
 strings. Environment and variant labels are explicitly contributor self-reports.
+Each sample also includes `provenance: skarl.provenance.v1`, using the delivered
+analysis snapshot for liveness, privacy heuristics and EAS references. Consent
+and revocation status remain current; see [Consent and sample provenance](provenance.md).
 
 ### LeRobot metadata
 
@@ -159,6 +162,9 @@ coverage and do not prove visual diversity, different people or environments.
 
 Video URLs are signed five-minute buyer grants. Export again to refresh them;
 the serving proxy rechecks current ownership, consent and delivery bindings.
+Requested or completed consent revocation blocks fresh manifest entries and
+previously issued grants. It does not recall downloaded copies or erase earned
+payables and historical evidence.
 All responses are private and uncached. Never publish these bearer credentials.
 
 Deploy the optional Convex schema fields and functions, then the web route.

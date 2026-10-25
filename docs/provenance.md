@@ -62,13 +62,14 @@ First acceptance is refused while consent is requested/revoked. Existing
 fulfillment replays and accrued contributor obligations remain intact. A request
 must not quietly erase compensation already earned.
 
-**Dataset-owner handoff:** `datasets.ts` is owned by another worker and was not
-edited for this change. Attach the helper to exported samples and gate new media
-grants/downloads on `consent.revocationStatus` being absent; requested/revoked
-records should not receive fresh licensed media access. Existing downloaded
-copies cannot be recalled by changing this field. Until that integration lands,
-the provenance query flags requests but does not itself change dataset exports
-or media access. Recheck this handoff before claiming export enforcement.
+**Dataset integration:** `datasets.ts` attaches this provenance shape to every
+licensed exported sample across JSON, JSONL, LeRobot and RLDS-style manifests.
+It evaluates analysis witnesses against the delivery's accepted snapshot, while
+consent and revocation remain current. Requested/revoked consent excludes the
+sample from fresh manifests and blocks previously issued media grants at serving
+time. Existing downloaded copies cannot be recalled by changing this field.
+These are source implementations pending the deployment owner's deployment;
+synthetic tests verify export and grant refusal, not live recall or deletion.
 
 ## Payment History and Contributor Receipts
 
