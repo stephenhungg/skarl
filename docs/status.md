@@ -146,3 +146,7 @@ successful visual inference or live chain settlement.
 Known integration gaps remain: contributor wallets need verified provisioning
 before acceptance can create a payable; duplicate refusals persist evidence in
 the controller audit but currently show generic review in the contributor UI.
+
+## First live x402 funding (October 25, 2026, ~01:30 PDT)
+
+The buyer agent (`pnpm agent:fund skarl-red-cup-demo-v2`) paid the x402-protected funding route on Base Sepolia through the public testnet facilitator. Transaction [0x28b3…d757](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757) (block 49978209, status success) transferred exactly 10.000000 USDC (`0x036C…CF7e`) from the buyer `0xa54D…1a9D` to the controller's Coinbase Wallet `0x8408…695f`; the buyer paid no gas. Convex reported the funding as `confirmed` only after the server observed the Transfer log. Receipt and balances were rechecked independently over Base Sepolia RPC.
