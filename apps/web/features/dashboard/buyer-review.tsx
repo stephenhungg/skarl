@@ -4,7 +4,7 @@ import { useMutation } from "convex/react";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/glaze/ui/button";
 import { api, BUYER, useExceptions, useOrderData, useOrderId, type ExceptionItem, type Id } from "./data";
-import { formatUsdc, humanize } from "./format";
+import { formatUsdc, humanize, policyReasons } from "./format";
 import { Switch } from "@/components/glaze/ui/switch";
 import { StatusMark } from "@/components/glaze/ui/status";
 import { toast } from "@/components/glaze/ui/toast";
@@ -19,7 +19,13 @@ export function BuyerReview() {
   const exceptions = useExceptions(orderId);
   if (orderId === null) return <Unavailable title="No order to review" description="Post a task and fund it to begin collecting demonstrations." />;
   if (!orderId || !summary || exceptions === undefined) return <><PageHeader title="Exceptions" /><Loading rows={4} /></>;
-  const open = exceptions.filter(item => item.disposition?.status !== "resolved");
+  const seen = new Set<string>();
+  const open = exceptions.filter(item => item.disposition?.status !== "resolved").filter(item => {
+    const e = item.exception as ReviewEvidence, key = e.intentId ?? e.submissionId;
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
   const queuedSubmissions = new Set(open.map(item => (item.exception as ReviewEvidence).submissionId).filter(Boolean));
   const queuedIntents = new Set(open.map(item => (item.exception as ReviewEvidence).intentId).filter(Boolean));
   const legacySubmissions = (submissions ?? []).filter(row => !summary.order.autoPay?.enabled && row.status === "needs_review" && !row.verificationOnly && !queuedSubmissions.has(row._id));
@@ -122,11 +128,12 @@ function ExceptionCard({ orderId, item }: { orderId: Id<"orders">; item: Excepti
     finally { setBusy(false); }
   }
   return <article className="rounded-panel border border-line-faint p-4">
-    <h3 className="type-label">{humanize(evidence.code)}</h3>
-    {evidence.code === "info_return_needed" || evidence.failures?.includes("tax_form_missing") ? <p className="mt-1 type-label-sm text-text-3">Not tax advice — demo data</p> : null}
-    <p className="mt-1 type-body-sm text-text-2">{evidence.message ?? evidence.detail}</p>
-    {evidence.failures?.length ? <ul className="mt-2 list-inside list-disc type-body-sm">{evidence.failures.map(check => <li key={check}>{humanize(check)}</li>)}</ul> : null}
-    {evidence.submissionId && !evidence.intentId ? <Link href={`/dashboard/submissions/${evidence.submissionId}`} className="mt-3 inline-block type-label underline underline-offset-4">Review evidence and accept or reject clip</Link> : <div className="mt-3 flex flex-wrap items-center gap-2">
+    <h3 className="type-label">{evidence.code === "policy_review"
+      ? evidence.intentId ? "Payout held for your review" : evidence.submissionId ? `Clip ${evidence.submissionId.slice(0, 8)} held for your review` : "Held for your review"
+      : humanize(evidence.code)}</h3>
+    {evidence.code === "info_return_needed" || evidence.failures?.includes("tax_form_missing") ? <p className="mt-1 type-label-sm text-text-3">Not tax advice. Demo data.</p> : null}
+    <p className="mt-1 type-body-sm text-text-2">{evidence.code === "policy_review" ? policyReasons(evidence.failures ?? evidence.detail, 6) : evidence.message ?? evidence.detail}</p>
+    {evidence.submissionId && !evidence.intentId ? <Link href={`/dashboard/submissions/${evidence.submissionId}`} className="mt-3 inline-block type-label underline underline-offset-4">Review clip</Link> : <div className="mt-3 flex flex-wrap items-center gap-2">
       <label className="flex min-w-48 flex-1 flex-col gap-1 type-label-sm">Review reason
         <input value={reason} onChange={event => setReason(event.target.value)} maxLength={2000} className="rounded-tag border border-line-control bg-field px-3 py-2" />
       </label>

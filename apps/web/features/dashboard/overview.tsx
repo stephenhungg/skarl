@@ -5,7 +5,7 @@ import { Status } from "@/components/glaze/ui/status";
 import { Badge } from "@/components/glaze/ui/badge";
 import { cn } from "@/lib/glaze/utils";
 import { api, BUYER, needsYou, useAudit, useExceptions, useOrderData, useOrderId, useReconciliation, type Id, type PayableRow, type SubmissionRow } from "./data";
-import { rail, formatMs, basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
+import { rail, formatMs, basescanTx, formatTime, humanize, parseChainIdentity, policyReasons, readableReason, shortHash } from "./format";
 import { Lordicon } from "./lordicon";
 import { ActivityFeed } from "./activity";
 import { Amount, Loading, PageHeader, Section, Unavailable } from "./ui";
@@ -35,15 +35,28 @@ export function NeedsYouList({ orderId, submissions, payables, standalone }: { o
   const exceptions = useExceptions(orderId);
   const n = needsYou(submissions, payables);
   const open = (exceptions ?? []).filter(item => item.stillDetected && item.disposition?.status !== "resolved");
+  type Held = { submissionId?: string; intentId?: string; failures?: string[]; detail?: string };
+  const held = (item: (typeof open)[number]) => item.exception as unknown as Held;
+  // One row per clip: a policy hold on a clip already waiting for review becomes that row's reason.
+  const reasonFor = (submissionId: string) => {
+    const item = open.find(row => held(row).submissionId === submissionId);
+    return item ? policyReasons(held(item).failures ?? held(item).detail) : null;
+  };
+  const reviewIds = new Set(n.review.map(s => s._id as string));
   const rows = [
     ...n.review.map(s => ({ key: s._id, href: `/dashboard/submissions/${s._id}`, title: `Review clip ${s._id.slice(0, 8)}`,
-      detail: s.analysis ? `AI suggests: ${humanize(s.analysis.recommendation).toLowerCase()}` : "Analysis pending", action: "Review" })),
+      detail: reasonFor(s._id) ?? (s.analysis ? `AI suggests: ${humanize(s.analysis.recommendation).toLowerCase()}` : "Analysis pending"), action: "Review" })),
     ...n.approve.map(p => ({ key: p._id, href: "/dashboard/payables", title: <>Approve payout of <Amount value={p.amountAtomic} /></>,
       detail: `Proposed by the finance agent to ${shortHash(p.recipientAddress)}`, action: "Approve" })),
     ...n.sign.map(p => ({ key: `${p._id}:sign`, href: "/dashboard/payables", title: <>Sign approved payout of <Amount value={p.amountAtomic} /></>,
       detail: "Approved. Waiting for your wallet signature.", action: "Sign" })),
-    ...open.map(item => ({ key: item.exceptionKey, href: "/dashboard/ledger", title: humanize(item.exception.code),
-      detail: item.exception.detail, action: "Resolve" })),
+    ...open.filter(item => !(held(item).submissionId && reviewIds.has(held(item).submissionId!))).map(item => {
+      const h = held(item), policy = item.exception.code === "policy_review";
+      return { key: item.exceptionKey,
+        href: h.submissionId ? `/dashboard/submissions/${h.submissionId}` : policy ? "/dashboard/inbox" : "/dashboard/reconciliation",
+        title: policy ? (h.intentId ? "Payout held for your review" : h.submissionId ? `Clip ${h.submissionId.slice(0, 8)} held for your review` : "Held for your review") : humanize(item.exception.code),
+        detail: policy ? policyReasons(h.failures ?? h.detail) : item.exception.detail, action: policy ? "Review" : "Resolve" };
+    }),
   ];
   const loading = submissions === undefined || payables === undefined;
   return (

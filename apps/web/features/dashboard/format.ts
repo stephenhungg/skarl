@@ -63,3 +63,25 @@ export function rail(chainIdentity: string | null | undefined) {
   }
   return { label: "Base Sepolia", explorer: "BaseScan", href: basescanTx(parsed.txHash), ...parsed };
 }
+
+const POLICY_REASON: Record<string, string> = {
+  auto_pay_disabled: "auto-pay is off", completed_accept_inference_required: "AI check did not finish", report_binding_or_outcome_invalid: "AI report incomplete",
+  report_invalid: "AI report invalid", jury_not_accept: "AI jury did not accept", rubric_checks_incomplete: "not every check passed",
+  over_cap_payout: "over your auto-pay cap", duplicate_not_clear: "possible duplicate", prompt_injection_flag: "narration tries to instruct the AI",
+  consent_license_required: "no recording consent", verification_only_not_licensed: "test upload, cannot be paid", tax_form_missing: "contributor tax form missing",
+  verified_contributor_wallet_required: "contributor has no verified wallet", insufficient_funded_remaining: "not enough funded budget left",
+  invalid_payout_amount: "payout amount invalid", accepted_payable_binding_required: "clip not accepted yet", self_approval_refused: "agent tried to approve itself",
+};
+/** Policy failure codes ("criterion:can-pickup", "over_cap_payout") to a short sentence a buyer can act on. */
+export function policyReasons(codes: string[] | string | null | undefined, limit = 2) {
+  const list = (Array.isArray(codes) ? codes : (codes ?? "").split(/,\s*/)).map(code => code.trim()).filter(Boolean);
+  const liveness = list.filter(code => code.startsWith("liveness:"));
+  const criteria = list.filter(code => code.startsWith("criterion:")).map(code => code.slice(10).replace(/[-_]/g, " "));
+  const reasons = [...new Set(list.filter(code => !code.startsWith("criterion:") && !code.startsWith("liveness:")).map(code => POLICY_REASON[code] ?? code.replace(/_/g, " ")))];
+  if (liveness.length) reasons.push("spoken liveness check missing");
+  if (criteria.length) reasons.push(criteria.length === 1 ? `"${criteria[0]}" not confirmed` : `${criteria.length} checks not confirmed`);
+  if (!reasons.length) return "Held for your review";
+  const shown = reasons.slice(0, limit).join(", ");
+  const text = reasons.length > limit ? `${shown} and ${reasons.length - limit} more` : shown;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
