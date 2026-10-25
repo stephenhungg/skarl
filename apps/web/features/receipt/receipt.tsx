@@ -30,7 +30,7 @@ function Breadcrumb({ receipt }: { receipt: AssetReceipt }) {
   );
 }
 
-function Hero({ receipt }: { receipt: AssetReceipt }) {
+function Hero({ receipt, path }: { receipt: AssetReceipt; path?: string }) {
   const hue = receipt.vars["--receipt-hue"];
   const accent = receipt.vars["--receipt-accent"];
   return (
@@ -64,7 +64,7 @@ function Hero({ receipt }: { receipt: AssetReceipt }) {
           ))}
         </div>
       </div>
-      <Specimen id={receipt.id} seed={fingerprintSeed(receipt)} />
+      <Specimen id={receipt.id} seed={fingerprintSeed(receipt)} path={path} />
     </section>
   );
 }
@@ -303,12 +303,12 @@ function CurrentMetadata({ receipt }: { receipt: AssetReceipt }) {
 }
 
 /** Full asset receipt page body (inside the shared main). */
-export function AssetReceiptView({ receipt }: { receipt: AssetReceipt }) {
+export function AssetReceiptView({ receipt, path }: { receipt: AssetReceipt; path?: string }) {
   return (
     <>
       <Breadcrumb receipt={receipt} />
       <div className={`${s.lab} ${s.live}`} style={receipt.vars as CSSProperties}>
-        <Hero receipt={receipt} />
+        <Hero receipt={receipt} path={path} />
         <Origin receipt={receipt} />
         <Lifecycle receipt={receipt} />
         <Details receipt={receipt} />

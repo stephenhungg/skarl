@@ -61,11 +61,11 @@ export function isDuplicate(submission: Submission) {
   return /duplicate/i.test(submission.decision?.reason ?? "");
 }
 
-/** Exact micro-USDC string to a two-decimal label without touching floating point. */
+/** Exact micro-USDC string to a label that keeps every significant decimal (1.875 stays 1.875), at least two. */
 export function formatUsdc(atomic: string) {
   if (!/^\d+$/.test(atomic)) return atomic;
   const padded = atomic.padStart(7, "0");
   const whole = padded.slice(0, -6).replace(/^0+(?=\d)/, "");
-  const cents = padded.slice(-6, -4);
-  return `${whole}.${cents}`;
+  const fraction = padded.slice(-6).replace(/0+$/, "").padEnd(2, "0");
+  return `${whole}.${fraction}`;
 }

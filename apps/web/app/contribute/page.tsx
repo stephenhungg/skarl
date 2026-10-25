@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { SiteNav } from "@/components/site-nav";
 import { ContributeFlow } from "@/features/contributor/contribute-flow";
 
 export const metadata: Metadata = {
@@ -8,10 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function ContributePage() {
-  return (
-    <>
-      <SiteNav />
-      <ContributeFlow />
-    </>
-  );
+  return <ContributeFlow />;
 }

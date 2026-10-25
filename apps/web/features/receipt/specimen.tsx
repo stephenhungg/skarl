@@ -8,15 +8,16 @@ import s from "./receipt.module.css";
 type Seed = { hash: string; media: string; hue: number; duration: number };
 
 /** Right side of the hero: fingerprint stage, appearance toggle, scan button and the about note. */
-export function Specimen({ id, seed }: { id: string; seed: Seed }) {
+/** `path` is where the QR and link point; defaults to the public asset receipt. */
+export function Specimen({ id, seed, path }: { id: string; seed: Seed; path?: string }) {
   const [filament, setFilament] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
   const codeRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    setUrl(`${window.location.origin}/asset/${id}`);
-  }, [id]);
+    setUrl(`${window.location.origin}${path ?? `/asset/${id}`}`);
+  }, [id, path]);
 
   return (
     <div className={s.specimen}>
@@ -35,7 +36,7 @@ export function Specimen({ id, seed }: { id: string; seed: Seed }) {
         <div className={s.orbit} aria-hidden="true"></div>
         <a
           className={s.scanFace}
-          href={url ?? `/asset/${id}`}
+          href={url ?? path ?? `/asset/${id}`}
           tabIndex={scanning ? 0 : -1}
           aria-hidden={!scanning}
           aria-label="Open this receipt"
