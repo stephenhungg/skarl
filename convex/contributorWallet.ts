@@ -3,7 +3,7 @@ import { secp256k1 } from "@noble/curves/secp256k1";
 import { getAddress, hashMessage, type Hex } from "viem";
 import { publicKeyToAddress } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
-import { mutation, type MutationCtx } from "./_generated/server";
+import { mutation, query, type MutationCtx } from "./_generated/server";
 import { PAYMENT_CHAIN_ID } from "../packages/contracts/src/chain";
 import { requireRole } from "./lib/demoAuth";
 import { actorFor, audit, digest, normalizeAddress, requireTenant } from "./lib/finance";
@@ -25,6 +25,16 @@ async function contributorFor(ctx: MutationCtx, demoIdentity: string, tokenIdent
   }
   return { controller, contributor };
 }
+
+/** A contributor reads only its own payout wallet; the address is never secret, the key never leaves the device. */
+export const mine = query({
+  args: { demoIdentity: v.string() },
+  handler: async (ctx, args) => {
+    const contributor = await requireRole(ctx, args.demoIdentity, "contributor");
+    return { tokenIdentifier: contributor.tokenIdentifier, walletAddress: contributor.walletAddress ?? null,
+      verifiedAt: contributor.walletVerification?.verifiedAt ?? null };
+  },
+});
 
 /** Contributors verify their own wallet; the legacy operator selector remains compatible. */
 export const challenge = mutation({

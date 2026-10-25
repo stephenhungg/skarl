@@ -9,6 +9,7 @@ import { contributorStats, IN_REVIEW, totals, useContributorActivity, when } fro
 import { useSession } from '../session';
 import { Button, Empty, ListRow, StatusPill } from '../components/Primitives';
 import { Segmented } from '../components/Segmented';
+import { WalletCard } from '../components/WalletCard';
 import { CountUp } from '../components/CountUp';
 import { PressableScale } from '../components/PressableScale';
 import { ChevronLeft, ChevronRight, LinkIcon, ProfileIcon } from '../components/Icons';
@@ -79,6 +80,8 @@ export function ProfileScreen({ navigation, route }: RootProps<'Profile'>) {
         <ChevronRight />
       </PressableScale>
     </Animated.View>
+
+    <WalletCard />
 
     <View style={s.grid}>
       <Stat index={0} value={dash ?? String(stats.uploads)} label="Uploads" />
