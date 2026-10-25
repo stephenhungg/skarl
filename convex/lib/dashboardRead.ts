@@ -1,21 +1,20 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import { requireRole } from "./demoAuth";
-import { requireTenant } from "./finance";
+import { hasOrderAuthority, isFinanceAgent, requireRole } from "./demoAuth";
+import { requireBuyerOrder } from "./finance";
 import { trialBalance } from "./financeAgentLoop";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../../packages/contracts/src/chain";
 
 export async function financeScope(ctx: QueryCtx, demoIdentity: string, orderId?: Id<"orders">) {
   const principal = await requireRole(ctx, demoIdentity, ["buyer", "controller", "finance-agent"]);
+  if (!hasOrderAuthority(principal, principal) && !isFinanceAgent(principal)) throw new Error("order_not_owned");
   const order = orderId ? await ctx.db.get(orderId) : null;
   if (orderId && !order) throw new Error("order_not_found");
   if (order) {
-    requireTenant(principal, order);
-    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+    requireBuyerOrder(principal, order);
   }
   const visible = order ? [order] : await ctx.db.query("orders").withIndex("by_org_status", q => q.eq("organizationId", principal.organizationId)).collect();
-  const orders = visible.filter(row => (order || !row.publicId.startsWith("scenario:")) &&
-    (!principal.roles.includes("buyer") || principal.roles.includes("controller") || row.buyerTokenIdentifier === principal.tokenIdentifier));
+  const orders = visible.filter(row => order || !row.publicId.startsWith("scenario:"));
   return { principal, orders, orderIds: new Set(orders.map(row => row._id)) };
 }
 

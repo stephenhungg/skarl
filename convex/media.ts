@@ -1,13 +1,13 @@
 import { v } from "convex/values";
 import { query, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { requireRole, type DemoPrincipal } from "./lib/demoAuth";
+import { hasOrderAuthority, requireRole, type DemoPrincipal } from "./lib/demoAuth";
 import { requireTenant } from "./lib/finance";
 import { alignFrameHashes } from "./lib/copyDetection";
 
 async function principal(ctx: QueryCtx, identity: string) {
   const member = await requireRole(ctx, identity, ["buyer", "controller", "contributor"]);
-  if (identity === "finance-agent" || member.roles.includes("finance-agent")) throw new Error("forbidden");
+  if (member.roles.includes("finance-agent")) throw new Error("forbidden");
   return member;
 }
 
@@ -15,8 +15,10 @@ async function accessible(ctx: QueryCtx, member: DemoPrincipal, id: Id<"submissi
   const submission = await ctx.db.get(id);
   if (!submission) throw new Error("submission_not_found");
   requireTenant(member, submission);
-  const order = member.roles.includes("buyer") ? await ctx.db.get(submission.orderId) : null;
-  if (!member.roles.includes("controller") && order?.buyerTokenIdentifier !== member.tokenIdentifier && submission.contributorTokenIdentifier !== member.tokenIdentifier) {
+  const order = await ctx.db.get(submission.orderId);
+  if (!order) throw new Error("order_not_found");
+  requireTenant(member, order);
+  if (!hasOrderAuthority(member, order) && submission.contributorTokenIdentifier !== member.tokenIdentifier) {
     throw new Error("submission_not_owned");
   }
   return submission;

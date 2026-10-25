@@ -366,13 +366,13 @@ describe("Nessie fourth witness projection", () => {
     });
   });
 
-  it("lets the owning buyer review bank evidence while refusing contributors, other buyers and tenants", async () => {
+  it("lets the owning buyer review bank evidence for organization peers while refusing contributors and foreign tenants", async () => {
     const f = await setup();
     expect(await f.t.query(ref("reconciliation4Way"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("reconciliation4Way"), f.scope));
     expect(await f.t.query(ref("bankExceptions"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("bankExceptions"), f.scope));
     await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
-    await expect(f.t.query(ref("reconciliation4Way"), {...f.scope, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
-    await expect(f.t.query(ref("bankExceptions"), {...f.scope, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
+    expect(await f.t.query(ref("reconciliation4Way"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("reconciliation4Way"), f.scope));
+    expect(await f.t.query(ref("bankExceptions"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("bankExceptions"), f.scope));
     for (const demoIdentity of ["contributor"]) {
       await expect(f.t.query(ref("reconciliation4Way"), {...f.scope, demoIdentity})).rejects.toThrow("forbidden");
       await expect(f.t.query(ref("bankExceptions"), {...f.scope, demoIdentity})).rejects.toThrow("forbidden");
@@ -385,8 +385,8 @@ describe("Nessie fourth witness projection", () => {
       const {_id, _creationTime, ...fields} = order;
       return ctx.db.insert("orders", {...fields, organizationId: foreignId, publicId: "synthetic-foreign-bank-order"});
     });
-    await expect(f.t.query(ref("reconciliation4Way"), {...f.scope, orderId})).rejects.toThrow();
-    await expect(f.t.query(ref("bankExceptions"), {...f.scope, orderId})).rejects.toThrow();
+    for (const demoIdentity of ["buyer", "controller", "finance-agent"]) await expect(f.t.query(ref("reconciliation4Way"), {...f.scope, demoIdentity, orderId: orderId})).rejects.toThrow("cross_organization_access");
+    for (const demoIdentity of ["buyer", "controller", "finance-agent"]) await expect(f.t.query(ref("bankExceptions"), {...f.scope, demoIdentity, orderId: orderId})).rejects.toThrow("cross_organization_access");
   });
 });
 

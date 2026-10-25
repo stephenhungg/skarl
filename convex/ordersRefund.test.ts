@@ -5,7 +5,7 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { createFulfillmentJournal, accountBalance } from "../packages/ledger/src/index";
-import { loadLedger, recordJournal } from "./lib/finance";
+import { loadLedger, recordJournal, paymentBinding } from "./lib/finance";
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
 const refunds = { approve: makeFunctionReference<"mutation">("refunds:approve"), claim: makeFunctionReference<"mutation">("refunds:claim"),
   recordObservation: makeFunctionReference<"mutation">("refunds:recordObservation"), forOrder: makeFunctionReference<"query">("refunds:forOrder") };
@@ -62,10 +62,10 @@ describe("buyer refund proposals with synthetic confirmed funding", () => {
     await expect(f.t.mutation(api.orders.cancelRemainder, { ...cancel(f.orderId), demoIdentity })).rejects.toThrow();
     expect(await f.t.run(ctx => ctx.db.query("paymentCommands").collect())).toHaveLength(0);
   });
-  it("rejects a different buyer and a foreign organization", async () => {
+  it("allows another buyer in the organization and rejects a foreign organization", async () => {
     const f = await setup();
     await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerTokenIdentifier: "other" }));
-    await expect(f.t.mutation(api.orders.cancelRemainder, cancel(f.orderId))).rejects.toThrow("order_not_found");
+    expect(await f.t.mutation(api.orders.cancelRemainder, cancel(f.orderId))).toMatchObject({ ok: true });
     await f.t.run(async ctx => {
       const organizationId = await ctx.db.insert("organizations", { name: "other", createdByTokenIdentifier: "other", status: "active" });
       await ctx.db.patch(f.orderId, { buyerTokenIdentifier: "demo:skarl:buyer", organizationId });
@@ -94,7 +94,7 @@ describe("buyer refund proposals with synthetic confirmed funding", () => {
 });
 
 const claimArgs = (commandId: import("./_generated/dataModel").Id<"paymentCommands">) => ({
-  serviceSecret: secret, commandId, demoIdentity: "controller", senderAddress: treasury, treasuryAddress: treasury,
+  serviceSecret: secret, commandId, demoIdentity: "buyer", senderAddress: treasury, treasuryAddress: treasury,
   claimId: "synthetic-refund-claim-123456",
 });
 const observedRefund = (amountAtomic = 90_000_000n) => ({ network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
@@ -105,14 +105,14 @@ describe("independent controller-approved refund execution (synthetic evidence)"
   it("claims once, binds the exact original buyer/amount, and posts a balanced refund_paid journal only after observation", async () => {
     const f = await setup(true, true), proposal = await f.t.mutation(api.orders.cancelRemainder, cancel(f.orderId));
     const commandId = proposal.paymentCommandId;
-    expect(await f.t.query(refunds.forOrder, { demoIdentity: "controller", orderId: f.orderId }))
+    expect(await f.t.query(refunds.forOrder, { demoIdentity: "buyer", orderId: f.orderId }))
       .toMatchObject({ commandId, status: "proposed", amountAtomic: "90000000", recipientAddress: payer, executionAvailable: false });
     await expect(f.t.mutation(refunds.claim, claimArgs(commandId))).rejects.toThrow("approval_invalidated");
-    const approved = await f.t.mutation(refunds.approve, { demoIdentity: "controller", commandId, reason: "Refund the unused quota" });
+    const approved = await f.t.mutation(refunds.approve, { demoIdentity: "buyer", commandId, reason: "Refund the unused quota" });
     expect(approved.ok).toBe(true);
     expect(await f.t.query(refunds.forOrder, { demoIdentity: "buyer", orderId: f.orderId }))
       .toMatchObject({ status: "approved", executionAvailable: true });
-    expect(await f.t.mutation(refunds.approve, { demoIdentity: "controller", commandId, reason: "Refund the unused quota" })).toMatchObject({ replayed: true });
+    expect(await f.t.mutation(refunds.approve, { demoIdentity: "buyer", commandId, reason: "Refund the unused quota" })).toMatchObject({ replayed: true });
     const claim = await f.t.mutation(refunds.claim, claimArgs(commandId));
     expect(claim).toMatchObject({ recipientAddress: payer, amountAtomic: "90000000", senderAddress: treasury, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS });
     for (const claimId of [claim.claimId, "another-refund-claim-123456"]) {
@@ -132,22 +132,22 @@ describe("independent controller-approved refund execution (synthetic evidence)"
       expect(accountBalance(ledger, "asset:usdc", { orderId: f.orderId })).toBe(10_000_000n);
       expect(ledger.journals.filter(journal => journal.kind === "refund_paid")).toHaveLength(1);
     });
-    expect(await f.t.query(refunds.forOrder, { demoIdentity: "controller", orderId: f.orderId }))
+    expect(await f.t.query(refunds.forOrder, { demoIdentity: "buyer", orderId: f.orderId }))
       .toMatchObject({ status: "confirmed", executionAvailable: false, txHash: observedRefund().txHash });
-    const reconciliation = await f.t.query(api.payments.reconciliation, { demoIdentity: "controller", orderId: f.orderId });
+    const reconciliation = await f.t.query(api.payments.reconciliation, { demoIdentity: "buyer", orderId: f.orderId });
     expect(reconciliation.matches.some(match => match.eventKey === `refund_paid:${commandId}`)).toBe(true);
   });
 
-  it("records buyer self-approval and agent refusal, and rejects revoked authority or altered bindings before a claim", async () => {
+  it("records agent refusal and allows independent buyer review, and rejects revoked authority or altered bindings before a claim", async () => {
     const f = await setup(), proposal = await f.t.mutation(api.orders.cancelRemainder, cancel(f.orderId)), commandId = proposal.paymentCommandId;
-    for (const [demoIdentity, code] of [["buyer", "self_approval_forbidden"], ["finance-agent", "agent_cannot_approve"]]) {
+    for (const [demoIdentity, code] of [["finance-agent", "agent_cannot_approve"]]) {
       expect(await f.t.mutation(refunds.approve, { demoIdentity, commandId, reason: "Synthetic adversarial attempt" })).toEqual({ ok: false, code });
     }
-    expect((await f.t.run(ctx => ctx.db.query("auditEvents").collect())).filter(event => event.action === "refund_approval_refused")).toHaveLength(2);
-    const approval = await f.t.mutation(refunds.approve, { demoIdentity: "controller", commandId, reason: "Unused quota refund" });
+    expect((await f.t.run(ctx => ctx.db.query("auditEvents").collect())).filter(event => event.action === "refund_approval_refused")).toHaveLength(1);
+    const approval = await f.t.mutation(refunds.approve, { demoIdentity: "buyer", commandId, reason: "Unused quota refund" });
     if (!approval.ok) throw new Error("approval expected");
     await f.t.run(ctx => ctx.db.patch(approval.approvalId, { status: "revoked" }));
-    expect(await f.t.query(refunds.forOrder, { demoIdentity: "controller", orderId: f.orderId })).toMatchObject({ executionAvailable: false });
+    expect(await f.t.query(refunds.forOrder, { demoIdentity: "buyer", orderId: f.orderId })).toMatchObject({ executionAvailable: false });
     await expect(f.t.mutation(refunds.claim, claimArgs(commandId))).rejects.toThrow("approval_invalidated");
     await f.t.run(ctx => ctx.db.patch(approval.approvalId, { status: "approved" }));
     await f.t.run(ctx => ctx.db.patch(commandId, { amountAtomic: 1n }));
@@ -157,29 +157,29 @@ describe("independent controller-approved refund execution (synthetic evidence)"
 
   it("refuses cross-tenant attempt bindings and never exposes a foreign approval snapshot", async () => {
     const f = await setup(), proposal = await f.t.mutation(api.orders.cancelRemainder, cancel(f.orderId)), commandId = proposal.paymentCommandId;
-    const approval = await f.t.mutation(refunds.approve, { demoIdentity: "controller", commandId, reason: "Unused quota refund" });
+    const approval = await f.t.mutation(refunds.approve, { demoIdentity: "buyer", commandId, reason: "Unused quota refund" });
     if (!approval.ok) throw new Error("approval expected");
     const claim = await f.t.mutation(refunds.claim, claimArgs(commandId));
     const other = await f.t.run(ctx => ctx.db.insert("organizations", { name: "foreign", createdByTokenIdentifier: "other", status: "active" }));
     await f.t.run(ctx => ctx.db.patch(claim.attemptId, { organizationId: other }));
-    await expect(f.t.query(refunds.forOrder, { demoIdentity: "controller", orderId: f.orderId })).rejects.toThrow("refund_attempt_binding_changed");
+    await expect(f.t.query(refunds.forOrder, { demoIdentity: "buyer", orderId: f.orderId })).rejects.toThrow("refund_attempt_binding_changed");
     await expect(f.t.mutation(refunds.recordObservation, { serviceSecret: secret, attemptId: claim.attemptId, observation: observedRefund(100_000_000n) }))
       .rejects.toThrow("refund_not_dispatched");
     await f.t.run(ctx => ctx.db.patch(claim.attemptId, { organizationId: f.organizationId }));
     await f.t.run(ctx => ctx.db.patch(approval.approvalId, { organizationId: other }));
-    await expect(f.t.query(refunds.forOrder, { demoIdentity: "controller", orderId: f.orderId })).rejects.toThrow("approval_source_changed");
+    await expect(f.t.query(refunds.forOrder, { demoIdentity: "buyer", orderId: f.orderId })).rejects.toThrow("approval_source_changed");
   });
 
   it("refuses wrong treasury, changed buyer, expired approval and forged or underconfirmed chain facts without posting", async () => {
     const f = await setup(true, true), proposal = await f.t.mutation(api.orders.cancelRemainder, cancel(f.orderId)), commandId = proposal.paymentCommandId;
-    const approval = await f.t.mutation(refunds.approve, { demoIdentity: "controller", commandId, reason: "Unused quota refund" });
+    const approval = await f.t.mutation(refunds.approve, { demoIdentity: "buyer", commandId, reason: "Unused quota refund" });
     if (!approval.ok) throw new Error("approval expected");
     await expect(f.t.mutation(refunds.claim, { ...claimArgs(commandId), senderAddress: payer })).rejects.toThrow("wrong_treasury_wallet");
     await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerWalletAddress: treasury }));
     await expect(f.t.mutation(refunds.claim, claimArgs(commandId))).rejects.toThrow("refund_source_changed");
     await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerWalletAddress: payer }));
     await f.t.run(ctx => ctx.db.patch(approval.approvalId, { expiresAt: Date.now() - 1 }));
-    expect(await f.t.query(refunds.forOrder, { demoIdentity: "controller", orderId: f.orderId })).toMatchObject({ executionAvailable: false });
+    expect(await f.t.query(refunds.forOrder, { demoIdentity: "buyer", orderId: f.orderId })).toMatchObject({ executionAvailable: false });
     await expect(f.t.mutation(refunds.claim, claimArgs(commandId))).rejects.toThrow("approval_invalidated");
     await f.t.run(ctx => ctx.db.patch(approval.approvalId, { expiresAt: Date.now() + 60_000 }));
     const claim = await f.t.mutation(refunds.claim, claimArgs(commandId));
@@ -191,4 +191,53 @@ describe("independent controller-approved refund execution (synthetic evidence)"
     expect((await f.t.run(ctx => ctx.db.query("journalEntries").collect())).filter(entry => entry.kind === "refund_paid")).toHaveLength(0);
     expect((await f.t.run(ctx => ctx.db.get(commandId)))!.status).toBe("reconciling");
   });
+});
+
+
+it("completes buyer refund review without an active legacy controller and records both service and buyer intent", async () => {
+  const f = await setup();
+  await f.t.run(async ctx => {
+    const legacy = (await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", "demo:skarl:controller")).unique())!;
+    await ctx.db.patch(legacy._id, { status: "revoked" });
+  });
+  const proposal = await f.t.mutation(api.orders.cancelRemainder, cancel(f.orderId));
+  const commandId = proposal.paymentCommandId;
+  await f.t.run(async ctx => {
+    const command = (await ctx.db.get(commandId))!;
+    expect(command.requesterTokenIdentifier).toBe("demo:skarl:finance-agent");
+    expect(command.requestedBy).toEqual({ kind: "service", identity: "demo:skarl:finance-agent" });
+    const events = await ctx.db.query("auditEvents").collect();
+    expect(events.find(row => row.action === "buyer_cancellation_requested")?.actor).toEqual({ kind: "human", identity: "demo:skarl:buyer" });
+    expect(events.find(row => row.action === "buyer_refund_proposed")?.actor).toEqual(command.requestedBy);
+  });
+  expect(await f.t.mutation(refunds.approve, { demoIdentity: "buyer", commandId, reason: "Review exact unused funds" })).toMatchObject({ ok: true });
+  const claim = await f.t.mutation(refunds.claim, claimArgs(commandId));
+  expect(claim.amountAtomic).toBe("100000000");
+  await f.t.mutation(refunds.recordObservation, { serviceSecret: secret, attemptId: claim.attemptId, observation: observedRefund(100_000_000n) });
+  expect(await f.t.query(refunds.forOrder, { demoIdentity: "buyer", orderId: f.orderId })).toMatchObject({ status: "confirmed" });
+});
+
+it("keeps legacy buyer-proposed refund self-approval forbidden", async () => {
+  const f = await setup(), proposal = await f.t.mutation(api.orders.cancelRemainder, cancel(f.orderId));
+  await f.t.run(async ctx => {
+    const command = (await ctx.db.get(proposal.paymentCommandId))!;
+    const requesterTokenIdentifier = "demo:skarl:buyer";
+    await ctx.db.patch(command._id, { requesterTokenIdentifier, requestedBy: { kind: "human", identity: requesterTokenIdentifier },
+      bindingHash: paymentBinding({ ...command, requesterTokenIdentifier }) });
+    const audit = (await ctx.db.query("auditEvents").withIndex("by_event_key", q => q.eq("organizationId", f.organizationId).eq("eventKey", `refund_proposed:${f.orderId}`)).unique())!;
+    await ctx.db.patch(audit._id, { actor: { kind: "human", identity: requesterTokenIdentifier } });
+  });
+  expect(await f.t.mutation(refunds.approve, { demoIdentity: "buyer", commandId: proposal.paymentCommandId, reason: "Try legacy self approval" }))
+    .toEqual({ ok: false, code: "self_approval_forbidden" });
+  expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
+});
+
+it("rejects a relabeled refund proposer without the distinct buyer cancellation audit", async () => {
+  const f = await setup(), proposal = await f.t.mutation(api.orders.cancelRemainder, cancel(f.orderId));
+  await f.t.run(async ctx => {
+    const request = (await ctx.db.query("auditEvents").withIndex("by_event_key", q => q.eq("organizationId", f.organizationId).eq("eventKey", `cancellation_requested:${f.orderId}`)).unique())!;
+    await ctx.db.delete(request._id);
+  });
+  await expect(f.t.mutation(refunds.approve, { demoIdentity: "buyer", commandId: proposal.paymentCommandId, reason: "Missing authority" })).rejects.toThrow("refund_source_changed");
+  expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
 });

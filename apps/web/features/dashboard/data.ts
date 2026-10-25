@@ -9,8 +9,7 @@ export { api };
 export type { Id };
 
 /** Demo selector from docs/dashboard-api.md. Impersonable on purpose; this is not authentication. */
-// Keep the old symbol for route compatibility; the happy-path persona is the buyer.
-export const CONTROLLER = "buyer" as const;
+export const BUYER = "buyer" as const;
 export const FINANCE_AGENT = "finance-agent" as const;
 
 export type OrderSummary = FunctionReturnType<typeof api.dashboard.orderSummary>;
@@ -23,7 +22,7 @@ export type ExceptionItem = FunctionReturnType<typeof api.exceptions.list>[numbe
 
 /** The staged demo order. `undefined` while loading, `null` when the deployment has no seeded order. */
 export function useOrderId(): Id<"orders"> | null | undefined {
-  const context = useQuery(api.dashboard.demoContext, { demoIdentity: CONTROLLER });
+  const context = useQuery(api.dashboard.demoContext, { demoIdentity: BUYER });
   const [selected, setSelected] = useState<Id<"orders"> | null>(null);
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -39,7 +38,7 @@ export function useOrderId(): Id<"orders"> | null | undefined {
   return !ready ? undefined : selected ?? (context === undefined ? undefined : context?.orderId ?? null);
 }
 
-const scoped = (orderId: Id<"orders"> | null | undefined) => (orderId ? { demoIdentity: CONTROLLER, orderId } : "skip" as const);
+const scoped = (orderId: Id<"orders"> | null | undefined) => (orderId ? { demoIdentity: BUYER, orderId } : "skip" as const);
 
 export function useOrderData(orderId: Id<"orders"> | null | undefined) {
   const args = scoped(orderId);

@@ -6,7 +6,7 @@ import { Status } from "@/components/glaze/ui/status";
 import { Textarea } from "@/components/glaze/ui/textarea";
 import { toast } from "@/components/glaze/ui/toast";
 import { cn } from "@/lib/glaze/utils";
-import { api, CONTROLLER, useOrderId, useRuns, type AgentRun, type Id } from "./data";
+import { api, BUYER, useOrderId, useRuns, type AgentRun, type Id } from "./data";
 import { formatMs, formatUsdc, humanize } from "./format";
 import { Loading, PageHeader, QueryBoundary, Section, Unavailable } from "./ui";
 
@@ -137,7 +137,7 @@ export function Agent() {
     setPrompt(text); setBusy(true);
     try {
       // One stable id per deliberate request, so a retry replays instead of running twice.
-      await toast.promise(run({ demoIdentity: CONTROLLER, orderId, requestId: `ui-${crypto.randomUUID()}`, prompt: text.trim() }), {
+      await toast.promise(run({ demoIdentity: BUYER, orderId, requestId: `ui-${crypto.randomUUID()}`, prompt: text.trim() }), {
         loading: "Finance agent working", success: "Answer ready", fail: "The agent could not start" });
     } catch { /* reported by the toast */ } finally { setBusy(false); }
   }
@@ -187,7 +187,7 @@ const JOB: Record<string, { label: string; every: string }> = {
 
 /** Stephen's hosted jobs. Advisory operating records: they observe and propose, never approve or sign. */
 function BackgroundJobs({ orderId }: { orderId: Id<"orders"> }) {
-  const rows = useQuery(api.scheduledData.snapshots, { demoIdentity: CONTROLLER, orderId });
+  const rows = useQuery(api.scheduledData.snapshots, { demoIdentity: BUYER, orderId });
   if (!rows || rows.length === 0) return null;
   const ago = (ms: number) => { const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`; };
   return (

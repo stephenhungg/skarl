@@ -7,7 +7,7 @@ import { Badge } from "@/components/glaze/ui/badge";
 import { Button } from "@/components/glaze/ui/button";
 import { ChartContainer, ChartFrame, ChartPlot, linearPath } from "@/components/glaze/ui/chart";
 import { Timeline } from "@/components/glaze/ui/timeline";
-import { api, CONTROLLER, type Id } from "@/features/dashboard/data";
+import { api, BUYER, type Id } from "@/features/dashboard/data";
 import { formatMs, humanize } from "@/features/dashboard/format";
 import { cn } from "@/lib/glaze/utils";
 import { checkSpokenLiveness } from "../../../../convex/lib/spokenLiveness";
@@ -17,7 +17,7 @@ type Quality = FunctionReturnType<typeof api.datasets.sampleQuality>;
 type Receipt = FunctionReturnType<typeof api.witnessReceipt.forSubmission>;
 type Trace = NonNullable<FunctionReturnType<typeof api.media.submissionEvidence>["sensorTrace"]>;
 
-export function ReplayEvidencePanels({ submissionId, currentTimeMs, onSeek, demoIdentity = CONTROLLER, refreshKey = 0 }: {
+export function ReplayEvidencePanels({ submissionId, currentTimeMs, onSeek, demoIdentity = BUYER, refreshKey = 0 }: {
   submissionId: Id<"submissions">; currentTimeMs: number; onSeek: (tMs: number) => void; demoIdentity?: string; refreshKey?: number;
 }) {
   const args = { demoIdentity, submissionId };

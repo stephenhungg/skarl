@@ -9,7 +9,7 @@ import { Status } from "@/components/glaze/ui/status";
 import { Textarea } from "@/components/glaze/ui/textarea";
 import { Kbd } from "@/components/glaze/ui/kbd";
 import { cn } from "@/lib/glaze/utils";
-import { api, CONTROLLER, useOrderData, useOrderId, type Id } from "./data";
+import { api, BUYER, useOrderData, useOrderId, type Id } from "./data";
 import { formatMs, humanize, shortHash } from "./format";
 import { SubmissionStatus } from "./submissions";
 import { ConfirmDialog, Loading, PageHeader, Unavailable } from "./ui";
@@ -36,8 +36,8 @@ const FINDING = {
 export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
   const orderId = useOrderId();
   const { summary, submissions } = useOrderData(orderId);
-  const report = useQuery(api.submissions.getReport, { demoIdentity: CONTROLLER, submissionId });
-  const media = useQuery(api.media.submissionEvidence, { demoIdentity: CONTROLLER, submissionId });
+  const report = useQuery(api.submissions.getReport, { demoIdentity: BUYER, submissionId });
+  const media = useQuery(api.media.submissionEvidence, { demoIdentity: BUYER, submissionId });
   const submission = submissions?.find(s => s._id === submissionId);
   const video = useRef<HTMLVideoElement>(null);
   const stopAt = useRef<number | null>(null);
@@ -217,7 +217,7 @@ function Transcript({ segments, now, onSeek }: { segments: { startMs: number; en
 
 function DuplicateCompare({ submissionId, matches }: { submissionId: Id<"submissions">; matches: Report["duplicate"]["matches"] }) {
   const top = matches[0];
-  const pair = useQuery(api.media.duplicatePair, top ? { demoIdentity: CONTROLLER, submissionId, matchingSubmissionId: top.submissionId as Id<"submissions"> } : "skip");
+  const pair = useQuery(api.media.duplicatePair, top ? { demoIdentity: BUYER, submissionId, matchingSubmissionId: top.submissionId as Id<"submissions"> } : "skip");
   if (!top) return null;
   const frames = (pair?.matchedFrames ?? []).filter(f => f.leftFrame?.url && f.rightFrame?.url).slice(0, 4);
   return (
@@ -264,7 +264,7 @@ function Decision({ submissionId, status, report, verificationOnly }: { submissi
 
   /** Sends one decision. Throws on refusal so a confirm dialog can stay open with the reason. */
   async function send(decision: keyof typeof REASON) {
-    const response = await review({ demoIdentity: CONTROLLER, submissionId, decision, reasonCode: REASON[decision], note: note.trim() });
+    const response = await review({ demoIdentity: BUYER, submissionId, decision, reasonCode: REASON[decision], note: note.trim() });
     if (!response.ok) {
       const text = `Refused: ${humanize(response.code)}.`;
       setResult({ ok: false, text });

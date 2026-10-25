@@ -35,13 +35,15 @@ export function parseChainIdentity(identity: string | null | undefined) {
 export const basescanTx = (txHash: string) => `https://sepolia.basescan.org/tx/${txHash}`;
 export const basescanAddress = (address: string) => `https://sepolia.basescan.org/address/${address}`;
 
-export const humanize = (code: string) => code.replace(/[_:]+/g, " ").replace(/^\w/, c => c.toUpperCase());
+const buyerWording = (text: string) => text.replace(/\bcontroller\b/gi, word => word[0] === "C" ? "Buyer" : "buyer");
+export const humanize = (code: string) => buyerWording(code.replace(/[_:]+/g, " ")).replace(/^\w/, c => c.toUpperCase());
 
 /**
  * Backend audit reasons are machine strings ("needs_review: red-cup-pickup=unobservable, ..."). Turn them into a
  * sentence a person can scan without changing what they say.
  */
 export function readableReason(reason: string) {
+  reason = buyerWording(reason);
   const [head, ...rest] = reason.split(": ");
   if (!rest.length) return /^[a-z0-9_:-]+$/.test(reason) ? humanize(reason) : reason;
   const body = rest.join(": ");

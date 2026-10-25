@@ -49,7 +49,7 @@ Method: grep of `apps/web/app`, `apps/web/features` and `apps/web/components` fo
 
 ### Build plan
 
-1. **Matthew — merge PR #2** (`matthew/dashboard`: scenario lab, contributor capture view, order switcher, phone evidence). It is open and `CONFLICTING` with main: rebase on main, keep main's buyer/controller auth and auto-pay changes, re-run `pnpm check`, merge.
+1. **Matthew — merge PR #2** (`matthew/dashboard`: scenario lab, contributor capture view, order switcher, phone evidence). It is open and `CONFLICTING` with main: rebase on main, keep main's buyer authorization and auto-pay changes, re-run `pnpm check`, merge.
 2. **Proof-page worker** — new route `apps/web/app/dashboard/proof/page.tsx` plus cards in `apps/web/features/dashboard/proof/*` (new files only, to avoid colliding with in-flight auth and PR #2 changes). One section per sponsor with a sponsor heading, G1 and G3–G11 and G13, a link to it in the dashboard nav.
 3. **Tax worker** — G12, already queued.
 
@@ -89,7 +89,7 @@ Scenario lab: run `bank_mismatch` → four-way table turns red live (Capital One
 ### Coinbase: x402 Payment Agents
 - **Pay**: x402 funding timeline (402 challenge → signed payment → CDP facilitator settlement → CDP webhook received → chain observation). `payments.fundingStatus`, `chainWitness.reconciliationWithWitness`, `chainWitness.webhookExceptions`.
 - **Policy engine**: agent wallet card with address, policy ID, per-payout cap, and the two live `policy_violation` rejections (static evidence from `docs/agent-wallet.md` + status).
-- Payout executor badge: `controller_wallet` vs `cdp_agent`, with the payout tx link. `payments.payoutAttempt`, `activity.payoutHistory`.
+- Payout executor badge: display **Buyer wallet** for legacy `controller_wallet`, or **CDP agent** for `cdp_agent`, with the payout tx link. `payments.payoutAttempt`, `activity.payoutHistory`.
 - **Earn**: evidence-sale (x402 Bazaar) count and receipts once live (`/api/samples/[id]/evidence`).
 - **Agent-native**: "Connect your agent" panel with the MCP URL, A2A card and Wallet MCP flow (pending deploy, see `docs/agents.md` and `docs/mcp.md` once merged).
 - Builder feedback link (`docs/coinbase-submission.md`).

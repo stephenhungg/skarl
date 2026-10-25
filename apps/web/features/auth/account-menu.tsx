@@ -7,7 +7,7 @@ import { useConvexConfig } from "@/components/convex-provider";
 import { api } from "../../../../convex/_generated/api";
 import { useSession } from "./session";
 
-type HumanRole = "buyer" | "contributor" | "controller";
+type HumanRole = "buyer" | "contributor";
 const actionClass = "block w-full rounded-[8px] px-3 py-2 text-left text-[14px] hover:bg-mist disabled:opacity-50";
 
 export function AccountMenu({ onDark = false }: { onDark?: boolean }) {
@@ -24,6 +24,9 @@ function ConnectedAccountMenu({ onDark }: { onDark: boolean }) {
   if (isLoading || me === undefined) return <span className="mono text-[12px] opacity-60">Account…</span>;
   if (!me.userId) return <Link href="/signin" className={`cut-regular rounded-[8px] px-3 py-2 text-[14px] ${onDark ? "text-paper hover:bg-paper/10" : "text-ink hover:bg-mist"}`}>Sign in</Link>;
 
+  const humanRoles = [...new Set(me.roles.flatMap(role =>
+    role === "buyer" || role === "controller" ? ["Buyer"] : role === "contributor" ? ["Contributor"] : []))];
+
   async function logOut() {
     setBusy(true);
     setError("");
@@ -38,10 +41,10 @@ function ConnectedAccountMenu({ onDark }: { onDark: boolean }) {
       </summary>
       <div className="absolute right-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-[14px] border border-haze bg-paper p-3 text-ink shadow-xl">
         <p className="cut-medium break-all px-3 pt-1 text-[14px]">{me.email || "Signed in"}</p>
-        <p className="mono mb-3 px-3 pt-1 text-[11px] text-slate-700">{me.roles.length ? me.roles.join(" · ") : "No role claimed"}</p>
+        <p className="mono mb-3 px-3 pt-1 text-[11px] text-slate-700">{humanRoles.length ? humanRoles.join(" · ") : "No role claimed"}</p>
         <RoleClaims />
         <div className="mt-2 border-t border-haze pt-2">
-          <Link href="/dashboard" className={actionClass}>Review</Link>
+          <Link href="/dashboard" className={actionClass}>Buyer dashboard</Link>
           <Link href="/contribute" className={actionClass}>Contributor view</Link>
           <button type="button" className={actionClass} disabled={busy} onClick={() => void logOut()}>{busy ? "Signing out…" : "Sign out"}</button>
         </div>
@@ -57,8 +60,9 @@ export function RoleClaims() {
   const [busy, setBusy] = useState<HumanRole | null>(null);
   const [error, setError] = useState("");
   if (!me?.userId) return null;
-  const roles: HumanRole[] = ["buyer"];
-  if (!me.roles.includes("controller")) roles.push("contributor");
+  const roles: HumanRole[] = [];
+  if (!me.roles.includes("contributor")) roles.push("buyer");
+  if (!me.roles.includes("buyer") && !me.roles.includes("controller")) roles.push("contributor");
   // Legacy controller memberships remain supported; buyers need no separate role.
   const available = roles.filter(role => !me.roles.includes(role));
 

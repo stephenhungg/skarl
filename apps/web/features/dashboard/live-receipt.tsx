@@ -1,7 +1,7 @@
 "use client";
 import { useQuery } from "convex/react";
 import { AssetReceiptView } from "@/features/receipt/receipt";
-import { api, CONTROLLER, useAudit, useOrderData, useOrderId, useReconciliation, type Id } from "./data";
+import { api, BUYER, useAudit, useOrderData, useOrderId, useReconciliation, type Id } from "./data";
 import { toAssetReceipt } from "./asset-receipt";
 import { Loading, Unavailable } from "./ui";
 
@@ -11,8 +11,8 @@ export function LiveReceipt({ submissionId }: { submissionId: Id<"submissions"> 
   const { submissions, payables } = useOrderData(orderId);
   const audit = useAudit(orderId);
   const reconciliation = useReconciliation(orderId);
-  const report = useQuery(api.submissions.getReport, { demoIdentity: CONTROLLER, submissionId });
-  const media = useQuery(api.media.submissionEvidence, { demoIdentity: CONTROLLER, submissionId });
+  const report = useQuery(api.submissions.getReport, { demoIdentity: BUYER, submissionId });
+  const media = useQuery(api.media.submissionEvidence, { demoIdentity: BUYER, submissionId });
   const submission = submissions?.find(s => s._id === submissionId);
   if (submissions !== undefined && !submission) return <Unavailable title="Clip not found" description="It is not part of the staged order." />;
   if (!submission || report === undefined || media === undefined || audit === undefined) return <Loading rows={8} />;

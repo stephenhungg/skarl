@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/glaze/ui/badge";
 import { Button } from "@/components/glaze/ui/button";
 import { Switch } from "@/components/glaze/ui/switch";
-import { api, CONTROLLER, type Id } from "@/features/dashboard/data";
+import { api, BUYER, type Id } from "@/features/dashboard/data";
 import { QueryBoundary } from "@/features/dashboard/ui";
 import { formatMs } from "@/features/dashboard/format";
 import { ReplayEvidencePanels } from "./evidence-panels";
@@ -31,8 +31,8 @@ const connections = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10
 
 export default function ReplayStudio({ submissionId }: { submissionId: Id<"submissions"> }) {
   const convex = useConvex();
-  const media = useQuery(api.media.submissionEvidence, { demoIdentity: CONTROLLER, submissionId });
-  const report = useQuery(api.submissions.getReport, { demoIdentity: CONTROLLER, submissionId });
+  const media = useQuery(api.media.submissionEvidence, { demoIdentity: BUYER, submissionId });
+  const report = useQuery(api.submissions.getReport, { demoIdentity: BUYER, submissionId });
   const video = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const adapters = useRef<Adapters>({});
@@ -73,7 +73,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
 
   const refreshRuns = useCallback(async () => {
     try {
-      const value = await convex.query(runsQuery, { demoIdentity: CONTROLLER, submissionId });
+      const value = await convex.query(runsQuery, { demoIdentity: BUYER, submissionId });
       if (mounted.current) { setRuns(value); setApiStatus("ready"); }
     } catch {
       if (mounted.current) setApiStatus("unavailable");
@@ -238,12 +238,12 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
   };
 
   const persist = async (file: AnnotationFile, summary: AnnotationSummary) => {
-    const uploadUrl = await convex.mutation(uploadMutation, { demoIdentity: CONTROLLER, submissionId });
+    const uploadUrl = await convex.mutation(uploadMutation, { demoIdentity: BUYER, submissionId });
     const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(file) });
     if (!response.ok) throw new Error(`Annotation upload failed (${response.status}).`);
     const { storageId } = await response.json() as { storageId: Id<"_storage"> };
     if (!storageId) throw new Error("Annotation storage did not return an ID.");
-    await convex.mutation(saveMutation, { demoIdentity: CONTROLLER, submissionId, storageId, summary });
+    await convex.mutation(saveMutation, { demoIdentity: BUYER, submissionId, storageId, summary });
   };
 
   const saveAnnotations = async () => {
@@ -252,7 +252,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
     let decoder: HTMLVideoElement | undefined;
     try {
       // Recheck deployment before any model downloads or uploads.
-      await convex.query(runsQuery, { demoIdentity: CONTROLLER, submissionId });
+      await convex.query(runsQuery, { demoIdentity: BUYER, submissionId });
       const sourceHash = report?.sourceHash;
       if (!sourceHash || !/^[a-f0-9]{64}$/i.test(sourceHash)) throw new Error("The verified source SHA-256 is unavailable. No annotations were saved.");
       await ensureLayer("hands"); await ensureLayer("objects");

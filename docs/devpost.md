@@ -1,6 +1,6 @@
 # Skarl — Every claim has a witness
 
-**Skarl is the autonomous settlement desk for human-data companies. Independent witnesses must agree before anything moves.** Agents propose, a rule the buyer signed approves, the AI never approves itself. The buyer reviews exceptions.
+**Skarl is the autonomous settlement desk for human-data companies. Independent witnesses must agree before anything moves.** The agent proposes; the buyer-signed policy (or the buyer in review) approves; an independent CDP cap guards execution. The AI never approves itself. The buyer reviews exceptions.
 
 [Live testnet demo](https://skarl.devshardat.work) · [Repository](https://github.com/stephenhungg/skarl) · [One-page thesis and witness table](thesis.md) · [Coinbase submission](coinbase-submission.md) · [Demo script](demo-script.md) · [Setup](setup.md)
 

@@ -43,12 +43,12 @@ async function user(t: Test, email: string, verified = false) {
   return { signedIn, userId, tokenIdentifier: `auth:${userId}` };
 }
 
-async function proposedIntent(f: Awaited<ReturnType<typeof setup>>, requesterTokenIdentifier = demoToken("finance-agent")) {
+async function proposedIntent(f: Awaited<ReturnType<typeof setup>>, requesterTokenIdentifier = demoToken("finance-agent"), contributorTokenIdentifier = demoToken("contributor")) {
   return f.t.run(async ctx => {
     const now = Date.now();
     const submissionId = await ctx.db.insert("submissions", {
       organizationId: f.organizationId, orderId: f.orderId, taskVersionId: f.taskVersionId,
-      contributorTokenIdentifier: demoToken("contributor"), status: "accepted",
+      contributorTokenIdentifier, status: "accepted",
       clientRequestId: "synthetic-auth-approval", updatedAt: now,
     });
     const decisionId = await ctx.db.insert("reviewDecisions", {
@@ -60,7 +60,7 @@ async function proposedIntent(f: Awaited<ReturnType<typeof setup>>, requesterTok
     const payableId = await ctx.db.insert("payables", {
       organizationId: f.organizationId, orderId: f.orderId, submissionId, decisionId,
       network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
-      contributorTokenIdentifier: demoToken("contributor"), recipientAddress: `0x${"11".repeat(20)}`,
+      contributorTokenIdentifier, recipientAddress: `0x${"11".repeat(20)}`,
       amountAtomic: 750_000n, sourceEventKey: `synthetic:auth:${submissionId}`, status: "accrued", createdAt: now,
     });
     const payable = (await ctx.db.get(payableId))!;
@@ -85,12 +85,12 @@ async function proposedIntent(f: Awaited<ReturnType<typeof setup>>, requesterTok
 }
 
 describe("signed-in principals and optional demo identities", () => {
-  it("never promotes the stored finance service if a bad provisioner removes its agent role", async () => {
+  it.each([{ roles: [] }, { roles: ["buyer"] }, { roles: ["controller", "buyer"] }] as const)("never promotes the stored finance service after its agent role is removed: $roles", async ({ roles }) => {
     const f = await setup();
     await f.t.run(async ctx => {
       const agent = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
         q.eq("tokenIdentifier", demoToken("finance-agent"))).unique();
-      await ctx.db.patch(agent!._id, { roles: ["controller", "buyer"] });
+      await ctx.db.patch(agent!._id, { roles: [...roles] });
     });
     await expect(f.t.run(ctx => requireRole(ctx, "finance-agent", "controller"))).rejects.toThrow("agent_approval_refused");
     const payout = await proposedIntent(f, "auth:independent-requester");
@@ -150,11 +150,11 @@ describe("signed-in principals and optional demo identities", () => {
     expect(await u.signedIn.query(api.dashboard.journal, { demoIdentity: "contributor", orderId: f.orderId })).toEqual([]);
   });
 
-  it("never allows a contributor to approve by passing the controller selector", async () => {
+  it.each(["buyer", "controller"])("never allows a contributor to approve by passing the %s selector", async demoIdentity => {
     const f = await setup(), u = await user(f.t, "contributor@example.test");
     await u.signedIn.mutation(memberships.claimRole, { role: "contributor" });
     const payout = await proposedIntent(f);
-    expect(await u.signedIn.mutation(api.finance.approve, { demoIdentity: "controller", intentId: payout.intentId })).toEqual({ ok: false, code: "forbidden" });
+    expect(await u.signedIn.mutation(api.finance.approve, { demoIdentity, intentId: payout.intentId })).toEqual({ ok: false, code: "forbidden" });
     const state = await f.t.run(async ctx => ({
       approvals: await ctx.db.query("approvals").collect(), command: await ctx.db.get(payout.paymentCommandId),
       audits: await ctx.db.query("auditEvents").collect(),
@@ -166,12 +166,74 @@ describe("signed-in principals and optional demo identities", () => {
     })]));
   });
 
-  it("keeps self-approval forbidden for a real controller", async () => {
-    const f = await setup(), u = await user(f.t, CONTROLLER_EMAIL, true);
-    await u.signedIn.mutation(memberships.claimRole, { role: "controller" });
+  it("keeps self-approval forbidden for a real buyer", async () => {
+    const f = await setup(), u = await user(f.t, "self-proposing-buyer@example.test");
+    await u.signedIn.mutation(memberships.claimRole, { role: "buyer" });
     const payout = await proposedIntent(f, u.tokenIdentifier);
     expect(await u.signedIn.mutation(api.finance.approve, { demoIdentity: "finance-agent", intentId: payout.intentId })).toEqual({ ok: false, code: "self_approval_refused" });
     expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
+  });
+
+  it("denies payout and policy authority to a contributor misprovisioned with buyer", async () => {
+    const f = await setup(), u = await user(f.t, "mixed-role@example.test");
+    await u.signedIn.mutation(memberships.claimRole, { role: "contributor" });
+    // Model a stale/misprovisioned membership; public onboarding must refuse this mix.
+    await f.t.run(async ctx => {
+      const member = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
+        q.eq("tokenIdentifier", u.tokenIdentifier)).unique();
+      await ctx.db.patch(member!._id, { roles: ["buyer", "contributor"] });
+    });
+    const payout = await proposedIntent(f);
+    await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerTokenIdentifier: u.tokenIdentifier }));
+    const orderBefore = await f.t.run(ctx => ctx.db.get(f.orderId));
+    expect(await u.signedIn.mutation(api.finance.approve, { demoIdentity: "controller", intentId: payout.intentId }))
+      .toEqual({ ok: false, code: "conflicting_roles" });
+    await expect(u.signedIn.mutation(api.orders.setAutoPay, { demoIdentity: "buyer", orderId: f.orderId,
+      enabled: true, maxPerClipAtomic: "750000" })).rejects.toThrow("conflicting_roles");
+    await expect(u.signedIn.mutation(api.orders.createOrder, { demoIdentity: "buyer", requestId: "mixed-role-order",
+      title: "Cannot sign a buyer policy", buyerWalletAddress: `0x${"1".repeat(40)}`, quantityRequested: "1",
+      pricePerSampleAtomic: "1000000", contributorRateAtomic: "750000", deadlineAt: Date.now() + 3600000,
+      taskPrompt: "Place the cup upright", criteria: [{ criterionId: "cup", description: "Cup is upright", modality: "visual" }] }))
+      .rejects.toThrow("conflicting_roles");
+    expect(await f.t.run(ctx => ctx.db.get(f.orderId))).toEqual(orderBefore);
+    expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
+    expect((await f.t.run(ctx => ctx.db.get(payout.paymentCommandId)))?.status).toBe("proposed");
+    expect(await f.t.run(ctx => ctx.db.query("orders").collect())).toHaveLength(2);
+  });
+
+  it("records the signed buyer as approver when a legacy demo selector is supplied", async () => {
+    const f = await setup(), u = await user(f.t, "review-buyer@example.test");
+    workflowTest.register(f.t);
+    await u.signedIn.mutation(memberships.claimRole, { role: "buyer" });
+    const payout = await proposedIntent(f);
+    // The seeded order was created by a different buyer in this organization.
+    expect((await f.t.run(ctx => ctx.db.get(f.orderId)))?.buyerTokenIdentifier).toBe(demoToken("buyer"));
+    expect((await u.signedIn.mutation(api.finance.approve, { demoIdentity: "controller", intentId: payout.intentId })).ok).toBe(true);
+    expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toMatchObject([{
+      approverTokenIdentifier: u.tokenIdentifier, status: "approved",
+    }]);
+    const audit = await f.t.run(ctx => ctx.db.query("auditEvents").withIndex("by_event_key", q =>
+      q.eq("organizationId", f.organizationId).eq("eventKey", `approved:${payout.intentId}`)).unique());
+    expect(audit?.actor).toEqual({ kind: "human", identity: u.tokenIdentifier });
+  });
+
+  it("refuses a foreign organization's signed buyer even when it supplies the controller selector", async () => {
+    const f = await setup(), u = await user(f.t, "foreign-buyer@example.test");
+    await u.signedIn.mutation(memberships.claimRole, { role: "buyer" });
+    await f.t.run(async ctx => {
+      const organizationId = await ctx.db.insert("organizations", { name: "Foreign buyer organization", status: "active",
+        createdByTokenIdentifier: u.tokenIdentifier });
+      const member = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
+        q.eq("tokenIdentifier", u.tokenIdentifier)).unique();
+      await ctx.db.patch(member!._id, { organizationId });
+    });
+    const payout = await proposedIntent(f);
+    expect(await u.signedIn.mutation(api.finance.approve, { demoIdentity: "controller", intentId: payout.intentId }))
+      .toEqual({ ok: false, code: "not_found" });
+    await expect(u.signedIn.query(api.dashboard.journal, { demoIdentity: "controller", orderId: f.orderId }))
+      .rejects.toThrow("cross_organization_access");
+    expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
+    expect((await f.t.run(ctx => ctx.db.get(payout.paymentCommandId)))?.status).toBe("proposed");
   });
 
   it("queues independently approved payouts through the durable workflow with demo identities off", async () => {
@@ -197,16 +259,17 @@ describe("signed-in principals and optional demo identities", () => {
 });
 
 describe("safe human role onboarding", () => {
-  it("allows idempotent buyer/contributor claims without granting controller or agent", async () => {
-    const f = await setup(), u = await user(f.t, "buyer@example.test");
-    await u.signedIn.mutation(memberships.claimRole, { role: "buyer" });
-    await u.signedIn.mutation(memberships.claimRole, { role: "contributor" });
-    await u.signedIn.mutation(memberships.claimRole, { role: "buyer" });
-    const me = await u.signedIn.query(memberships.me, {});
-    expect(me.roles).toHaveLength(2);
-    expect(me.roles).toEqual(expect.arrayContaining(["buyer", "contributor"]));
+  it.each(["buyer", "contributor"] as const)("allows idempotent %s claims while refusing the opposite human role", async role => {
+    const f = await setup(), u = await user(f.t, `${role}@example.test`);
+    await u.signedIn.mutation(memberships.claimRole, { role });
+    await u.signedIn.mutation(memberships.claimRole, { role });
+    const opposite = role === "buyer" ? "contributor" : "buyer";
+    await expect(u.signedIn.mutation(memberships.claimRole, { role: opposite })).rejects.toThrow("conflicting_roles");
+    expect((await u.signedIn.query(memberships.me, {})).roles).toEqual([role]);
     await expect(u.signedIn.mutation(memberships.claimRole, { role: "finance-agent" })).rejects.toThrow();
     await expect(u.signedIn.mutation(memberships.claimRole, { role: "controller" })).rejects.toThrow();
+    const events = await f.t.run(ctx => ctx.db.query("auditEvents").collect());
+    expect(events.filter(event => event.action === "membership_role_claimed")).toHaveLength(1);
   });
 
   it.each([
@@ -370,4 +433,15 @@ it("never exposes the internal policy-engine role through self-service onboardin
   expect((await buyer.signedIn.query(memberships.me, {})).roles).toEqual(["buyer"]);
   expect(await f.t.run(ctx => ctx.db.query("memberships").withIndex("by_token_identifier", q =>
     q.eq("tokenIdentifier", "service:skarl:policy-engine")).unique())).toBeNull();
+});
+
+
+it("never allows a buyer to approve their own payable even after their contributor role was removed", async () => {
+  const f = await setup(), buyer = await user(f.t, "former-contributor@example.test");
+  await buyer.signedIn.mutation(memberships.claimRole, { role: "buyer" });
+  const payout = await proposedIntent(f, demoToken("finance-agent"), buyer.tokenIdentifier);
+  expect(await buyer.signedIn.mutation(api.finance.approve, { demoIdentity: "controller", intentId: payout.intentId }))
+    .toEqual({ ok: false, code: "self_payout_approval_refused" });
+  expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
+  expect((await f.t.run(ctx => ctx.db.get(payout.paymentCommandId)))?.status).toBe("proposed");
 });

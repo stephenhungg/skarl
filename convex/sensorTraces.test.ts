@@ -194,7 +194,7 @@ describe("private sensor attachment", () => {
       await expect(f.t.query(api.media.submissionEvidence, { demoIdentity, submissionId: f.submissionId })).rejects.toThrow("forbidden");
     }
     await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
-    await expect(f.t.query(api.media.submissionEvidence, {demoIdentity: "buyer", submissionId: f.submissionId})).rejects.toThrow("submission_not_owned");
+    expect((await f.t.query(api.media.submissionEvidence, {demoIdentity: "buyer", submissionId: f.submissionId})).sensorTrace?.sampleCount).toBe(6);
     const state = await f.t.run(async ctx => ({ submission: await ctx.db.get(f.submissionId), payables: await ctx.db.query("payables").collect(),
       audits: await ctx.db.query("auditEvents").collect(), decisions: await ctx.db.query("reviewDecisions").collect() }));
     expect(state.submission?.status).toBe("queued");

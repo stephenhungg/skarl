@@ -1,5 +1,5 @@
 import { internalMutation } from "./_generated/server";
-import { DEMO_IDENTITIES, demoToken, requireRole } from "./lib/demoAuth";
+import { DEMO_IDENTITIES, demoToken } from "./lib/demoAuth";
 import { audit, digest } from "./lib/finance";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 
@@ -10,22 +10,23 @@ export const demo = internalMutation({
     let org = await ctx.db.query("organizations").withIndex("by_demo_key", q => q.eq("demoKey", "skarl-demo-v1")).unique();
     if (!org) {
       const id = await ctx.db.insert("organizations", { name: "Skarl Demo", demoKey: "skarl-demo-v1",
-        status: "active", createdByTokenIdentifier: demoToken("controller") });
+        status: "active", createdByTokenIdentifier: demoToken("buyer") });
       org = (await ctx.db.get(id))!;
     }
+    if (org.status !== "active") throw new Error("inactive_organization");
     for (const identity of DEMO_IDENTITIES) {
       const tokenIdentifier = demoToken(identity);
       const existing = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", tokenIdentifier)).unique();
       if (!existing) await ctx.db.insert("memberships", {
         organizationId: org._id, issuer: "demo:skarl", subject: identity, tokenIdentifier,
-        roles: [identity], grantedByTokenIdentifier: demoToken("controller"), status: "active",
+        roles: [identity], grantedByTokenIdentifier: demoToken("buyer"), status: "active",
       });
       else if (existing.organizationId !== org._id || (identity === "finance-agent" && existing.roles.includes("controller"))) {
         throw new Error("invalid_demo_membership; repair explicitly, not by silently granting roles");
       }
     }
-    // Only this internal bootstrap may provision the initial controller before this check.
-    const controller = await requireRole(ctx, "controller", "controller");
+    // Internal bootstrap has no browser role or unsigned demo-mode dependency.
+    const buyer = demoToken("buyer");
     const organizationId = org._id;
     const now = Date.now();
     const criteria = [
@@ -54,10 +55,10 @@ export const demo = internalMutation({
       });
       const taskVersionId = await ctx.db.insert("rubricVersions", {
         organizationId, orderId, version: 1, taskPrompt, criteria, contentHash,
-        createdByTokenIdentifier: controller.tokenIdentifier, frozenAt: now,
+        createdByTokenIdentifier: buyer, frozenAt: now,
       });
       await ctx.db.patch(orderId, { taskVersionId });
-      await audit(ctx, { organizationId, eventKey, actor: { kind: "human", identity: controller.tokenIdentifier },
+      await audit(ctx, { organizationId, eventKey, actor: { kind: "human", identity: buyer },
         action: "demo_seeded", entityType: "orders", entityId: orderId,
         reason: "Synthetic demo identities and unfunded order; no transfer or inference was performed.", evidenceReferences: [taskVersionId] });
       return { orderId, taskVersionId };
@@ -73,19 +74,21 @@ export const demo = internalMutation({
 export const solanaDemo = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const controller = await requireRole(ctx, "controller", "controller");
+    const organization = await ctx.db.query("organizations").withIndex("by_demo_key", q => q.eq("demoKey", "skarl-demo-v1")).unique();
+    if (!organization || organization.status !== "active") throw new Error("run_seed_demo_first");
+    const buyer = demoToken("buyer");
     const publicId = "skarl-red-cup-demo-sol";
     const existing = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", publicId)).unique();
     if (existing) {
-      if (existing.organizationId !== controller.organizationId || !existing.taskVersionId) throw new Error("invalid_demo_order");
+      if (existing.organizationId !== organization._id || !existing.taskVersionId) throw new Error("invalid_demo_order");
       return { orderId: existing._id, taskVersionId: existing.taskVersionId, publicId };
     }
     const source = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
     const rubric = source?.taskVersionId && await ctx.db.get(source.taskVersionId);
-    if (!source || !rubric || source.organizationId !== controller.organizationId) throw new Error("run_seed_demo_first");
+    if (!source || !rubric || source.organizationId !== organization._id) throw new Error("run_seed_demo_first");
     const now = Date.now(), quantityRequested = 1n, pricePerSampleAtomic = 1_000_000n, contributorRateAtomic = 750_000n;
     const orderId = await ctx.db.insert("orders", {
-      organizationId: controller.organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
+      organizationId: organization._id, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
       publicId, buyerTokenIdentifier: demoToken("buyer"), buyerWalletAddress: "0x0000000000000000000000000000000000000001",
       title: "Red-cup Solana funding demonstration", status: "awaiting_funding", quantityRequested,
       pricePerSampleAtomic, contributorRateAtomic, budgetAtomic: quantityRequested * pricePerSampleAtomic,
@@ -94,12 +97,12 @@ export const solanaDemo = internalMutation({
         licenseVersion: "demo-consent-v1" }), updatedAt: now,
     });
     const taskVersionId = await ctx.db.insert("rubricVersions", {
-      organizationId: controller.organizationId, orderId, version: 1, taskPrompt: rubric.taskPrompt,
-      criteria: rubric.criteria, contentHash: rubric.contentHash, createdByTokenIdentifier: controller.tokenIdentifier, frozenAt: now,
+      organizationId: organization._id, orderId, version: 1, taskPrompt: rubric.taskPrompt,
+      criteria: rubric.criteria, contentHash: rubric.contentHash, createdByTokenIdentifier: buyer, frozenAt: now,
     });
     await ctx.db.patch(orderId, { taskVersionId });
-    await audit(ctx, { organizationId: controller.organizationId, eventKey: `seed:${publicId}`,
-      actor: { kind: "human", identity: controller.tokenIdentifier }, action: "demo_seeded", entityType: "orders", entityId: orderId,
+    await audit(ctx, { organizationId: organization._id, eventKey: `seed:${publicId}`,
+      actor: { kind: "human", identity: buyer }, action: "demo_seeded", entityType: "orders", entityId: orderId,
       reason: "Unfunded 1 USDC Solana funding demo. No transfer or inference was performed; payouts remain on Base.",
       evidenceReferences: [taskVersionId] });
     return { orderId, taskVersionId, publicId };

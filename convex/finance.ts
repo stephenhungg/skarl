@@ -5,7 +5,7 @@ import { makeFunctionReference } from "convex/server";
 import { mutation, internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { DemoRoleError, demoToken, requireRole, type DemoPrincipal, type DemoRole } from "./lib/demoAuth";
+import { hasOrderAuthority, DemoRoleError, demoToken, requireRole, type DemoPrincipal, type DemoRole } from "./lib/demoAuth";
 import { actorFor, audit, digest, normalizeAddress, paymentBinding, recordJournal, sourceVersion, requireBuyerOrder } from "./lib/finance";
 import { resolvePolicyReview } from "./lib/policyReview";
 import { compareFrameHashes } from "./lib/copyDetection";
@@ -119,7 +119,7 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
       const reviewer = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
         q.eq("tokenIdentifier", humanDecision.reviewerTokenIdentifier)).unique();
       humanAccepted = !!reviewer && reviewer.organizationId === submission.organizationId && reviewer.status === "active" &&
-        (reviewer.roles.includes("controller") || reviewer.roles.includes("buyer") && reviewer.tokenIdentifier === order.buyerTokenIdentifier) && !reviewer.roles.includes("finance-agent") && !reviewer.roles.includes("contributor") &&
+        hasOrderAuthority(reviewer, order) && !reviewer.roles.includes("finance-agent") && !reviewer.roles.includes("contributor") &&
         reviewer.tokenIdentifier !== submission.contributorTokenIdentifier && reviewer.tokenIdentifier !== demoToken("finance-agent");
     }
     const machineAccepted = analysis?.implementation === "inference" && analysis.pipelineStatus === "completed" && analysis.recommendation === "accept";
@@ -176,7 +176,7 @@ export const acceptAndPublish = mutation({
 });
 
 export async function proposePaymentFor(ctx: MutationCtx, args: { demoIdentity: string; payableId: Id<"payables"> }) {
-    return proposeAuthorizedPayment(ctx, args, await authorize(ctx, args.demoIdentity, ["finance-agent", "controller"]));
+    return proposeAuthorizedPayment(ctx, args, await authorize(ctx, args.demoIdentity, ["finance-agent", "buyer", "controller"]));
 }
 
 /** Internal finance-run dispatcher only; public args never supply a principal. */
@@ -190,6 +190,9 @@ async function proposeAuthorizedPayment(ctx: MutationCtx, args: { payableId: Id<
     const payable = await ctx.db.get(args.payableId);
     if (!payable || payable.organizationId !== principal.organizationId) return { ok: false as const, code: "not_found" };
     if (auth.denied) return refuse(ctx, principal, payable, "payment_proposal", auth.denied);
+    const order = await ctx.db.get(payable.orderId);
+    if (!order) return refuse(ctx, principal, payable, "payment_proposal", "order_not_found");
+    requireBuyerOrder(principal, order);
     const version = sourceVersion(payable);
     const existing = await ctx.db.query("paymentIntents").withIndex("by_payable", q => q.eq("payableId", payable._id)).unique();
     if (existing) {
@@ -249,6 +252,7 @@ export async function approveFor(ctx: MutationCtx, args: {demoIdentity: string; 
     requireBuyerOrder(principal, order);
     const command = await ctx.db.get(intent.paymentCommandId);
     const payable = await ctx.db.get(intent.payableId);
+    if (payable?.contributorTokenIdentifier === principal.tokenIdentifier) return refuse(ctx, principal, intent, "payment_approval", "self_payout_approval_refused");
     if (!command || !payable || command.organizationId !== intent.organizationId || payable.organizationId !== intent.organizationId ||
       command.payableId !== payable._id || command.orderId !== payable.orderId || intent.orderId !== payable.orderId ||
       command.requesterTokenIdentifier !== intent.requesterTokenIdentifier || command.requestedBy.identity !== intent.requesterTokenIdentifier ||

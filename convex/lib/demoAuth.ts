@@ -1,4 +1,4 @@
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { demoModeEnabled, signedInMembership } from "./authMemberships";
 
@@ -41,14 +41,46 @@ export async function requireRole(
   const roles = typeof role === "string" ? [role] : role;
   if (isPolicyEngine(member)) throw new DemoRoleError("internal_service_only", member);
   const isAgent = isFinanceAgent(member);
-  if (roles.includes("controller") && roles.length === 1 && isAgent) {
+  const humanOnly = roles.every(required => required === "buyer" || required === "controller");
+  if (humanOnly && isAgent) {
     throw new DemoRoleError("agent_approval_refused", member);
   }
-  if ((signedIn.userId && isAgent) || (member.roles.includes("controller") && member.roles.includes("contributor"))) {
+  if ((signedIn.userId && isAgent) || (member.roles.includes("controller") && member.roles.includes("contributor")) ||
+    (humanOnly && member.roles.includes("buyer") && member.roles.includes("contributor"))) {
     throw new DemoRoleError("conflicting_roles", member);
   }
   if (!roles.some(required => member.roles.includes(required) && !(required === "controller" && isAgent))) {
     throw new DemoRoleError("forbidden", member);
   }
   return member;
+}
+
+/** Human order authority follows the owning organization, never a client selector. */
+export function hasOrderAuthority(member: DemoPrincipal | null, order: Pick<Doc<"orders">, "organizationId">): boolean {
+  return !!member && member.status === "active" && member.organizationId === order.organizationId &&
+    !isFinanceAgent(member) && !isPolicyEngine(member) && !member.roles.includes("contributor") &&
+    (member.roles.includes("buyer") || member.roles.includes("controller"));
+}
+
+export async function requireOrderAuthority(
+  ctx: Pick<QueryCtx | MutationCtx, "db" | "auth">, identity: string, orderId: Id<"orders">,
+) {
+  const principal = await requireRole(ctx, identity, ["buyer", "controller"]);
+  const order = await ctx.db.get(orderId);
+  if (!order) throw new Error("order_not_found");
+  if (principal.organizationId !== order.organizationId) throw new Error("cross_organization_access");
+  if (!hasOrderAuthority(principal, order)) throw new Error("order_not_owned");
+  return { principal, order };
+}
+
+/** No-order demo controls cannot grant access to a different organization. */
+export async function requireDemoOrganizationAuthority(
+  ctx: Pick<QueryCtx | MutationCtx, "db" | "auth">, identity: string,
+) {
+  const principal = await requireRole(ctx, identity, ["buyer", "controller"]);
+  const organization = await ctx.db.get(principal.organizationId);
+  if (organization?.demoKey !== "skarl-demo-v1" || !hasOrderAuthority(principal, { organizationId: principal.organizationId })) {
+    throw new Error("demo_organization_buyer_required");
+  }
+  return principal;
 }

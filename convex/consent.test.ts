@@ -57,14 +57,14 @@ describe("consent withdrawal requests (synthetic)", () => {
     expect(events.filter(event => event.action === "consent_revocation_requested")).toMatchObject([{
       entityType: "submissions", entityId: f.submissionId, reason: "Stop future use, please.", evidenceReferences: [f.consentRecordId] }]);
     expect(await financialSnapshot(), "Withdrawal cannot erase an earned debt or falsify immutable accounting history").toEqual(before);
-    expect(await f.t.query(queue, { demoIdentity: "controller", orderId: f.orderId })).toEqual([{
+    expect(await f.t.query(queue, { demoIdentity: "buyer", orderId: f.orderId })).toEqual([{
       consentRecordId: f.consentRecordId, submissionId: f.submissionId, orderId: f.orderId,
       status: "requested", requestedAt: result.requestedAt, reason: "Stop future use, please." }]);
   });
 
-  it("requires the owning contributor and a real bounded reason before creating a request", async () => {
+  it("requires contributor self-ownership or buyer authority and a real bounded reason before creating a request", async () => {
     const f = await setup(), args = { demoIdentity: "contributor", submissionId: f.submissionId, reason: "Stop use" };
-    for (const demoIdentity of ["buyer", "controller", "finance-agent"]) {
+    for (const demoIdentity of ["finance-agent"]) {
       await expect(f.t.mutation(request, { ...args, demoIdentity })).rejects.toThrow();
     }
     for (const reason of ["  ", "x".repeat(1001)]) {
@@ -72,7 +72,7 @@ describe("consent withdrawal requests (synthetic)", () => {
     }
     await f.t.run(ctx => ctx.db.patch(f.submissionId, { contributorTokenIdentifier: "synthetic:other" }));
     await expect(f.t.mutation(request, args)).rejects.toThrow("submission_not_owned");
-    expect(await f.t.query(queue, { demoIdentity: "controller" })).toEqual([]);
+    expect(await f.t.query(queue, { demoIdentity: "buyer" })).toEqual([]);
     expect((await f.t.run(ctx => ctx.db.query("auditEvents").collect())).filter(event => event.action === "consent_revocation_requested"))
       .toHaveLength(0);
   });
@@ -90,16 +90,23 @@ describe("consent withdrawal requests (synthetic)", () => {
       .rejects.toThrow("cross_organization_access");
   });
 
-  it("limits the private exception inbox to the controller and checks the requested order's tenant", async () => {
+  it("limits the private exception inbox to the buyer and checks the requested order's tenant", async () => {
     const f = await setup();
     await f.t.mutation(request, { demoIdentity: "contributor", submissionId: f.submissionId, reason: "Private reason" });
-    for (const demoIdentity of ["buyer", "contributor", "finance-agent"]) {
+    for (const demoIdentity of ["contributor", "finance-agent"]) {
       await expect(f.t.query(queue, { demoIdentity })).rejects.toThrow();
     }
     const foreign = await f.t.run(ctx => ctx.db.insert("organizations", { name: "Synthetic foreign", status: "active",
       createdByTokenIdentifier: "synthetic:foreign" }));
     await f.t.run(ctx => ctx.db.patch(f.orderId, { organizationId: foreign }));
-    await expect(f.t.query(queue, { demoIdentity: "controller", orderId: f.orderId })).rejects.toThrow("cross_organization_access");
+    await expect(f.t.query(queue, { demoIdentity: "buyer", orderId: f.orderId })).rejects.toThrow("cross_organization_access");
+  });
+
+  it.each(["buyer", "controller"])("lets the demo-organization %s record revocation without impersonating the contributor", async demoIdentity => {
+    const f = await setup();
+    expect(await f.t.mutation(request, { demoIdentity, submissionId: f.submissionId, reason: "Stop future use" }))
+      .toMatchObject({ status: "requested", replayed: false });
+    expect(await f.t.query(queue, { demoIdentity: "buyer" })).toHaveLength(1);
   });
 
   it("never downgrades a completed revocation back to requested on replay", async () => {
@@ -107,6 +114,6 @@ describe("consent withdrawal requests (synthetic)", () => {
     await f.t.run(ctx => ctx.db.patch(f.consentRecordId, { revocationStatus: "revoked", revokedAt: Date.now() }));
     expect(await f.t.mutation(request, { demoIdentity: "contributor", submissionId: f.submissionId, reason: "Retry" }))
       .toMatchObject({ status: "revoked", replayed: true });
-    expect(await f.t.query(queue, { demoIdentity: "controller" })).toEqual([]);
+    expect(await f.t.query(queue, { demoIdentity: "buyer" })).toEqual([]);
   });
 });

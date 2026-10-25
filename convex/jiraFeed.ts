@@ -26,7 +26,7 @@ export const snapshot = internalQuery({
         items.push({ id: `proposal:${intent._id}`, kind: "agent_proposal", status: intent.status,
           orderId: order._id, createdAt: intent._creationTime, amountMicroUsdc: link.amountMicroUsdc,
           ...(link.witnessReceiptUrl ? { witnessReceiptUrl: link.witnessReceiptUrl } : {}), simulated: false,
-          description: "Skarl finance-agent payout proposal. Independent controller approval and wallet signing are required; this record grants no payment authority. Base Sepolia test assets." });
+          description: "Skarl finance-agent payout proposal. Buyer-signed policy or buyer review approval and the independent CDP cap are required; this record grants no payment authority. Base Sepolia test assets." });
       }
       // Refused proposals have no intent yet: canonical finance refusals point
       // at the payable/submission instead. Preserve those links without exposing

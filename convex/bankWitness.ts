@@ -6,7 +6,7 @@ import { api } from "./_generated/api";
 import type * as chainWitness from "./chainWitness";
 import { requireFinanceService } from "./lib/serviceAuth";
 import { requireRole } from "./lib/demoAuth";
-import { audit, requireTenant } from "./lib/finance";
+import { requireBuyerOrder, audit } from "./lib/finance";
 import { BANK_WITNESS_LABEL, createNessieClient, compareBankWitness, type BankActivity } from "./lib/nessie";
 import { validateTransfer, type ReconciliationException } from "../packages/payments/src/reconciliation";
 import { PAYMENT_CHAIN_ID } from "../packages/contracts/src/chain";
@@ -29,8 +29,7 @@ async function orderScope(ctx: QueryCtx, args: Scope) {
   const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
   const order = await ctx.db.get(args.orderId);
   if (!order) throw new Error("order_not_found");
-  requireTenant(principal, order);
-    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+  requireBuyerOrder(principal, order);
   return { principal, order };
 }
 const safeError = (error: unknown) => error instanceof Error && /^nessie_[a-z_0-9]{1,80}$/.test(error.message)
@@ -122,8 +121,7 @@ export const storeSnapshot = internalMutation({ args: { organizationId: v.id("or
       order.publicId !== `scenario:${args.scenarioId}` || args.accountId !== `SIMULATED:${args.scenarioId}:treasury`) {
       throw new Error("scenario_bank_scope_invalid");
     }
-    requireTenant(principal, order);
-    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+    requireBuyerOrder(principal, order);
     await audit(ctx, { organizationId: order.organizationId, eventKey: `scenario-bank:${args.scenarioId}`,
       actor: { kind: "service", identity: "scenario-lab" }, action: "scenario_bank_snapshot", entityType: "orders", entityId: order._id,
       reason: JSON.stringify({ simulated: true, scenarioId: args.scenarioId, accountId: args.accountId,

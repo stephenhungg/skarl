@@ -189,13 +189,13 @@ describe("policy approval preserves buyer caps, bindings and independent authori
     expect((await f.t.mutation(api.finance.approve, { demoIdentity: "buyer", intentId: p.intentId })).ok).toBe(true);
     expect((await f.t.run(ctx => ctx.db.query("approvals").unique()))?.approverTokenIdentifier).toBe(BUYER);
   });
-  it("refuses a different buyer in the same tenant on policy edits, acceptance and approval", async () => {
+  it("allows organization buyers to review while policy edits remain with the signing buyer", async () => {
     const f = await ready(), p = await proposed(f);
     await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerTokenIdentifier: "another-buyer" }));
     await expect(f.t.mutation(api.orders.setAutoPay, { demoIdentity: "buyer", orderId: f.orderId, enabled: false, maxPerClipAtomic: "1" })).rejects.toThrow("order_not_found");
-    await expect(f.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "buyer", submissionId: f.submissionId })).rejects.toThrow("order_not_owned");
-    await expect(f.t.mutation(api.finance.approve, { demoIdentity: "buyer", intentId: p.intentId })).rejects.toThrow("order_not_owned");
-    expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
+    expect(await f.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "buyer", submissionId: f.submissionId })).toMatchObject({ ok: true, replayed: true });
+    expect(await f.t.mutation(api.finance.approve, { demoIdentity: "buyer", intentId: p.intentId })).toMatchObject({ ok: true });
+    expect((await f.t.run(ctx => ctx.db.query("approvals").unique()))?.approverTokenIdentifier).toBe(BUYER);
   });
   it("refuses every public policy-engine selector even after provisioning the real service", async () => {
     const f = await ready(), p = await proposed(f);
@@ -225,10 +225,11 @@ describe("policy approval preserves buyer caps, bindings and independent authori
     const memberId = await f.t.run(ctx => ctx.db.insert("memberships", { organizationId: f.organizationId,
       issuer: "auth", subject: userId, tokenIdentifier: `auth:${userId}`, roles: ["buyer"], grantedByTokenIdentifier: BUYER, status: "active" }));
     // The selector cannot replace the authenticated buyer's persisted principal.
-    await expect(signed.mutation(api.finance.approve, { demoIdentity: "policy-engine", intentId: p.intentId })).rejects.toThrow("order_not_owned");
+    expect(await signed.mutation(api.finance.approve, { demoIdentity: "policy-engine", intentId: p.intentId })).toMatchObject({ ok: true });
+    expect((await f.t.run(ctx => ctx.db.query("approvals").unique()))?.approverTokenIdentifier).toBe(`auth:${userId}`);
     await f.t.run(ctx => ctx.db.patch(memberId, { roles: ["policy-engine", "buyer"] }));
     expect(await signed.mutation(api.finance.approve, { demoIdentity: "buyer", intentId: p.intentId })).toMatchObject({ ok: false, code: "internal_service_only" });
-    expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
+    expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toHaveLength(1);
   });
 });
 
@@ -258,4 +259,22 @@ describe("buyer rule creation and changes", () => {
     expect(order.autoPay).toMatchObject({ enabled: false, maxPerClipAtomic: 1234567n, setBy: BUYER });
     expect((await f.t.run(ctx => ctx.db.query("auditEvents").collect())).filter(row => row.entityId === order._id && row.action === "auto_pay_policy_changed")).toHaveLength(2);
   });
+});
+
+
+it.each(["mixed_contributor", "revoked", "agent_token"])("refuses auto-pay when its buyer signer is %s", async kind => {
+  const f = await ready(), p = await proposed(f);
+  await f.t.run(async ctx => {
+    const buyer = (await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", BUYER)).unique())!;
+    if (kind === "revoked") await ctx.db.patch(buyer._id, { status: "revoked" });
+    else if (kind === "mixed_contributor") await ctx.db.patch(buyer._id, { roles: ["buyer", "contributor"] });
+    else {
+      const order = (await ctx.db.get(f.orderId))!;
+      const agent = (await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", "demo:skarl:finance-agent")).unique())!;
+      await ctx.db.patch(agent._id, { roles: ["buyer"] });
+      await ctx.db.patch(f.orderId, { buyerTokenIdentifier: agent.tokenIdentifier, autoPay: { ...order.autoPay!, setBy: agent.tokenIdentifier } });
+    }
+  });
+  expect(await f.t.mutation(internal.policy.policyApproval, { intentId: p.intentId })).toMatchObject({ ok: false, failures: expect.arrayContaining(["buyer_policy_signer_unauthorized"]) });
+  expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
 });

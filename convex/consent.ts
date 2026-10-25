@@ -1,23 +1,26 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireRole } from "./lib/demoAuth";
+import { requireDemoOrganizationAuthority, requireRole } from "./lib/demoAuth";
 import { actorFor, audit, requireTenant } from "./lib/finance";
 
 /** A request records contributor intent; it does not pretend to delete a delivered copy. */
 export const requestRevocation = mutation({
   args: { demoIdentity: v.string(), submissionId: v.id("submissions"), reason: v.string() },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, args.demoIdentity, "contributor");
+    const principal = await requireRole(ctx, args.demoIdentity, ["contributor", "buyer", "controller"]);
     const submission = await ctx.db.get(args.submissionId);
     if (!submission) throw new Error("submission_not_found");
     requireTenant(principal, submission);
-    if (submission.contributorTokenIdentifier !== principal.tokenIdentifier) throw new Error("submission_not_owned");
+    if (submission.contributorTokenIdentifier !== principal.tokenIdentifier) {
+      if (principal.roles.includes("contributor")) throw new Error("submission_not_owned");
+      await requireDemoOrganizationAuthority(ctx, args.demoIdentity);
+    }
     const reason = args.reason.trim();
     if (!reason || reason.length > 1000) throw new Error("invalid_revocation_reason");
     const consent = submission.consentRecordId ? await ctx.db.get(submission.consentRecordId) : null;
     if (!consent) throw new Error("consent_not_found");
     if (consent.organizationId !== submission.organizationId || consent.submissionId !== submission._id ||
-      consent.contributorTokenIdentifier !== principal.tokenIdentifier) throw new Error("consent_reference_mismatch");
+      consent.contributorTokenIdentifier !== submission.contributorTokenIdentifier) throw new Error("consent_reference_mismatch");
     // The first request is authoritative. Retries cannot rewrite its reason or timestamp.
     if (consent.revocationStatus) return { consentRecordId: consent._id, status: consent.revocationStatus,
       requestedAt: consent.revocationRequestedAt ?? null, replayed: true };
@@ -30,11 +33,11 @@ export const requestRevocation = mutation({
   },
 });
 
-/** Controller exceptions-like inbox. Reasons stay out of buyer-facing provenance. */
+/** Buyer exceptions-like inbox. Reasons stay out of buyer-facing provenance. */
 export const revocationRequests = query({
   args: { demoIdentity: v.string(), orderId: v.optional(v.id("orders")) },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, args.demoIdentity, "controller");
+    const principal = await requireDemoOrganizationAuthority(ctx, args.demoIdentity);
     if (args.orderId) {
       const order = await ctx.db.get(args.orderId);
       if (!order) throw new Error("order_not_found");

@@ -1,3 +1,4 @@
+import { hasOrderAuthority } from "./lib/demoAuth";
 import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -10,9 +11,11 @@ import { checkSpokenLiveness, instructionLike } from "./lib/spokenLiveness";
 import { accountBalance } from "../packages/ledger/src/index";
 import { PAYMENT_CHAIN_ID } from "../packages/contracts/src/chain";
 
-function policyFailures(order: Doc<"orders">) {
+async function policyFailures(ctx: MutationCtx, order: Doc<"orders">) {
   if (!order.autoPay?.enabled) return ["auto_pay_disabled"];
   if (order.autoPay.setBy !== order.buyerTokenIdentifier || order.autoPay.requireAllChecks !== true || order.autoPay.maxPerClipAtomic <= 0n) return ["buyer_policy_invalid"];
+  const signer = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", order.autoPay!.setBy)).unique();
+  if (!hasOrderAuthority(signer, order)) return ["buyer_policy_signer_unauthorized"];
   return [];
 }
 
@@ -24,7 +27,7 @@ export async function evaluateSubmissionFor(ctx: MutationCtx, args: { submission
   if (!order || order.organizationId !== submission.organizationId) throw new Error("order_not_found");
   const principal = await requirePolicyService(ctx, order.organizationId);
   if (submission.status === "accepted" || submission.status === "rejected") return { ok: true as const, replayed: true };
-  const failures = policyFailures(order);
+  const failures = await policyFailures(ctx, order);
   const analysis = submission.currentAnalysisId ? await ctx.db.get(submission.currentAnalysisId) : null;
   const rubric = await ctx.db.get(submission.taskVersionId);
   if (!analysis || analysis.organizationId !== order.organizationId || analysis.submissionId !== submission._id ||
@@ -77,7 +80,7 @@ export async function policyApprovalFor(ctx: MutationCtx, args: { intentId: Id<"
   if (!order || order.organizationId !== intent.organizationId) throw new Error("order_not_found");
   const principal = await requirePolicyService(ctx, order.organizationId);
   if (intent.status !== "proposed") return { ok: false as const, code: "payment_not_proposed" };
-  const failures = policyFailures(order);
+  const failures = await policyFailures(ctx, order);
   if (intent.requesterTokenIdentifier === principal.tokenIdentifier) failures.push("self_approval_refused");
   if (intent.amountAtomic <= 0n) failures.push("invalid_payout_amount");
   if (order.autoPay && intent.amountAtomic > order.autoPay.maxPerClipAtomic) failures.push("over_cap_payout");

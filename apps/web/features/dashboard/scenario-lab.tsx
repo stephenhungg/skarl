@@ -5,7 +5,7 @@ import { useAction, useQuery } from "convex/react";
 import { useState } from "react";
 import { Button } from "@/components/glaze/ui/button";
 import { Status } from "@/components/glaze/ui/status";
-import { api, CONTROLLER, useOrderId } from "./data";
+import { api, BUYER, useOrderId } from "./data";
 import { formatTime, humanize } from "./format";
 import { ConfirmDialog, Loading, PageHeader, Section, Unavailable } from "./ui";
 import { scenarioPresentation } from "./witness-presentation";
@@ -24,7 +24,7 @@ type Scenario = typeof SCENARIOS[number];
 
 export function ScenarioLab() {
   const orderId = useOrderId();
-  const runs = useQuery(api.scenarios.listRuns, orderId ? { demoIdentity: CONTROLLER, orderId, limit: 20 } : "skip");
+  const runs = useQuery(api.scenarios.listRuns, orderId ? { demoIdentity: BUYER, orderId, limit: 20 } : "skip");
   const run = useAction(api.scenarios.run);
   const [selected, setSelected] = useState<Scenario | null>(null);
   const [running, setRunning] = useState(false);
@@ -33,7 +33,7 @@ export function ScenarioLab() {
     if (!selected || !orderId || running) return;
     setRunning(true); setNotice(null);
     try {
-      const result = await run({ demoIdentity: CONTROLLER, scenario: selected.key, orderId });
+      const result = await run({ demoIdentity: BUYER, scenario: selected.key, orderId });
       setNotice(`${scenarioPresentation(result).label}: ${result.observedOutcome}`);
     } catch {
       setNotice("The result is unavailable. Inspect the audit log and stored run history before retrying; a timeout does not prove the action failed.");
@@ -42,7 +42,7 @@ export function ScenarioLab() {
   if (orderId === null) return <Unavailable title="No order selected" description="Create or select an order before opening its scenario history." />;
   return <>
     <PageHeader title="Scenario lab" description="Plant a labeled exception and inspect the actual control response." actions={<Link href="/dashboard/audit" className="type-label underline underline-offset-4">Audit log</Link>} />
-    <Section title="Simulated inputs, real policy checks" meta="Owning buyer or legacy controller">
+    <Section title="Simulated inputs, real policy checks" meta="Owning buyer">
       <p className="mb-4 type-body-sm text-text-2">Each run creates a separately labeled lab order and audit evidence. These probes do not send money or establish live settlement. Missing source prerequisites remain blocked; no accepted work or proposal is invented.</p>
       <div className="grid gap-3 md:grid-cols-2">
         {SCENARIOS.map(scenario => <div key={scenario.key} className="flex flex-col items-start gap-3 rounded-panel border border-line-faint p-4">

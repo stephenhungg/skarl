@@ -5,8 +5,8 @@ import { MAX_SENSOR_TRACE_BYTES, validateSensorTrace } from "./lib/sensorTrace";
 import { MAX_ANNOTATION_BYTES, validateAnnotationFile } from "./lib/derivedAnnotations";
 import type { TrainingInputs } from "./lib/trainingFormats";
 import type { Doc, Id } from "./_generated/dataModel";
-import { requireRole } from "./lib/demoAuth";
-import { digest, requireTenant } from "./lib/finance";
+import { hasOrderAuthority, requireRole } from "./lib/demoAuth";
+import { requireBuyerOrder, digest, requireTenant } from "./lib/finance";
 import { attestationLinks } from "./lib/eas";
 import { checkSpokenLiveness } from "./lib/spokenLiveness";
 import type { AudioObservation, VerificationReport } from "./lib/verificationReport";
@@ -79,7 +79,7 @@ async function payout(ctx: QueryCtx, payable: Doc<"payables"> | undefined) {
 
 /** Validate the licensed delivery snapshot before issuing any original-media URL.
  * These checks mirror the paid evidence media path, with human acceptance also
- * supported: a controller may accept evidence that the machine sent to review.
+ * supported: a buyer may accept evidence that the machine sent to review.
  */
 async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Doc<"deliveries">,
   rubric: Doc<"rubricVersions">, payables: Doc<"payables">[], demoIdentity: string, nativeMedia = false) {
@@ -184,11 +184,10 @@ async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Do
 
 async function orderScope(ctx: QueryCtx, args: { demoIdentity: string; orderId: Id<"orders"> }) {
     const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller"]);
-    if (args.demoIdentity === "finance-agent" || principal.roles.includes("finance-agent")) throw new Error("forbidden");
+    if (principal.roles.includes("finance-agent")) throw new Error("forbidden");
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
-    requireTenant(principal, order);
-    if (!principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+    requireBuyerOrder(principal, order);
     const rubric = order.taskVersionId ? await ctx.db.get(order.taskVersionId) : null;
     if (rubric && (rubric.organizationId !== order.organizationId || rubric.orderId !== order._id || rubric.frozenAt === undefined)) {
       throw new Error("task_version_mismatch");
@@ -274,15 +273,14 @@ export const sampleQuality = query({
   args: { demoIdentity: v.string(), submissionId: v.id("submissions") },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "contributor"]);
-    if (args.demoIdentity === "finance-agent" || principal.roles.includes("finance-agent")) throw new Error("forbidden");
+    if (principal.roles.includes("finance-agent")) throw new Error("forbidden");
     const submission = await ctx.db.get(args.submissionId);
     if (!submission) throw new Error("submission_not_found");
     requireTenant(principal, submission);
     const order = await ctx.db.get(submission.orderId);
     if (!order) throw new Error("order_not_found");
     requireTenant(principal, order);
-    if (!principal.roles.includes("controller") &&
-      !(principal.roles.includes("buyer") && order.buyerTokenIdentifier === principal.tokenIdentifier) &&
+    if (!hasOrderAuthority(principal, order) &&
       !(principal.roles.includes("contributor") && submission.contributorTokenIdentifier === principal.tokenIdentifier)) throw new Error("submission_not_owned");
     const rubric = await ctx.db.get(submission.taskVersionId);
     if (!rubric || rubric.organizationId !== order.organizationId || rubric.orderId !== order._id) throw new Error("task_version_mismatch");
@@ -344,7 +342,7 @@ export const contributorEarnings = query({
   args: { demoIdentity: v.string() },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, "contributor");
-    if (args.demoIdentity === "finance-agent" || principal.roles.includes("finance-agent")) throw new Error("forbidden");
+    if (principal.roles.includes("finance-agent")) throw new Error("forbidden");
     const submissions = await ctx.db.query("submissions").withIndex("by_contributor", q =>
       q.eq("organizationId", principal.organizationId).eq("contributorTokenIdentifier", principal.tokenIdentifier)).collect();
     const orderIds = [...new Set(submissions.map(row => row.orderId))];

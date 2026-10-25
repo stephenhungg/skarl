@@ -1,4 +1,5 @@
 "use client";
+import { actorName } from "./activity";
 import Link from "next/link";
 import { useMutation } from "convex/react";
 import { useEffect, useState } from "react";
@@ -9,7 +10,7 @@ import { Status } from "@/components/glaze/ui/status";
 import { cn } from "@/lib/glaze/utils";
 import { usePayout } from "@/lib/payments/use-payout";
 import { executePayablePayout, getPayablePayoutRecovery } from "./payable-payout";
-import { api, CONTROLLER, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type PayableRow } from "./data";
+import { api, BUYER, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type PayableRow } from "./data";
 import { basescanAddress, basescanTx, formatTime, humanize, parseChainIdentity, shortHash } from "./format";
 import { ReceiptRule } from "@/components/ui/payment-receipt-printer";
 import { Receipt } from "./receipt";
@@ -76,7 +77,7 @@ function PayableCard({ payable, audit, matches }: { payable: PayableRow; audit: 
         {refusals.map(event => (
           <div key={event._id} className="flex items-start gap-3 rounded-panel border border-fail bg-fail-tint px-3 py-2">
             <Status status="fail" className="shrink-0">Refused</Status>
-            <p className="type-body-sm"><span className="type-label">{humanize(event.reason)}</span> <span className="text-text-2">{event.actor.identity} tried to {humanize(event.action.replace(/_refused$/, "")).toLowerCase()}. Separation of duties held. {formatTime(event.occurredAt)}</span></p>
+            <p className="type-body-sm"><span className="type-label">{humanize(event.reason)}</span> <span className="text-text-2">{actorName(event.actor.identity)} tried to {humanize(event.action.replace(/_refused$/, "")).toLowerCase()}. Separation of duties held. {formatTime(event.occurredAt)}</span></p>
           </div>
         ))}
         {chain && payable.status === "paid" && (
@@ -111,7 +112,7 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   const approve = useMutation(api.finance.approve);
   const reject = useMutation(api.finance.reject);
   const provider = useInjectedWallet();
-  const payout = usePayout({ demoIdentity: CONTROLLER, provider });
+  const payout = usePayout({ demoIdentity: BUYER, provider });
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -140,12 +141,12 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   </>;
   else if (step === 1 && intentId) buttons = <>
     <Button variant="secondary" size="sm" className="me-auto" disabled={busy}
-      onClick={() => act(() => reject({ demoIdentity: CONTROLLER, intentId, reason: "Buyer rejected the payout exception." }), "Payout rejected.")}>Reject payout</Button>
+      onClick={() => act(() => reject({ demoIdentity: BUYER, intentId, reason: "Buyer rejected the payout exception." }), "Payout rejected.")}>Reject payout</Button>
     <Button size="sm" disabled={busy} onClick={() => setConfirming(true)}>Approve payout</Button>
     <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Approve this payout?" actionLabel="Approve payout"
       description="Your approval binds this exact amount, recipient and network. Any change voids it. The configured executor sends it after workflow validation."
       onConfirm={async () => {
-        const result = await act(() => approve({ demoIdentity: CONTROLLER, intentId }), "Approved. Waiting for the workflow and executor.", "Approval refused");
+        const result = await act(() => approve({ demoIdentity: BUYER, intentId }), "Approved. Waiting for the workflow and executor.", "Approval refused");
         if (!result.ok) throw new Error(`Refused: ${humanize(result.code ?? "refused")}.`);
       }}>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 type-body-sm">

@@ -122,9 +122,9 @@ describe("private annotation storage boundary", () => {
       expect(rows).toHaveLength(table === "derivedAnnotations" ? 1 : 0);
     }
   });
-  it("allows controller/owner uploads and controller/order buyer/owner reads, newest first", async () => {
+  it("allows buyer/legacy controller/contributor-owner uploads and reads, newest first", async () => {
     const f = await setup();
-    for (const demoIdentity of ["controller", "contributor"]) expect(await f.t.mutation(api.annotations.generateUploadUrl, { demoIdentity, submissionId: f.submissionId })).toMatch(/^https?:/);
+    for (const demoIdentity of ["buyer", "controller", "contributor"]) expect(await f.t.mutation(api.annotations.generateUploadUrl, { demoIdentity, submissionId: f.submissionId })).toMatch(/^https?:/);
     const first = await f.t.mutation(api.annotations.saveDerived, f.args);
     vi.advanceTimersByTime(1000);
     const second = await f.t.mutation(api.annotations.saveDerived, { ...f.args, demoIdentity: "controller", storageId: await f.store({ ...f.input, model: { ...f.input.model, version: "fixture-v2" } }) });
@@ -134,7 +134,7 @@ describe("private annotation storage boundary", () => {
       expect(rows[0]!.url).toMatch(/^https?:/);
       expect(Object.keys(rows[0]!).sort()).toEqual(["_id", "kind", "model", "createdAt", "createdBy", "url", "summary"].sort());
     }
-    for (const demoIdentity of ["buyer", "finance-agent"]) {
+    for (const demoIdentity of ["finance-agent"]) {
       await expect(f.t.mutation(api.annotations.generateUploadUrl, { demoIdentity, submissionId: f.submissionId })).rejects.toThrow("forbidden");
       await expect(f.t.mutation(api.annotations.saveDerived, { ...f.args, demoIdentity })).rejects.toThrow("forbidden");
     }
@@ -153,27 +153,27 @@ describe("private annotation storage boundary", () => {
     const id = await signedIn.mutation(api.annotations.saveDerived, { ...f.args, demoIdentity: "buyer" });
     expect((await f.t.run(ctx => ctx.db.get(id)))?.createdBy).toBe(tokenIdentifier);
     await f.t.run(ctx => ctx.db.patch(membershipId, { roles: ["buyer"] }));
-    await expect(signedIn.mutation(api.annotations.saveDerived, { ...f.args, demoIdentity: "controller" })).rejects.toThrow("forbidden");
-    await expect(signedIn.query(api.annotations.forSubmission, { demoIdentity: "controller", submissionId: f.submissionId })).rejects.toThrow("forbidden");
+    expect(await signedIn.mutation(api.annotations.saveDerived, { ...f.args, demoIdentity: "controller" })).toBe(id);
+    expect(await signedIn.query(api.annotations.forSubmission, { demoIdentity: "controller", submissionId: f.submissionId })).toHaveLength(1);
     await f.t.run(ctx => ctx.db.patch(membershipId, { roles: ["controller"] }));
     // A signed-in human's identity comes from their session, never this selector.
     expect(await signedIn.mutation(api.annotations.generateUploadUrl, { demoIdentity: "finance-agent", submissionId: f.submissionId })).toMatch(/^https?:/);
     await f.t.run(ctx => ctx.db.patch(membershipId, { status: "revoked" }));
     await expect(signedIn.query(api.annotations.forSubmission, { demoIdentity: "controller", submissionId: f.submissionId })).rejects.toThrow("inactive_membership");
   });
-  it("rejects foreign contributor, order buyer and tenant access", async () => {
+  it("allows an organization buyer while rejecting foreign contributors and tenants", async () => {
     const f = await setup();
     await f.t.run(ctx => ctx.db.patch(f.submissionId, { contributorTokenIdentifier: "demo:other" }));
     await expect(f.t.mutation(api.annotations.saveDerived, f.args)).rejects.toThrow("submission_not_owned");
     await expect(f.t.mutation(api.annotations.generateUploadUrl, { demoIdentity: "contributor", submissionId: f.submissionId })).rejects.toThrow("submission_not_owned");
     await expect(f.t.query(api.annotations.forSubmission, { demoIdentity: "contributor", submissionId: f.submissionId })).rejects.toThrow("submission_not_owned");
     await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerTokenIdentifier: "demo:other-buyer" }));
-    await expect(f.t.query(api.annotations.forSubmission, { demoIdentity: "buyer", submissionId: f.submissionId })).rejects.toThrow("forbidden");
+    expect(await f.t.query(api.annotations.forSubmission, { demoIdentity: "buyer", submissionId: f.submissionId })).toEqual([]);
     await f.t.run(async ctx => {
       const organizationId = await ctx.db.insert("organizations", { name: "Other", status: "active", createdByTokenIdentifier: "other" });
       await ctx.db.patch(f.submissionId, { organizationId });
     });
-    await expect(f.t.query(api.annotations.forSubmission, { demoIdentity: "controller", submissionId: f.submissionId })).rejects.toThrow("cross_organization_access");
+    for (const demoIdentity of ["buyer", "controller"]) await expect(f.t.query(api.annotations.forSubmission, { demoIdentity, submissionId: f.submissionId })).rejects.toThrow("cross_organization_access");
     await expect(f.t.mutation(api.annotations.saveDerived, { ...f.args, demoIdentity: "controller" })).rejects.toThrow("cross_organization_access");
   });
   it("rejects oversize, malformed and mismatched stored files before any write", async () => {

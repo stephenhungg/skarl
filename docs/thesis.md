@@ -1,6 +1,6 @@
 # Every claim has a witness
 
-**Skarl is the autonomous settlement desk for human-data companies. Independent witnesses must agree before anything moves.** Agents propose, a rule the buyer signed approves, the AI never approves itself. Only exceptions need buyer review.
+**Skarl is the autonomous settlement desk for human-data companies. Independent witnesses must agree before anything moves.** The agent proposes; the buyer-signed policy (or the buyer in review) approves; an independent CDP cap guards execution. The AI never approves itself. Only exceptions need buyer review.
 
 Seats: **settlement accountant + AP clerk**, performed by the finance agent and buyer-signed policy. Did the work happen, is it a new obligation, and did payment settle?
 

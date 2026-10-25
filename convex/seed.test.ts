@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
@@ -106,4 +106,21 @@ describe("Solana funding demo seed", () => {
     expect(state.journals).toHaveLength(0);
     expect(state.observations).toHaveLength(0);
   });
+});
+
+afterEach(() => vi.unstubAllEnvs());
+
+it("keeps bootstrap internal and independent of demo selectors or a legacy controller membership", async () => {
+  vi.stubEnv("SKARL_DEMO_IDENTITIES", "off");
+  const t = convexTest(schema, modules);
+  const seeded = await t.mutation(internal.seed.demo, {});
+  await t.run(async ctx => {
+    const legacy = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", "demo:skarl:controller")).unique();
+    await ctx.db.patch(legacy!._id, { status: "revoked" });
+  });
+  expect(await t.mutation(internal.seed.demo, {})).toEqual(seeded);
+  const solana = await t.mutation(internal.seed.solanaDemo, {});
+  const order = await t.run(ctx => ctx.db.get(solana.orderId));
+  expect(order).toMatchObject({ organizationId: seeded.organizationId, buyerTokenIdentifier: "demo:skarl:buyer", status: "awaiting_funding" });
+  expect(await t.run(ctx => ctx.db.query("paymentAttempts").collect())).toEqual([]);
 });

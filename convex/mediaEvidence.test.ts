@@ -59,8 +59,8 @@ describe("private evidence queries (synthetic storage only)", () => {
     }
     await expect(f.t.query(submissionEvidence, { demoIdentity: "contributor", submissionId: f.matchingSubmissionId })).rejects.toThrow("submission_not_owned");
     await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
-    await expect(f.t.query(submissionEvidence, {demoIdentity: "buyer", submissionId: f.submissionId})).rejects.toThrow("submission_not_owned");
-    await expect(f.t.query(duplicatePair, {demoIdentity: "buyer", submissionId: f.submissionId, matchingSubmissionId: f.matchingSubmissionId})).rejects.toThrow("submission_not_owned");
+    expect((await f.t.query(submissionEvidence, {demoIdentity: "buyer", submissionId: f.submissionId})).clip.url).toMatch(/^https?:/);
+    expect((await f.t.query(duplicatePair, {demoIdentity: "buyer", submissionId: f.submissionId, matchingSubmissionId: f.matchingSubmissionId})).score).toBe(1);
   });
 
   it("checks both duplicate submissions before returning either side", async () => {
@@ -77,7 +77,7 @@ describe("private evidence queries (synthetic storage only)", () => {
       const other = await ctx.db.insert("organizations", { name: "Other", createdByTokenIdentifier: "other", status: "active" });
       await ctx.db.patch(f.matchingSubmissionId, { organizationId: other });
     });
-    await expect(f.t.query(duplicatePair, { ...args, demoIdentity: "controller" })).rejects.toThrow("cross_organization_access");
+    for (const demoIdentity of ["buyer", "controller"]) await expect(f.t.query(duplicatePair, { ...args, demoIdentity })).rejects.toThrow("cross_organization_access");
   });
 
   it("rejects swapped analysis/original references and excludes quarantined or unlinked frames", async () => {

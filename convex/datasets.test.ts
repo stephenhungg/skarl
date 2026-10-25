@@ -190,20 +190,21 @@ describe("buyer dataset delivery (synthetic evidence)", () => {
       usableStartMs: null, usableEndMs: null });
   });
 
-  it("keeps quality receipts scoped to the owner or controller even though they contain no media", async () => {
+  it("keeps quality receipts scoped to the organization buyer or contributor owner even though they contain no media", async () => {
     const f = await setup(), sample = await delivered(f);
     await expect(f.t.query(sampleQuality, { demoIdentity: "finance-agent", submissionId: sample.submissionId })).rejects.toThrow("forbidden");
     await f.t.run(async ctx => {
       await ctx.db.patch(sample.submissionId, { contributorTokenIdentifier: "other-contributor" });
       await ctx.db.patch(f.orderId, { buyerTokenIdentifier: "other-buyer" });
     });
-    for (const demoIdentity of ["contributor", "buyer"]) await expect(f.t.query(sampleQuality,
+    expect(await f.t.query(sampleQuality, { demoIdentity: "buyer", submissionId: sample.submissionId })).toBeDefined();
+    for (const demoIdentity of ["contributor"]) await expect(f.t.query(sampleQuality,
       { demoIdentity, submissionId: sample.submissionId })).rejects.toThrow("submission_not_owned");
     await f.t.run(async ctx => {
       const organizationId = await ctx.db.insert("organizations", { name: "Other tenant", createdByTokenIdentifier: "other", status: "active" });
       await ctx.db.patch(sample.submissionId, { organizationId });
     });
-    await expect(f.t.query(sampleQuality, { demoIdentity: "controller", submissionId: sample.submissionId })).rejects.toThrow("cross_organization_access");
+    for (const demoIdentity of ["buyer", "controller"]) await expect(f.t.query(sampleQuality, { demoIdentity, submissionId: sample.submissionId })).rejects.toThrow("cross_organization_access");
   });
 
   it("exports only delivered licensed originals and preserves exact payout amounts", async () => {
@@ -253,13 +254,14 @@ describe("buyer dataset delivery (synthetic evidence)", () => {
   it("refuses contributors and finance agents even if they know the order ID", async () => {
     const f = await setup();
     await delivered(f);
-    for (const identity of ["contributor", "finance-agent"]) await expect(f.t.query(forOrder, args(f, identity))).rejects.toThrow("forbidden");
+    await expect(f.t.query(forOrder, args(f, "contributor"))).rejects.toThrow("forbidden");
+    await expect(f.t.query(forOrder, args(f, "finance-agent"))).rejects.toThrow("agent_approval_refused");
   });
 
-  it("requires the order's buyer, not merely any buyer in the tenant", async () => {
+  it("allows a buyer acting for the organization that owns the order", async () => {
     const f = await setup();
     await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerTokenIdentifier: "demo:someone-else:buyer" }));
-    await expect(f.t.query(forOrder, args(f))).rejects.toThrow("order_not_owned");
+    expect((await f.t.query(forOrder, args(f))).samples).toEqual([]);
     expect((await f.t.query(forOrder, args(f, "controller"))).samples).toEqual([]);
   });
 
@@ -448,7 +450,12 @@ describe("expiring buyer original-media grants (synthetic storage)", () => {
     expect(original.storageUrl).not.toBe(exported.media.url);
     await expect(f.t.query(originalMedia, { ...mediaArgs, demoIdentity: "contributor" })).rejects.toThrow("forbidden");
     await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerTokenIdentifier: "demo:another-order-buyer" }));
-    await expect(f.t.query(originalMedia, mediaArgs)).rejects.toThrow("order_not_owned");
+    expect((await f.t.query(originalMedia, mediaArgs)).storageUrl).toMatch(/^https?:/);
+    await f.t.run(async ctx => {
+      const organizationId = await ctx.db.insert("organizations", { name: "Other tenant", createdByTokenIdentifier: "other", status: "active" });
+      await ctx.db.patch(f.orderId, { organizationId });
+    });
+    await expect(f.t.query(originalMedia, mediaArgs)).rejects.toThrow("cross_organization_access");
   });
 
   it("invalidates an old grant when consent receipt changes even though licensing remains valid", async () => {

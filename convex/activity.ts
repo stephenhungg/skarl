@@ -35,8 +35,7 @@ export const contributors = query({
       if (row.kind === "payout" && line.side === "debit") total.paid += amount;
       totals.set(row.contributorTokenIdentifier, total);
     }
-    const buyerOnly = scope.principal.roles.includes("buyer") && !scope.principal.roles.includes("controller");
-    const tokens = new Set([...(buyerOnly ? [] : memberships.filter(row => row.roles.includes("contributor")).map(row => row.tokenIdentifier)), ...totals.keys(), ...submissions.map(row => row.contributorTokenIdentifier)]);
+    const tokens = new Set([...memberships.filter(row => row.roles.includes("contributor")).map(row => row.tokenIdentifier), ...totals.keys(), ...submissions.map(row => row.contributorTokenIdentifier)]);
     const result = [...tokens].map(tokenIdentifier => {
       const member = memberships.find(row => row.tokenIdentifier === tokenIdentifier), total = totals.get(tokenIdentifier);
       const own = submissions.filter(row => row.contributorTokenIdentifier === tokenIdentifier);

@@ -182,12 +182,12 @@ for another submission; accepted/rejected contributions cannot gain new evidence
 The two steps are not atomic: video analysis can begin before sensor attachment.
 The app labels that intermediate state and retries the attachment. Sensors are
 optional advisory evidence, so this never changes the existing acceptance gate.
-If a controller decides before attachment, the server freezes evidence and
+If a buyer or their policy decides before attachment, the server freezes evidence and
 rejects the late attachment. That terminal error requires operator review; it
 must not cause a second video submission.
 
 Live `submissions:getReport` powers the status and timestamped criteria. The
-owner/controller-only `media:submissionEvidence` returns `sensorTrace` or null.
+contributor/owning-buyer-only `media:submissionEvidence` returns `sensorTrace` or null.
 Its signed-by-possession storage URL is private bearer access: do not cache or
 publish it. Signed-in calls use their own persisted membership. Unsigned demo
 identities remain impersonable and are not authentication.

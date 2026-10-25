@@ -567,17 +567,17 @@ describe("demo finance mutations against isolated Convex state", () => {
     expectBalanced(state);
   });
 
-  it("refuses a human controller approving their own request and keeps its audit", async () => {
+  it.each(["buyer", "controller"])("refuses %s approving their own proposal and keeps its audit", async demoIdentity => {
     const fixture = await acceptedFixture();
-    const proposed = await fixture.t.mutation(api.finance.proposePayment, { demoIdentity: "controller", payableId: fixture.accepted.payableId });
+    const proposed = await fixture.t.mutation(api.finance.proposePayment, { demoIdentity, payableId: fixture.accepted.payableId });
     if (!proposed.ok) throw new Error(proposed.code);
-    const refusal = await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: proposed.intentId });
+    const refusal = await fixture.t.mutation(api.finance.approve, { demoIdentity, intentId: proposed.intentId });
     expect(refusal).toMatchObject({ ok: false, code: "self_approval_refused" });
     const state = await snapshot(fixture);
     expect(state.approvals).toHaveLength(0);
     expect(state.commands[0]?.status).toBe("proposed");
     expect(state.audits.some((event) => event.action === "payment_approval_refused" && event.reason === "self_approval_refused"
-      && event.actor.identity === CONTROLLER)).toBe(true);
+      && event.actor.identity === `demo:skarl:${demoIdentity}`)).toBe(true);
   });
 
   it("never lets the finance agent approve even if its membership is misprovisioned as controller", async () => {

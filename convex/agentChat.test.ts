@@ -51,15 +51,17 @@ describe("read-only finance chat with synthetic provider responses", () => {
       await expect(f.t.query(api.agentChatData.history, { demoIdentity, orderId: f.orderId })).rejects.toThrow("forbidden");
     }
     await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
-    await expect(f.t.action(api.agentChat.askAgent, {...args, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
-    await expect(f.t.query(api.agentChatData.history, {demoIdentity: "buyer", orderId: f.orderId})).rejects.toThrow("order_not_owned");
+    // Reserving the chat exercises the same order gate without a provider request.
+    const started = await f.t.mutation(internal.agentChatData.begin, {...args, demoIdentity: "buyer", requestId: "org-peer-chat", model: "gemini-3.8-flash"});
+    expect((await f.t.query(api.agentChatData.history, {demoIdentity: "buyer", orderId: f.orderId}))[0]._id).toBe(started.chatId);
     await f.t.run(async ctx => {
       const foreign = await ctx.db.insert("organizations", { name: "Synthetic foreign", status: "active", createdByTokenIdentifier: "fixture:foreign" });
       await ctx.db.patch(f.orderId, { organizationId: foreign });
     });
-    await expect(f.t.action(api.agentChat.askAgent, args)).rejects.toThrow("cross_organization_access");
+    await expect(f.t.action(api.agentChat.askAgent, {...args, demoIdentity: "buyer"})).rejects.toThrow("cross_organization_access");
+    await expect(f.t.query(api.agentChatData.history, {demoIdentity: "buyer", orderId: f.orderId})).rejects.toThrow("cross_organization_access");
     expect(fetch).not.toHaveBeenCalled();
-    expect(await f.t.run(ctx => ctx.db.query("agentChats").collect())).toHaveLength(0);
+    expect(await f.t.run(ctx => ctx.db.query("agentChats").collect())).toHaveLength(1);
   });
 
   it("discovers the demo order and persists sanitized provider failures", async () => {

@@ -77,7 +77,7 @@ or an iOS export.
    verification-only evaluation upload.
 4. Observe queued → analysing → needs_review (or a later human decision), with
    timestamped criterion evidence. Acceptance does not mean payout confirmed.
-5. For controller evidence, query `media:submissionEvidence`; `sensorTrace` includes
+5. For buyer evidence, query `media:submissionEvidence`; `sensorTrace` includes
    the private JSON URL, server-computed RMS values and 250 ms chart bins.
 6. Test denial of motion permission, background interruption during recording,
    and an upload interrupted by network loss. The app labels absent sensors,

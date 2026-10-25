@@ -29,7 +29,7 @@ export const financeTools = toolNames.map(name => {
     getTrialBalance: "Get a deterministic balanced trial balance in exact micro-USDC strings.",
     listReconciliationExceptions: "Get recorded reconciliation discrepancies; absence of an exception does not prove settlement.",
     proposePaymentBatch: "Propose existing payables within the server's cumulative run limit. No approval or execution occurs.",
-    requestApproval: "Record a request for an independent human controller to approve a stored intent. Does not approve.",
+    requestApproval: "Record a request for an buyer to approve a stored intent. Does not approve.",
   }[name], parameters: { type: "object", properties: Object.fromEntries(fields.map(key => [key,
     key === "payableIds" ? { type: "array", items: { type: "string" }, maxItems: 20 } : { type: "string" }])), required: fields, additionalProperties: false } };
 });

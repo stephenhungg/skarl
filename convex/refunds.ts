@@ -1,8 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { requireRole, type DemoPrincipal } from "./lib/demoAuth";
-import { actorFor, audit, digest, normalizeAddress, paymentBinding, recordJournal, requireTenant, loadLedger } from "./lib/finance";
+import { hasOrderAuthority, isFinanceAgent, requireRole, type DemoPrincipal } from "./lib/demoAuth";
+import { actorFor, audit, digest, normalizeAddress, paymentBinding, recordJournal, requireTenant, requireBuyerOrder, loadLedger } from "./lib/finance";
 import { service, insertObservation } from "./payments";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { createRefundPaidJournal, createRefundReservedJournal, accountBalance } from "../packages/ledger/src/index";
@@ -38,14 +38,26 @@ async function bound(ctx: QueryCtx | MutationCtx, id: Id<"paymentCommands">, mem
     amountAtomic, reason: proposal.reason });
   if (amountAtomic <= 0n || command.amountAtomic !== amountAtomic || command.sourceVersion !== sourceVersion ||
     command.recipientAddress !== normalizeAddress(intent.buyerWalletAddress) || command.network !== PAYMENT_NETWORK || command.tokenAddress !== USDC_ADDRESS ||
-    command.payableId !== undefined || command.requesterTokenIdentifier !== order.buyerTokenIdentifier ||
+    command.payableId !== undefined ||
+    ![order.buyerTokenIdentifier, "demo:skarl:finance-agent"].includes(command.requesterTokenIdentifier) ||
+    (command.requesterTokenIdentifier === "demo:skarl:finance-agent" && (command.requestedBy.kind !== "service" || proposal.actor.kind !== "service")) ||
     command.requestedBy.identity !== command.requesterTokenIdentifier || command.bindingHash !== paymentBinding(command)) {
     throw new Error("refund_source_changed");
+  }
+  if (command.requesterTokenIdentifier === "demo:skarl:finance-agent") {
+    const cancellation = await ctx.db.query("auditEvents").withIndex("by_event_key", q =>
+      q.eq("organizationId", command.organizationId).eq("eventKey", `cancellation_requested:${order._id}`)).unique();
+    if (proposal.actor.kind !== "service" || proposal.actor.identity !== command.requesterTokenIdentifier ||
+      !cancellation || cancellation.actor.kind !== "human" || cancellation.action !== "buyer_cancellation_requested" ||
+      cancellation.entityId !== order._id || cancellation.reason !== proposal.reason || !cancellation.evidenceReferences.includes(command._id)) {
+      throw new Error("refund_source_changed");
+    }
   }
   const reservation = await ctx.db.query("journalEntries").withIndex("by_event_key", q =>
     q.eq("organizationId", command.organizationId).eq("eventKey", `refund_reserved:${order._id}`)).unique();
   if (!reservation || reservation.fingerprint !== digest(createRefundReservedJournal({ eventId: `refund_reserved:${order._id}`,
     orderId: order._id, amountMicroUsdc: amountAtomic }))) throw new Error("refund_reservation_changed");
+  if (member) requireBuyerOrder(member, order);
   return { command, order, funding: intent };
 }
 
@@ -54,18 +66,18 @@ async function activeApproval(ctx: QueryCtx | MutationCtx, command: Doc<"payment
     approval.bindingHash !== command.bindingHash || approval.requestedBy.identity !== command.requesterTokenIdentifier ||
     approval.approverTokenIdentifier === command.requesterTokenIdentifier || approval.expiresAt <= Date.now()) return false;
   const approver = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", approval.approverTokenIdentifier)).unique();
-  return !!approver && approver.status === "active" && approver.organizationId === command.organizationId && approver.roles.includes("controller") &&
-    !approver.roles.includes("finance-agent") && !approver.roles.includes("contributor");
+  const order = await ctx.db.get(command.orderId);
+  return !!order && hasOrderAuthority(approver, order);
 }
 
 export const approve = mutation({
   args: { demoIdentity: v.string(), commandId: v.id("paymentCommands"), reason: v.string() },
   handler: async (ctx, args) => {
     const member = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent", "buyer"]);
-    const { command } = await bound(ctx, args.commandId, member);
-    const refusal = member.roles.includes("finance-agent") ? "agent_cannot_approve" :
+    const { command, order } = await bound(ctx, args.commandId, member);
+    const refusal = isFinanceAgent(member) ? "agent_cannot_approve" :
       member.tokenIdentifier === command.requesterTokenIdentifier ? "self_approval_forbidden" :
-      !member.roles.includes("controller") || member.roles.includes("contributor") ? "controller_required" : null;
+      !hasOrderAuthority(member, order) ? "buyer_required" : null;
     if (refusal) {
       await audit(ctx, { organizationId: command.organizationId, eventKey: `refund_approval_refused:${command._id}:${member.tokenIdentifier}:${refusal}`,
         actor: actorFor(member), action: "refund_approval_refused", entityType: "paymentCommands", entityId: command._id,
@@ -96,8 +108,8 @@ export const claim = mutation({
   args: { serviceSecret: v.string(), commandId: v.id("paymentCommands"), demoIdentity: v.string(), senderAddress: v.string(), treasuryAddress: v.string(), claimId: v.string() },
   handler: async (ctx, args) => {
     service(args.serviceSecret);
-    const member = await requireRole(ctx, args.demoIdentity, "controller");
-    if (member.roles.includes("finance-agent") || member.roles.includes("contributor")) throw new Error("human_controller_required");
+    const member = await requireRole(ctx, args.demoIdentity, ["buyer", "controller"]);
+    if (member.roles.includes("finance-agent") || member.roles.includes("contributor")) throw new Error("human_buyer_required");
     const { command } = await bound(ctx, args.commandId, member);
     const approval = command.approvalId ? await ctx.db.get(command.approvalId) : null;
     if (!await activeApproval(ctx, command, approval)) throw new Error("approval_invalidated");
@@ -120,8 +132,8 @@ export const attempt = query({
   args: { serviceSecret: v.string(), commandId: v.id("paymentCommands"), demoIdentity: v.string(), claimId: v.string() },
   handler: async (ctx, args) => {
     service(args.serviceSecret);
-    const member = await requireRole(ctx, args.demoIdentity, "controller");
-    if (member.roles.includes("finance-agent") || member.roles.includes("contributor")) throw new Error("human_controller_required");
+    const member = await requireRole(ctx, args.demoIdentity, ["buyer", "controller"]);
+    if (member.roles.includes("finance-agent") || member.roles.includes("contributor")) throw new Error("human_buyer_required");
     const { command } = await bound(ctx, args.commandId, member, true);
     const paymentAttempt = await ctx.db.query("paymentAttempts").withIndex("by_command", q => q.eq("paymentCommandId", command._id)).unique();
     if (!paymentAttempt || paymentAttempt.attemptId !== args.claimId || paymentAttempt.paymentIntentId ||
@@ -152,12 +164,12 @@ export const recordObservation = mutation({
     await ctx.db.patch(order._id, { status: "refunded", updatedAt: Date.now() });
     await audit(ctx, { organizationId: command.organizationId, eventKey: `refund_paid:${command._id}`, actor: { kind: "service", identity: "refund-reconciler" },
       action: "refund_paid", entityType: "paymentCommands", entityId: command._id,
-      reason: "Independent controller-approved buyer refund confirmed from the exact USDC Transfer log.", evidenceReferences: [result.observationId, journal] });
+      reason: "Buyer-approved refund confirmed from the exact USDC Transfer log.", evidenceReferences: [result.observationId, journal] });
     return result;
   },
 });
 
-/** Controller dashboard and owning buyer can inspect the proposal before approval/signing. */
+/** Buyer dashboard can inspect the proposal before approval/signing. */
 export const forOrder = query({
   args: { demoIdentity: v.string(), orderId: v.id("orders") },
   handler: async (ctx, args) => {
@@ -166,7 +178,7 @@ export const forOrder = query({
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
     requireTenant(member, order);
-    if (!member.roles.includes("controller") && order.buyerTokenIdentifier !== member.tokenIdentifier) throw new Error("order_not_found");
+    requireBuyerOrder(member, order);
     const found = await ctx.db.query("paymentCommands").withIndex("by_order_kind", q => q.eq("orderId", order._id).eq("kind", "buyer_refund")).unique();
     if (!found) return null;
     const { command } = await bound(ctx, found._id, member, true);

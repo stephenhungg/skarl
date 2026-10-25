@@ -4,7 +4,7 @@ import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
-import { actorFor, audit, requireTenant } from "./lib/finance";
+import { requireBuyerOrder, actorFor, audit, requireTenant } from "./lib/finance";
 import { positiveAtomic } from "./lib/financeAgentLoop";
 import { proposeAgentPaymentFor, refuseAgentApprovalFor } from "./finance";
 import { requireFinanceService } from "./lib/serviceAuth";
@@ -31,8 +31,7 @@ export const begin = internalMutation({
     const service = await requireFinanceService(ctx);
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
-    requireTenant(principal, order);
-    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+    requireBuyerOrder(principal, order);
     requireTenant(service, order);
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(args.requestId) || !args.prompt.trim() || args.prompt.length > 2000 ||
       !Number.isSafeInteger(args.maxToolCalls) || args.maxToolCalls < 1 || args.maxToolCalls > 24) throw new Error("invalid_agent_request");
@@ -88,7 +87,7 @@ export const requestApproval = internalMutation({
     if (!intent || intent.kind !== "contributor_payout" || intent.organizationId !== run.organizationId || intent.orderId !== run.orderId || intent.status !== "proposed" || intent.expiresAt <= Date.now()) throw new Error("intent_not_requestable");
     await audit(ctx, { organizationId: run.organizationId, eventKey: `approval_requested:${intent._id}`, actor: actorFor(principal),
       action: "independent_approval_requested", entityType: "paymentIntents", entityId: intent._id,
-      reason: "Finance agent requested independent controller approval; no approval or transfer occurred.", evidenceReferences: [run._id, intent.paymentCommandId] });
+      reason: "Finance agent requested buyer-signed policy or buyer review approval; no approval or transfer occurred.", evidenceReferences: [run._id, intent.paymentCommandId] });
     return { ok: true, status: "approval_required", intentId: intent._id };
   },
 });
@@ -107,8 +106,7 @@ export const runs = query({
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]), order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
-    requireTenant(principal, order);
-    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+    requireBuyerOrder(principal, order);
     const rows = await ctx.db.query("financeAgentRuns").withIndex("by_order", q => q.eq("orderId", order._id)).order("desc").take(20);
     return rows.map(row => ({ ...row, provider: row.provider ?? "gemini", maxBatchAtomic: row.maxBatchAtomic.toString(), proposedAtomic: row.proposedAtomic.toString(),
       transcript: JSON.parse(row.transcriptJson), transcriptJson: undefined }));

@@ -44,8 +44,8 @@ describe("reconciliation queue annotations", () => {
       await expect(f.t.mutation(api.exceptions[name], { ...args, demoIdentity })).rejects.toThrow();
     }
     await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
-    await expect(f.t.query(api.exceptions.list, {...scope, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
-    await expect(f.t.mutation(api.exceptions[name], {...args, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
+    expect(await f.t.query(api.exceptions.list, {...scope, demoIdentity: "buyer"})).toEqual(await f.t.query(api.exceptions.list, scope));
+    expect(await f.t.mutation(api.exceptions[name], {...args, demoIdentity: "buyer"})).toMatchObject({replayed: false});
     await expect(f.t.mutation(api.exceptions[name], { ...args, reason: "  " })).rejects.toThrow("invalid_exception_disposition");
     await expect(f.t.mutation(api.exceptions[name], { ...args, exceptionKey: "0".repeat(64) })).rejects.toThrow("exception_not_found");
     await f.t.run(async ctx => {
@@ -53,7 +53,8 @@ describe("reconciliation queue annotations", () => {
       await ctx.db.patch(f.orderId, { organizationId: foreign });
     });
     await expect(f.t.mutation(api.exceptions[name], args)).rejects.toThrow("cross_organization_access");
-    expect(await f.t.run(ctx => ctx.db.query("reconciliationDispositions").collect())).toHaveLength(0);
+    await expect(f.t.mutation(api.exceptions[name], {...args, demoIdentity: "buyer"})).rejects.toThrow("cross_organization_access");
+    expect(await f.t.run(ctx => ctx.db.query("reconciliationDispositions").collect())).toHaveLength(1);
   });
 
   it("retains the disposition when its original discrepancy is no longer detected", async () => {

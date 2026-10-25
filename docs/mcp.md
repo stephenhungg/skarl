@@ -42,12 +42,12 @@ a guest request. Remove an obsolete header to reconnect as a guest.
 
 Guest `tools/list` contains exactly `skarl_about`, `skarl_list_tasks_public`,
 `skarl_create_order_public`, and `skarl_public_order_status`. Keys unlock separate
-buyer, contributor, or controller tools; they do not give agents settlement
+buyer or contributor tools; they do not give agents settlement
 authority. See [agent client setup](agents.md) for the full flow.
 
 ## Optional: mint and register a role key
 
-Run locally, choosing one of `buyer`, `contributor`, or `controller`:
+Run locally, choosing `buyer` or `contributor` (the legacy `controller` key identity remains a buyer alias):
 
 ```sh
 node scripts/mcp-key.mjs buyer "personal buyer agent"
@@ -172,7 +172,7 @@ Cursor's variable syntax differs from Claude Code's. See
 ## Tools and authority
 
 `tools/list` returns only the current principal's explicit allowlist. Guests never
-receive buyer, contributor, or controller tools. A tool from another role
+receive buyer or contributor tools. A tool from another role
 remains unavailable even if the agent guesses its name. Inputs have strict JSON
 schemas; no generic query runner, arbitrary URL fetch, SQL, or mutation proxy is
 exposed. Results contain compact JSON in MCP text content. Money and `bigint`
@@ -193,13 +193,11 @@ counters are decimal integer strings; money is six-decimal micro-USDC.
 | Contributor | `skarl_liveness_challenge` | `liveness.issueChallenge` for this contributor |
 | Contributor | `skarl_my_submissions_and_earnings` | `datasets.contributorEarnings`, own work and reconciled earnings |
 | Contributor | `skarl_explain_outcome` | `coach.explainOutcome` then `coachData.forSubmission`, own submission; advisory explanation |
-| Controller | `skarl_reconciliation` | `bankWitness.reconciliation4Way`, read only |
-| Controller | `skarl_exceptions` | Existing exceptions query, read only |
+| Buyer | `skarl_reconciliation` | `bankWitness.reconciliation4Way`, read only |
+| Buyer | `skarl_exceptions` | Existing exceptions query, read only |
 
 `skarl_ask_finance_agent` is deliberately omitted. The existing
-`financeAgent.run` permits proposal/request mutations and admits controller or
-finance-agent roles, so exposing it as a read-only buyer/controller tool would
-misrepresent its authority. The remote controller surface contains only queries.
+`financeAgent.run` permits proposal/request mutations, so exposing it as a read-only buyer tool would misrepresent its authority. The reconciliation and exception tools remain queries. Legacy `controller` keys select the buyer membership, tool allowlist, and order scope; they do not confer separate authority.
 
 `skarl_order_status` uses `dashboard.orderSummary` and the existing trusted
 `payments.fundingStatus` query. It uses the deployment's existing
@@ -216,8 +214,7 @@ strings. The existing mutation freezes terms and rejects reuse of a request ID
 with different terms. Retry the same logical request with the same ID. Optional `autoPay` sets `{enabled,maxPerClipAtomic:string,requireAllChecks:true}`; its default is enabled with cap equal to the per-clip price.
 
 No role gets a tool to approve, accept, sign, or execute a payout. Contributor
-explanations and model output are evidence, never payment authority. Human
-buyers review exceptions on their own orders; the internal buyer-signed policy handles eligible automatic approval and the independent CDP cap guards execution. Legacy controllers retain the browser-wallet signing path. A refusal is an MCP tool result with `isError: true` and a machine-readable
+explanations and model output are evidence, never payment authority. The agent proposes; the buyer-signed policy (or the buyer in review) approves; the independent CDP cap guards execution. Human buyers review exceptions on their own organization’s orders and retain the legacy browser-wallet signing path. A refusal is an MCP tool result with `isError: true` and a machine-readable
 code; it is not permission to call a different role or bypass the application.
 
 ## Guest orders and request limits

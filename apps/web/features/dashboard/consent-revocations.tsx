@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { CONTROLLER } from "./data";
+import { BUYER } from "./data";
 import { formatTime } from "./format";
 import { Loading, Section } from "./ui";
 
@@ -13,7 +13,7 @@ const requestsRef = makeFunctionReference<"query", { demoIdentity: string }, Rev
 
 /** Requests require human follow-up. The queue never suggests that deleting an obligation is revocation. */
 export function ConsentRevocations() {
-  const requests = useQuery(requestsRef, { demoIdentity: CONTROLLER });
+  const requests = useQuery(requestsRef, { demoIdentity: BUYER });
   return <Section title="Consent revocation requests" meta="All orders in this organization">
     <p className="mb-3 type-body-sm text-text-2">Review contributor requests and the affected sample before taking action. A request does not recall delivered copies. Posted financial journals remain immutable so owed and paid amounts stay auditable.</p>
     {requests === undefined ? <Loading rows={2} /> : requests.length === 0 ? <p className="rounded-panel border border-line-faint px-4 py-3 type-body-sm text-text-2">No revocation requests recorded.</p> : <ul className="divide-y divide-line-faint rounded-panel border border-line-faint">

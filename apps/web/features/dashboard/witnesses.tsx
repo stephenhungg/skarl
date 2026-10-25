@@ -3,13 +3,13 @@
 import { useQuery } from "convex/react";
 import { Status } from "@/components/glaze/ui/status";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/glaze/ui/table";
-import { api, CONTROLLER, type Id } from "./data";
+import { api, BUYER, type Id } from "./data";
 import { formatTime, formatUsdc, humanize, shortHash } from "./format";
 import { Loading, Section } from "./ui";
 import { publicEvidenceUrl, witnessPresentation } from "./witness-presentation";
 
 export function SubmissionWitnesses({ submissionId }: { submissionId: Id<"submissions"> }) {
-  const receipt = useQuery(api.witnessReceipt.forSubmission, { demoIdentity: CONTROLLER, submissionId });
+  const receipt = useQuery(api.witnessReceipt.forSubmission, { demoIdentity: BUYER, submissionId });
   return (
     <Section title="Work and settlement witnesses" meta="Stored evidence, not a new approval">
       <p className="mb-3 type-body-sm text-text-2">Each source keeps its own verdict. Missing evidence is not agreement; a public attestation proves a recorded commitment, not that the work passed.</p>
@@ -41,7 +41,7 @@ export function SubmissionWitnesses({ submissionId }: { submissionId: Id<"submis
 }
 
 export function FourWayReconciliation({ orderId }: { orderId: Id<"orders"> | null | undefined }) {
-  const result = useQuery(api.bankWitness.reconciliation4Way, orderId ? { demoIdentity: CONTROLLER, orderId } : "skip");
+  const result = useQuery(api.bankWitness.reconciliation4Way, orderId ? { demoIdentity: BUYER, orderId } : "skip");
   return (
     <Section title="Four-way reconciliation" meta="Order · ledger · chain · mock bank" className="mt-2">
       <p className="mb-3 type-body-sm text-text-2">Compare the same obligation across independent records. Capital One Nessie is a hosted mock bank; its entries do not represent fiat movement or authorize a payout.</p>
