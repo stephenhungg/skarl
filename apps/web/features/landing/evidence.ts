@@ -202,14 +202,14 @@ export const MONEY_STEPS: MoneyStep[] = [
 ];
 
 // Built-on strip. LIVE only when it runs now; everything else is PLANNED until it does.
-export type BuiltOnItem = { name: string; role: string; status: EvidenceStatus };
+export type BuiltOnItem = { name: string; role: string; status: EvidenceStatus; logo?: { src: string; ratio: number }; showName?: boolean; label?: string };
 
 export const BUILT_ON: BuiltOnItem[] = [
-  { name: "Convex", role: "ledger and live state", status: "LIVE" },
-  { name: "Gemini", role: "evidence", status: "PLANNED" },
-  { name: "x402", role: "funding", status: "PLANNED" },
-  { name: "Coinbase Wallet MCP", role: "agent payments", status: "PLANNED" },
-  { name: "Base Sepolia", role: "settlement in test USDC", status: "PLANNED" },
+  { name: "Convex", role: "ledger and live state", status: "LIVE", logo: { src: "/logos/convex.svg", ratio: 1 }, showName: true },
+  { name: "Gemini", role: "evidence", status: "PLANNED", logo: { src: "/logos/gemini.svg", ratio: 1 }, showName: true },
+  { name: "x402", role: "funding", status: "PLANNED", logo: { src: "/logos/x402.svg", ratio: 486.3 / 187.4 } },
+  { name: "Coinbase Wallet MCP", label: "Wallet MCP", role: "agent payments", status: "PLANNED", logo: { src: "/logos/coinbase.svg", ratio: 1101.64 / 230 } },
+  { name: "Base Sepolia", role: "settlement in test USDC", status: "PLANNED", logo: { src: "/logos/base.svg", ratio: 1280 / 323.84 } },
 ];
 
 // The catch. Every report below is illustrative, not model output, so every card is SIMULATED.

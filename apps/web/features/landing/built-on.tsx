@@ -10,10 +10,41 @@ const GAP = 72;
 const HOVER_RATE = 0.15;
 const RATE_MS = 400;
 
+const LOGO_H = 22;
+
+// Logos render through a CSS mask so every mark takes the same ink colour as the text.
+function Logo({ item }: { item: BuiltOnItem }) {
+  if (!item.logo) return null;
+  const h = item.showName ? LOGO_H : item.logo.ratio > 3 ? LOGO_H * 0.8 : LOGO_H * 1.05;
+  return (
+    <span
+      role="img"
+      aria-label={item.showName ? undefined : item.name}
+      aria-hidden={item.showName ? true : undefined}
+      className="inline-block flex-none bg-ink"
+      style={{
+        width: h * item.logo.ratio,
+        height: h,
+        WebkitMaskImage: `url(${item.logo.src})`,
+        maskImage: `url(${item.logo.src})`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+      }}
+    />
+  );
+}
+
 function Item({ item }: { item: BuiltOnItem }) {
   return (
     <span className="flex items-center gap-3 whitespace-nowrap">
-      <span className="cut-regular text-[18px] leading-none text-ink">{item.name}</span>
+      <span className="flex items-center gap-2">
+        <Logo item={item} />
+        {(!item.logo || item.showName || item.label) && <span className="cut-regular text-[18px] leading-none text-ink">{item.label ?? item.name}</span>}
+      </span>
       <span className="cut-book text-[14px] leading-none text-slate-500">{item.role}</span>
       <StatusPill status={item.status} />
     </span>

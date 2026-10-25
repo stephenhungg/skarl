@@ -25,11 +25,11 @@ export function Money() {
 
   // Light the steps one after another the first time the section scrolls in.
   useEffect(() => {
-    if (!seen) return;
     if (reduce) {
       setLit(STEPS.length);
       return;
     }
+    if (!seen) return;
     let n = 0;
     const id = setInterval(() => {
       n += 1;
@@ -60,7 +60,7 @@ export function Money() {
             <Stepper
               steps={STEPS}
               current={current}
-              lit={reduce ? undefined : lit}
+              lit={lit}
               orientation="vertical"
               clickable="all"
               onStepChange={i => {
