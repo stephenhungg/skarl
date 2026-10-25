@@ -58,7 +58,7 @@ async function fixture(options: { mint?: string; destination?: string; memo?: st
     if (method === "getBlock") return { blockhash: treasury.address } as T;
     throw new Error(`unexpected RPC ${method}`);
   };
-  return { payload, terms, signature, parsed, raw, status, rpc, calls, settled, payer };
+  return { payload, terms, signature, parsed, raw, status, rpc, calls, settled, payer, fee };
 }
 
 async function observationFixture() {
@@ -76,6 +76,12 @@ test("Solana claim derives signer, exact terms and a message nonce unaffected by
   assert.match(f.auth.authorizationNonce, /^0x[0-9a-f]{64}$/);
   const settledAuth = await parseSolanaFundingAuthorization({ transaction: getBase64EncodedWireTransaction(f.settled) }, f.terms);
   assert.equal(settledAuth.authorizationNonce, f.auth.authorizationNonce, "replayed message must claim the same nonce");
+});
+
+test("Solana claim binds the signed message fee payer to the supported quote", async () => {
+  const f = await fixture();
+  await parseSolanaFundingAuthorization(f.payload, { ...f.terms, feePayer: f.fee.address });
+  await assert.rejects(parseSolanaFundingAuthorization(f.payload, { ...f.terms, feePayer: f.payer.address }), /wrong_solana_fee_payer/);
 });
 
 test("Solana parser rejects wrong mint, destination ATA, amount, memo and unsigned payer", async () => {

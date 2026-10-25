@@ -138,6 +138,14 @@ At approximately 02:54 PDT, every recorded query to `/platform/v2/data/query/run
 | Solana dependency version split | The [lockfile](../pnpm-lock.yaml) resolves `@solana/kit` 5.5.1 under `@coinbase/cdp-sdk` 1.60.0 and 6.10.0 for `@x402/svm` 2.28.0. This is a dependency observation, not a proven Solana payment failure. Keep the pinned graph, externalize CDP for Convex and keep Solana funding evidence separate from the demonstrated Base path. |
 | Bazaar indexing latency and visibility | [CDP documents](https://docs.cdp.coinbase.com/x402/seller/get-discovered) asynchronous indexing after settlement, up to 15 minutes, and `success`/`processing`/`rejected` extension responses. We forward `EXTENSION-RESPONSES` explicitly and support direct resource inspection. Our live validator stopped at an ineligible sample's 404; **no actual indexing delay or successful listing was measured**. |
 
+### Solana fee-payer rotation during x402 funding
+
+The October 25 live CDP Solana Devnet attempt returned HTTP 402 before settlement: the fee payer selected by `/supported` changed between the original quote and the signed request. CDP read-only verification accepted the saved payload, while x402 2.28.0's exact requirement matcher rejected the fresh quote. Its default dynamic fields exclude blockhash metadata but do not exclude `feePayer`. The prior attempt expired without an intent, journal or observed funding transfer; see [payment evidence](payments.md#live-fee-payer-mismatch--october-25-03130315-pdt).
+
+**Workaround:** validate the signed quote's fee payer against the facilitator's current Devnet support/signers (30-second request-local cache), then pass that validated payer unchanged through verify and settle. All economic fields, order memo, timeout, signed transaction fee payer and single-authorization claims remain enforced. The live support response exposes the signer pool under `solana:*`; trusting only its newly selected `kinds[].extra.feePayer` recreates the rotation failure.
+
+**Requested improvement:** document signer-pool semantics and provide SDK support for rotating facilitator fee payers, with strict current-set validation and a stable quote identifier. This feedback is recorded here, not sent externally. Tests alone do not establish live settlement.
+
 ### One capability we most want
 
 **Policy-bound autonomous agent wallets usable through Wallet MCP without a human click for each already-authorized transaction.** Let the operator define a revocable network/token/recipient/budget policy once, then allow bounded execution under that policy with a stable request ID. Skarl would still require its own independent business approval; this would remove the second manual signing handoff and the separate CDP SDK executor solely for bounded execution. Today's Wallet MCP remains in approval mode. No feature request has been sent externally.
