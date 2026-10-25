@@ -1,6 +1,6 @@
 import { RED_CUP_TASK_SPEC, CAN_TO_HAT_TASK_SPEC } from "./fixtures/taskSpecs";
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { validateVerificationReportForRubric } from "../packages/contracts/src/verification.ts";
 import {
   AUDIO_RESPONSE_SCHEMA, VIDEO_RESPONSE_SCHEMA, audioFromTranscriptSegments,
@@ -348,5 +348,43 @@ describe("frozen task-scoped evidence", () => {
       { startMs: 5000, endMs: 7000, text: "I place this can closer to the hat." },
     ], DURATION, CAN_TO_HAT_TASK_SPEC);
     expect(result.claims[1]).toMatchObject({ object: "can", target: "hat" });
+  });
+});
+
+// Demo lenient mode must still catch the headline failure (wrong object), and must never present
+// an unconfirmed criterion as rubric-verified, because these reports are attested on-chain.
+describe("demo lenient mode", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const lenientEnv = () => { vi.stubEnv("SKARL_VERIFIER_STRICT", ""); vi.stubEnv("SKARL_VERIFIER_LENIENT", "1"); };
+
+  it("is off unless explicitly enabled", () => {
+    vi.stubEnv("SKARL_VERIFIER_STRICT", ""); vi.stubEnv("SKARL_VERIFIER_LENIENT", "");
+    const report = buildVerificationReport({ ...input(), video: { visibility: "uncertain", observations: [] } });
+    expect(report.recommendation).toBe("needs_review");
+  });
+  it("still requests correction when the wrong object is picked up", () => {
+    lenientEnv();
+    const value = input(); value.video!.observations.forEach(item => { item.object = "blue_cup"; });
+    const report = buildVerificationReport(value);
+    expect(report.criteria.find(item => item.criterionId === "red-cup-pickup")!.status).toBe("contradicted");
+    expect(report.recommendation).toBe("request_correction");
+  });
+  it("accepts an unresolved but analysed take, labelling every filled-in criterion", () => {
+    lenientEnv();
+    const report = buildVerificationReport({ ...input(), video: { visibility: "uncertain", observations: [] } });
+    expect(report.recommendation).toBe("accept");
+    const filled = report.criteria.filter(item => item.reason.startsWith("Demo lenient mode"));
+    expect(filled.length).toBeGreaterThan(0);
+    expect(filled.every(item => item.status === "supported")).toBe(true);
+  });
+  it("keeps real comparator evidence for a clean take instead of the lenient label", () => {
+    lenientEnv();
+    const report = buildVerificationReport(input());
+    expect(report.recommendation).toBe("accept");
+    expect(report.criteria.some(item => item.reason.startsWith("Demo lenient mode"))).toBe(false);
+  });
+  it("STRICT always wins over LENIENT", () => {
+    vi.stubEnv("SKARL_VERIFIER_STRICT", "1"); vi.stubEnv("SKARL_VERIFIER_LENIENT", "1");
+    expect(buildVerificationReport({ ...input(), video: { visibility: "uncertain", observations: [] } }).recommendation).toBe("needs_review");
   });
 });

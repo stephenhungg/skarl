@@ -275,3 +275,22 @@ export const backfillTaskSpecs = internalAction({
     return counts;
   },
 });
+
+/** Operator-only (internal): move an open order's deadline later. Deadline is outside termsHash, so funding and payouts are unaffected. */
+export const extendDeadline = internalMutation({
+  args: { orderId: v.id("orders"), deadlineAt: v.number() },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("order_not_found");
+    if (!["funded", "collecting"].includes(order.status)) throw new Error("order_not_open");
+    if (args.deadlineAt <= Math.max(order.deadlineAt, Date.now())) throw new Error("deadline_must_move_later");
+    const buyer = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", order.buyerTokenIdentifier)).unique();
+    if (!buyer) throw new Error("buyer_not_found");
+    await ctx.db.patch(order._id, { deadlineAt: args.deadlineAt, updatedAt: Date.now() });
+    await audit(ctx, { organizationId: order.organizationId, eventKey: `deadline_extended:${order._id}:${args.deadlineAt}`, actor: actorFor(buyer as Parameters<typeof actorFor>[0]),
+      action: "order_deadline_extended", entityType: "orders", entityId: order._id,
+      reason: `Operator extended the collection deadline from ${new Date(order.deadlineAt).toISOString()} to ${new Date(args.deadlineAt).toISOString()} on the buyer's behalf; price, quantity and terms are unchanged.`,
+      evidenceReferences: [order.termsHash] });
+    return { orderId: order._id, deadlineAt: args.deadlineAt };
+  },
+});
