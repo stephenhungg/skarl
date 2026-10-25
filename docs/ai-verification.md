@@ -77,6 +77,10 @@ runtime forbids Ajv's dynamic compilation, so its completion mutation checks
 scope, hashes, frozen criterion IDs and the exact licensing guard. See the
 [clip runner](../evals/README.md#run-actual-local-clips) and [status](status.md).
 
+## Real YouTube-origin negative smoke test
+
+The deployed verifier also processed the real 19-second [Me at the zoo](https://www.youtube.com/watch?v=jNQXAC9IVRw) recording by Jawed Karim and Yakov Lapitsky, retrieved unmodified from its [CC BY 3.0 Wikimedia copy](https://commons.wikimedia.org/wiki/File:Me_at_the_zoo.webm). Flash visual inference completed in **4,893 ms**, Transcribe in **1,322 ms**, and backend processing in **11,622 ms**. The stored report recommended `needs_review` with all three red-cup criteria unobservable. Both modalities ran successfully; the unrelated content cannot qualify as red-cup evidence. The upload was verification-only, with no acceptance or payment requested. See [source, submission ID and full timing definitions](status.md#real-youtube-origin-clip-verification--october-25-2026). This is a live transport/report check, not an accuracy benchmark.
+
 ## Task 2 cloud run and initial provider limits
 
 The earlier Task 2 ten-second synthetic clip completed the cloud action in **8,942 ms**.

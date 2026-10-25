@@ -1,13 +1,13 @@
 # Build Status
 
-Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 finance and Task 2 verification run on the shared Convex cloud dev deployment below. Both visual and audio inference completed on one generated-media smoke test; a human demonstration quality benchmark remains unmeasured. Payment adapters are implemented; the payment owner recorded a first live x402 funding below. Live payout remains unconfirmed. Update this file when another integration becomes demonstrable.
+Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 finance and Task 2 verification run on the shared Convex cloud dev deployment below. Both visual and audio inference completed on generated-media and real YouTube-origin negative smoke tests; a human task quality benchmark remains unmeasured. Payment adapters are implemented; the payment owner recorded a first live x402 funding below. Live payout remains unconfirmed. Update this file when another integration becomes demonstrable.
 
 | Area | Implemented now | Remaining for the [demo path](workstreams.md) |
 | --- | --- | --- |
 | Web | Next.js landing/contributor recorder, Convex upload/status wiring, health and payment API routes; production build passes | Controller dashboard, live browser/wallet integration and HTTPS deployment verification |
 | Shared contracts | Base Sepolia chain constants (`chain.ts`), funding/payout status lists, JSON Schema, TS report validation, `parseAtomicUsdc` | Rubric-membership check wired into acceptance |
 | Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads and verified contributor wallets; production auth is out of demo scope |
-| Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; live audio measured | Both model stages completed on one generated input; human task acceptance, model accuracy and copy calibration remain unmeasured; intermittent provider failures persist |
+| Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; both stages completed on a real YouTube-origin negative (Flash 4,893 ms, audio 1,322 ms) | Human red-cup acceptance, model accuracy and copy calibration remain unmeasured; provider failures route to review |
 | Evaluation | Cloud clip runner; pre-labeled/source-hashed manifest; isolated copy scope; advisory quality projection; dated JSON/Markdown metrics and resume checkpoints | No consented labeled human corpus or measured accuracy run yet; earlier provider quota blockers resolved after billing was enabled |
 | Ledger | Atomic journal persistence; journal-derived trial balance, cash, deferred revenue, revenue/expense and payables by contributor; exact replay protection | Live payout settlement and end-to-end reconciliation evidence |
 | Payments | Live Base Sepolia x402 funding succeeded: **10 USDC** to treasury `0x8408a922ea400af33d7c2080a9edd5d3495b695f` ([transaction](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757)); funding journal/reconciliation and payout adapters implemented | Independent controller approval, wallet payout and payout reconciliation remain to demonstrate |
@@ -368,3 +368,24 @@ After the webhook change landed, public `HEAD /api/webhooks/cdp` returned 200;
 unsigned POST returned `503 {"error":"webhook_not_configured"}` while subscription
 secrets were absent. This establishes reachability and missing-configuration
 behavior, not successful signed webhook delivery.
+
+## Real YouTube-origin clip verification — October 25, 2026
+
+The deployed scheduled verifier processed [Me at the zoo](https://www.youtube.com/watch?v=jNQXAC9IVRw), by Jawed Karim and Yakov Lapitsky, using its unmodified [Wikimedia Commons copy](https://commons.wikimedia.org/wiki/File:Me_at_the_zoo.webm), licensed [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Ordinary YouTube CDN downloads returned HTTP 403; the public licensed mirror supplied the same source clip. The 19-second, 913,078-byte recording contains real human video and speech. It is an intentionally unrelated negative, not a red-cup demonstration or an accuracy corpus.
+
+The upload, submission scheduler, server SHA-256, FFmpeg modality isolation, twelve sampled visual frames, server dHashes, independent live Gemini calls, canonical report validation and stored report read-back all ran against **https://keen-marmot-986.convex.cloud**:
+
+| Measurement | Observed |
+| --- | --- |
+| Visual model | `gemini-3.8-flash`, **4,893 ms** |
+| Audio model | `gemini-3.5-transcribe`, **1,322 ms**, 39 timestamped transcript segments |
+| Backend processing | **11,622 ms** |
+| Client queued-to-report polling | **14,709 ms** |
+| Complete CLI invocation, including startup/upload | **16,578 ms** |
+| Stored outcome | `needs_review`; all three rubric criteria `unobservable`, no visible cup events |
+
+Submission: `mn7100dqspzfrdt5f3h8bwbzqx8gyb1w`. Original SHA-256: `f080a995943f2b4641d74a94dfc2d336d494fa6e25026e55b5def94f07ea522b`. This was a successful inference/report integration run, not a provider failure. It stayed verification-only: no training license was granted and no acceptance, payable or payment was requested. Media, transcript and raw provider/report artifacts remain private and ignored.
+
+Immediately before the run, the cloud video override was observed as `gemini-4-argon`; it was restored to the requested `gemini-3.8-flash`. The stored model-run metadata above confirms Flash actually served this measurement. Code defaults for video and finance remain 3.8 Flash; the shared 30-second provider deadline is deployed.
+
+Final validation for this run: `pnpm check` passed **385 tests** (100 Node, 257 Convex, 28 payment-route), root/Convex/web typechecks, all 32 Markdown files’ local links/anchors and the production build. Cloud deploy/typecheck passed before the live run. Committed generated API types now include the already-deployed chain-witness modules.
