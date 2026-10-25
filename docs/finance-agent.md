@@ -40,7 +40,7 @@ Store all cash/obligation arithmetic as exact micro-USDC. Display USDC and gas (
 
 ## Demonstrating engineering quality
 
-**Deferred until after the demo path works.** For tonight, the evidence is the scripted checks in [demo](demo.md): duplicate payable blocked, self-approval refused, repeated funding event posted once.
+**Not yet run as a formal evaluation.** Current evidence is `pnpm eval:finance` (golden questions with negative controls) and the scripted checks in [demo](demo.md): duplicate payable blocked, self-approval refused, repeated funding event posted once.
 
 Create a synthetic answer-key dataset of finance cases independently from the model prompt. Include the full $100 lifecycle, prepayment incorrectly labeled revenue, duplicated payable/event, wrong recipient/token, changed proposal after approval, requester self-approval, expired approval, over-refund, lost payout response, cancellation race and a prior-period reconciliation discrepancy.
 

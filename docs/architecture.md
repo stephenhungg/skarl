@@ -22,7 +22,7 @@ flowchart LR
   DB --> Finance[Payables, journals, approvals and audit views]
 ```
 
-This is **tonight's target architecture** (see [workstreams](workstreams.md)). The current shell does not connect these services yet. The browser fetches media through an authenticated backend path rather than a long-lived unprotected storage URL. **The buyer-signed deterministic rule approves eligible payouts; failed checks go to buyer Review. The CDP executor independently caps execution. Legacy browser-wallet signing remains available; no separate human controller is required. No treasury signing key enters the web runtime or agent, and there is no custom Solidity or escrow contract.**
+This is the implemented architecture (see [workstreams](workstreams.md) for owners and [status](status.md) for what has been observed live). The browser fetches media through an authenticated backend path rather than a long-lived unprotected storage URL. **The buyer-signed deterministic rule approves eligible payouts; failed checks go to buyer Review. The CDP executor independently caps execution. Legacy browser-wallet signing remains available; no separate human controller is required. No treasury signing key enters the web runtime or agent, and there is no custom Solidity or escrow contract.**
 
 **Deferred design** (kept in the subsystem docs, not built for the demo): a Python verifier worker on Railway with an HMAC service gateway and leased jobs, faster-whisper transcription, SSCD temporal copy detection, and refunds.
 

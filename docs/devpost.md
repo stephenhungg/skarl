@@ -4,19 +4,17 @@
 
 [Live testnet demo](https://skarl.devshardat.work) · [Repository](https://github.com/stephenhungg/skarl) · [One-page thesis and witness table](thesis.md) · [Coinbase submission](coinbase-submission.md) · [Demo script](demo-script.md) · [Setup](setup.md)
 
-**Testnet · test USDC · demo identities · operator-owned funds.** Demo video: **pending recording and upload**. Evidence cutoff: **October 25, 2026, 04:40 PDT**; [status](status.md) is the dated source of truth. Implemented, simulated and live are different claims.
+**Testnet · test USDC · demo identities · operator-owned funds.** Evidence cutoff: **October 25, 2026, 04:40 PDT**; [status](status.md) is the dated source of truth. Implemented, simulated and live are different claims.
 
 ## Inspiration
 
 Human-data companies buy demonstrations that must become licensed training samples and defensible contributor payments. But a new filename may conceal work already paid for; fluent narration may describe something the camera never saw; a timeout may hide a completed transfer. The settlement desk needs witnesses for the work, the obligation and the movement of money.
 
-The market is spending heavily on human demonstrations: Forbes reports Figure's plan to invest **$1 billion in data and compute over 12 months**. Contributors still need visibility into the bargain: MIT Technology Review reports workers' uncertainty about how their footage is used, stored and shared. That article could not be independently re-opened for this update. [Forbes](https://www.forbes.com/sites/johnkoetsier/2026/08/26/figure-launches-gig-platform-to-get-humans-to-do-work-to-train-robots-will-spend-1-billion/), [MIT Technology Review](https://www.technologyreview.com/2026/04/01/1134863/humanoid-data-training-gig-economy-2026-breakthrough-technology/).
+The market is spending heavily on human demonstrations: Forbes reports Figure's plan to invest **$1 billion in data and compute over 12 months**. Contributors still need visibility into the bargain: MIT Technology Review reports workers' uncertainty about how their footage is used, stored and shared. [Forbes](https://www.forbes.com/sites/johnkoetsier/2026/08/26/figure-launches-gig-platform-to-get-humans-to-do-work-to-train-robots-will-spend-1-billion/), [MIT Technology Review](https://www.technologyreview.com/2026/04/01/1134863/humanoid-data-training-gig-economy-2026-breakthrough-technology/).
 
-Our first task is deliberately narrow: pick up a red cup, put it on a marked coaster and narrate the action. Our first customer hypothesis is the operator buying those demonstrations for an AI team. No customer interviews, paid adoption or downstream model improvement are claimed.
+Our tasks are deliberately narrow tabletop demonstrations, each defined by a versioned task spec: for example, put a red cup on a marked coaster while a blue cup acts as a distractor, or move a can next to a hat. The verifier's prompts and object/target checks are generated from the task spec's rubric rather than hardcoded per task. Our first customer hypothesis is the operator buying those demonstrations for an AI team. No customer interviews, paid adoption or downstream model improvement are claimed.
 
 ## What it does
-
-The [Tax-ready ledger](tax.md) adds journal-derived YTD payouts, contributor form-on-file attestations, deterministic missing-form buyer review and read-only finance-agent summaries: **Not tax advice — demo data**. It collects no tax IDs and never computes, withholds or files real tax; deployment and the live tax scenario remain unverified.
 
 Skarl fills the **settlement accountant + AP clerk** seats through the finance agent and buyer-signed policy. The work witnesses are silent visual observations, separately transcribed audio and server-derived copy evidence. The money witnesses are frozen Convex order terms, exact double-entry journals and independently observed chain transfers. A deterministic judge checks the evidence and stored authority. Finance agents explain discrepancies and propose bounded payments; they cannot approve them. The buyer sets an auto-pay rule when funding. A separate internal `policy-engine` applies it deterministically; the CDP executor enforces an independent wallet cap.
 
@@ -24,7 +22,13 @@ The rule is on by default with a cap equal to the order’s per-clip price; buye
 
 **The moment:** duplicate caught → second payable blocked → agent self-approval refused → buyer-signed policy approves eligible work → independent CDP cap → chain + ledger agree. The complete sequence is **pending live proof**. The demo labels isolated control tests as **SIMULATED — NO TRANSFER** and recorded provider operations as **RECORDED LIVE TESTNET**. The bank comparison is a dated live Nessie API observation (October 25, 2026, 04:11 PDT: four funding deposits observed; order, ledger, chain and bank all `match` for the 10 USDC order), still labeled a **mock bank**.
 
-The implemented advisory finance analyst adds cited review recommendations, payout narration that distinguishes approval from observed settlement, and organization close notes; deployment and live analyst inference remain unverified, and it has zero payment authority.
+The advisory finance analyst adds cited review recommendations, payout narration that distinguishes approval from observed settlement, and organization close notes on Convex crons. Live close and exception notes have been generated on the development deployment; the analyst has zero payment authority.
+
+The [tax-ready ledger](tax.md) adds journal-derived YTD payouts, contributor form-on-file attestations, deterministic missing-form buyer review and read-only finance-agent summaries: **Not tax advice — demo data**. It collects no tax IDs and never computes, withholds or files real tax.
+
+Each accepted clip also gets a **Token-2022 license token on Solana devnet**: a one-of-one mint (supply 1, decimals 0) whose mint authority is revoked in the same transaction, with on-chain metadata whose `license` field is a digest binding the delivery, manifest, order terms, consent receipt and license version. Minting is idempotent per delivery and refused once a consent revocation is recorded.
+
+Personal AI agents can **onboard themselves over MCP**: `skarl_onboard` walks through wallet setup, `skarl_wallet_status` checks Base Sepolia USDC readiness and `skarl_request_testnet_usdc` requests rate-limited test USDC from the CDP faucet. The same flow ships as a `skarl-buyer` skill at `/skill.md`. Agents fund orders; they never approve payouts.
 
 ## How we're different
 
@@ -57,8 +61,10 @@ Amounts stay `bigint` micro-USDC, Convex Int64 and decimal integer strings at JS
 | **Live: jury + Claude finance + mock bank** | The [04:40 evidence refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt) records the Argon/Flash/Transcribe negative jury (7,758/4,916/718 ms), a completed Claude finance loop with three read tools and zero proposed amount, and a fresh 10-USDC order/ledger/chain/Nessie match. Nessie is a simulated bank; no fiat or payout match is claimed. |
 | **Live: CDP enforcement** | Actual over-cap 2.000001-USDC and non-allowlisted 0.10-USDC requests returned `403 policy_violation`; no outgoing transaction returned. Preflight policy simulations are separate evidence. |
 | **Live: EAS public receipts** | All 11 finalized reports have confirmed attestations from the two-minute cron, verified through EASScan and RPC; every recommendation remains `needs_review`. [Inventory and provenance](status.md#live-backfill-and-automatic-sweep--october-25-2026-0353-pdt). |
+| **Implemented + devnet smoke: Token-2022 licenses** | [`solana-license.ts`](../packages/payments/src/solana-license.ts), [`solanaLicense.ts`](../convex/solanaLicense.ts), [`solanaLicenseData.ts`](../convex/solanaLicenseData.ts). A devnet smoke mint confirmed supply 1, mint authority `None` and on-chain metadata. Licenses appear in `proof:summary.solanaLicenses` and the public `/proof.json`. No production license exists until a clip is accepted. |
+| **Deployed: agent onboarding** | MCP guest tools `skarl_onboard`, `skarl_wallet_status`, `skarl_request_testnet_usdc` ([`mcp.ts`](../convex/mcp.ts), [`onboarding.ts`](../convex/onboarding.ts)) and `/skill.md`. A live faucet request delivered test USDC to the CDP agent wallet. Faucet use is rate limited per address, caller and globally. |
 | **Simulated / local controls** | Duplicate obligations, trim-candidate alignment, approval refusal, replay, refund reservation and timeout recovery have regression coverage. Workflow wait/resume uses the real component's test adapter. Tests prove those cases, not live settlement. |
-| **Pending** | Licensed accepted contribution; contributor payout; completed Wallet MCP purchase; paid evidence delivery/Bazaar listing; settlement/finance cron observations. Cartesia and physical iPhone IMU remain unverified. Claude finance and the negative vision jury now have stored live-run evidence; Nessie has live mock-API evidence. EAS report attestations are now live; they do not establish acceptance. |
+| **Pending** | Licensed accepted contribution; contributor payout; production Token-2022 license; completed Wallet MCP purchase; paid evidence delivery/Bazaar listing; settlement/finance cron observations. Cartesia and physical iPhone IMU remain unverified. Claude finance and the negative vision jury now have stored live-run evidence; Nessie has live mock-API evidence. EAS report attestations are now live; they do not establish acceptance. |
 
 The [witness table](thesis.md#the-witness-table) distinguishes each layer. Original media, private URLs and credentials stay out of source control and public receipts. Demo identities are impersonable and are not production authentication.
 
@@ -104,9 +110,9 @@ Convex is the system of record and agent memory. Its transactions keep acceptanc
 | Rubric, verbatim | Skarl's evidence |
 | --- | --- |
 | **Usefulness** | **PAY:** agent-funded human-data orders, live through CLI/CDP. **EARN:** a 0.25-USDC eligible-sample evidence endpoint paying a separate revenue wallet; live sale pending. |
-| **Technical design** | Exact money, durable intents, CDP facilitator + signed webhooks + RPC, bounded Gemini tools, Convex memory/Workflow, buyer-signed deterministic approval. Actual CDP policy `403`s constrain the optional executor; successful payout pending. |
-| **Ease of reuse** | Public app, [README setup](../README.md), [Wallet MCP plugin](wallet-mcp-plugin/skarl.md), explicit caps and same-request recovery. Completed Wallet MCP payment remains pending; CLI settlement is not MCP evidence. |
-| **Product feedback** | Observed SQL 500 blocker; RPC/webhook workaround. Requested capability: policy-bound Wallet MCP execution of already authorized transactions with stable request IDs. Full incident provenance in [builder feedback](coinbase-submission.md#4-builder-feedback). |
+| **Technical design** | Exact money, durable intents, CDP facilitator + signed webhooks + RPC, bounded Gemini/Claude tools, Convex memory/Workflow, buyer-signed deterministic approval. Actual CDP policy `403`s constrain the optional executor; successful payout pending. |
+| **Ease of reuse** | Public app, [README setup](../README.md), [Wallet MCP plugin](wallet-mcp-plugin/skarl.md), MCP onboarding tools plus a `skarl-buyer` skill at `/skill.md` (wallet check, rate-limited CDP faucet, task discovery, x402 funding), explicit caps and same-request recovery. Completed Wallet MCP payment remains pending; CLI settlement is not MCP evidence. |
+| **Product feedback** | Observed SQL 500 blocker; RPC/webhook workaround. Solana x402 fee-payer rotation, Wallet MCP self-send, CDP faucet sizing for Token-2022 rent and the `@solana/kit` version split are documented with workarounds. Requested capability: policy-bound Wallet MCP execution of already authorized transactions with stable request IDs. Full incident provenance in [builder feedback](coinbase-submission.md#4-builder-feedback). |
 
 Wallet MCP uses `initiate_x402_request`, human approval and `complete_x402_request`; the finance agent cannot approve itself. The application’s buyer-signed policy and the CDP wallet cap are separate controls. Wallet MCP approval-mode signing remains a compatibility path. Eligibility and the four required submission artifacts remain in the [sponsor checklist](sponsor-tracks.md#team-eligibility-checklist).
 
@@ -116,7 +122,7 @@ Wallet MCP uses `initiate_x402_request`, human approval and `complete_x402_reque
 
 **Thoughtful use of Claude.** Claude and Gemini are configurable finance providers over the same bounded tools; neither can approve. A stored live `claude-sonnet-5-5` run completed at 03:59 PDT, reading payables, trial balance and exceptions, then persisting an explanation with zero proposed amount. The [04:40 evidence refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt) gives its run ID and retains the earlier HTTP 400 failure. This is in-product finance evidence, separate from Claude Code used for development.
 
-The implemented Contributor Coach translates stored criteria into specific correction guidance with evidence timestamps. It omits raw narration, has no tools, validates output and cannot change the outcome or promise payment. Its contributor-facing quality and community benefit remain unmeasured; this submission refresh did not establish a completed coach result. The useful next step is a consented contributor pilot. [Implementation and limits](anthropic.md).
+The implemented Contributor Coach translates stored criteria into specific correction guidance with evidence timestamps. It omits raw narration, has no tools, validates output and cannot change the outcome or promise payment. Its contributor-facing quality and community benefit remain unmeasured, and no completed live coach result is recorded yet. The useful next step is a consented contributor pilot. [Implementation and limits](anthropic.md).
 
 ### Capital One — Best Use of Nessie
 
@@ -128,7 +134,9 @@ Gemini produces timestamped observations instead of final payment authority. Arg
 
 ### MLH — Best Use of Solana
 
-**Live funding evidence:** 1 test USDC on Solana Devnet through CDP at 03:29 PDT, with finalized RPC identity and a matching Convex journal, linked above. The earlier fee-payer mismatch is preserved as a failed attempt rather than hidden. Solana provides optional buyer funding; Base remains first in x402 accepts and the only payout rail. No Solana payout, bridge, mainnet load test or Wallet MCP Solana payment is claimed.
+**Live funding evidence:** 1 test USDC on Solana Devnet through CDP at 03:29 PDT, with finalized RPC identity and a matching Convex journal, linked above. The earlier fee-payer mismatch is preserved as a failed attempt rather than hidden. Solana provides optional buyer funding; Base remains first in x402 accepts and the only payout rail.
+
+**Token-2022 data licenses:** each published delivery mints one Token-2022 license on Solana devnet using the MetadataPointer and TokenMetadata extensions. One transaction creates the mint, writes metadata, mints exactly one token and sets the mint authority to `None`, so supply is provably fixed. The on-chain `license` field is a digest over the delivery, manifest hash, order terms hash, consent receipt hash, license hash and license version, so anyone holding Skarl's off-chain records can verify which consent the token licenses. A CDP Solana account pays and signs remotely; a fresh mint keypair signs locally. Mints are idempotent per delivery, retried a bounded number of times, and refused after a consent revocation is recorded. A devnet smoke mint verified the transaction shape; no production license exists until a clip is accepted. No Solana payout, bridge, mainnet deployment or Wallet MCP Solana payment is claimed.
 
 ### Microsoft — Built for the Real World (1st), Customer Impact Award (2nd)
 
@@ -146,7 +154,7 @@ Gemini produces timestamped observations instead of final payment authority. Arg
 
 ### MLH — Commit Fellowship Prize Category
 
-The team has a prototype and a specific problem to validate: can small human-data operators reduce settlement review effort while protecting contributors and preventing duplicate obligations? Next is customer discovery, a consented pilot and measured review/false-acceptance outcomes. **Submission reminder:** opt into the Commit Fellowship Prize Category on Devpost **and complete the [supplemental form](https://mlh.link/commit-fellowship-form)** ([official MLH prize instructions](https://www.mlh.com/events/prizes)). Neither selection nor form submission has been performed by this documentation task.
+The team has a prototype and a specific problem to validate: can small human-data operators reduce settlement review effort while protecting contributors and preventing duplicate obligations? Next is customer discovery, a consented pilot and measured review/false-acceptance outcomes.
 
 ## What's next
 
@@ -154,7 +162,7 @@ Complete a consented, accept-eligible contribution and independently approved Co
 
 ## Built with
 
-TypeScript, React, Next.js, Vercel, Convex, Convex Workflow, Gemini API (Argon, Flash, Transcribe), Claude API, Capital One Nessie mock API, EAS, FFmpeg, x402, Coinbase CDP SDK/facilitator/webhooks/Policy Engine, Coinbase Wallet MCP adapter, Base Sepolia, Solana Devnet, test USDC, viem, Python, Vitest and pnpm. This list describes implementation, not proof that every integration ran end to end.
+TypeScript, React, Next.js, Vercel, Convex, Convex Workflow, Gemini API (Argon, Flash, Transcribe), Claude API, Capital One Nessie mock API, EAS, FFmpeg, x402, Coinbase CDP SDK/facilitator/webhooks/Policy Engine/faucet, Coinbase Wallet MCP adapter, MCP, Base Sepolia, Solana Devnet, Solana Token-2022 (`@solana/kit`, `@solana-program/token-2022`), test USDC, viem, Python, Vitest and pnpm. This list describes implementation, not proof that every integration ran end to end.
 
 ## Verify on-chain
 
@@ -190,15 +198,16 @@ bank (Capital One Nessie mock)**, to compare each funding or contributor-payout
 obligation across the order, ledger, chain and modeled bank activity. Confirmed
 x402 funding is modeled as a Treasury deposit; observed contributor payouts
 are modeled as Treasury-to-contributor transfers. Account seeding, activity
-polling and exception projection are implemented against a mocked client.
-Live Nessie integration remains blocked on an API key and backend rollout;
-no hosted Nessie transaction or real fiat movement is claimed.
+polling and exception projection run against the live Nessie mock API: four
+funding deposits were observed and the 10-USDC order matched across order,
+ledger, chain and bank at 04:11 PDT. No real fiat movement is claimed.
 
 **Creativity:** “Every claim has a witness” connects agent commerce with the
 settlement desk's ordinary question: do the independent records agree? The
 bank view gives a human-data company a modeled fiat-side witness beside its
 USDC books. Agents can explain the disagreement, deterministic code identifies
-the mismatch, and humans retain exception review and payment authority. The
+the mismatch, and the buyer retains exception review; no agent gains payment
+authority. The
 mock bank demonstrates that workflow; it is not independent proof of actual
 fiat settlement.
 

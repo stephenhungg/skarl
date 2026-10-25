@@ -28,7 +28,7 @@ Embodied-AI data buyers can use synchronized video, audio and inertial signals
 to study camera motion alongside visible actions. This thin slice preserves the
 raw channels and exposes simple plotting summaries, without claiming that phone
 motion measures hand or object motion. An accelerometer measures the camera
-device, not the cup.
+device, not the manipulated object.
 
 Attitude and gravity give labs camera orientation relative to gravity: the
 rotational half of camera pose, without claiming camera translation, calibrated
@@ -37,7 +37,7 @@ coaching help contributors keep the fixed-camera task readable, with the goal
 of fewer rejected takes; no reduction in rejections has been measured yet.
 
 Motion can contribute to an anti-recapture investigation, but it is **not hardware
-attested** and an uploaded trace can be fabricated. The current red-cup task asks
+attested** and an uploaded trace can be fabricated. Capture guidance asks
 for a **fixed camera**, so a still IMU during pickup or placement is expected. We
 therefore do not issue a “possible screen recapture” warning or force review from
 that condition. Sensors can never recommend acceptance or authorize payment.

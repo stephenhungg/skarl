@@ -163,7 +163,7 @@ Both independent stages completed: `gemini-3.8-flash` visual observation took
 **9,766 ms**; client create-to-stored-report latency was **12,443 ms**. All three
 criteria were unobservable and both advisory and operational reports recommended
 review. This proves the transport/report path on a generated negative; it does
-not prove red-cup acceptance, human-task accuracy or calibrated copy detection.
+not prove task acceptance, human-task accuracy or calibrated copy detection.
 The earlier provider failures below remain relevant operational observations.
 
 Scoped evaluation adds a canonical advisory quality report before the licensing
@@ -275,7 +275,7 @@ match count, then the lowest total Hamming distance, with at least three matched
 informative frames, mean <=6 bits/frame and no matched distance >10 bits.
 Uniform all-zero/all-one hashes are not informative; each input must contain
 at least two distinct informative hashes to reject patterned-static clips.
-These heuristic thresholds are not calibrated against real red-cup retakes.
+These heuristic thresholds are not calibrated against real task retakes.
 
 Both analysis and `acceptAndPublish` check copy candidates. The finance mutation
 rechecks accepted work in the same transaction and organization, so a concurrent

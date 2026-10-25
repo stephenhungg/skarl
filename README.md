@@ -10,14 +10,14 @@ The demo moment: an accepted original earns a payable; a copied submission canno
 
 **Start here: [track-to-evidence review guide](docs/review-guide.md).** It maps sponsor requirements to real code, isolated checks, recorded live evidence and remaining gaps. [Sponsor criteria](docs/sponsor-tracks.md) · [Architecture](docs/architecture.svg) · [Dated build status](docs/status.md) · [Demo runbook](docs/demo-script.md).
 
-The [public web demo](https://skarl.devshardat.work) and payment origins may serve different deployed versions; verify them separately against `main`. **Testnet and test USDC only.** Base Sepolia supports funding and payouts; Solana Devnet supports funding. Optional Google/Convex Auth is implemented, but anonymous demo identities remain impersonable while demo mode is enabled. Deployment and provider configuration must be checked separately.
+The [public web demo](https://skarl.devshardat.work) and payment origins may serve different deployed versions; verify them separately against `main`. **Testnet and test USDC only.** Base Sepolia supports funding and payouts; Solana Devnet supports funding and carries one Token-2022 license token per published delivery (no Solana payouts). Optional Google/Convex Auth is implemented, but anonymous demo identities remain impersonable while demo mode is enabled. Deployment and provider configuration must be checked separately.
 
 ## Review the controls
 
 | Surface | What to inspect |
 | --- | --- |
 | `/dashboard/submissions` → a clip | Timestamped rubric evidence, independent visual observations, narration, liveness and the work/money/judgment witness receipt. Missing witnesses remain missing. |
-| `/dashboard/scenarios` | Eight explicitly simulated exception probes with expected/observed outcomes and audit IDs. Runs require an explicit owning-buyer or legacy-controller action; missing prerequisites remain blocked. |
+| `/dashboard/scenarios` | Eight explicitly simulated exception probes with expected/observed outcomes and audit IDs. Runs require an explicit owning-buyer action (the legacy controller role remains a hidden compatibility path); missing prerequisites remain blocked. |
 | `/dashboard/agent` → `/dashboard/payables` | Bounded tool calls, refusal records, immutable amount/recipient, buyer-signed auto-pay rules, exception review and safe manual recovery. CDP execution remains bound to approved intents and wallet caps. |
 | `/dashboard/ledger` → Reconciliation | Order, exact ledger, chain and Nessie mock-bank comparison. A mock-bank entry is not fiat movement or payout authority. |
 
@@ -110,7 +110,7 @@ video, narration and device motion, using Bun. [Sensor evidence and limits](docs
 | Stephen | Backend, demo identities, AI verification, finance logic and shared contracts | `convex`, `services/verifier`, `evals`, `fixtures`, `packages/contracts`, `packages/ledger` |
 | qtzx06 | x402 on Base Sepolia, Coinbase for Agents (Wallet MCP), onchain settlement | `packages/payments`, `apps/web/lib/payments`, payment API routes |
 
-These assignments reflect Stephen's requested split. Folder paths describe ownership boundaries. [Workstreams](docs/workstreams.md) is the 8-hour plan to the 9:00 AM PDT deadline; [the docs index](docs/README.md) covers product, architecture, APIs, sponsors, research and the demo.
+These assignments reflect Stephen's requested split. Folder paths describe ownership boundaries. [Workstreams](docs/workstreams.md) records ownership, folder boundaries and shared rules; [the docs index](docs/README.md) covers product, architecture, APIs, sponsors, research and the demo.
 
 ## Repository map
 

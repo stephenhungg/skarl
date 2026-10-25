@@ -10,7 +10,7 @@ The Kled-inspired premise is a marketplace for human data. Our engineering wedge
 
 ## Narrow first customer and task
 
-The demo buyer is an AI team acquiring short procedural demonstrations for assistive or embodied systems. The contributor records one harmless desktop task: **pick up the red cup, place it on the marked coaster and narrate the action**. Use a fixed camera, red and blue cups, one marked coaster, a 10–30 second duration and the same immutable rubric for the first demo. This makes temporal action, visible outcome, speech alignment and copy detection observable.
+The demo buyer is an AI team acquiring short procedural demonstrations for assistive or embodied systems. The contributor records one harmless desktop task: **pick up the red cup, place it on the marked coaster and narrate the action**. Use a fixed camera, red and blue cups, one marked coaster, a 10–30 second duration and the same immutable rubric for the first demo. Later tasks reuse the same pipeline with rubric-generated task specs (for example, moving a can closer to a hat). This makes temporal action, visible outcome, speech alignment and copy detection observable.
 
 This is a test task, not evidence that the dataset already improves a robot or accessibility product. The longer-term benefit is paid participation in data production and better coverage of human procedures. Real-world impact still requires buyer validation, consented data and downstream evaluation.
 

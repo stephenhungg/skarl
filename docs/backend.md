@@ -15,7 +15,7 @@ See [payment integration](payments.md) for the current contract.
 The seed creates an **unfunded** order; it performs no transfer or inference.
 
 The architecture targets Hyphenate, meaningful Convex use, Coinbase Best Use of
-x402 (Base Sepolia, Wallet MCP) and Gemini. **Tonight's build** follows
+x402 (Base Sepolia, Wallet MCP) and Gemini. **The current build** follows
 [workstreams](workstreams.md): seeded demo identities, a Gemini Convex action,
 and `acceptAndPublish` / `proposePayment` / `approve`.
 

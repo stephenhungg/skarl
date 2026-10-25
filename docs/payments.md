@@ -116,7 +116,13 @@ SDK integration traps verified locally: `@coinbase/cdp-sdk/x402` imports its opt
 
 ## Solana rail
 
-Solana Devnet is a second **funding-only** rail targeting MLH Best Use of Solana. Coinbase/CDP and Base remain primary. Canonical network is `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`; USDC mint is `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, six decimals. There is no bridge or Solana payout flow: all payouts still require Base USDC liquidity.
+Solana Devnet is a second funding rail and the license-token chain, targeting MLH Best Use of Solana. Coinbase/CDP and Base remain primary. Canonical network is `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`; USDC mint is `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, six decimals. There is no bridge or Solana payout flow: all payouts still require Base USDC liquidity.
+
+### Token-2022 license per delivery
+
+When `acceptAndPublish` publishes a delivery, it schedules `solanaLicense:mintForDelivery` (`convex/solanaLicense.ts`, with claims in `convex/solanaLicenseData.ts`). The builder in `packages/payments/src/solana-license.ts` creates one Token-2022 mint with the MetadataPointer and TokenMetadata extensions, decimals 0, mints exactly one token to the custodial license account, and revokes the mint authority in the same transaction, so supply is provably fixed at one. The single additional metadata field `license` is a digest over the delivery ID, manifest hash, terms hash, consent receipt hash, license hash and license version.
+
+The fee payer, metadata update authority and holder is the CDP Solana account named by `SKARL_CDP_SOLANA_LICENSE_ACCOUNT` (default `skarl-license-devnet`). The fresh mint key signs locally; CDP signs the payer slot remotely (`signTransaction`), and the transaction is sent and confirmed over Solana RPC. The claim is idempotent per delivery: minted or in-flight rows are never re-minted, failures retry up to `SKARL_SOLANA_LICENSE_MAX_ATTEMPTS` (default 3), a recorded consent revocation refuses minting, and an underfunded signer fails before signing. `SKARL_SOLANA_LICENSES=off` disables scheduling. Results surface in `proof:solanaLicenses`, `proof:summary.solanaLicenses` and, for minted licenses only and without holder or contributor linkage, the public `/proof.json`. Devnet and testnet only; the license token is a provenance record, not a transfer of payment.
 
 The CDP receive-only account `skarl-treasury-devnet` is `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh`. Its canonical USDC associated token account (ATA), `CtgPLBxHZU1UZcyovafXuQR2cVAFvpHksPh5HCBDJWHY`, was initialized through the USDC faucet and independently observed on Devnet before enabling payment. Its public address is configured as `SKARL_SOLANA_TREASURY_ADDRESS` in Vercel production and Convex. No treasury signing operation is used by this integration.
 

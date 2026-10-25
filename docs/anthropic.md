@@ -2,8 +2,9 @@
 
 **Every claim has a witness.** Skarl is an autonomous settlement desk for
 human-data companies. Independent evidence must agree before work can qualify;
-agents explain and argue the case, deterministic code enforces the rules, and
-humans review exceptions and approve payments.
+agents explain and argue the case, deterministic code enforces the rules, a
+payment rule the buyer signed approves eligible payouts, and buyers review
+exceptions. No model can approve a payment.
 
 ## Community and problem
 
@@ -18,23 +19,30 @@ owe.
 The narrow job for Claude is to make those boundaries understandable. The
 Contributor Coach turns the stored report into kind, specific guidance with
 citations. A separate finance provider explains exact obligations and can propose
-existing payables for independent approval. Neither role decides that a person
-should be paid.
+existing payables for independent approval by the buyer's signed policy. Neither
+role decides that a person should be paid.
 
-## What is implemented, and what works Monday
+## What is implemented
 
-The backend provides two bounded integrations using `@anthropic-ai/sdk` 1.3.0
+The backend provides three bounded integrations using `@anthropic-ai/sdk` 1.3.0
 from Convex Node actions:
 
 - `coach.explainOutcome` creates a persisted explanation for the contributor's
   own submission. It reads stored criterion statuses, evidence ranges and
   warnings; it does not ask Claude to judge the original recording again.
   The contributor query exposes guidance for the current report and outcome.
-- `financeAgent.run` can select Claude or Gemini behind the same six typed tools
-  and deterministic finance controls. The persisted run records its provider,
-  model, tool results and terminal status for the controller.
+- `financeAgent.run` can select Claude or Gemini behind the same shared
+  24-tool registry (`convex/lib/financeToolRegistry.ts`): read tools over
+  orders, payables, journals, reconciliation, bank witnesses, tax-ready
+  summaries and audit history, plus a small set of proposal tools. The
+  persisted run records its provider, model, tool results and terminal status
+  for the buyer.
+- `financeAnalystJobs` (`sweep`, `close`) runs on Convex crons and writes
+  advisory analyst notes for exceptions, payouts and the organization close,
+  readable through `financeAnalyst:notesFor` and `financeAnalyst:latestClose`.
+  Notes are explanations only; they cannot change any financial state.
 
-The intended Monday workflow is one concrete support task: a robot-demonstration
+The intended workflow is one concrete support task: a robot-demonstration
 contributor reads what the report found and receives a next step tied to the
 recording. For example, **illustrative wording, not an observed Claude result**:
 “At 0:04 the cup left the frame; if you re-record, keep the cup and coaster
@@ -42,21 +50,28 @@ visible.” The actual API supplies its timestamp from stored evidence, not from
 model prose. This reduces the gap between a criterion result and an actionable
 correction without granting the coach authority to change the result.
 
-**Evidence status, October 25, 2026:** this addition is implemented with synthetic
-provider tests. `ANTHROPIC_API_KEY` was absent from the local
-`~/.config/skarl/anthropic.env` file and from the `dev:keen-marmot-986` Convex
-environment when checked. No live Claude inference or Claude-assisted payment is
-claimed. The deployment operator must deploy merged `origin/main` and configure
-the key. The web/iOS coach UI and production authentication are separate
-integration work; the current public demo identity selector is impersonable and
-is not production authentication. This is a backend handoff, not a claim of a
-production-ready contributor service.
+**Evidence status, October 25, 2026:** a live read-only Claude finance run is
+recorded on the `dev:keen-marmot-986` deployment: run
+`mx72prddnhjp87a8qdy9p0svs98gyggq`, provider `claude`, model
+`claude-sonnet-5-5`, 4,636 ms, three read tools (`listOutstandingPayables`,
+`getTrialBalance`, `listReconciliationExceptions`) and `proposedAtomic: "0"`
+([status](status.md#submission-evidence-refresh--october-25-2026-0440-pdt)).
+That is live read-only evidence, not a proposal, approval or payment. No
+Claude-assisted payment is claimed, and live coach output on a consented
+contributor report has not been recorded. Demo identity selectors remain
+impersonable while demo mode is enabled; signed-in Google accounts use real
+memberships.
 
 ## How Claude is constrained
 
-The finance adapter maps the existing tools to Anthropic `input_schema` objects,
-using `strict: true` and `additionalProperties: false`. Runtime validation still
-checks every requested tool and argument before dispatch. `approve`, signing,
+The finance adapter (`convex/lib/financeAgentProvider.ts`) maps the shared
+registry to Anthropic `input_schema` objects with `additionalProperties: false`.
+Anthropic accepts at most 20 strict tools and rejects integer
+`minimum`/`maximum` and array `maxItems` in strict schemas, so mutating tools
+are advertised with `strict: true`, read tools are not, and those keywords are
+stripped from the advertised schema. `validateFinanceToolCall` still enforces
+every bound, the tool allowlist and each argument before dispatch, for both
+providers. `approve`, signing,
 transfers, arbitrary HTTP and arbitrary Convex calls are never advertised.
 An unexpected approval attempt reaches only the existing agent-refusal path;
 unknown tools and malformed arguments produce persisted refusals. Claude receives

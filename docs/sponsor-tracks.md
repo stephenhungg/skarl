@@ -8,14 +8,14 @@ Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devne
 
 | Track (Devpost name) | What we demonstrate |
 | --- | --- |
-| [Hyphenate] The Hyphenated Enterprise: Autonomous Systems for Finance (**primary**) | Implemented duplicate/payable controls, separate agent proposer and buyer-policy approver, balanced journals and recorded funding. Shared AP/settlement tool registry adds scoped order, journal, witness, funding, payout, health and four-way context; ten stubbed finance goldens cover citations, exact money and authority limits. Expanded tools need deployment/live verification; complete live policy-approved payout remains pending |
-| [Hyphenate] Tax-ready ledger | **Not tax advice — demo data**: journal-derived contributor YTD, form-on-file attestations, missing-form buyer review, advisory threshold flags and read-only finance-agent summaries; deployment and live tax scenario remain unverified. [Scope and checks](tax.md). |
-| [Coinbase] Best Use of x402, **Payment Agents** track | Live x402 funding via CDP, a reusable Wallet MCP approval plugin, and live CDP wallet cap/allowlist rejections; contributor payout and MCP purchase still pending |
+| [Hyphenate] The Hyphenated Enterprise: Autonomous Systems for Finance (**primary**) | Implemented duplicate/payable controls, separate agent proposer and buyer-policy approver, balanced journals and recorded funding. Shared AP/settlement tool registry adds scoped order, journal, witness, funding, payout, health and four-way context; ten stubbed finance goldens cover citations, exact money and authority limits. The expanded registry is deployed and a live Claude run used it for a cited answer; complete live policy-approved payout remains pending |
+| [Hyphenate] Tax-ready ledger | **Not tax advice — demo data**: journal-derived contributor YTD, form-on-file attestations, missing-form buyer review, advisory threshold flags and read-only finance-agent summaries; deployed to the development backend, with no live tax-hold scenario recorded yet. [Scope and checks](tax.md). |
+| [Coinbase] Best Use of x402, **Payment Agents** track | Live x402 funding via CDP, a reusable Wallet MCP approval plugin, personal-agent onboarding over MCP (`skarl_onboard`, `skarl_wallet_status`, rate-limited `skarl_request_testnet_usdc` via the CDP faucet) plus a `skarl-buyer` skill at `/skill.md`, and live CDP wallet cap/allowlist rejections; contributor payout and MCP purchase still pending |
 | [Convex] Best use of Convex | Convex as the system of record: live queries, atomic financial mutations, file storage, and a Workflow for the approval wait |
-| [MLH] Best Use of Solana | Live 1-USDC Solana Devnet x402 funding and finalized RPC reconciliation; Base stays primary and the only payout rail |
+| [MLH] Best Use of Solana | Live 1-USDC Solana Devnet x402 funding and finalized RPC reconciliation, plus a one-of-one Token-2022 license token per accepted clip (MetadataPointer + TokenMetadata, mint authority revoked in the same transaction), verified by a devnet smoke mint; Base stays primary and the only payout rail |
 | [MLH] Best Use of Gemini API | Argon + Flash silent-frame jury and separate Transcribe audio; stored live negative run, timestamped evidence and deterministic comparison; labeled task accuracy unmeasured |
 | Capital One (Nessie) | Live Nessie bank as the fourth reconciliation witness: on October 25 at 04:11 PDT, order, ledger, chain and bank all `match` for a 10 USDC order (mock bank, no fiat moved) |
-| [Anthropic] Claude for Public Benefit | Stored `claude-sonnet-5-5` finance run: three read-only tools, **4,636 ms backend time**, zero proposed amount. New shared read context, structured advisory answers, Claude prompt-cache support and synthetic finance goldens are source changes; expanded live inference, coach quality and community benefit remain unmeasured |
+| [Anthropic] Claude for Public Benefit | Stored `claude-sonnet-5-5` finance run: three read-only tools, **4,636 ms backend time**, zero proposed amount. Shared read context, structured advisory answers, Claude prompt-cache support and the advisory analyst are deployed; strict schemas cover mutating tools within Anthropic's 20-strict-tool limit. Coach quality and community benefit remain unmeasured |
 | [Atlassian] Best Agent / Best Security Solution for Agents — **security track** | Forge allowlisted triage/audit/selective rollback plus admin-only, read-only uncertain-write reconciliation; action-bound comments and durable deduplication prevent reposting. Public Convex token buckets return 429/Retry-After, MCP/finance results use `untrusted: true` JSON envelopes, and public orders/funding accept idempotency keys. Local tests cover hostile narration, refusal of approval, rate refill, replay and Jira read-back. Team-recorded 04:53 sync/triage/batch refusal remains separate from new source: deployment and the historical uncertain comment read-back are unverified |
 
 ## Hyphenate
@@ -32,7 +32,7 @@ The [official brief](https://docs.google.com/document/d/1u4iN8R97ILY3kfHTPKC82zd
 
 Judges may inject a scenario.
 
-The advisory finance analyst adds cited exception recommendations, approval/chain-aware payout narration and organization close notes with zero money authority; backend rollout and live analyst evidence remain pending ([API](dashboard-api.md#advisory-finance-analyst)).
+The advisory finance analyst adds cited exception recommendations, approval/chain-aware payout narration and organization close notes with zero money authority. It is deployed and has generated live close and exception notes on the development deployment ([API](dashboard-api.md#advisory-finance-analyst)).
 
 The planned moment is the [demo](demo.md) opening; this full live sequence remains unverified:
 
@@ -109,6 +109,8 @@ The [04:40 read-back](status.md#submission-evidence-refresh--october-25-2026-044
 
 The earlier 03:13 attempt failed before settlement because fee-payer rotation broke exact quote matching. Its expired, unsettled authorization and spend reservation were retained before the single new attempt. Current-set fee-payer validation resolves that mismatch while retaining all economic and deduplication checks. See [live success and validation](status.md#confirmed-solana-funding-after-fee-payer-fix--october-25-2026-0329-pdt), [Solana rail](payments.md#solana-rail), and [Coinbase builder feedback](coinbase-submission.md#solana-fee-payer-rotation-during-x402-funding). Base/Coinbase remain primary and payouts remain Base-only. This proves testnet funding, not a Solana payout, bridge, Wallet MCP purchase or prize eligibility.
 
+**Token-2022 data licenses.** Each published delivery mints one license token on Solana devnet ([builder](../packages/payments/src/solana-license.ts), [action](../convex/solanaLicense.ts), [claim and record](../convex/solanaLicenseData.ts)). One transaction creates the mint with the MetadataPointer and TokenMetadata extensions, writes `name`/`symbol`/`uri` and a `license` field, mints exactly one token (decimals 0) and sets the mint authority to `None`. The `license` value is a digest over the delivery ID, manifest hash, order terms hash, consent receipt hash, license hash and license version. A CDP Solana account is fee payer, metadata update authority and custodial holder, signing remotely through `signTransaction`; the fresh mint keypair signs locally. Acceptance schedules the mint; it is idempotent per delivery, bounded to a few attempts, checks the signer balance before signing, and is refused once a consent revocation is recorded. Rows appear in `proof:summary.solanaLicenses` and the public `/proof.json` with Explorer links. A devnet smoke mint confirmed supply 1, mint authority `None` and on-chain metadata; no production license exists until a clip is accepted.
+
 ## Atlassian security track
 
 The [official Forge challenge](https://docs.google.com/document/d/12Y2Vamxbm9W_l2Eo4AM530R7HfNAYCXI-UI6F6Xnggw/edit) requires a Forge app and evaluates originality, practical organizational value and execution using Atlassian APIs. Select **Best Security Solution for Agents** in the project description; include the repository and a demo video of at most three minutes. Skarl Guard limits instruction-like issue content to comments/human review, applies project/action/batch caps, records actions and only selectively reverts an unchanged applied result. Detection is heuristic, not comprehensive prompt-injection prevention.
@@ -149,7 +151,7 @@ planted-injection sequence. [Code and local checks](../integrations/jira-forge/R
 
 - **Auth0:** Cal Hacks 13.0 has no Auth0 prize. Optional Convex Auth/Google sign-in and membership checks are implemented; provider configuration and deployed behavior need verification. Impersonable seeded demo selectors remain available when demo mode is enabled and are not production authentication.
 - **Cartesia:** no live evidence in the current status snapshot; exclude it as a working witness.
-- **Anthropic:** Claude-default exception, payout and close notes persist provider/model metadata and remain advisory; the new analyst path requires backend deployment and live verification ([API](dashboard-api.md#advisory-finance-analyst)).
+- **Anthropic:** Claude-default exception, payout and close notes persist provider/model metadata and remain advisory; the analyst is deployed and live notes exist on the development deployment ([API](dashboard-api.md#advisory-finance-analyst)).
 - **Anthropic / Capital One:** stored live Claude finance and hosted Nessie mock-bank funding evidence now support the [Devpost mapping](devpost.md#prize-specific-evidence). See the [04:40 refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt); no measured community impact or real bank settlement is claimed.
 
 ## Submission package
@@ -160,7 +162,6 @@ planted-injection sequence. [Code and local checks](../integrations/jira-forge/R
 4. A payment trace linking the order → x402 funding tx → payable → approval → payout tx → journal.
 5. Coinbase builder feedback based on observed SDK/MCP/facilitator behavior; mark doc-only findings as research.
 
-Do not contact sponsors or send feedback through messaging tools without the user's authorization.
 
 ## Coinbase builder feedback — October 25
 
@@ -181,6 +182,8 @@ At approximately 02:54 PDT, every recorded query to `/platform/v2/data/query/run
 | Solana devnet data coverage | [Onchain activity webhooks](https://docs.cdp.coinbase.com/webhooks/onchain-activity/overview) list Base mainnet/Sepolia; [SQL quickstart](https://docs.cdp.coinbase.com/data/sql-api/quickstart) describes Solana token coverage on Mainnet. Solana devnet webhook/SQL parity was not documented in these references; this is platform research, not a live outage. Base plus RPC keeps the demo on a supported path. |
 | Faucet-sized budgets | [Circle](https://faucet.circle.com/) advertises 20 test USDC per two hours per address/blockchain; [CDP](https://docs.cdp.coinbase.com/faucets/introduction/welcome) lists 1 USDC per claim. The demo uses a 10-USDC order and a 0.01-USDC webhook probe. Status records a 20-USDC buyer balance and three actual 1-USDC CDP claims funding the policy wallet; no faucet rate-limit error is invented. |
 | Solana dependency version split | The [lockfile](../pnpm-lock.yaml) resolves `@solana/kit` 5.5.1 under `@coinbase/cdp-sdk` 1.60.0 and 6.10.0 for `@x402/svm` 2.28.0. This is a dependency observation, not a proven Solana payment failure. Keep the pinned graph, externalize CDP for Convex and keep Solana funding evidence separate from the demonstrated Base path. |
+| CDP Solana faucet sizing | The CDP SOL faucet paid 0.00125 SOL per claim and hit a per-user cap after ten claims; each Token-2022 license needs roughly 0.006 SOL (mint rent with metadata plus the holder token account). We added a pre-sign balance check and funded the license signer from the Solana Foundation devnet faucet. |
+| Remote signing with a local co-signer | `cdp.solana.signTransaction` preserved the mint keypair's existing partial signature, so a fresh mint key plus a CDP fee payer worked without exporting any CDP key. |
 | Bazaar indexing latency and visibility | [CDP documents](https://docs.cdp.coinbase.com/x402/seller/get-discovered) asynchronous indexing after settlement, up to 15 minutes, and `success`/`processing`/`rejected` extension responses. We forward `EXTENSION-RESPONSES` explicitly and support direct resource inspection. Our live validator stopped at an ineligible sample's 404; **no actual indexing delay or successful listing was measured**. |
 
 ### One capability we most want

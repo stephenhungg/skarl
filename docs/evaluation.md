@@ -2,7 +2,7 @@
 
 Status: protocol and synthetic metadata examples. No media corpus, model predictions, or measured AI results are included. A passing manifest check validates dataset organization, not inference quality.
 
-**Deferred for the event.** There is no labeled corpus to run this protocol on before the deadline. Tonight's evidence is the three staged clips in [demo](demo.md) (valid, re-encoded duplicate, narration mismatch); present them as demo cases, never as a benchmark or held-out result.
+**Not yet run.** There is no labeled corpus for this protocol yet. Current evidence is the three staged clips in [demo](demo.md) (valid, re-encoded duplicate, narration mismatch); present them as demo cases, never as a benchmark or held-out result.
 
 ## Initial task family
 

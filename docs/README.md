@@ -5,12 +5,12 @@ Start with the [track-to-evidence review guide](review-guide.md) for source file
 [exported architecture](architecture.svg). The dated [build status](status.md)
 separates observed integrations from implemented or planned behavior.
 
-Research checked October 24, 2026; updated October 25 after the audit and the move to Base Sepolia. This directory is the team's implementation handoff. It distinguishes source implementation, agreed design, recorded external observations and unverified sponsor eligibility. Historical plans remain as handoff context; the review guide and dated status identify what has actually been implemented and demonstrated.
+Research checked October 24, 2026; updated October 25, 2026. This directory is the team's implementation documentation. It distinguishes source implementation, agreed design, recorded external observations and unverified sponsor eligibility; the review guide and dated status identify what has actually been implemented and demonstrated.
 
 ## Read in this order
 
 1. [Product and user flows](product.md): the thesis, narrow demo and scope.
-2. [Workstreams](workstreams.md): the 8-hour plan, owners and folder boundaries.
+2. [Workstreams](workstreams.md): team ownership, folder boundaries and the core path.
 3. [Setup](setup.md): local commands, environments and checks.
 4. [Architecture](architecture.md): services, data flow and trust boundaries.
 5. [Shared contracts](contracts.md): state machines, report schema and endpoint design.
@@ -30,7 +30,7 @@ Research checked October 24, 2026; updated October 25 after the audit and the mo
 | [Dashboard API handoff](dashboard-api.md) | Exact live query/mutation contracts, demo identities, refusals and browser payout signing |
 | [Replay studio](replay-studio.md) | Browser model overlays, timestamped witnesses, advisory annotations and deployment limits |
 | [Buyer datasets](datasets.md) | Licensed training conversion manifests, evidence-derived quality, usable bounds and diversity quotas |
-| [Payments](payments.md) | How do x402 funding on Base Sepolia, Coinbase Wallet MCP, payouts and uncertain transactions work? |
+| [Payments](payments.md) | How do x402 funding on Base Sepolia and Solana Devnet, Coinbase Wallet MCP, payouts, Token-2022 license tokens and uncertain transactions work? |
 | [Finance agent](finance-agent.md) | How do typed tools, proposals, approvals and agent evaluations work? |
 | [Remote MCP](mcp.md) | How does a personal AI agent connect to Skarl, order data and read witnesses without settlement authority? |
 | [Accounting](accounting.md) | What gets posted, when, and how do we reconcile it? |

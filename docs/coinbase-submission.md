@@ -10,7 +10,7 @@
 
 ## 1. Project summary
 
-Skarl serves AI teams buying short narrated demonstrations and operators who must determine what contributors are owed. Its narrow task is picking up a red cup, placing it on a coaster, and narrating the action. The finance seats are **settlement accountant + AP clerk**: prevent duplicate obligations, explain the books, propose payments and reconcile the result.
+Skarl serves AI teams buying short narrated demonstrations and operators who must determine what contributors are owed. Its tasks are narrow tabletop demonstrations defined by versioned task specs (for example, a red cup onto a coaster, or a can next to a hat); the verifier's prompts and checks come from each spec's rubric. The finance seats are **settlement accountant + AP clerk**: prevent duplicate obligations, explain the books, propose payments and reconcile the result.
 
 | Agent role | Core task and Coinbase tools | What is proven |
 | --- | --- | --- |
@@ -21,6 +21,19 @@ Skarl serves AI teams buying short narrated demonstrations and operators who mus
 **Agent platforms:** Claude Code or Codex with Coinbase Wallet MCP for the buyer interface; bounded Gemini/Claude tool loops running as Convex Node actions for finance. The [custom plugin](wallet-mcp-plugin/skarl.md) is reusable instruction context, not a Coinbase-certified or preinstalled plugin. Wallet MCP and CDP Server Wallet are separate execution surfaces.
 
 ## 2. Working example and reuse
+
+### Onboard a personal agent
+
+A new buyer agent needs a wallet, test USDC and an order before x402 means anything. Skarl handles that whole path over its remote MCP server and as a skill:
+
+| Step | Surface | Behavior |
+| --- | --- | --- |
+| Get the steps | `skarl_onboard` (guest MCP tool, optional `walletAddress`) | Returns the seven-step flow: connect a wallet, get its address, add test USDC, pick a task, create an order, pay over x402, track it. It tells the agent to ask its human before any money moves and states that agents never approve payouts. |
+| Check readiness | `skarl_wallet_status` | Reads Base Sepolia USDC for the address and returns `readyToPay`. x402 `exact` needs USDC only; the facilitator pays gas. |
+| Add test USDC | `skarl_request_testnet_usdc` | Calls the CDP faucet (`evm.requestFaucet`, Base Sepolia USDC) and returns the transaction hash and BaseScan link. Rate limited per address (case-insensitive), per caller and globally, with limits from environment configuration. |
+| Reuse anywhere | `/skill.md` | A `skarl-buyer` skill with the MCP URL, network and the same rules, for agents that load skills instead of MCP tools. `llms.txt` links it. |
+
+Implementation: [`convex/mcp.ts`](../convex/mcp.ts), [`convex/onboarding.ts`](../convex/onboarding.ts), [`convex/onboardingData.ts`](../convex/onboardingData.ts), [`convex/lib/onboardingSteps.ts`](../convex/lib/onboardingSteps.ts). A live faucet request delivered test USDC to the CDP agent wallet. Payouts never go through this path: they run with `PAYOUT_EXECUTOR=cdp_agent` only after the buyer's signed auto-pay policy approves a stored intent, and the finance agent can never approve.
 
 ### Reliable Wallet MCP handoff
 
@@ -85,7 +98,7 @@ flowchart TB
   AI --> Judge[Deterministic rubric comparison and duplicate checks]
   Judge -->|Evidence only| DB[Convex: orders, reports, payables, journals and audit]
   Claim --> DB
-  DB --> Agent[Gemini finance agent: typed tools and batch cap]
+  DB --> Agent[Gemini or Claude finance agent: typed tools and batch cap]
   Agent -->|Proposal only; self-approval refused| Approval[Buyer-signed deterministic policy + durable Workflow]
   Approval -->|Single execution claim| Wallet[CDP executor: independent wallet cap]
   Approval -.->|Optional executor; payout pending| Policy[CDP policy: live cap and recipient enforcement]
@@ -111,7 +124,7 @@ crop, flip, overlay or screen recapture.
 | Decision | Reason and practical limit |
 | --- | --- |
 | **Models** | The default panel runs `gemini-4-argon` and `gemini-3.8-flash` on timestamped silent frames; `gemini-3.5-transcribe` receives separate audio. Narration cannot bias the visual call. A deterministic comparator applies the frozen rubric and routes visual disagreement or failure to review; no model decides payment. Argon's clearer visibility in a small directional probe motivated its visual role, while `gemini-3.8-flash` keeps finance/chat interactive. No labeled accuracy advantage is claimed. |
-| **Tools** | Six allowlisted finance tools read obligations/statement/exceptions or prepare proposals and approval requests. Stored payables determine amount and destination. The model cannot sign or grant itself authority. Default bounds are 12 tool calls, 10 USDC cumulative proposals and a two-minute run budget. |
+| **Tools** | A shared 24-tool finance registry (`convex/lib/financeToolRegistry.ts`) reads orders, obligations, journals, reconciliation, bank witnesses and tax-ready summaries, or prepares proposals and approval requests. Gemini and Claude see the same allowlist. Stored payables determine amount and destination. The model cannot sign or grant itself authority. Default bounds are 12 tool calls, 10 USDC cumulative proposals and a two-minute run budget. |
 | **Memory** | Convex stores immutable terms, source-bound reports, persisted tool transcripts, proposals, approvals, attempts and journals. One transactional source of truth prevents competing copies of the budget; no vector store or second ledger is needed. |
 | **Scheduling** | Submission mutations atomically schedule verification; a five-minute watchdog fences interrupted jobs into review. Each provider request has one 30-second deadline across retries. Convex Workflow durably waits for approval, revalidates it and queues one dispatch. Webhooks push chain events; RPC confirmation/recovery remains authoritative when push or SQL is unavailable. There is no perpetual autonomous spending loop. |
 
@@ -132,7 +145,7 @@ crop, flip, overlay or screen recapture.
 3. **Evidence-sale accounting is implemented but not live-proven.** New code debits separate `asset:evidence_usdc` and credits `revenue:evidence_sales` when bound licensed content remains available, or `liability:evidence_receipts` when unavailable. It preserves the receiving wallet and leaves order prepayments, quota and contributor obligations unchanged. This availability-based recognition does not prove download. Both deployments must include the new schema/handlers before payment; automatic redelivery, deferred-revenue release and sale refunds remain unfinished. A lost response requires operator recovery without repaying.
 4. **AI quality is unmeasured.** Live negative smoke tests and a directional frame probe are not a human-task benchmark. Monotonic dHash alignment has local re-encode and synthetic shifted-sample regressions; crop, flip, overlay and screen recapture are not covered. Speed robustness and independent-retake false positives are uncalibrated.
 5. **Recovery still needs an operator in some cases.** SQL is unavailable; exhausted webhook retries or a lost payout hash do not have a general background repair worker. A successful approval or submitted hash is not a paid payable.
-6. **Demonstrated payments are testnet funding only.** Base Sepolia remains primary; one live 1-USDC Solana Devnet funding is now confirmed. Payouts remain Base-only. The diagram shows the Base path. No real-money deployment, custom smart contract, escrow contract or production custody service is claimed. `/api/health` is a static scaffold payload, not integration readiness.
+6. **Demonstrated payments are testnet funding only.** Base Sepolia remains primary; one live 1-USDC Solana Devnet funding is now confirmed. Payouts remain Base-only. Solana Token-2022 license minting is verified by a devnet smoke mint only; no production license exists until a clip is accepted. The diagram shows the Base path. No real-money deployment, custom smart contract, escrow contract or production custody service is claimed. `/api/health` is a static scaffold payload, not integration readiness.
 
 ## 4. Builder feedback
 
@@ -150,7 +163,10 @@ At approximately 02:54 PDT, every recorded query to `/platform/v2/data/query/run
 | Wallet MCP x402 Base coverage | The [Wallet MCP reference](https://docs.cdp.coinbase.com/coinbase-for-agents/wallet-mcp/skill) documents USDC x402 on Base, not Solana. Skarl targets Base Sepolia and stops if the connected tools cannot support it. No failed Solana MCP transaction was recorded. |
 | Solana devnet data coverage | [Onchain activity webhooks](https://docs.cdp.coinbase.com/webhooks/onchain-activity/overview) list Base mainnet/Sepolia; [SQL quickstart](https://docs.cdp.coinbase.com/data/sql-api/quickstart) describes Solana token coverage on Mainnet. Solana devnet webhook/SQL parity was not documented in these references; this is platform research, not a live outage. Base plus RPC keeps the demo on a supported path. |
 | Faucet-sized budgets | [Circle](https://faucet.circle.com/) advertises 20 test USDC per two hours per address/blockchain; [CDP](https://docs.cdp.coinbase.com/faucets/introduction/welcome) lists 1 USDC per claim. The demo uses a 10-USDC order and a 0.01-USDC webhook probe. Status records a 20-USDC buyer balance and three actual 1-USDC CDP claims funding the policy wallet; no faucet rate-limit error is invented. |
-| Solana dependency version split | The [lockfile](../pnpm-lock.yaml) resolves `@solana/kit` 5.5.1 under `@coinbase/cdp-sdk` 1.60.0 and 6.10.0 for `@x402/svm` 2.28.0. This is a dependency observation, not a proven Solana payment failure. Keep the pinned graph, externalize CDP for Convex and keep Solana funding evidence separate from the demonstrated Base path. |
+| Solana dependency version split | The [lockfile](../pnpm-lock.yaml) resolves `@solana/kit` 5.5.1 under `@coinbase/cdp-sdk` 1.60.0 and 6.10.0 for `@x402/svm` 2.28.0. This is a dependency observation, not a proven Solana payment failure. It does cause type friction when passing CDP-produced Solana signers into `@x402/svm`; we keep the pinned graph, pin `@solana/kit` 6.10.0 directly for license building, externalize CDP for Convex and keep Solana funding evidence separate from the demonstrated Base path. |
+| CDP faucet as an onboarding primitive | `evm.requestFaucet` made "give this new agent test USDC" a single MCP tool call; the per-claim size (1 USDC) is enough for one funded order. We wrapped it with our own per-address, per-caller and global limits because the faucet is shared project allowance. |
+| CDP Solana faucet sizing | The SOL faucet paid 0.00125 SOL per claim and returned `User faucet limit reached` after ten claims. A Token-2022 license with on-chain metadata needs roughly 0.006 SOL (mint rent plus the holder token account), so one day's CDP allowance covers about one license. We check the signer balance before signing and funded the license signer from the Solana Foundation devnet faucet. |
+| Remote signing with a local co-signer | `cdp.solana.signTransaction` preserved the fresh mint keypair's partial signature and added the CDP account's fee-payer signature, so Token-2022 mints work without exporting any CDP key. Documenting that partial signatures are preserved would make this pattern easier to find. |
 | Bazaar indexing latency and visibility | [CDP documents](https://docs.cdp.coinbase.com/x402/seller/get-discovered) asynchronous indexing after settlement, up to 15 minutes, and `success`/`processing`/`rejected` extension responses. We forward `EXTENSION-RESPONSES` explicitly and support direct resource inspection. Our live validator stopped at an ineligible sample's 404; **no actual indexing delay or successful listing was measured**. |
 
 ### Solana fee-payer rotation during x402 funding

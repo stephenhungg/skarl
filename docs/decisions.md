@@ -1,25 +1,27 @@
 # Engineering Decisions
 
-Status as of October 25, 2026 (post-audit). These are design decisions, not claims of completed integrations.
+Status as of October 25, 2026. These are design decisions, not claims of completed integrations.
 
 | Decision | Status | Reason / revisit trigger |
 | --- | --- | --- |
-| Build one live demo path in 8 hours | Required | The deadline is Oct 25, 9:00 AM PDT. Everything not on the [workstreams](workstreams.md) path is deferred design. |
-| Base Sepolia USDC only (`eip155:84532`) | Chosen (pivot from Solana) | Targets Coinbase Best Use of x402 ($500 USDC + recruiter call per member) over MLH Solana (swag). Mainnet needs a separate launch decision. |
-| No custom smart contract | Chosen | Buyer-policy-approved USDC transfers plus durable application accounting satisfy the demo. Revisit only for a real enforceable escrow requirement. |
+| One end-to-end core path first | Required | Everything off the core path in [workstreams](workstreams.md) is deferred design. |
+| Base Sepolia USDC for payouts (`eip155:84532`) | Chosen | Base is the primary funding rail and the only payout target. Mainnet needs a separate launch decision. |
+| Solana Devnet as second funding rail and license chain | Chosen | x402 funding via `@x402/svm`, plus one Token-2022 license token per published delivery (supply 1, mint authority revoked) binding the off-chain license digest. No Solana payouts and no custom Solana program. |
+| Buyer-signed auto-pay policy approves payouts | Chosen | The finance agent proposes; the internal `policy-engine` approves only within the buyer's signed cap when every check passes; failures go to the owning buyer's review. The legacy controller approver remains a hidden compatibility path. |
+| No custom smart contract | Chosen | Buyer-policy-approved USDC transfers, stock Token-2022 license mints and durable application accounting satisfy the demo. Revisit only for a real enforceable escrow requirement. |
 | Coinbase Wallet MCP for agent payments | Chosen | Supports Base Sepolia x402 and `send`; Wallet MCP approval mode requires a human for each write. Automatic payouts instead use the existing CDP executor after buyer-policy approval and under an independent wallet cap. The Coinbase retail MCP (Base mainnet, 5 USDC cap) is optional. |
 | Platform-held refundable prepayment | Demo assumption | Do not call it noncustodial escrow. Real custody and customer terms need review before launch. |
 | Skarl acts as principal for dataset sales | Explicit accounting assumption | Recognize gross revenue on actual licensed delivery, contributor acquisition cost separately. A pure brokerage business needs a different net model. |
 | Convex is authoritative | Chosen | Transactions, storage, reactive views and Workflow for the approval wait; avoid dual writes into a second database. |
 | Gemini via a Convex action, two calls | Chosen | A silent-video call and a separate audio call keep the evidence independent without deploying a second service. The model ID is configurable. |
 | SHA-256 + sampled-frame perceptual hash for duplicates | Chosen for the demo | Catches the staged re-encoded copy. SSCD temporal checks are deferred (they need labeled calibration data). |
-| Seeded demo identities, server-checked roles | Chosen | Auth0 has no prize at Cal Hacks 13.0 and costs setup time. Label the identities as demo. |
+| Google sign-in via Convex Auth, plus seeded demo identities | Chosen | Real sign-in is implemented; labeled demo identities with server-checked roles remain for the judged demo path. |
 | Python worker on Railway, HMAC gateway, leasing, faster-whisper | Deferred | Revisit when media processing outgrows a Convex action. |
-| Refunds, period close, eval split protocol | Deferred | Refunds only if funding and payout both work by hour 6. There is no labeled data for an eval split. |
+| Refunds, period close, eval split protocol | Deferred | Refunds follow a verified payout path. There is no labeled data for an eval split. |
 | No model fine-tuning | Deferred | Build labels and evaluate before choosing a learned head. |
 | Finance agent has typed bounded tools | Required | The model can propose and explain; authorization, policy, approvals and signing stay outside it. |
 | x402 funding is short and asynchronous | Required | Never wait for video analysis inside a paid route; grant work only after settlement observation. |
-| pnpm, not Bun | Deliberate exception | The repo is already pinned to pnpm 10.19.0; switching mid-event costs time. |
+| pnpm package manager | Chosen | The repo is pinned to pnpm 10.19.0. |
 | Public repository license | Unselected | Public visibility does not grant an open-source license. |
 
 ## Open questions that affect live implementation

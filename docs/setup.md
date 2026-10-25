@@ -51,7 +51,7 @@ python -m skarl_verifier --help
 
 See [the verifier README](../services/verifier/README.md) for exact report-validation/scaffold commands and optional ML extras. Core tests require no GPU, model download, network calls or private videos. They validate contracts and failure behavior, not inference quality.
 
-The demo calls Gemini from a Node Convex action and uses external `ffmpeg-static` for media isolation/fingerprints, so no Python inference stack is needed tonight. Python model weights and ASR/copy-model extras belong to the deferred worker. Do not install large GPU packages merely to make a placeholder worker start. Production Python dependencies should be locked once the live adapter and target hardware are chosen; the core editable scaffold install is not a reproducible ML deployment.
+The demo calls Gemini from a Node Convex action and uses external `ffmpeg-static` for media isolation/fingerprints, so no Python inference stack is needed for the demo. Python model weights and ASR/copy-model extras belong to the deferred worker. Do not install large GPU packages merely to make a placeholder worker start. Production Python dependencies should be locked once the live adapter and target hardware are chosen; the core editable scaffold install is not a reproducible ML deployment.
 
 ## Shared Convex dev deployment
 
