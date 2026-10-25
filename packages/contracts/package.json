@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./solana": "./src/solana.ts",
+    "./chain": "./src/chain.ts",
     "./verification-report.schema.json": "./schemas/verification-report.schema.json",
     "./verification": "./src/verification.ts"
   },

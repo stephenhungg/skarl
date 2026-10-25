@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  EMPTY_LEDGER, MAX_MICRO_USDC, accountBalance, assertBalanced, createFulfillmentJournal,
+  ACCOUNTS, EMPTY_LEDGER, MAX_MICRO_USDC, accountBalance, assertBalanced, createFulfillmentJournal,
   createFundingJournal, createPayoutJournal, createRefundPaidJournal, createRefundReservedJournal,
   formatUsdc, parseUsdc, postJournal, reverseJournal,
 } from "./index.ts";
@@ -37,7 +37,7 @@ test("a prepayment is a liability until the accepted sample is delivered", () =>
 
 test("one fulfilled sample, payout, cancellation, and refund close the $100 example to $2.50 before other costs", () => {
   let state = fulfilled();
-  state = postJournal(state, createPayoutJournal({ eventId: "payout-1", orderId, contributorId: "contributor-1", payableId: "payable-1", amountMicroUsdc: parseUsdc("7.5") }));
+  state = postJournal(state, createPayoutJournal({ eventId: "payout-1", orderId, contributorId: "contributor-1", payableId: "sample-1", amountMicroUsdc: parseUsdc("7.5") }));
   state = postJournal(state, createRefundReservedJournal({ eventId: "cancel-1", orderId, amountMicroUsdc: parseUsdc("90") }));
   assert.equal(accountBalance(state, "liability:customer_refunds"), parseUsdc("90"));
   state = postJournal(state, createRefundPaidJournal({ eventId: "refund-1", orderId, amountMicroUsdc: parseUsdc("90") }));
@@ -65,7 +65,7 @@ test("an earned contributor cost can exceed revenue; accounting records the loss
 
 test("balanced journals cannot spend another order's funding or another contributor's payable", () => {
   assert.throws(() => postJournal(fulfilled(), createRefundReservedJournal({ eventId: "cancel-too-much", orderId, amountMicroUsdc: parseUsdc("91") })), /Insufficient/);
-  assert.throws(() => postJournal(fulfilled(), createPayoutJournal({ eventId: "wrong-person", orderId, contributorId: "contributor-2", payableId: "payable-1", amountMicroUsdc: parseUsdc("7.5") })), /contributor payable/);
+  assert.throws(() => postJournal(fulfilled(), createPayoutJournal({ eventId: "wrong-person", orderId, contributorId: "contributor-2", payableId: "sample-1", amountMicroUsdc: parseUsdc("7.5") })), /contributor payable/);
   assert.throws(() => postJournal(funded(), createFulfillmentJournal({ eventId: "other-order", orderId: "order-2", sampleId: "sample-2", contributorId: "contributor-1", priceMicroUsdc: parseUsdc("10"), contributorMicroUsdc: parseUsdc("7.5") })), /Insufficient/);
   assert.throws(() => postJournal(fulfilled(), createRefundPaidJournal({ eventId: "unreserved-refund", orderId, amountMicroUsdc: parseUsdc("1") })), /Insufficient/);
 });
@@ -89,4 +89,81 @@ test("corrections append a reversal instead of rewriting history; a second rever
   assert.equal(state.journals.length, 1);
   assert.throws(() => postJournal(corrected, reverseJournal(original, "reverse-2", "Duplicate correction")), /already reversed/);
   assert.throws(() => reverseJournal(original, "reverse-3", " "));
+});
+
+const TX_A = `0x${"ab".repeat(32)}`;
+const asset = (state: ReturnType<typeof funded>) => accountBalance(state, "asset:usdc");
+const twoSamples = () => postJournal(fulfilled(), createFulfillmentJournal({
+  eventId: "fulfill-2", orderId, sampleId: "sample-2", contributorId: "contributor-1",
+  priceMicroUsdc: parseUsdc("10"), contributorMicroUsdc: parseUsdc("7.5"),
+}));
+const payout = (eventId: string, payableId: string, amount = "7.5", contributorId = "contributor-1") =>
+  createPayoutJournal({ eventId, orderId, contributorId, payableId, amountMicroUsdc: parseUsdc(amount) });
+
+test("a balanced journal must still follow its kind's accounting layout", () => {
+  // A prepayment booked straight to revenue would recognize income before any sample is delivered.
+  const funding = createFundingJournal({ eventId: "fund-revenue", orderId, amountMicroUsdc: parseUsdc("5") });
+  const revenueFunding = { ...funding, lines: [funding.lines[0]!, { account: "revenue:dataset_sales" as const, debit: 0n, credit: parseUsdc("5") }] };
+  assert.throws(() => postJournal(EMPTY_LEDGER, revenueFunding), /layout/);
+  // Fulfillment pairs must match individually, not only in total.
+  const sale = createFulfillmentJournal({ eventId: "fulfill-skew", orderId, sampleId: "sample-9", contributorId: "contributor-1", priceMicroUsdc: parseUsdc("10"), contributorMicroUsdc: parseUsdc("5") });
+  const skewed = { ...sale, lines: [
+    { ...sale.lines[0]!, debit: parseUsdc("5") }, sale.lines[1]!, { ...sale.lines[2]!, debit: parseUsdc("10") }, sale.lines[3]!,
+  ] };
+  assert.throws(() => postJournal(funded(), skewed), /layout/);
+});
+
+test("every payable movement is attributed to a contributor", () => {
+  // Without a contributor ID the per-contributor check is skipped and one person's payable can be drained anonymously.
+  const { contributorId: _dropped, ...anonymous } = payout("payout-anon", "sample-1");
+  assert.throws(() => postJournal(fulfilled(), anonymous), /contributor ID/);
+});
+
+test("one accepted sample accrues exactly one payable, even under a new event ID", () => {
+  const replay = createFulfillmentJournal({ eventId: "fulfill-1-retry", orderId, sampleId: "sample-1", contributorId: "contributor-1", priceMicroUsdc: parseUsdc("10"), contributorMicroUsdc: parseUsdc("7.5") });
+  assert.throws(() => postJournal(fulfilled(), replay), /already fulfilled/);
+  // After an authorized reversal, the sample may be fulfilled again.
+  const reversed = postJournal(fulfilled(), reverseJournal(fulfilled().journals[1]!, "fulfill-1-reversal", "Delivery withdrawn"));
+  assert.doesNotThrow(() => postJournal(reversed, replay));
+});
+
+test("a payable is discharged at most once and only by payouts that reference it", () => {
+  const state = twoSamples();
+  const once = postJournal(state, payout("payout-a", "sample-1"));
+  assert.throws(() => postJournal(once, payout("payout-b", "sample-1")), /exceeds the remaining/);
+  assert.throws(() => postJournal(state, payout("payout-ghost", "payable-nonexistent")), /active fulfillment/);
+  // Partial payouts are fine up to the accrued amount.
+  const partial = postJournal(postJournal(state, payout("payout-p1", "sample-2", "5")), payout("payout-p2", "sample-2", "2.5"));
+  assert.equal(accountBalance(partial, "liability:contributor_payables"), parseUsdc("7.5"));
+});
+
+test("a confirmed payout cannot be reversed on a timeout or reason text alone", () => {
+  const paid = postJournal(fulfilled(), payout("payout-1", "sample-1"));
+  const original = paid.journals.at(-1)!;
+  // "The RPC said failed" is exactly the lost-response case that would pay the contributor twice.
+  assert.throws(() => postJournal(paid, reverseJournal(original, "payout-1-reversal", "rpc said failed")), /failure evidence/);
+  assert.throws(() => postJournal(paid, reverseJournal(original, "payout-1-reversal", "reverted", { kind: "transaction_reverted", transactionHash: "0x123" })), /transaction hash/);
+  assert.throws(() => postJournal(paid, reverseJournal(original, "payout-1-reversal", "replaced", {
+    kind: "replaced_unlanded", transactionHash: TX_A, replacedByTransactionHash: TX_A.toUpperCase().replace("0X", "0x"),
+  })), /different mined transaction/);
+  const reversed = postJournal(paid, reverseJournal(original, "payout-1-reversal", "Transaction reverted onchain", { kind: "transaction_reverted", transactionHash: TX_A }));
+  assert.equal(asset(postJournal(reversed, payout("payout-2", "sample-1"))), parseUsdc("92.5"));
+});
+
+test("totals and balances stay within Convex Int64 storage", () => {
+  const max = postJournal(EMPTY_LEDGER, createFundingJournal({ eventId: "fund-max", orderId, amountMicroUsdc: MAX_MICRO_USDC }));
+  assert.throws(() => postJournal(max, createFundingJournal({ eventId: "fund-max-2", orderId, amountMicroUsdc: MAX_MICRO_USDC })), /Int64/);
+  const sale = createFulfillmentJournal({ eventId: "big", orderId, sampleId: "s", contributorId: "c", priceMicroUsdc: MAX_MICRO_USDC, contributorMicroUsdc: MAX_MICRO_USDC });
+  assert.throws(() => assertBalanced(sale), /Int64/);
+});
+
+test("identifiers are exact and cannot be padded into a second event", () => {
+  for (const eventId of [" fund-1", "fund-1 ", "", "fund​1", "fund/1"]) {
+    assert.throws(() => postJournal(funded(), createFundingJournal({ eventId, orderId, amountMicroUsdc: parseUsdc("100") })), /Event ID/);
+  }
+});
+
+test("account normal sides cannot be mutated at runtime", () => {
+  assert.throws(() => { (ACCOUNTS as Record<string, string>)["asset:usdc"] = "credit"; });
+  assert.equal(ACCOUNTS["asset:usdc"], "debit");
 });
