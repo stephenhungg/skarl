@@ -37,11 +37,12 @@ The 0.25 USDC evidence-purchase endpoint is implemented, with Bazaar discovery m
 ```sh
 # Node 22.18+ within the Node 22 line; pnpm 10.19.0
 pnpm install --frozen-lockfile
+cp apps/web/.env.example apps/web/.env.local
 pnpm dev
 # http://localhost:3000
 ```
 
-No API keys are required to run the shell. [Setup](docs/setup.md) covers cloud integration; [deployment](docs/deployment.md) covers operator configuration. `pnpm check` runs TypeScript, package/Convex/payment tests, documentation links and the production web build. It does not prove live inference or settlement.
+The local UI uses the public demo Convex URL and treasury in the example; no private API keys are required to browse it. Create and fund outsider demo orders through `https://skarl.vercel.app/api/orders`. Running payment mutations on your own server requires operator configuration. The pnpm “ignored build scripts” warning for optional dependencies is harmless for this quickstart; required `esbuild` and `ffmpeg-static` scripts are already allowed. [Setup](docs/setup.md) covers cloud integration; [deployment](docs/deployment.md) covers operator configuration. `pnpm check` runs TypeScript, package/Convex/payment tests, documentation links and the production web build. It does not prove live inference or settlement.
 
 ## Team handoffs
 

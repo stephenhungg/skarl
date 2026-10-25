@@ -41,5 +41,8 @@ export function paymentError(error: unknown) {
     ...(code === "treasury_not_configured" ? {
       message: "Set SKARL_TREASURY_ADDRESS in the web server environment to the human controller's Coinbase Wallet receiving address before funding.",
     } : {}),
+    ...(code === "payment_service_not_configured" ? {
+      message: "Use https://skarl.vercel.app/api/orders for the hosted demo. To run payment routes locally, configure NEXT_PUBLIC_CONVEX_URL and an operator-provisioned SKARL_PAYMENTS_SERVICE_SECRET matching that Convex deployment.",
+    } : {}),
   }, code.endsWith("not_configured") ? 503 : 409);
 }

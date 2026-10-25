@@ -6,7 +6,7 @@ The evidence revenue address is `0x0A9EfDF66c58543538824906aE267B969Ed651c5`, re
 
 ## Three steps
 
-1. Connect [Coinbase Wallet MCP](https://docs.cdp.coinbase.com/coinbase-for-agents/wallet-mcp/references/install) to your agent. For Claude Code, run `claude mcp add --transport http base-mcp https://wallet-mcp.coinbase.com`. For Codex, run `codex mcp add base-mcp --url https://wallet-mcp.coinbase.com/`. Authorize the connection and have Base Sepolia test USDC in the connected wallet.
+1. Connect [Coinbase Wallet MCP](https://docs.cdp.coinbase.com/coinbase-for-agents/wallet-mcp/references/install) to your agent. For Claude Code, run `claude mcp add --transport http --scope user base-mcp https://wallet-mcp.coinbase.com`. For Codex, run `codex mcp add base-mcp --url https://wallet-mcp.coinbase.com/`. Authorize the connection and have Base Sepolia test USDC in the connected wallet.
 2. Give the agent [skarl.md](skarl.md), or copy it to `skills/base-mcp/plugins/skarl.md` in an existing Wallet MCP skill installation. Ask it to run Wallet MCP onboarding and read the plugin. No Skarl server credentials are needed. An HTTP-capable agent is the most direct route; chat-only clients also depend on Coinbase's host allowlist.
 3. Ask “Check whether Skarl order skarl-red-cup-demo-v2 is funded.” For a new payment, supply a fresh unfunded order ID and a cap, for example “Fund Skarl order ORDER_ID with at most 10 USDC on Base Sepolia.” Review the request in Coinbase Wallet, then let the agent complete the request and read back confirmed funding.
 
