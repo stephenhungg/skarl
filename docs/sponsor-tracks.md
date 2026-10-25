@@ -13,6 +13,8 @@ Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devne
 | [Convex] Best use of Convex | Convex as the system of record: live queries, atomic financial mutations, file storage, and a Workflow for the approval wait |
 | [MLH] Best Use of Solana | Live 1-USDC Solana Devnet x402 funding and finalized RPC reconciliation; Base stays primary and the only payout rail |
 | [MLH] Best Use of Gemini API | Two independent Gemini calls (silent video, audio) producing schema-validated, timestamped evidence |
+| Capital One (Nessie) | Live Nessie bank as the fourth reconciliation witness: on October 25 at 04:11 PDT, order, ledger, chain and bank all `match` for a 10 USDC order (mock bank, no fiat moved) |
+| Anthropic (Claude) | Live Claude finance agent (`claude-sonnet-5-5`, 3 read-only tool calls, about 7 s, cannot approve) and a Claude contributor coach whose output is validated server-side and cannot change verdicts |
 
 ## Hyphenate
 
@@ -104,7 +106,6 @@ The earlier 03:13 attempt failed before settlement because fee-payer rotation br
 
 - **Auth0:** Cal Hacks 13.0 has no Auth0 prize. Demo identities are seeded Convex users whose roles are checked on the server, and they are labeled as demo identities.
 - **Cartesia:** no live evidence in the current status snapshot; exclude it as a working witness.
-- **Anthropic / Capital One:** requested rubric mappings are in Devpost, but Claude runtime finance and Nessie API evidence are pending. Do not claim either integration works from an aspirational narrative.
 
 ## Submission package
 
