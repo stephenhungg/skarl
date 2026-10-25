@@ -4,7 +4,8 @@ import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { createHash } from "node:crypto";
 import { prepareMedia, MediaPreparationError } from "./lib/media";
-import { observeVideo, observeAudio, GeminiFailure, videoModel, audioModel } from "./lib/gemini";
+import { GeminiFailure } from "./lib/gemini";
+import { observeEvidence, type VisualJury } from "./lib/visualJury";
 import { buildVerificationReports, EVALUATION_PROJECTION_VERSION, type AudioObservation, type VideoObservation, type ModelRun } from "./lib/verificationReport";
 import { validateVerificationReportForRubric } from "../packages/contracts/src/verification";
 import { canonical, digest } from "./lib/finance";
@@ -20,6 +21,7 @@ export const run = internalAction({
     const evidenceFrames: { storageId: Id<"_storage">; timestampMs: number; contentHash: string; sizeBytes: number;
       kind: "visual" | "dhash"; sampleIndex: number; decodedFrameIndex?: number }[] = [];
     let sourceHash=asset.contentHash, durationMs=0, video:VideoObservation|undefined, audio:AudioObservation|undefined, failure:string|undefined;
+    let jury:VisualJury|undefined;
     let duplicate:{status:"not_checked"|"clear"|"suspected";matches:{submissionId:string;score:number;overlapMs:number}[]}={status:"not_checked",matches:[]};
     try {
       const blob=await ctx.storage.get(asset.storageId);
@@ -45,13 +47,10 @@ export const run = internalAction({
       }
       duplicate=await ctx.runQuery(internal.submissions.copies,{submissionId:submission._id});
 
-      const outcomes=await Promise.allSettled([observeVideo(media.videoFrames,durationMs,submission.evalVideoModel),
-        media.audio ? observeAudio(media.audio,durationMs) : Promise.reject(new GeminiFailure("audio_stream_missing"))]);
-      const visual=outcomes[0], speech=outcomes[1];
-      if (visual.status === "fulfilled") {video=visual.value.observation;runs.push(visual.value.run);}
-      else {runs.push({provider:"google",model:submission.evalVideoModel ?? videoModel(),promptVersion:"timestamped-frames-visible-events-v1"});failure=visual.reason instanceof GeminiFailure ? visual.reason.code : "video_unavailable";}
-      if (speech.status === "fulfilled") {audio=speech.value.observation;runs.push(speech.value.run);}
-      else {if(media.audio) runs.push({provider:"google",model:audioModel(),promptVersion:"audio-only-events-v1"});failure=speech.reason instanceof GeminiFailure ? speech.reason.code : "audio_unavailable";}
+      const observed=await observeEvidence(media,{submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,
+        criteria:rubric.criteria,duplicate,warnings,reportId:`analysis:${job._id}:${generation}`},submission.evalVideoModel);
+      ({video,audio,failure,jury}=observed);
+      runs.push(...observed.modelRuns); warnings.splice(0,warnings.length,...observed.warnings);
     } catch(error) {
       failure=error instanceof MediaPreparationError ? error.code : error instanceof GeminiFailure ? error.code : "verification_unavailable";
       // If server decoding failed, client hashes remain explicitly untrusted fallback evidence.
@@ -79,7 +78,7 @@ export const run = internalAction({
     const reportStorageId=await ctx.storage.store(new Blob([reportJson],{type:"application/json"}));
     try {
       const analysisId=await ctx.runMutation(internal.submissions.complete,{jobId:job._id,generation,reportJson,
-        observationsJson:canonical({video,audio,failureCode:failure,...(evaluation ? {evaluation} : {})}),reportStorageId,evidenceFrames,reportHash:digest(report),processingElapsedMs:Date.now()-started,...(failure ? {failureCode:failure} : {})});
+        observationsJson:canonical({video,audio,failureCode:failure,...(jury ? {jury} : {}),...(evaluation ? {evaluation} : {})}),reportStorageId,evidenceFrames,reportHash:digest(report),processingElapsedMs:Date.now()-started,...(failure ? {failureCode:failure} : {})});
       return {analysisId};
     } catch {
       // A transport failure does not prove the mutation rolled back. Keep private
