@@ -1,5 +1,7 @@
 # Skarl
 
+Production URL: https://skarl.vercel.app
+
 Verified human demonstrations, paid with x402 on Base. The AP/settlement seat for a human-data company. Buyers request narrated demonstrations; contributors record them; multimodal AI grounds quality checks in video and audio evidence. A bounded finance agent prepares payouts, handles exceptions and reconciles the resulting books.
 
 Built for Cal Hacks 13.0. **Current state: deployed demo backend, contributor recorder and payment adapters, not a complete marketplace.** The shared Convex dev backend has seeded demo identities, acceptance/payable/journal mutations, independent approval and dashboard queries. Task 2 adds scheduled Gemini verification, uploads and server media processing. Both independent model stages ran live on one generated-media smoke test; human demonstration accuracy remains unmeasured. A bounded finance tool loop, durable approval Workflow and journal-derived statements are implemented. The payment owner recorded live x402 funding; outgoing wallet payout remains unconfirmed. Production authentication and contributor-wallet verification remain unimplemented. See [connection/setup](docs/setup.md) and [current status](docs/status.md).
@@ -14,6 +16,24 @@ pnpm dev
 ```
 
 No API keys are required to run the shell. See [setup](docs/setup.md) for Python and cloud integration. `pnpm check` runs TypeScript checks, tests, local documentation link checks and the production web build.
+
+## Use Skarl from your agent in 3 steps
+
+1. Connect Coinbase Wallet MCP in your agent client and complete its wallet onboarding:
+   `claude mcp add --transport http --scope user base-mcp https://wallet-mcp.coinbase.com`.
+   Use Base Sepolia test USDC; the human approves payment requests in Coinbase Wallet.
+2. Load [the Skarl plugin](docs/wallet-mcp-plugin/skarl.md) as agent context. It includes
+   exact request arguments, allowed network/token/recipient checks and recovery rules.
+3. Ask: “Check Skarl order `skarl-red-cup-demo-v2`; fund it only if unfunded, with a
+   maximum of 10 USDC.” The existing demo order is already funded, so this is a safe
+   status demonstration without another charge. For a new order, use its actual ID
+   and stored budget. The plugin also describes buying a verified sample’s evidence
+   for at most 0.25 USDC; that flow requires the deployed endpoint and an eligible
+   sample, and must stop if either is unavailable.
+
+See [deployment](docs/deployment.md) for operator setup and [status](docs/status.md)
+for live evidence. Installing the plugin is not proof of a completed Wallet MCP
+payment or Bazaar listing. Demo identity selectors are not production authentication.
 
 ## Team handoffs
 
@@ -41,4 +61,4 @@ docs/                  Build specification, research and ownership
 scripts/               Repository validation
 ```
 
-The payment target is **Base Sepolia USDC** (`eip155:84532`), using x402 V2 `exact` via the CDP facilitator for funding and controller-approved USDC transfers (Coinbase Wallet / Wallet MCP) for payouts. There is no custom token or escrow contract. Sponsor eligibility is not implied by a placeholder integration: [sponsor evidence and limitations](docs/sponsor-tracks.md).
+The payment target is **Base Sepolia USDC** (`eip155:84532`), using x402 V2 `exact` via the public x402.org facilitator by default (CDP when configured) for funding and controller-approved USDC transfers (Coinbase Wallet / Wallet MCP) for payouts. There is no custom token or escrow contract. Sponsor eligibility is not implied by a placeholder integration: [sponsor evidence and limitations](docs/sponsor-tracks.md).

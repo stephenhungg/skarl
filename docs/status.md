@@ -269,3 +269,38 @@ or journal was created by that verification. The combined `pnpm check` passed
 320 tests (95 Node, 197 Convex and 28 payment-route) plus typechecks/docs/build.
 See [deployment coordination](../convex/README.md#shared-deployment-coordination)
 to avoid repeating the checkout-versus-shared-deployment mismatch.
+
+## Public HTTPS deployment — October 25, 2026, 02:24 PDT
+
+Production URL: https://skarl.vercel.app
+
+Vercel project `skarl` is linked to `stephenhungg/skarl`, production branch `main`,
+root `apps/web`, Node 22, with installation from the repository root. Production
+is publicly accessible; preview deployments retain Vercel authentication.
+Initial deployment: `dpl_Gm1jt9BE3ikFpYhqcnrK9HKzgefB`.
+
+Observed over public HTTPS without authentication or bypass headers:
+
+- `GET /api/health`: **200**, `service: "skarl-web"`, `status: "scaffold"`,
+  `network: "eip155:84532"`. Its capabilities are static scaffold flags, not live
+  integration readiness checks.
+- `GET /contribute`: **200**, HTTPS HTML. Camera permission/recording on the actual
+  demo device remains a separate manual check.
+- `GET /api/orders/skarl-red-cup-demo-v2/fund`: **200**, `status: "funded"`,
+  `fundingStatus: "confirmed"`, `amountAtomic: "10000000"`, treasury
+  `0x8408a922ea400af33d7c2080a9edd5d3495b695f`, and stored transaction
+  [`0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757`](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757).
+  This reads existing reconciled funding; this deployment did not send a new payment.
+
+GET funding is a status endpoint. A fresh eligible order's POST generates the
+402 challenge; the funded demo must not be charged again to force a 402. Missing
+payment configuration produces 503. The production service secret is configured
+privately, matching Convex. CDP credentials were still pending at this initial
+check; polling continues. No CDP settlement or Bazaar listing is claimed here.
+
+Operational correction: invoking the repository's `pnpm check:convex` selected
+and synced the existing cloud deployment despite `CONVEX_AGENT_MODE=anonymous`.
+The flag is not isolation when the checkout already selects `CONVEX_DEPLOYMENT`.
+The orchestrator must redeploy merged `origin/main`; this worktree will not run
+that command again. Use `pnpm test:convex` for isolated tests. See
+[deployment](deployment.md) for reproducible hosting and environment setup.

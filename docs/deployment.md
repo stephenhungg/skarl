@@ -1,166 +1,132 @@
-# Local Validation and Deployment Plan
+# Production Deployment
 
-## What exists now
+The public demo runs Next.js on Vercel and uses the shared Convex backend at
+`https://keen-marmot-986.convex.cloud`. The production URL and dated checks are
+recorded in [status](status.md). HTTPS enables the browser camera permission flow;
+an HTTP 200 does not prove that recording, inference or a wallet payment succeeded.
+Demo identity selectors remain public and impersonable: this is a testnet demo,
+not production authentication. Use Base Sepolia test assets only.
 
-The Task 1 demo finance backend is deployed at **https://keen-marmot-986.convex.cloud**
-with seeded identities/order/rubric, role-checked financial mutations and live
-queries. See [setup](setup.md) and the [callable API](backend.md#task-1-client-contract).
-The web remains a scaffold. Production authentication, uploads/private file
-routes, Gemini inference, funding confirmation, wallet execution and chain
-reconciliation remain unimplemented. No Vercel, CDP or Gemini resource was
-provisioned by Task 1.
+## Vercel project
 
-The demo deployment target is **Next.js on Vercel (HTTPS) + Convex**, with Gemini
-called from a Convex action. The Railway Python worker is deferred. Only Base
-Sepolia and the canonical USDC address in `packages/contracts/src/chain.ts` are in
-scope. Do not call a local dashboard
-or successful TypeScript build a working payment demo.
+- Project: `skarl`, team `stephen-hungs-projects-d01c13ef`.
+- Git repository: `stephenhungg/skarl`; production branch: `main`.
+- Root directory: `apps/web`; include source files outside the root directory.
+- Framework: Next.js; Node: `22.x` (repository development version 22.21.1).
+- Install: `cd ../.. && corepack pnpm install --frozen-lockfile`.
+- Build: `pnpm build` in `apps/web`.
+- Deployment protection: preview deployments only. Production must be reachable
+  without Vercel login for judges and x402 discovery probes.
 
-## Local checks
+The build/install commands are versioned in `apps/web/vercel.json`. Root directory,
+Node version, Git connection and protection are Vercel project settings. The root
+`.vercelignore` excludes local environment files, caches and private work artifacts
+from CLI uploads. Never upload contributor recordings or wallet keys.
 
-Use Node 22.18 or a newer 22.x release and the pinned package manager from the
-root `package.json` (`pnpm@10.19.0`). From the repository root:
-
-```sh
-corepack pnpm install --frozen-lockfile
-corepack pnpm typecheck
-corepack pnpm test
-corepack pnpm check:docs
-corepack pnpm build
-```
-
-Use `pnpm install` without `--frozen-lockfile` only when intentionally updating
-dependencies and reviewing the lockfile. These checks validate local source and
-document consistency; they do not validate a cloud account, camera permission,
-model availability, facilitator, wallet, or onchain transaction.
-
-Run the web scaffold with:
+From the repository root, with the authorized Vercel account already logged in:
 
 ```sh
-corepack pnpm dev
+vercel link --yes --project skarl --scope stephen-hungs-projects-d01c13ef
+vercel project inspect --non-interactive
+pnpm check
+vercel deploy --prod --yes
 ```
 
-The worker's exact local commands and inference requirements belong in
-`services/verifier/README.md`. A scaffold-mode worker/report must remain labeled
-as such. Optional inference dependencies and model weights must be installed
-and exercised before claiming live verification.
+Normal releases are pushes to `main` through the Git integration. A CLI production
+release is also available for environment-only changes. Do not deploy Convex from
+an older worktree: the backend deployment owner deploys merged `origin/main`.
 
-## Required accounts and configuration
+## Environment
 
-| Component | Required setup |
+| Production variable | Purpose |
 | --- | --- |
-| Convex | Development deployment; URL; file storage; eventual auth configuration and service secrets |
-| Demo identities | Seed script for buyer/contributor/controller/agent memberships (no external identity provider) |
-| Vercel | HTTPS web deployment (camera access needs a secure origin) |
-| Gemini | API key in Convex environment variables; model ID configurable |
-| CDP | API key (portal.cdp.coinbase.com) for the x402 facilitator, server-side only |
-| Base Sepolia | Controller Coinbase Wallet, buyer wallet, test USDC and Sepolia ETH for gas |
-| Coinbase Wallet MCP | Connected to the agent client (`https://wallet-mcp.coinbase.com`), approved in Coinbase Wallet |
-| Railway | Deferred (Python worker) |
+| `NEXT_PUBLIC_CONVEX_URL` | Public browser/backend URL: `https://keen-marmot-986.convex.cloud` |
+| `SKARL_TREASURY_ADDRESS` | Controller receiving address: `0x8408a922ea400af33d7c2080a9edd5d3495b695f` |
+| `SKARL_PAYMENTS_SERVICE_SECRET` | Private service authentication; must match Convex |
+| `BASE_SEPOLIA_RPC_URL` | Receipt verification; public default `https://sepolia.base.org` |
+| `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` | Server-side CDP facilitator authentication when both configured |
+| `CDP_WALLET_SECRET` | Reserved for the separately implemented CDP-managed wallet integration |
+| `CDP_CLIENT_API_KEY` | CDP data API integration when implemented |
 
-Use the root environment example for canonical variable names when present.
-Configure the public Convex URL in the web app, keep worker/payment credentials
-server-side, and keep identity/credential material out of Git. No fake default
-gateway secret should make a missing configuration appear functional.
+The public URL is the only `NEXT_PUBLIC_*` value in this deployment setup. Gemini
+credentials belong in Convex, where inference runs. Setting credentials does not
+prove any CDP API call, policy enforcement, settlement or Bazaar listing worked.
+Without CDP facilitator credentials the payment route defaults to
+`https://x402.org/facilitator`; a partial key pair must refuse service.
 
-## Convex setup after configuration
-
-Run `corepack pnpm convex:dev` only when ready to connect to or create the
-intended development deployment. It can authenticate, provision/sync deployment
-state, and regenerate the committed `_generated` files; it is not an offline typecheck.
-Teammates can typecheck using the committed files without provisioning a deployment.
-
-After configuration, the following is a useful narrow read-back:
+Operators can import the existing private environment files without placing
+secret values in command arguments or terminal output:
 
 ```sh
-corepack pnpm exec convex run health:status
+set -a
+source ~/.config/skarl/payments.env
+# Run this line once the human has provisioned the file:
+source ~/.config/skarl/cdp.env
+set +a
+python3 - <<'PY'
+import os
+import subprocess
+names = ["SKARL_PAYMENTS_SERVICE_SECRET", "CDP_API_KEY_ID",
+         "CDP_API_KEY_SECRET", "CDP_WALLET_SECRET", "CDP_CLIENT_API_KEY"]
+for name in names:
+    value = os.environ.get(name)
+    if not value:
+        raise SystemExit("Missing required variable: " + name)
+    result = subprocess.run(
+        ["vercel", "env", "add", name, "production", "--yes", "--force"],
+        input=value, text=True, capture_output=True,
+    )
+    if result.returncode:
+        raise SystemExit("Environment update failed: " + name)
+    print(name + " configured")
+PY
+vercel deploy --prod --yes
 ```
 
-Expected backend health is `stage: "demo_backend"` with financial mutations implemented,
-`demoIdentityOnly: true`, and inference/worker gateway/live payments false. It does not exercise
-application data, authentication, or money movement.
+Run this only from the linked repository root after confirming the project.
+Environment changes require a new deployment. Never use `--value` with a secret,
+print environment values, or commit the ignored `.vercel` directory.
 
-Identity for the demo is seeded demo users with server-side role checks (see
-[security](security.md)); Auth0 is not used. Never grant controller permission
-from a user-selected role field.
+## Verification
 
-## Media path before judging
+```sh
+pnpm check
+# Use the exact Production URL from docs/status.md:
+curl --fail-with-body "$SKARL_APP_URL/api/health"
+curl --fail-with-body -o /dev/null "$SKARL_APP_URL/contribute"
+curl --fail-with-body "$SKARL_APP_URL/api/orders/skarl-red-cup-demo-v2/fund"
+```
 
-1. Deploy the web app on HTTPS and test the actual demonstration phone/browser.
-   Plain HTTP on a laptop LAN IP is not equivalent to localhost for camera use.
-2. Detect supported recording MIME/codec with `MediaRecorder.isTypeSupported()`.
-   Persist the actual MIME type; do not assume every browser emits WebM.
-3. Record audio/video in one stream and upload one completed bounded clip through
-   a native Convex upload URL. Binary media should not pass through Next routes.
-4. Implement upload finalization, source-hash verification, and job creation.
-5. Implement private downloads with authorization on each request. Convex direct
-   download URLs are bearer-accessible and do not automatically expire.
-6. Prove Gemini accepts the recorded file and that evidence timestamps refer
-   to the source video. Recorder chunk timing is not a reliable media clock.
+`pnpm check` includes TypeScript, package tests, convex-test, payment route tests,
+local documentation links and the Next production build. **Do not run
+`pnpm check:convex` in a checkout linked to the cloud.** Its anonymous-agent flag
+does not override an existing `CONVEX_DEPLOYMENT` configuration: it can sync the
+cloud backend. Use convex-test for isolated validation and let the designated
+backend owner deploy merged `origin/main`.
 
-Convex generated upload URLs expire after one hour; upload POST requests have a
-two-minute timeout. Authenticated HTTP file responses have a 100 MiB cap. Our
-initial 30-second/720p/25 MB application limit keeps the demo bounded.
-If a custom HTTP upload route is later added, explicitly configure CORS and use
-binary bodies; multipart bodies have additional limits.
+`/api/health` currently returns HTTP 200 with a **static scaffold capability
+payload**. It is a routing/liveness check, not an integration readiness probe.
+The funding **GET is a status read**, not the x402 challenge: funded v2 returns
+HTTP 200 with its stored amount and transaction hash. Funding **POST** returns
+402 only for an eligible, unfunded order; an existing confirmed intent returns
+200 without another charge, an unresolved intent returns 202, and missing payment
+configuration returns 503. Do not repay v2 merely to obtain a 402 screenshot.
 
-## Hosting and process model
+For the camera, open `/contribute` on the actual demonstration phone, grant camera
+and microphone permission, record a bounded clip, upload it, then inspect the
+stored verification result. This human/browser check is distinct from HTTPS
+reachability. Original media goes directly to Convex storage, not a Next request.
 
-**Deferred:** a Railway-hosted persistent Python pull worker. For the demo, Vercel
-hosts Next.js and Convex actions call Gemini; Convex remains the only
-authoritative database/file backend. If the worker is revived: Keep the Python process separate from request
-handlers, install FFmpeg in its image, pin dependencies, and load model weights
-before accepting work. Do not keep pending jobs in a Python list.
+For sponsor evidence, capture real request/response headers and transaction hashes
+from the payment owner. The [Wallet MCP plugin](wallet-mcp-plugin/skarl.md) explains
+capped funding and evidence purchase flows. Test fixtures, mock responses and
+replayed traces must remain labeled. A public HTTPS URL alone does not establish
+successful settlement, live inference, private media authorization or discovery.
 
-Use a persisted Convex job/lease lifecycle and narrow authenticated HTTP gateway.
-The exact proposed HMAC contract is in [security.md](security.md); it is not
-implemented. A worker restart must not lose work or grant stale completion
-authority. Expose readiness from actual dependency/model initialization and
-record a worker heartbeat in Convex.
+## References
 
-Vercel's function payload cap is 4.5 MB, so direct uploads are important there.
-Its June 2026 changelog supports durations up to 30 minutes for Pro/Enterprise,
-with durations over 800 seconds described as beta/Fluid-dependent; do not rely
-on stale blanket ceilings or treat a long timeout as a durable queue.
-
-GPU hosting is optional. Measure the selected pipeline on a real clip first.
-If Modal is introduced, persist call IDs/results in Convex and account for cold
-starts and idle warm-container costs. No Modal/GPU account or deployment is
-included here.
-
-## Payment and sponsor gates
-
-- Confirm the runtime chain ID and token address against `packages/contracts/src/chain.ts`.
-- Fund test wallets with Base Sepolia USDC and Sepolia ETH for gas.
-- Verify one x402 funding transaction independently before connecting it to order
-  publication. The route handler must not declare funding before settlement.
-- Verify one controller-approved payout by `(txHash, logIndex)`: token, `from`,
-  `to`, `value` and receipt status.
-- Test a timeout/reload without charging or paying twice.
-- Keep customer originals and identity records offchain.
-- Confirm every member's Coinbase prize eligibility ([checklist](sponsor-tracks.md#team-eligibility-checklist)).
-
-## Release evidence required
-
-A future working demo should provide a first-party build, a working camera
-capture, an actual inference report, a role-separated acceptance/approval flow,
-verified Base Sepolia funding and payout transactions, balanced journals, and restart
-recovery evidence. Document what remains simulated. Run the root checks and
-domain regression tests after changes, then verify actual deployed behavior.
-
-## Primary references
-
-- [Convex project configuration](https://docs.convex.dev/config/convex.json)
-- [Convex + Next.js authentication](https://docs.convex.dev/client/nextjs/app-router/)
-- [Convex file uploads](https://docs.convex.dev/file-storage/upload-files)
-- [Convex private file access](https://docs.convex.dev/file-storage/serve-files)
-- [Convex HTTP action limits](https://docs.convex.dev/functions/http-actions)
+- [Vercel monorepos](https://vercel.com/docs/monorepos)
+- [Vercel environment variables](https://vercel.com/docs/environment-variables)
+- [CDP facilitator](https://docs.cdp.coinbase.com/x402/seller/facilitator)
+- [Wallet MCP plugin specification](https://docs.cdp.coinbase.com/coinbase-for-agents/wallet-mcp/references/plugin-spec)
 - [Browser camera requirements](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
-- [Recording codec support](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder/isTypeSupported_static)
-- [Recording timestamp caveats](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder/dataavailable_event)
-- [Railway deployments](https://docs.railway.com/deployments)
-- [Vercel function limits](https://vercel.com/docs/functions/limitations)
-- [Vercel 30-minute functions announcement](https://vercel.com/changelog/vercel-functions-can-now-run-up-to-30-minutes)
-- [Modal jobs](https://modal.com/docs/guide/job-queue)
-- [CDP x402 facilitator](https://docs.cdp.coinbase.com/x402/seller/facilitator)
-- [Coinbase Wallet MCP](https://docs.cdp.coinbase.com/ai-agents/coinbase-for-agents/wallet-mcp)

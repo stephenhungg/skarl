@@ -45,9 +45,22 @@ $500 USDC plus a recruiter call per eligible team member, per track. There are t
 
 **What we build:** see [payments](payments.md#where-coinbase-for-agents-fits).
 
-- **x402 funding:** the order-funding endpoint is a real x402 V2 `exact` resource on Base Sepolia, settled by the CDP facilitator. A buyer agent pays it through [Wallet MCP](https://docs.cdp.coinbase.com/ai-agents/coinbase-for-agents/wallet-mcp) `initiate_x402_request`/`complete_x402_request` with a `maxPayment` cap.
+- **x402 funding:** the order-funding endpoint is a real x402 V2 `exact` resource on Base Sepolia, using `https://x402.org/facilitator` by default, or the authenticated CDP facilitator when both CDP API credentials are configured. The deployment evidence must name which path actually handled settlement. A buyer agent pays it through [Wallet MCP](https://docs.cdp.coinbase.com/ai-agents/coinbase-for-agents/wallet-mcp) `initiate_x402_request`/`complete_x402_request` with a `maxPayment` cap.
 - **Payouts:** the finance agent pays contributors via Wallet MCP `send`, only for a stored, approved intent. Every write needs the controller's approval in Coinbase Wallet.
-- **Coinbase MCP (retail):** x402 on Base mainnet, capped at 5 USDC. It is optional and not on the demo path.
+- **Coinbase MCP (retail):** separate from Wallet MCP and outside this demo path. The previously cited 5 USDC limit is unverified in the current documentation; do not present it as a guaranteed product limit.
+
+**Evidence mapped to Payment Agents judging:**
+
+| Criterion | Reproducible evidence |
+| --- | --- |
+| Usefulness | An agent funds a collection order and can purchase a verified sample’s evidence; explain the buyer/contributor need. |
+| Technical design | Durable intents, exact micro-USDC, bounded spending, independent approval and receipt reconciliation; explain model/tool choices and known failure paths. |
+| Ease of reuse | Public HTTPS app, [Wallet MCP plugin](wallet-mcp-plugin/skarl.md), three-step README setup and exact capped request examples. |
+| Product feedback | Observed blocker, workaround and desired capability; distinguish doc research from a live Wallet MCP session. |
+
+Evidence purchase and CDP Bazaar discovery require the payments owner’s endpoint,
+a licensed accepted sample and successful live verification. A plugin file or
+public URL alone is not evidence that an agent bought data or was indexed.
 
 **Submission requirements (choose Payment Agents as the primary track):**
 

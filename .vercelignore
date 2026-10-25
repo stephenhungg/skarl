@@ -1,0 +1,15 @@
+.git
+.vercel
+**/node_modules
+**/.next
+**/.env
+**/.env.*
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/*.tsbuildinfo
+.convex
+work
+evals/results
+fixtures/media
+services/verifier/.cache

@@ -1,5 +1,12 @@
 # Local Setup
 
+## Public demo
+
+The production URL and observed checks are in [status](status.md); Vercel settings
+and secret import commands are in [deployment](deployment.md). Agent users can
+load the [Wallet MCP plugin](wallet-mcp-plugin/skarl.md). Production hosting does
+not replace the demo identity selectors with real authentication.
+
 ## JavaScript
 
 Use Node **22.18+ on the Node 22 line** (the repository pins 22.21.1) and pnpm 10.19.0. Node's built-in TypeScript stripping runs the package tests; avoid TypeScript syntax that requires runtime transformation.
@@ -18,7 +25,7 @@ pnpm typecheck
 pnpm test
 pnpm check:docs
 pnpm build
-# Or all four:
+# Or the complete checks, including convex-test and payment route tests:
 pnpm check
 ```
 
@@ -59,7 +66,7 @@ is needed to call public APIs; deploying requires team/project access.
 running codegen or creating another project. Import `api` from its generated API
 module. Use `dashboard.demoContext({ demoIdentity: "controller" })` to discover
 the seeded order/rubric IDs; see [the API contract](backend.md#task-1-client-contract).
-The web provider/dashboard are still for their assigned owners to implement.
+The web provider, contributor recorder and dashboard use this shared deployment.
 
 The demo selectors `buyer`, `contributor`, `controller`, `finance-agent` select
 server-stored memberships. They are public and impersonable, **not production
@@ -87,8 +94,10 @@ The CLI may select that developer's own cloud dev deployment. To use the shared
 backend, retain the shared client URL above and coordinate backend writes;
 operator deployment selection must explicitly point at `dev:keen-marmot-986`.
 Do not commit root or app `.env.local`, and do not create a second project merely
-to typecheck. `pnpm check:convex` remains the anonymous local-backend CI check;
-for this task, the equivalent cloud deploy/typecheck was exercised instead.
+to typecheck. **`pnpm check:convex` can sync the cloud when a checkout already has
+`CONVEX_DEPLOYMENT` configured; its anonymous flag does not isolate it.** Use
+`pnpm test:convex` for offline tests. During parallel work, only the deployment
+owner deploys merged `origin/main` to the cloud.
 
 The idempotent seed creates one org, the four memberships, and two **unfunded**
 orders with the same frozen red-cup rubric. The default `skarl-red-cup-demo-v2`
