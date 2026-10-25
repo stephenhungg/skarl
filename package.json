@@ -10,7 +10,7 @@
     "dev": "pnpm --filter @skarl/web dev",
     "build": "pnpm --filter @skarl/web build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p convex && pnpm --filter @skarl/web typecheck",
-    "test": "node --test packages/contracts/src/*.test.ts packages/payments/src/*.test.ts packages/ledger/src/*.test.ts",
+    "test": "node --test packages/contracts/src/*.test.ts packages/payments/src/*.test.ts packages/ledger/src/*.test.ts scripts/*.test.mjs",
     "check:docs": "python3 scripts/check_docs.py",
     "check": "pnpm typecheck && pnpm test && pnpm test:convex && pnpm test:payments && pnpm check:docs && pnpm build",
     "convex:dev": "convex dev",
@@ -19,7 +19,8 @@
     "test:convex": "vitest run --config test/convex.config.mts",
     "agent:fund": "node packages/payments/src/agent-fund.ts",
     "test:payments": "vitest run --config packages/payments/vitest.config.mts",
-    "verify:sample": "node scripts/verify-sample.mjs"
+    "verify:sample": "node scripts/verify-sample.mjs",
+    "demo:e2e": "node scripts/demo-e2e.mjs"
   },
   "dependencies": {
     "@convex-dev/workflow": "0.4.10",

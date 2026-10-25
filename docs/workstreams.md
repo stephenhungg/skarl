@@ -38,7 +38,7 @@ Cut rule: if a step is not working by its slot, replace it with a clearly labele
 3. Reconcile by `(txHash, logIndex)`: check the token, recipient, amount and receipt status, then report the facts to Convex. Save BaseScan links.
 4. Write the Coinbase builder feedback (biggest blocker, workaround, most-wanted capability) from what you actually hit.
 
-Current handoff: funding, receipt reconciliation, buyer CLI, browser payout hook and prepared MCP calls are implemented and tested with mocks. No live transfer yet. The remaining runtime requirements are a merged backend deployment, treasury address, buyer faucet funds and human wallet/MCP approval. See [payments](payments.md).
+Current handoff: funding, receipt reconciliation, buyer CLI, browser payout hook and prepared MCP calls are implemented. The default v2 order has 10 USDC of live reconciled funding; no payout has executed. The current blocker is a licensed, accept-eligible submission, followed by independent approval and human wallet signing. See the live [dashboard API snapshot](dashboard-api.md) and [payment architecture](payments.md).
 
 ## silaswu4 — UI and contributor flow
 
@@ -50,6 +50,8 @@ Current handoff: funding, receipt reconciliation, buyer CLI, browser payout hook
 ## MatthewKim323 — controller dashboard
 
 **Own:** `apps/web/app/dashboard/**` (to create), `apps/web/features/dashboard/**` (to create).
+
+Integration contract: [Dashboard API handoff](dashboard-api.md), including live examples, refusal codes and `usePayout` signing. Run `pnpm demo:e2e` to resume the existing live demo path up to wallet signing; it exits 2 when real evidence or another prerequisite blocks progress.
 
 1. Live controller dashboard: order and funding, report evidence with timestamps, payables, journal, and the approve/sign button.
 2. Show the duplicate block and the agent's refused self-approval with their audit reasons. Format amounts from exact micro-units; never show an unconfirmed payout as paid.

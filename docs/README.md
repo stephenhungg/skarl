@@ -18,6 +18,7 @@ Research checked October 24, 2026; updated October 25 after the audit and the mo
 | [AI verification](ai-verification.md) | Which modalities, models and evidence checks do we build? |
 | [Evaluation](evaluation.md) | How do we demonstrate that engineering improves correctness? |
 | [Backend](backend.md) | How do Convex transactions, jobs, media and auth work? |
+| [Dashboard API handoff](dashboard-api.md) | Exact live query/mutation contracts, demo identities, refusals and browser payout signing |
 | [Payments](payments.md) | How do x402 funding on Base Sepolia, Coinbase Wallet MCP, payouts and uncertain transactions work? |
 | [Finance agent](finance-agent.md) | How do typed tools, proposals, approvals and agent evaluations work? |
 | [Accounting](accounting.md) | What gets posted, when, and how do we reconcile it? |

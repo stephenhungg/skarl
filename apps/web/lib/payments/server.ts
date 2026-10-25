@@ -23,6 +23,7 @@ export function paymentError(error: unknown) {
   // Convex error wrappers can carry request details. Never echo them (or secrets) to a browser.
   const message = error instanceof Error ? error.message : "";
   const code = ["treasury_not_configured", "payment_service_not_configured", "wrong_treasury_wallet", "payout_not_executable",
+    "dispatch_not_ready", "approved_source_changed", "approval_invalidated",
     "claim_not_found", "order_not_found", "order_not_fundable", "transaction_already_bound", "funding_already_pending_reconcile_first"]
     .find(c => message.includes(c)) ?? "payment_request_refused";
   return paymentJson({ ok: false, error: code,
