@@ -52,6 +52,7 @@ resources:
 permissions:
   scopes:
     - read:jira-work
+    - read:jira-user
     - write:jira-work
     - manage:jira-configuration
     - storage:app

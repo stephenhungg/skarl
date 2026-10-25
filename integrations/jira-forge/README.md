@@ -99,6 +99,33 @@ appear in issue properties or the frontend.
   Only the agent's changed fields are eligible. Current values must still match
   the recorded `after` values; subsequent edits cause a skip. An uncertain result
   is retained for review rather than assumed failed and blindly retried.
+- **Uncertain-write reconciliation:** an administrator chooses **Reconcile write**
+  on an unresolved action after a five-minute settling interval. This resolver
+  only reads Jira: it never retries a comment or another write. It scans up to
+  1,000 comments using complete pagination (at most 50 comment-property reads) and confirms the original app author's
+  comment by its durable action-ID property. Historical comments require the
+  app-owned marker and exact text/run ID. A complete settled read with no matching
+  comment records `failed` (observed absent, not proof it never existed); a partial,
+  unavailable or ambiguous read stays `uncertain`. Label/priority writes remain
+  unresolved pending independent changelog review: a matching value could have
+  been written by a human and must not become eligible for agent rollback.
+  Terminal comment reconciliation adds one idempotent audit event.
+  The original event remains deduped even after failure, so no recovery click can
+  duplicate a comment. Edited comment text is preserved by selective rollback.
+
+The historical team-recorded `uncertain` comment cannot be diagnosed conclusively
+from the repository: the old catch discarded HTTP status and also covered the
+post-write issue read, so even a successful comment followed by a failed read
+became uncertain. The current adapter already sends Jira v3 ADF; a body-format
+failure is an unverified hypothesis. New audit entries retain only numeric HTTP
+failure status, never response bodies. Reconciliation provides a safe read-back
+path for the old comment without assuming its write failed.
+
+Deploy this Forge code and upgrade the installation to grant the added
+`read:jira-user` scope (used only to bind read-back to the app's Jira account).
+No new environment variable or Convex deployment is needed for this reconciler.
+Live resolution of the historical comment remains unverified until an operator
+uses **Reconcile write** in the deployed admin page.
 
 Jira created/commented events start triage, including issues created by Skarl
 sync; the app ignores its own comment events to avoid a feedback loop. Admin resolvers verify Jira administrator
@@ -148,6 +175,9 @@ legitimate quoted instruction), policy refusals, budget/bulk limits, and
 rollback preservation of subsequent human edits. The app has its own TypeScript
 check; root `pnpm check` does not include this npm package. The Convex feed has
 separate auth and shape tests in the repository's Convex suite.
+Reconciliation tests cover lost responses, legacy markers, pagination,
+author impersonation, absence, partial/unavailable reads, duplicate markers,
+settling time, project scope and repeated clicks without comment writes.
 
 Live installation, event delivery, API permissions, model access, and Jira
 rollback must still be verified after deployment. The text guard is a bounded
@@ -157,5 +187,7 @@ the guard finds nothing. Sending issue text to Anthropic is declared as external
 egress; only use issues appropriate for that configured service.
 
 Reference: [Forge encrypted variables](https://developer.atlassian.com/platform/forge/environments-and-versions/#environment-variables),
+[Jira comment properties](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-comment-properties/),
+[current-user read scope](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-myself/#api-rest-api-3-myself-get),
 [scheduled triggers](https://developer.atlassian.com/platform/forge/manifest-reference/modules/scheduled-trigger/),
 and [UI Kit](https://developer.atlassian.com/platform/forge/ui-kit/).

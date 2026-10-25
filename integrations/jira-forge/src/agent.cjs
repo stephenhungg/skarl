@@ -69,13 +69,18 @@ function createAgent(deps) {
       if (action.type === 'add_label') await jira.addLabel(base.issueKey, action.label);
       else if (action.type === 'set_priority') await jira.updateIssue(base.issueKey, { priority: { id: action.priorityId } });
       else {
-        const comment = await jira.addComment(base.issueKey, entry.after.text);
+        const comment = await jira.addComment(base.issueKey, entry.after.text, entry.id);
         entry.after = { commentId: comment.id, text: fullAdfText(comment.body), updated: comment.updated || comment.created };
       }
+      entry.writeAcknowledged = true;
+      await store.saveAudit(entry);
       const afterIssue = await jira.getIssue(base.issueKey);
       entry.issueUpdatedAfter = afterIssue.fields.updated;
       entry.state = 'applied';
-    } catch {
+    } catch (error) {
+      // Preserve only a bounded numeric status, never provider bodies or secrets.
+      if (Number.isInteger(error?.status)) entry.failureStatus = error.status;
+      entry.failureStage = entry.writeAcknowledged ? 'read-back' : 'write';
       entry.state = 'uncertain'; entry.reason = 'Jira response unavailable or failed. The attempt may have applied; reconcile before retrying. Automatic replay is disabled.';
     }
     await store.saveAudit(entry);

@@ -5,7 +5,11 @@ const PROPERTY_KEY = 'skarl.guard.source';
 const JSON_HEADERS = { 'Content-Type': 'application/json', 'X-Atlassian-Webhook-Trace': 'skarl-guard' };
 function adf(text) { return { version: 1, type: 'doc', content: String(text).split('\n').map(line => ({ type: 'paragraph', content: line ? [{ type: 'text', text: line }] : [] })) }; }
 async function responseJson(response) {
-  if (!response.ok) throw new Error(`Jira request failed (${response.status}); reconcile the durable audit before retrying a write.`);
+  if (!response.ok) {
+    const error = new Error(`Jira request failed (${response.status}); reconcile the durable audit before retrying a write.`);
+    error.status = response.status;
+    throw error;
+  }
   if (response.status === 204) return null;
   return response.json();
 }
@@ -15,6 +19,15 @@ async function getComments(key) {
   const response = await responseJson(await app().requestJira(route`/rest/api/3/issue/${key}/comment?maxResults=100&orderBy=-created`));
   return { comments: response.comments || [], truncated: (response.total || 0) > (response.comments || []).length };
 }
+async function readCommentPage(key, startAt = 0) {
+  return responseJson(await app().requestJira(route`/rest/api/3/issue/${key}/comment?maxResults=100&startAt=${startAt}`));
+}
+async function readCommentProperty(id, propertyKey) {
+  const response = await app().requestJira(route`/rest/api/3/comment/${id}/properties/${propertyKey}`);
+  if (response.status === 404) return null;
+  return (await responseJson(response)).value;
+}
+async function appAccountId() { return (await responseJson(await app().requestJira(route`/rest/api/3/myself`))).accountId; }
 async function priorities() { const result = await responseJson(await app().requestJira(route`/rest/api/3/priority`)); return result.map(item => ({ id: item.id, name: item.name })); }
 async function requireAdmin(context) {
   if (!context.accountId) throw new Error('A signed-in Jira administrator is required.');
@@ -39,7 +52,7 @@ async function createIssue(fields, property) {
 async function updateIssue(key, fields) { await responseJson(await app().requestJira(route`/rest/api/3/issue/${key}`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ fields }) })); }
 async function addLabel(key, label) { await responseJson(await app().requestJira(route`/rest/api/3/issue/${key}`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ update: { labels: [{ add: label }] } }) })); }
 async function removeLabel(key, label) { await responseJson(await app().requestJira(route`/rest/api/3/issue/${key}`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ update: { labels: [{ remove: label }] } }) })); }
-async function addComment(key, text) { return responseJson(await app().requestJira(route`/rest/api/3/issue/${key}/comment`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ body: adf(text), properties: [{ key: 'skarl.guard.comment', value: true }] }) })); }
+async function addComment(key, text, actionId) { return responseJson(await app().requestJira(route`/rest/api/3/issue/${key}/comment`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ body: adf(text), properties: [{ key: 'skarl.guard.comment', value: true }, ...(actionId ? [{ key: 'skarl.guard.action', value: actionId }] : [])] }) })); }
 async function getComment(key, id) { return responseJson(await app().requestJira(route`/rest/api/3/issue/${key}/comment/${id}`)); }
 async function deleteComment(key, id) { await responseJson(await app().requestJira(route`/rest/api/3/issue/${key}/comment/${id}`, { method: 'DELETE', headers: JSON_HEADERS })); }
 async function findSource(projectKey, id) {
@@ -56,4 +69,4 @@ function commentText(action, runId) {
   const prefix = action.type === 'request_human_review' ? 'Skarl Guard — human review requested. No finance approval is granted.' : 'Skarl Guard — advisory triage only. No finance approval is granted.';
   return `${prefix}\n${clean(action.text, 1500)}\nGuard run: ${runId}`;
 }
-module.exports = { adf, fullAdfText, getIssue, getComments, priorities, requireAdmin, requireIssueRead, getProperty, setProperty, createIssue, updateIssue, addLabel, removeLabel, addComment, getComment, deleteComment, findSource, commentText };
+module.exports = { adf, fullAdfText, getIssue, getComments, readCommentPage, readCommentProperty, appAccountId, priorities, requireAdmin, requireIssueRead, getProperty, setProperty, createIssue, updateIssue, addLabel, removeLabel, addComment, getComment, deleteComment, findSource, commentText };

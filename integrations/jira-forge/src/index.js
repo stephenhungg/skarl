@@ -4,6 +4,7 @@ const store = require('./storage');
 const jira = require('./jira');
 const { createAgent } = require('./agent.cjs');
 const { createSync, sourceKey, receiptKey } = require('./sync.cjs');
+const { createReconciler } = require('./reconcile.cjs');
 const { policy, hash } = require('./core.cjs');
 const { randomUUID } = require('node:crypto');
 
@@ -17,7 +18,7 @@ function configuration() {
 }
 function services() {
   const deps = { config: configuration(), store, jira, fetcher: fetch };
-  return { ...deps, agent: createAgent(deps), sync: createSync(deps) };
+  return { ...deps, agent: createAgent(deps), sync: createSync(deps), reconciler: createReconciler(deps) };
 }
 const resolver = new Resolver();
 resolver.define('getStatus', async ({ context }) => {
@@ -33,6 +34,11 @@ resolver.define('listActions', async ({ context, payload }) => {
   return store.listActions({ issueKey: filter.issueKey, decision: ['allowed', 'refused'].includes(filter.decision) ? filter.decision : undefined, runId: filter.runId, cursor: filter.cursor });
 });
 resolver.define('revertAction', async ({ context, payload }) => { await jira.requireAdmin(context); if (typeof payload?.id !== 'string') throw new Error('Action id is required.'); return store.exclusive(() => services().agent.revert(payload.id)); });
+resolver.define('reconcileAction', async ({ context, payload }) => {
+  await jira.requireAdmin(context);
+  if (typeof payload?.id !== 'string' || payload.id.length > 200) throw new Error('Action id is required.');
+  return services().reconciler.reconcile(payload.id);
+});
 resolver.define('revertRun', async ({ context, payload }) => {
   await jira.requireAdmin(context);
   if (typeof payload?.runId !== 'string' || !/^[a-f0-9-]{36}$/.test(payload.runId)) throw new Error('Valid run id is required.');

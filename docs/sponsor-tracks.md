@@ -15,7 +15,7 @@ Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devne
 | [MLH] Best Use of Gemini API | Argon + Flash silent-frame jury and separate Transcribe audio; stored live negative run, timestamped evidence and deterministic comparison; labeled task accuracy unmeasured |
 | Capital One (Nessie) | Live Nessie bank as the fourth reconciliation witness: on October 25 at 04:11 PDT, order, ledger, chain and bank all `match` for a 10 USDC order (mock bank, no fiat moved) |
 | [Anthropic] Claude for Public Benefit | Stored `claude-sonnet-5-5` finance run: three read-only tools, **4,636 ms backend time**, zero proposed amount; contributor coach implemented and constrained, live coach quality/community benefit unmeasured |
-| [Atlassian] Best Agent / Best Security Solution for Agents — **security track** | Forge guard/allowlisted triage/audit/selective rollback implemented. Team-recorded Jira demo at 04:53: SKARL-1..5 synced, SKARL-5 triaged, six-issue batch refused. One comment write remained `uncertain`; complete injection/reversion video and current installed behavior still need verification |
+| [Atlassian] Best Agent / Best Security Solution for Agents — **security track** | Forge allowlisted triage/audit/selective rollback plus admin-only, read-only uncertain-write reconciliation; action-bound comments and durable deduplication prevent reposting. Public Convex token buckets return 429/Retry-After, MCP/finance results use `untrusted: true` JSON envelopes, and public orders/funding accept idempotency keys. Local tests cover hostile narration, refusal of approval, rate refill, replay and Jira read-back. Team-recorded 04:53 sync/triage/batch refusal remains separate from new source: deployment and the historical uncertain comment read-back are unverified |
 
 ## Hyphenate
 
@@ -110,7 +110,30 @@ The earlier 03:13 attempt failed before settlement because fee-payer rotation br
 
 The [official Forge challenge](https://docs.google.com/document/d/12Y2Vamxbm9W_l2Eo4AM530R7HfNAYCXI-UI6F6Xnggw/edit) requires a Forge app and evaluates originality, practical organizational value and execution using Atlassian APIs. Select **Best Security Solution for Agents** in the project description; include the repository and a demo video of at most three minutes. Skarl Guard limits instruction-like issue content to comments/human review, applies project/action/batch caps, records actions and only selectively reverts an unchanged applied result. Detection is heuristic, not comprehensive prompt-injection prevention.
 
-The 04:53 Jira observations in the table are team-recorded; this documentation pass did not re-run Jira or independently inspect the site. The existing integration README still contains historical pending-deployment wording. Keep the successful sync/triage and refused batch distinct from the unresolved comment and the unrecorded planted-injection sequence. [Code and local checks](../integrations/jira-forge/README.md), [review mapping](review-guide.md).
+The 04:53 Jira observations in the table are team-recorded; this hardening pass
+did not re-run Jira or independently inspect the site. The existing comment
+writer already sends Atlassian Document Format. Previously, both a rejected
+write and a failed post-write issue read became `uncertain` with the error
+status discarded, so the historical cause cannot be established from source.
+New audit records preserve the numeric HTTP status and failure stage without
+provider bodies. An administrator can reconcile a pending/uncertain write
+after five minutes: the app reads every available comment page (bounded to
+1,000 comments and 50 comment-property reads), matches its own author plus the stored action property or exact
+legacy text/run marker, and records one deterministic reconciliation audit event.
+It never posts another comment. Partial/ambiguous/unavailable observations stay
+uncertain; a complete read-back resolves confirmed/failed. Existing event dedupe
+continues to block replay even after failure. Label/priority writes remain
+uncertain until independent changelog review establishes who made the change;
+a matching human-edited value cannot authorize rollback.
+
+The Convex public rate schema/cron and changed handlers require an operator
+Convex deployment; no new limiter env variable is needed. Existing
+`SKARL_PAYMENTS_SERVICE_SECRET`, seeded demo and optional `SKARL_MCP_KEYS` remain
+required for their existing functions. Forge requires a separate deploy and
+installation upgrade for the added `read:jira-user` permission; no env change is
+introduced by reconciliation. Keep the successful historical sync/triage and
+refused batch distinct from the unresolved comment and unrecorded
+planted-injection sequence. [Code and local checks](../integrations/jira-forge/README.md), [review mapping](review-guide.md).
 
 ## Additional opt-ins and eligibility gates
 

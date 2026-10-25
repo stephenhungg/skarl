@@ -122,6 +122,10 @@ function Admin() {
       {!busy && actions.length === 0 && <Text>No matching actions. Sync Skarl work or create an issue in the configured project to start an audit trail.</Text>}
       {actions.map((entry) => (
         <AuditCard key={entry.id} entry={entry} busy={busy}
+          onReconcile={(id) => perform(async () => {
+            const result = /** @type {{status:string,reason?:string}} */ (await invoke('reconcileAction', { id }));
+            return `Reconciliation ${result.status}.${result.reason ? ` ${result.reason}` : ''}`;
+          })}
           onRevert={(id) => perform(async () => {
             const result = /** @type {{status:string,reason?:string}} */ (await invoke('revertAction', { id }));
             return `Action ${result.status}.${result.reason ? ` ${result.reason}` : ''}`;

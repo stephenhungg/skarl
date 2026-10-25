@@ -12,7 +12,7 @@ export const displayTime = (value) => {
 
 const json = (value) => JSON.stringify(value ?? null, null, 2);
 
-export function AuditCard({ entry, busy = false, onRevert = null, onRevertRun = null }) {
+export function AuditCard({ entry, busy = false, onRevert = null, onRevertRun = null, onReconcile = null }) {
   const [expanded, setExpanded] = useState(false);
   const allowed = entry.allowed === true;
   const action = typeof entry.action === 'string'
@@ -43,6 +43,9 @@ export function AuditCard({ entry, busy = false, onRevert = null, onRevertRun = 
           </Button>
           {onRevert && canRevert && (
             <Button isDisabled={busy} onClick={() => onRevert(entry.id)}>Revert action</Button>
+          )}
+          {onReconcile && allowed && ['pending', 'uncertain'].includes(entry.state) && ['add_comment', 'request_human_review'].includes(action) && (
+            <Button isDisabled={busy} onClick={() => onReconcile(entry.id)}>Reconcile write</Button>
           )}
           {onRevertRun && entry.runId && reversibleType && allowed && (
             <Button isDisabled={busy} onClick={() => onRevertRun(entry.runId)}>Revert all by this run</Button>
