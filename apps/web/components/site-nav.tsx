@@ -5,7 +5,6 @@ import { Wordmark } from "./wordmark";
 
 const LINKS = [
   { label: "How Skarl works", href: "/#how-it-works" },
-  { label: "Proof", href: "/#proof" },
   { label: "GitHub", href: "https://github.com/stephenhungg/skarl", external: true },
 ];
 

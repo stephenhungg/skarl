@@ -81,11 +81,11 @@ export type RoleTile = { role: string; icon: "hand" | "camera" | "eye" | "ledger
 const DOC = "https://github.com/stephenhungg/skarl/blob/main/docs/";
 
 export const ROLES: RoleTile[] = [
-  { role: "Buyer", icon: "hand", can: "Fund a frozen task version", cannot: "Download unaccepted samples", href: `${DOC}product.md` },
-  { role: "Contributor", icon: "camera", can: "Record, upload, get timestamped feedback", cannot: "See pay as cash before a transfer confirms", href: `${DOC}product.md` },
-  { role: "Verifier", icon: "eye", can: "Cite timestamped evidence", cannot: "Approve or pay anything", href: `${DOC}ai-verification.md` },
-  { role: "Finance agent", icon: "ledger", can: "Propose payouts and refunds", cannot: "Approve its own proposal", href: `${DOC}finance-agent.md` },
-  { role: "Controller", icon: "stamp", can: "Approve exceptions and batches", cannot: "Share an identity with whoever requested it", href: `${DOC}security.md` },
+  { role: "Buyer", icon: "hand", can: "Funds a task and gets accepted clips", cannot: "Can't download clips nobody has approved", href: `${DOC}product.md` },
+  { role: "Contributor", icon: "camera", can: "Records clips and sees feedback on each one", cannot: "Isn't shown pay as cash until a transfer confirms", href: `${DOC}product.md` },
+  { role: "Verifier", icon: "eye", can: "Points to evidence inside each clip", cannot: "Can't approve or pay anything", href: `${DOC}ai-verification.md` },
+  { role: "Finance agent", icon: "ledger", can: "Drafts payouts and refunds", cannot: "Can't approve its own drafts", href: `${DOC}finance-agent.md` },
+  { role: "Controller", icon: "stamp", can: "Approves every payout", cannot: "Can't approve a request they made", href: `${DOC}security.md` },
 ];
 
 export const ROLE_INVARIANTS: string[] = [

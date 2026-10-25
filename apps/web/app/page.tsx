@@ -5,7 +5,6 @@ import { HowItWorks } from "@/features/landing/how-it-works";
 import { CatchSection } from "@/features/landing/catch-carousel";
 import { Money } from "@/features/landing/money";
 import { Roles } from "@/features/landing/roles";
-import { ProofLog } from "@/features/landing/proof-log";
 import { Footer } from "@/features/landing/footer";
 
 export default function Home() {
@@ -19,7 +18,6 @@ export default function Home() {
         <CatchSection />
         <Money />
         <Roles />
-        <ProofLog />
       </main>
       <Footer />
     </>
