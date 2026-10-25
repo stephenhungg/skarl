@@ -1,4 +1,5 @@
 import GitHub from "@auth/core/providers/github";
+import Google from "@auth/core/providers/google";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth } from "@convex-dev/auth/server";
 import { ConvexError } from "convex/values";
@@ -12,7 +13,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       // Ignore all submitted roles, verification flags, and destinations.
       return { email };
     },
-  }), ...(githubEnabled() ? [GitHub] : [])],
+  }), ...(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET ? [Google] : []), ...(githubEnabled() ? [GitHub] : [])],
   callbacks: {
     async afterUserCreatedOrUpdated(ctx, { userId }) {
       await ensureAuthMembership(ctx, userId);
