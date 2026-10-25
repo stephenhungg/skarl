@@ -8,10 +8,14 @@ only a non-sensitive scaffold query. Authentication, uploads, worker gateways,
 domain mutations, scheduling, financial posting, and chain reconciliation still
 need implementation and integration tests. No cloud deployment is implied.
 
-The architecture targets Hyphenate, meaningful Convex use, and Solana settlement.
-Coinbase Payment Agents eligibility still requires confirmation of the required
-Solana-compatible agent/MCP integration. An x402 SDK or facilitator alone does
-not establish that eligibility.
+The architecture targets Hyphenate, meaningful Convex use, Coinbase Best Use of
+x402 (Base Sepolia, Wallet MCP) and Gemini. **Tonight's build** follows
+[workstreams](workstreams.md): seeded demo identities, a Gemini Convex action,
+and `acceptAndPublish` / `proposePayment` / `approve`.
+
+**Deferred** (design kept below for later): the Python worker, its HMAC
+gateway and job leasing (`claimJob`, `heartbeatJob`, fencing), faster-whisper,
+refunds (`cancelRemainder`) and period close.
 
 ## Runtime boundaries
 
@@ -20,11 +24,11 @@ flowchart LR
   Browser[Buyer / Contributor / Controller] --> Web[Next.js UI and Node x402 routes]
   Browser --> Convex[Convex mutations and reactive queries]
   Browser --> Files[Convex file storage]
-  Web --> Gateway[Authenticated Convex HTTP gateway]
-  Worker[Python verification worker] --> Gateway
-  Gateway --> Convex
+  Web -->|Observed funding facts| Convex
+  Convex -->|Action| Gemini[Gemini: silent video, then audio]
   Convex --> Files
-  Web --> Chain[Solana Devnet / SPL USDC]
+  Web --> Chain[Base Sepolia USDC]
+  Wallet[Controller Coinbase Wallet / Wallet MCP] --> Chain
 ```
 
 - **Convex:** authoritative order terms, submissions, analysis metadata, human
@@ -33,12 +37,13 @@ flowchart LR
 - **Next.js Node routes:** the x402 HTTP boundary and future payment/RPC adapters.
   They report payment observations to Convex rather than maintaining another
   ledger. They do not publish an order from an unverified client receipt.
-- **Python worker:** validates and analyzes media, produces evidence, and reports
-  recommendations. It has no acceptance, accounting, approval, or signing
-  authority.
-- **Human controller wallet:** the proposed independent signing boundary for
-  contributor payments and refunds. The finance system prepares an exact
-  proposal; the human signs; reconciliation verifies the resulting transfer.
+- **Gemini analysis action (Convex):** validates and analyzes media, produces evidence, and
+  stores a schema-validated report. It has no acceptance, accounting, approval, or
+  signing authority. (The Python worker is deferred.)
+- **Human controller wallet (Coinbase Wallet):** the independent signing boundary
+  for contributor payouts. The finance system prepares an exact proposal; the agent
+  may submit it via Wallet MCP `send`; the human approves in Coinbase Wallet;
+  reconciliation verifies the resulting `Transfer` log.
 - **Storage:** private originals, normalized media, evidence frames, reports,
   and licensed manifests. A published manifest changes the buyer's application
   access; it does not require making originals globally public.
@@ -49,16 +54,16 @@ is required for the bounded MVP. A platform wallet plus database liabilities is
 
 ## Canonical identifiers and money
 
-The shared configuration is `packages/contracts/src/solana.ts`:
+The shared configuration is `packages/contracts/src/chain.ts`:
 
-- Network: `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`.
-- Devnet USDC mint: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`.
+- `PAYMENT_NETWORK`: `eip155:84532` (Base Sepolia, `PAYMENT_CHAIN_ID` 84532).
+- `USDC_ADDRESS`: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
 - Precision: six decimal places. `100 USDC = 100_000_000` atomic units.
 
 Convex stores all USDC amounts as `v.int64()` / JavaScript `bigint`. Ordinary
 JSON transports use base-10 integer strings. Conversion must be explicit; never
-coerce an amount to floating point. Native SOL fees use a separate lamport field
-and are not added to USDC totals.
+coerce an amount to floating point. Gas (ETH) is tracked separately in wei
+and never added to USDC totals.
 
 `taskVersionId` references a `rubricVersions` document. Jobs and reports also
 carry `sourceHash`, `pipelineVersion`, and `leaseGeneration`. These fields bind
@@ -78,7 +83,7 @@ and business idempotency identifiers are separate fields.
 | `payables` | Compensation earned under the accepted terms |
 | `paymentIntents` | Expected buyer funding and x402 business identity |
 | `approvals`, `paymentCommands`, `paymentAttempts` | Independent authorization and external execution state |
-| `chainObservations` | Inspected SPL transfers and commitment observations |
+| `chainObservations` | Inspected USDC `Transfer` logs and confirmation observations |
 | `journalEntries`, `journalLines` | Balanced accounting events and reversals |
 | `outboxEvents`, `auditEvents`, `serviceRequests` | Durable side-effect requests, accountability, signed-request replay handling |
 
@@ -94,13 +99,14 @@ These names describe work to implement; they are not callable functions yet.
 | Mutation | Required atomic changes |
 | --- | --- |
 | `finalizeSubmission` | Check tenant/contributor and stored file metadata; bind consent and task version; create job and audit event |
-| `claimJob` | Select eligible work; increment attempt and lease generation; set owner/expiry; record the claim result |
-| `heartbeatJob` | Extend only the current unexpired lease for the authenticated worker |
-| `completeAnalysis` | Fence stale attempts; validate source/versions and report; attach evidence and move submission to review |
+| `claimJob` (deferred) | Select eligible work; increment attempt and lease generation; set owner/expiry; record the claim result |
+| `heartbeatJob` (deferred) | Extend only the current unexpired lease for the authenticated worker |
+| `completeAnalysis` | Validate source hash/versions and the report (fencing deferred with the worker); check the duplicate hash; attach evidence and move submission to review |
 | `acceptAndPublish` | Check human authority and open capacity; record decision and buyer-accessible delivery; accrue payable and balanced journals; insert outbox event |
-| `approveSettlement` | Check an independent controller; bind the exact proposal hash and expiry; record approval and dispatch event |
+| `proposePayment` | Agent or operator creates a proposal from current payable versions; server computes recipient/amount; never approves |
+| `approve` | Check an independent controller (not the requester, never the agent identity); bind the exact proposal hash and expiry; record approval and dispatch event |
 | `recordConfirmedSettlement` | Check independently inspected transfer identity; consume financial event key; post balanced journal and close the obligation |
-| `cancelRemainder` | Close remaining collection capacity; reserve the refundable obligation; create refund proposal and audit history |
+| `cancelRemainder` (deferred) | Close remaining collection capacity; reserve the refundable obligation; create refund proposal and audit history |
 
 Acceptance and cancellation must both read/update the same order record. That
 conflict prevents one remaining unit from being accepted and refunded
@@ -130,7 +136,7 @@ sample for compensation.
 7. A human reviews recommendations and exceptions. Accepted and licensed
    delivery creates the financial obligation through `acceptAndPublish`.
 
-Use a 30-second, 720p, roughly 20–25 MB clip cap initially. This is an application
+Use a 30-second, 720p, 25 MB clip cap initially. This is an application
 scope choice. Keep original bytes and a mapping from normalized timestamps to
 the original video so evidence links remain meaningful.
 
@@ -146,12 +152,13 @@ The exact proposed service-authentication protocol is in [security.md](security.
 
 ## Payments and accounting lifecycle
 
-Buyer funding uses x402 v2 on Solana Devnet. It is a short purchase of a defined
+Buyer funding uses x402 v2 on Base Sepolia. It is a short purchase of a defined
 collection order; it must not keep an HTTP request open while a person films or
-the worker analyzes a clip. Contributor payouts and refunds are separate checked
-SPL USDC transfers, not x402 refund primitives.
+the model analyzes a clip. Contributor payouts are separate controller-approved
+USDC transfers, not x402 refund primitives.
 
-The inspected x402 Next route adapter invokes its handler before settlement.
+By default, the x402 Next route adapter invokes its handler before settlement
+(a `beforeHandlerSettlement` option reverses this; see [payments](payments.md)).
 The handler may stage a payment intent, but must not mark funding received,
 publish paid work, or post cash before settlement is confirmed. A verified
 authorization alone is not cash. Persist logical payment identity before
@@ -186,19 +193,19 @@ Post entry, lines, source event identity, and obligation state together. Changes
 to posted history require linked reversals. The schema does not enforce these
 rules by itself.
 
-Payment attempts retain signature, transaction digest, recent blockhash, last
-valid block height, and commitment observations. Track `processed`, `confirmed`,
-and `finalized` separately. Never replace an unresolved transaction solely
-because HTTP timed out. Verify mint, precision, instruction path, token-account
-owners, amount, success, and required commitment against the approved proposal.
+Payment attempts retain the tx hash, sender nonce, and confirmation
+observations. Track submitted, confirmed, and finalized separately. Never replace
+an unresolved transaction solely because HTTP timed out. Verify chain ID, token
+address, `from`, `to`, `value`, log index and receipt status against the approved
+proposal.
 Deduplicate by logical financial event and inspected onchain transfer identity.
 
 ## Scheduling, outbox, and reactive UI
 
 Write an outbox event in the same mutation that makes its business decision.
-Native scheduling plus a single pull worker is sufficient for the first demo.
-Workpool can later bound retries/concurrency of Convex actions; Workflow can
-coordinate durable human waits. Neither runs Python or makes a chain transfer
+Native scheduling plus the Workflow component (for the durable approval wait) is
+the demo plan. Workpool can later bound retries/concurrency of Convex actions.
+Neither runs Python or makes a chain transfer
 atomic with Convex. Scheduled actions can have external side effects and are
 not automatically retried by Convex.
 
@@ -216,7 +223,7 @@ transactions, even when one action awaits all of them.
 - Task/source/pipeline mismatches cannot create an accepted delivery.
 - Contributors and workers cannot accept their own work or approve settlement.
 - Changed amount/recipient/version invalidates approval.
-- Pending, failed, wrong-mint, wrong-owner, and forged-signature observations
+- Pending, failed, wrong-token, wrong-recipient, and forged-hash observations
   never mark an obligation paid.
 - A lost response after settlement recovers the original payment rather than
   requesting a second one.
@@ -231,6 +238,5 @@ transactions, even when one action awaits all of them.
 - [Convex scheduling guarantees](https://docs.convex.dev/scheduling/scheduled-functions)
 - [Convex file access semantics](https://docs.convex.dev/file-storage/serve-files)
 - [Canonical x402 source](https://github.com/x402-foundation/x402)
-- [Solana x402 integration](https://solana.com/docs/payments/agentic-payments/x402)
-- [Solana signature status](https://solana.com/docs/rpc/http/getsignaturestatuses)
-- [Circle USDC mint addresses](https://developers.circle.com/stablecoins/usdc-contract-addresses)
+- [CDP x402 facilitator](https://docs.cdp.coinbase.com/x402/seller/facilitator)
+- [Circle USDC addresses](https://developers.circle.com/stablecoins/usdc-contract-addresses)

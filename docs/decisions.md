@@ -1,29 +1,31 @@
 # Engineering Decisions
 
-Status as of October 24, 2026. These are design decisions, not claims of completed integrations.
+Status as of October 25, 2026 (post-audit). These are design decisions, not claims of completed integrations.
 
 | Decision | Status | Reason / revisit trigger |
 | --- | --- | --- |
-| Solana Devnet USDC only | Required by user | x402 can settle on Solana; do not add Base to chase a logo. Mainnet requires a separate launch decision. |
-| No custom on-chain program | Chosen for MVP | Checked SPL transfers and durable application accounting satisfy the demo. Revisit only for a real enforceable escrow requirement. |
-| Platform-held refundable prepayment | Demo assumption | Do not call it noncustodial escrow. Real custody, customer terms and operating obligations need review before launch. |
+| Build one live demo path in 8 hours | Required | The deadline is Oct 25, 9:00 AM PDT. Everything not on the [workstreams](workstreams.md) path is deferred design. |
+| Base Sepolia USDC only (`eip155:84532`) | Chosen (pivot from Solana) | Targets Coinbase Best Use of x402 ($500 USDC + recruiter call per member) over MLH Solana (swag). Mainnet needs a separate launch decision. |
+| No custom smart contract | Chosen | Controller-approved USDC transfers plus durable application accounting satisfy the demo. Revisit only for a real enforceable escrow requirement. |
+| Coinbase Wallet MCP for agent payments | Chosen | Supports Base Sepolia x402 and `send`; every write needs approval in Coinbase Wallet, which matches the independent-controller rule. The Coinbase retail MCP (Base mainnet, 5 USDC cap) is optional. |
+| Platform-held refundable prepayment | Demo assumption | Do not call it noncustodial escrow. Real custody and customer terms need review before launch. |
 | Skarl acts as principal for dataset sales | Explicit accounting assumption | Recognize gross revenue on actual licensed delivery, contributor acquisition cost separately. A pure brokerage business needs a different net model. |
-| Convex is authoritative | Chosen | Transactions, jobs, storage and reactive views; avoid dual writes into a second database. |
-| Python pull worker on Railway | Chosen target | Media/ML dependencies and long tasks outside web requests. Modal/GPU only if measurements require it. |
-| Auth0 | Preferred | Necessary identity and possible sponsor fit. Keep an existing working integration over a last-minute replacement. |
-| Gemini silent-video + independent ASR | Chosen starting pipeline | Reduces narrative contamination and permits alignment tests. Current model identifier remains configurable. |
-| SSCD temporal copy checks | Chosen starting method | Detect transformed copies. Semantic embeddings alone would conflate valid retakes. |
-| No model fine-tuning in first loop | Deferred | Build labels and evaluate before choosing a learned head. Training without evidence is not engineering value. |
-| Finance agent has typed bounded tools | Required | Model can propose/explain; deterministic authorization, policy, approvals and signer execution remain outside it. |
-| x402 funding is short and asynchronous | Required | Do not wait for video analysis inside a paid route; grant work only after settlement observation. |
-| Coinbase Payment Agents prize | Conditional | Brief asks for Coinbase MCP + x402. Wallet MCP's documented x402 path is Base-only; CDP SDK/facilitator is not the same requirement. |
-| Cartesia / extra voice layer | Deferred | Only if responsive voice is truly useful and the core loop is already complete. |
-| Public repository license | Unselected | Public visibility does not itself grant an open-source license; maintainers should select terms deliberately. |
+| Convex is authoritative | Chosen | Transactions, storage, reactive views and Workflow for the approval wait; avoid dual writes into a second database. |
+| Gemini via a Convex action, two calls | Chosen | A silent-video call and a separate audio call keep the evidence independent without deploying a second service. The model ID is configurable. |
+| SHA-256 + sampled-frame perceptual hash for duplicates | Chosen for the demo | Catches the staged re-encoded copy. SSCD temporal checks are deferred (they need labeled calibration data). |
+| Seeded demo identities, server-checked roles | Chosen | Auth0 has no prize at Cal Hacks 13.0 and costs setup time. Label the identities as demo. |
+| Python worker on Railway, HMAC gateway, leasing, faster-whisper | Deferred | Revisit when media processing outgrows a Convex action. |
+| Refunds, period close, eval split protocol | Deferred | Refunds only if funding and payout both work by hour 6. There is no labeled data for an eval split. |
+| No model fine-tuning | Deferred | Build labels and evaluate before choosing a learned head. |
+| Finance agent has typed bounded tools | Required | The model can propose and explain; authorization, policy, approvals and signing stay outside it. |
+| x402 funding is short and asynchronous | Required | Never wait for video analysis inside a paid route; grant work only after settlement observation. |
+| pnpm, not Bun | Deliberate exception | The repo is already pinned to pnpm 10.19.0; switching mid-event costs time. |
+| Public repository license | Unselected | Public visibility does not grant an open-source license. |
 
 ## Open questions that affect live implementation
 
 - What exact license/consent text is acceptable to both buyer and contributor? Define withdrawal/deletion and already delivered data behavior before actual collection.
-- Will a Solana-compatible Coinbase MCP path or sponsor-approved alternative satisfy the challenge? Obtain a clear answer; do not infer acceptance from facilitator support.
+- Is every team member eligible for the Coinbase prize (18+, US/Canada resident excluding Quebec, verified Coinbase account)? See the [checklist](sponsor-tracks.md#team-eligibility-checklist).
 - What are the exact maximum payout, batch threshold, approver identities and posting/finality policy? Document a demo policy before enabling a signer.
 - Who owns each hosted account and secret? The scaffold creates no deployments or credentials.
 - What measured quality, false-positive tolerance and latency does the buyer require? Freeze thresholds on training/validation sessions and reserve held-out sessions for reporting.

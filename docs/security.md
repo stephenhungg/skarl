@@ -2,16 +2,19 @@
 
 ## Current status
 
-The repository is a scaffold. No human authentication adapter, role-checking
-domain mutation, HMAC gateway, private-media delivery endpoint, controller-wallet
+The repository is a scaffold. No demo-identity seeding, role-checking
+domain mutation, HMAC gateway (deferred), private-media delivery endpoint, controller-wallet
 integration, or live payment path is implemented. The public `health:status`
 query exposes only scaffold metadata. The schema is not an authorization layer.
 
 ## Human identities and permissions
 
-Auth0 is the starting provider because Convex documents its integration and it
-matches an opportunistic sponsor track. Keep Clerk if it is already integrated;
-do not mix identities from two providers without an explicit migration.
+For the demo, identities are **seeded demo users** (buyer, contributor,
+controller, finance agent) with roles stored in Convex memberships and checked on
+the server in every mutation. They are labeled as demo identities in the UI and
+submission. Auth0 is not used (there is no Auth0 prize at Cal Hacks 13.0); a real
+identity provider is a post-event decision. The finance agent's identity can
+propose but never approve.
 
 Verify tokens through Convex's configured identity provider. Resolve the issuer
 and subject to an active organization membership on the server. Roles in a form,
@@ -22,7 +25,8 @@ URL, model response, or frontend selector never confer authority.
 | Buyer | Create/fund own order, read licensed deliveries, request cancellation | Approve contributor settlement merely by being a buyer |
 | Contributor | Read offered terms, upload own contribution, view own earnings | Accept own work, alter rates, access others' originals, approve/pay |
 | Controller | Review evidence and authorize exact settlement proposals | Rewrite posted journals or approve a request made by the same principal |
-| AI worker service | Claim/heartbeat assigned work, read job-scoped input, attach evidence and recommendations | Accept deliveries, post journals, create payables, sign or approve transfers |
+| Finance agent | Read projections, create payment proposals, submit an already approved intent via Wallet MCP | Approve any proposal (including its own), change recipient/amount, hold a signing key |
+| AI analysis (Convex action; deferred: worker service) | Read job-scoped input, attach evidence and recommendations | Accept deliveries, post journals, create payables, sign or approve transfers |
 | Payment gateway service | Record verified payment attempts/observations through narrow operations | Invent buyer authorization, change order terms, grant controller membership |
 
 Enforce organization ownership on every query/mutation and every nested
@@ -30,15 +34,18 @@ reference. Possession of a Convex document ID is not permission to read it.
 Record the authenticated actor, reason, source version, and evidence for each
 decision. Keep authorization checks inside the mutation that changes the state.
 
-An approval binds chain, mint, amount, recipient owner, source obligation, source
+An approval binds chain ID, token address, amount, recipient, source obligation, source
 version, expiry, and proposal identity. Any material change requires a new
 approval. The proposed independent signer is the controller's browser wallet;
-the worker must never receive a treasury or controller private key.
+no worker, agent or web runtime ever receives a treasury or controller
+private key. A Wallet MCP `send` still requires the controller's approval in
+Coinbase Wallet.
 
 ## Proposed worker/payment gateway protocol
 
-**This section is an integration contract to implement. There is no HMAC
-verification code or worker HTTP route in this scaffold.**
+**Deferred.** This is the contract for the deferred Python worker and is not
+built for the demo, where analysis runs in a Convex action. There is no HMAC
+verification code or worker HTTP route in this scaffold.
 
 Use HTTPS and a separate credential per service. Each service ID maps server-side
 to one preconfigured secret and an exact operation allowlist. The claimed
@@ -146,16 +153,15 @@ untrusted data. The verifier receives no financial tools or signing secrets.
 
 ## Payment verification
 
-Only the canonical Solana Devnet network/mint is enabled in this scaffold's
-types. Use labeled test assets. A transaction signature supplied by a browser or
-facilitator response is a reference to inspect, not enough to mark an order
+Only the canonical Base Sepolia network (`eip155:84532`) and Circle test USDC
+address in `packages/contracts/src/chain.ts` are enabled. Use labeled test
+assets. A tx hash supplied by a browser, MCP tool or facilitator response is a reference to inspect, not enough to mark an order
 funded or a payable paid.
 
-Reconcile the expected network, mint, precision, source/destination token-account
-owners, amount, instruction path, execution success, and required commitment.
-Store recent blockhash lifetime and distinguish unresolved from definitively
-failed/expired attempts. Do not create a second transfer because a request timed
-out. Native SOL fees and token-account creation require separate budgeting.
+Reconcile the expected chain ID, token address, `from`, `to`, `value`, log
+index, receipt status and confirmations from the USDC `Transfer` log. Distinguish
+unresolved from definitively failed attempts. Do not create a second transfer
+because a request timed out. Gas (ETH) is budgeted separately from USDC.
 
 No onchain payment is atomic with an HTTP response or a Convex write. Persist
 attempt identity first and recover the gaps using independently verified chain
@@ -164,11 +170,12 @@ APIs; use reviewed reversals for corrections.
 
 ## Secrets and logs
 
-- The worker gets only its own gateway credential and required inference keys.
-  It does not receive a Convex deploy/admin key, payment service secret, or
-  treasury key.
-- `NEXT_PUBLIC_*` values are public by design. Never put service secrets, Auth0
-  client secrets, RPC URLs containing credentials, or signing material there.
+- The Gemini key lives only in Convex environment variables (server-side
+  action). The deferred worker would get only its own gateway credential. No
+  component receives a Convex deploy/admin key or a treasury key.
+- The CDP API key stays server-side in the payment route.
+- `NEXT_PUBLIC_*` values are public by design. Never put service secrets, CDP or
+  Gemini keys, RPC URLs containing credentials, or signing material there.
 - Keep environment files out of Git. Share deployed credentials through the
   relevant secret-management surface, not commits or chat prompts.
 - Log job/operation IDs, stages, durations, sanitized errors, and verified
@@ -179,11 +186,10 @@ APIs; use reviewed reversals for corrections.
 
 ## Primary references
 
-- [Convex Auth0 integration](https://docs.convex.dev/auth/auth0)
 - [Authentication inside functions](https://docs.convex.dev/auth/functions-auth)
 - [Convex internal function guidance](https://docs.convex.dev/understanding/best-practices)
 - [Convex HTTP actions](https://docs.convex.dev/functions/http-actions)
 - [Convex runtime and Web Crypto](https://docs.convex.dev/functions/runtimes)
 - [Convex private file delivery](https://docs.convex.dev/file-storage/serve-files)
-- [Circle USDC mint addresses](https://developers.circle.com/stablecoins/usdc-contract-addresses)
-- [Solana signature status](https://solana.com/docs/rpc/http/getsignaturestatuses)
+- [Circle USDC addresses](https://developers.circle.com/stablecoins/usdc-contract-addresses)
+- [Coinbase Wallet MCP](https://docs.cdp.coinbase.com/ai-agents/coinbase-for-agents/wallet-mcp)

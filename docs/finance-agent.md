@@ -2,7 +2,7 @@
 
 ## Job and implementation status
 
-The target agent fills two financial seats: settlement accountant and accounts-payable clerk. It explains obligations, proposes bounded payments, identifies reconciliation exceptions and prepares a period close. It does not decide whether a clip contains the right action, approve its own payment, hold a wallet key or rewrite the ledger.
+The target agent fills two financial seats: settlement accountant and accounts-payable clerk. It explains obligations, proposes bounded payments and identifies reconciliation exceptions (period close is deferred). It does not decide whether a clip contains the right action, approve its own payment, hold a wallet key or rewrite the ledger.
 
 Only the deterministic ledger helpers exist today. The agent loop, model adapter, tool endpoints, policy engine and approval workflow below are **planned work**. A successful journal test is not a working autonomous accountant.
 
@@ -15,13 +15,13 @@ Implement tools as typed application operations, not arbitrary SQL, shell, gener
 | `getOrderFinancials` | Order ID; returns funding, delivered allocations, unused prepayment and related event IDs | Read only, organization scoped |
 | `listOpenObligations` | Organization, bounded page/cursor; returns payable/refund records with versions | Read only; exclude raw contributor media |
 | `getReconciliation` | Payment command ID; returns expected facts versus observed transfers | Read only; no chain-status invention |
-| `getPeriodReport` | Period ID; opening balances, activity, closing balances and unexplained differences | Deterministic ledger projection, not model arithmetic |
+| `getPeriodReport` (deferred) | Period ID; opening balances, activity, closing balances and unexplained differences | Deterministic ledger projection, not model arithmetic |
 | `proposePayment` | Existing obligation IDs/versions and request ID | Server calculates recipient/amount/network from stored terms; returns proposal and policy findings |
 | `requestIndependentApproval` | Proposal ID/version and explanation | Records a request to an authorized controller; cannot approve it |
 | `requestReconciliation` | Existing unresolved attempt ID | Enqueues observation only; cannot build a new transfer |
-| `prepareClose` | Period ID and immutable source versions | Reports blockers and draft close artifacts; no silent historical adjustments |
+| `prepareClose` (deferred) | Period ID and immutable source versions | Reports blockers and draft close artifacts; no silent historical adjustments |
 
-Do not expose signing or `approvePayment` as agent tools. The authenticated controller approves the exact proposal and signs using the planned wallet boundary. The payment executor consumes the approved command and stores the attempt before submission. Recipient, amount, mint, network or payable-version changes invalidate the prior approval.
+Do not expose signing or `approvePayment` as agent tools. The authenticated controller approves the exact proposal in Convex. The agent may then call Coinbase Wallet MCP `send` **only for that stored, approved intent** (exact recipient, amount and token; no other parameters), and Coinbase Wallet asks the controller to approve the write. The Coinbase retail MCP's x402 tools run on Base mainnet with a 5 USDC cap and are not used on the demo path. An attempt to approve its own proposal is refused and logged; this refusal is part of the demo moment. The payment executor consumes the approved command and stores the attempt before submission. Recipient, amount, token, network or payable-version changes invalidate the prior approval.
 
 ## Reasoning loop and persistence
 
@@ -41,21 +41,23 @@ The initial policy requires an independent controller approval for every payout/
 
 A duplicate detection finding blocks automatic fulfillment pending review. Existing earned compensation survives cancellation. A transfer with an unresolved original attempt blocks replacement. A model may suggest investigating or adjusting an error, but corrections require an authorized linked reversal/adjustment; the original journal remains unchanged.
 
-Store all cash/obligation arithmetic as exact micro-USDC. Display USDC and native SOL fees separately. Opening balances and prior-period activity are part of the report; the agent cannot assume a new period starts at zero.
+Store all cash/obligation arithmetic as exact micro-USDC. Display USDC and gas (ETH) separately.
 
 ## Demonstrating engineering quality
 
-Create a synthetic answer-key dataset of finance cases independently from the model prompt. Include the full $100 lifecycle, prepayment incorrectly labeled revenue, duplicated payable/event, wrong recipient/mint, changed proposal after approval, requester self-approval, expired approval, over-refund, lost payout response, cancellation race and a prior-period reconciliation discrepancy.
+**Deferred until after the demo path works.** For tonight, the evidence is the scripted checks in [demo](demo.md): duplicate payable blocked, self-approval refused, repeated funding event posted once.
+
+Create a synthetic answer-key dataset of finance cases independently from the model prompt. Include the full $100 lifecycle, prepayment incorrectly labeled revenue, duplicated payable/event, wrong recipient/token, changed proposal after approval, requester self-approval, expired approval, over-refund, lost payout response, cancellation race and a prior-period reconciliation discrepancy.
 
 Measure exact obligation and balance correctness, unauthorized tool attempts, policy-block correctness, reconciliation recovery and citations to the relevant business events. Count cases and failures. Compare a model answering from plain transaction text with the same model using deterministic projections and bounded tools. Preserve an untouched test subset; do not report a handpicked successful chat as an evaluation.
 
-The demo's memorable output is a defended decision: "this narration conflicts with the video, so acceptance is held and no payable exists," or "this payout's response was lost, but its original signature is confirmed, so no replacement will be sent." The displayed statement must follow real persisted evidence, not a scripted claim.
+The demo's memorable output is one defended decision: "this clip is a re-encoded copy of an accepted submission, so no second payable exists; I've proposed the legitimate payout, and I can't approve my own proposal." The displayed statement must follow real persisted evidence, not a scripted claim. See [demo](demo.md).
 
 ## References
 
 - [Hyphenate brief](https://docs.google.com/document/d/1u4iN8R97ILY3kfHTPKC82zdutHrGx4ze5eCAP-J92w4/edit)
 - [Gemini function calling](https://ai.google.dev/gemini-api/docs/function-calling)
 - [Accounting model](accounting.md)
-- [Solana payment boundaries](payments-solana.md)
+- [Payment boundaries](payments.md)
 - [Backend transactions](backend.md)
 - [Identity and approval security](security.md)

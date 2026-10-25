@@ -1,6 +1,8 @@
 # AI verification architecture
 
-Status: architecture and worker scaffold. No model has been benchmarked for Skarl, and no inference adapter is implemented yet. The target is a bounded, narrated human-action recording, not generalized proof of real-world work.
+Status: architecture and validation scaffold. No model has been benchmarked for Skarl, and no inference adapter is implemented yet.
+
+**Demo pipeline (tonight):** a Convex action makes two independent Gemini calls (a silent-video call, then a separate audio call), aligns them, and validates the report against the shared schema. Duplicates are found with SHA-256 plus a sampled-frame perceptual hash. Anything invalid or unavailable routes to review. **Deferred:** FFmpeg normalization in a Python worker, faster-whisper, SSCD temporal matching and threshold calibration. Their design is kept below. The target is a bounded, narrated human-action recording, not generalized proof of real-world work.
 
 ## Product boundary
 
@@ -24,13 +26,13 @@ Untrusted video, speech, and on-screen text are evidence. They are never system 
 
 | Stage | Initial choice | Reason and constraint |
 | --- | --- | --- |
-| Video semantics | `gemini-3.8-flash` through the Google GenAI SDK | Hosted video understanding avoids deploying a large VLM. Structured output is validated against the shared contract. It is a recommendation source, not accounting authority. |
-| Narration | `faster-whisper`, initially `base.en` on CPU INT8 | Separate audio-only observations with word timestamps. This is an English-only starting configuration requiring local evaluation. |
-| Copy descriptors | Meta SSCD `sscd_disc_mixup` TorchScript | A copy-detection representation is more appropriate than ordinary semantic similarity for identifying reuse. |
-| Decoding and alignment | FFmpeg/ffprobe, NumPy, optional PyAV/OpenCV | Preserve timestamps, derive evidence, and align frame sequences. |
+| Video semantics | `gemini-3.8-flash` (configurable via `SKARL_GEMINI_MODEL`) through the Google GenAI SDK | Hosted video understanding avoids deploying a large VLM. Structured output is validated against the shared contract. It is a recommendation source, not accounting authority. |
+| Narration | Demo: a separate audio-only Gemini call. Deferred: `faster-whisper` `base.en` on CPU INT8 | Separate audio-only observations with timestamps. Not seeing the video keeps the audio evidence independent. |
+| Copy detection | Demo: SHA-256 + sampled-frame perceptual hash. Deferred: Meta SSCD `sscd_disc_mixup` | Catches exact and re-encoded copies cheaply; SSCD needs labeled calibration data that does not exist yet. |
+| Decoding and alignment (deferred worker) | FFmpeg/ffprobe, NumPy, optional PyAV/OpenCV | Preserve timestamps, derive evidence, and align frame sequences. |
 | Pointing support | Deferred: MediaPipe Hand Landmarker plus object proposals | The first task names an object explicitly. Unrestricted gesture reference resolution adds another failure surface and is not required to complete the first order. |
 
-As checked on October 24, 2026, Google's model page lists `gemini-3.8-flash` as stable, supporting text/image/video/audio/PDF input and structured output. It explicitly does not support the Live API. The worker analyzes completed clips asynchronously; a streaming conversation is a later feature.
+As checked on October 24, 2026, Google's model page lists `gemini-3.8-flash` as stable (on October 25 the models page also announces `gemini-4-argon`; switch only on measured latency), supporting text/image/video/audio/PDF input and structured output. It explicitly does not support the Live API. The worker analyzes completed clips asynchronously; a streaming conversation is a later feature.
 
 Google's default video sampling is 1 FPS and may miss fast events. Static processing permits custom FPS and clipping. Start with a controlled sampling experiment; do not assume a whole-clip summary observes a brief release or grasp. Use fixed processing limits and targeted denser windows rather than an unbounded model navigation loop.
 
@@ -38,11 +40,11 @@ Google currently lists introductory rates of $0.75 per million input tokens and 
 
 ### Hosted transcription alternative
 
-`gemini-3.5-transcribe` is a documented audio-only alternative using the same Google account and SDK. Its file-processing endpoint supports word annotations and limits timestamped requests to 30 minutes. Use verbatim mode: Smart transcription rewrites self-corrections and cannot be combined with word timestamps. Timestamping is also incompatible with custom vocabulary, and Google notes it can reduce transcription accuracy. The live transcription endpoint does not return word timestamps. API availability and accuracy on our recordings still need a credentialed spike; none was run for this scaffold. Keep faster-whisper as the initial documented choice until that comparison is performed.
+`gemini-3.5-transcribe` is a documented audio-only alternative using the same Google account and SDK. Its file-processing endpoint supports word annotations and limits timestamped requests to 30 minutes. Use verbatim mode: Smart transcription rewrites self-corrections and cannot be combined with word timestamps. Timestamping is also incompatible with custom vocabulary, and Google notes it can reduce transcription accuracy. The live transcription endpoint does not return word timestamps. API availability and accuracy on our recordings still need a credentialed spike; none was run for this scaffold. The demo uses a plain audio-only Gemini call instead; compare options after the event.
 
 ## Near-duplicate implementation
 
-Keep exact identity, perceptual copying, and semantic similarity distinct:
+**Demo scope: SHA-256 plus sampled-frame perceptual hashes, tested on the staged re-encoded copy.** The SSCD design below is deferred. Keep exact identity, perceptual copying, and semantic similarity distinct:
 
 - SHA-256 finds identical bytes. It will not find a crop or re-encode.
 - Sampled frame perceptual hashes provide a cheap baseline.
@@ -61,7 +63,7 @@ SSCD is an image-copy model. Robustness of the assembled video pipeline to crop,
 
 Evidence should distinguish the media object, its modality, its interval, and the observed claim. A report must be tied to a specific submission, source hash, and task version. Findings are immutable; reviewer overrides are new events with reasons. A new rubric or model configuration produces a new run, not a silent edit of an earlier result.
 
-The service must reject monetary fields in model output. It has no wallet key, no payout endpoint, no controller role, and no write access to financial postings. Skarl's payment integration is Solana Devnet only. The verifier does not implement a payment network.
+The service must reject monetary fields in model output. It has no wallet key, no payout endpoint, no controller role, and no write access to financial postings. Skarl's payment integration is Base Sepolia only. The verifier does not implement a payment network.
 
 ## Calibration and limits
 

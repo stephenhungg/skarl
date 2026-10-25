@@ -41,7 +41,7 @@ Core invariants:
 6. An acceptance consumes one remaining order unit and its agreed price atomically.
 7. Cancellations reserve only unfulfilled value. They cannot erase already earned contributor compensation.
 8. A payable is discharged only by its approved, confirmed transfer or an authorized accounting correction.
-9. Approval binds the exact recipient, mint, amount, cluster, obligation reference, and proposal version.
+9. Approval binds the exact recipient, token address, amount, chain ID, obligation reference, and proposal version.
 10. The agent requesting a payment cannot approve it or hold the controller's signing authority.
 
 Store money in `bigint` micro-units with `v.int64()` validators. Convert to decimal strings at ordinary JSON boundaries. Do not round input or calculate monetary totals using JavaScript floating-point dollars. [Convex data types](https://docs.convex.dev/database/types)
@@ -59,10 +59,10 @@ Important races to exercise:
 | Two callbacks claim the same accepted clip | One fulfillment and one payable |
 | Acceptance races cancellation | The same unit is fulfilled or refunded, never both |
 | Buyer payment settles, then server crashes | Reconciler records one prepayment and activates one order |
-| Payout response is lost | Retain and inspect the original signature; no fresh payout |
+| Payout response is lost | Retain and inspect the original tx hash; no fresh payout |
 | Recipient changes after approval | Prior proposal is invalidated |
 | Model result changes on rerun | Preserve prior run; require a new decision version and explicit correction |
-| Prior period is closed | Preserve the original journal; record an authorized later-period adjustment |
+| Prior period is closed (period close deferred) | Preserve the original journal; record an authorized later-period adjustment |
 
 ## Corrections and audit evidence
 
@@ -73,11 +73,11 @@ Each financial event should retain:
 - Order, original rubric/rate/license version, buyer, contributor, and submission references.
 - Model and verifier version, output evidence timestamps, uncertainty, and human review decision.
 - Requesting actor, approving actor, proposal version, exact approved transfer details, and approval time.
-- Solana cluster, mint, transaction signature, slot, confirmation status, and identified token transfer.
+- Chain ID, token address, tx hash, log index, block number, confirmation status, and the identified `Transfer`.
 - Journal lines, business-event ID, original event for corrections, and reconciliation outcome.
 
 Raw clips, personal data, and consent documents remain access-controlled offchain. A content hash supports integrity matching; it does not prove ownership, truthful consent, originality, or fitness for training. The payment record proves a transfer, not that a clip satisfies its acceptance rubric.
 
 ## Verification boundary
 
-`packages/ledger/src/index.test.ts` checks exact amount parsing, balanced postings, the complete $100 lifecycle, event retries/conflicts, over-refunds, cross-order/contributor leakage, and append-only reversals. These are pure unit checks. They do not prove authentication, concurrent Convex behavior, correct AI acceptance, a working x402 integration, or successful Solana settlement. Each of those requires its own integration evidence.
+`packages/ledger/src/index.test.ts` checks exact amount parsing, balanced postings, the complete $100 lifecycle, event retries/conflicts, over-refunds, cross-order/contributor leakage, and append-only reversals. These are pure unit checks. They do not prove authentication, concurrent Convex behavior, correct AI acceptance, a working x402 integration, or successful Base settlement. Each of those requires its own integration evidence.

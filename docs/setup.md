@@ -39,15 +39,15 @@ python -m skarl_verifier --help
 
 See [the verifier README](../services/verifier/README.md) for exact report-validation/scaffold commands and optional ML extras. Core tests require no GPU, model download, network calls or private videos. They validate contracts and failure behavior, not inference quality.
 
-FFmpeg, model weights, Gemini access and optional ASR/copy-model dependencies are required only when real inference is implemented. Do not install large GPU packages merely to make a placeholder worker start. Production Python dependencies should be locked once the live adapter and target hardware are chosen; the core editable scaffold install is not a reproducible ML deployment.
+The demo calls Gemini from a Convex action, so no Python inference stack is needed tonight. FFmpeg, model weights and the ASR/copy-model extras belong to the deferred worker. Do not install large GPU packages merely to make a placeholder worker start. Production Python dependencies should be locked once the live adapter and target hardware are chosen; the core editable scaffold install is not a reproducible ML deployment.
 
 ## Cloud services — integration work
 
 1. Use a team-controlled Convex account/development deployment. `pnpm convex:dev` will prompt for login/setup and generates `convex/_generated`; it is intentionally not required for local scaffold checks.
-2. Configure Auth0 with the correct issuer/audience and Convex integration. Add actual membership authorization before exposing any private data.
-3. Run the verifier as one Railway Python worker using separate service credentials, no treasury key. See [deployment](deployment.md).
-4. Configure the Next.js server's Devnet RPC/facilitator/signer only when implementing payments. Query facilitator support and fund the treasury with **Devnet SOL** for rent/fees.
+2. Seed demo identities (buyer, contributor, controller, agent) with server-checked roles. No external identity provider for the demo.
+3. Set `GEMINI_API_KEY` in the Convex deployment's environment variables (analysis runs in a Convex action; the Railway worker is deferred). See [deployment](deployment.md).
+4. For payments: a CDP API key (server-only) for the x402 facilitator, a controller Coinbase Wallet, and Base Sepolia USDC plus Sepolia ETH for gas. No signing key on the server.
 
-Copy root `.env.example` to the relevant service's ignored local environment file and fill only fields that service needs. It documents planned variables; values alone do not enable unimplemented integrations. `NEXT_PUBLIC_*` is browser-visible. Use server-only secret configuration for Gemini, HMAC credentials and signer material. The two HMAC secret values must encode independent random keys; see [security](security.md).
+Each service has its own example (`apps/web/.env.example`, `services/verifier/.env.example`; Convex variables are listed in the root `.env.example` and set with `pnpm exec convex env set`). Fill only the fields that service needs. It documents planned variables; values alone do not enable unimplemented integrations. `NEXT_PUBLIC_*` is browser-visible. Use server-only secret configuration for Gemini and CDP keys. Never put signing material in any environment file.
 
 Do not create cloud resources or make paid inference/real-fund transactions as part of merely running this scaffold.

@@ -1,74 +1,96 @@
 # Sponsor track strategy and evidence
 
-Skarl is a Kled-inspired human demonstration marketplace with multimodal acceptance checks and an autonomous finance workflow. Optimize the same product for relevant tracks. Do not add unrelated transactions or infrastructure solely to show another sponsor name.
+Pitch: **Skarl is the AP/settlement seat for a human-data company.** It verifies narrated demonstrations with multimodal AI, then pays contributors and keeps the books, with x402 payments on Base Sepolia. The prize list on [Devpost](https://cal-hacks-13-0.devpost.com/) is authoritative. The deadline is October 25, 2026, 12:00 PM EDT (9:00 AM PDT).
 
-Current scope is **Solana Devnet only**. Payments are a planned integration; the payment package explicitly reports that no runtime adapter is implemented. Repository documentation and fixture tests are not evidence of a working sponsor integration. Check current event rules and eligibility before submitting.
+Current scope is **Base Sepolia only**. Repository docs and fixture tests are not evidence of a working sponsor integration.
 
-## Primary: Hyphenate — Autonomous Systems for Finance
+## Targeted tracks
 
-Financial seats: settlement accountant and accounts-payable clerk. The independent human controller approves money movement. The company is skarl itself, selling verified data and buying contributor work.
+| Track (Devpost name) | What we demonstrate |
+| --- | --- |
+| [Hyphenate] The Hyphenated Enterprise: Autonomous Systems for Finance (**primary**) | The duplicate-clip catch, the blocked second payable, the agent's refused self-approval, a reconciled payout and balanced books |
+| [Coinbase] Best Use of x402, **Payment Agents** track | A buyer agent funds orders via x402 and the finance agent pays contributors, both through Coinbase Wallet MCP within approved caps |
+| [Convex] Best use of Convex | Convex as the system of record: live queries, atomic financial mutations, file storage, and a Workflow for the approval wait |
+| [MLH] Best Use of Gemini API | Two independent Gemini calls (silent video, audio) producing schema-validated, timestamped evidence |
 
-The official brief judges realism, whether the system could be hired, novelty, and a memorable catch/recovery/defended decision. It requires code, a video opening with that moment, a working live demo, seats filled, and evidence distinguishing real from simulated work. Judges may introduce a scenario. [Official Hyphenate brief](https://docs.google.com/document/d/1u4iN8R97ILY3kfHTPKC82zdutHrGx4ze5eCAP-J92w4/edit)
+## Hyphenate
 
-Evidence to build:
+Seats filled: **settlement accountant + AP clerk**. A human controller approves money movement.
 
-- One accepted clip, one duplicate requiring review, and one speech/action mismatch.
-- The duplicate's changed filename/hash does not generate a second payable after adjudication.
-- Buyer prepayments remain liabilities until fulfillment; earned contributor payables survive cancellation.
-- Correct payout, partial-order refund, and reconciled double-entry books.
-- Independent approval, rejected/stale approval handling, and traceable decisions.
-- A lost-response/replayed-event scenario that recovers without duplicate money movement.
-- A planted-error answer key, held-out AI evaluation, and actual test results. Do not present hand-selected clips as a benchmark.
+The [official brief](https://docs.google.com/document/d/1u4iN8R97ILY3kfHTPKC82zdutHrGx4ze5eCAP-J92w4/edit) judges realism, whether the system could be hired, novelty, and a memorable catch, recovery or defended decision. It requires:
 
-The multimodal model supplies grounded evidence for a financial decision. The complete payable/refund/accounting outcome must work; a clip classifier with a simulated balance widget is insufficient evidence for this track.
+- code
+- a video that opens with that moment
+- a live demo running for real
+- the seats named
+- an inventory separating real from simulated work
 
-## Solana / MLH: meaningful chain usage
+Judges may inject a scenario.
 
-The intended flow uses x402 v2 `exact` with the SVM adapter, Solana Devnet USDC funding, a supported Solana wallet, confirmed contributor payouts, and confirmed buyer refunds. Use Wallet Standard-compatible interfaces and the official Solana SDK ecosystem. A custom Solana program is not currently implemented and must not appear in the architecture as a completed escrow contract. [Solana payment integration](https://solana.com/docs/payments/accept-payments), [x402 SVM implementation](https://github.com/x402-foundation/x402/tree/main/typescript/packages/mechanisms/svm)
+Our moment is the [demo](demo.md) opening:
 
-Submission evidence should include the deployed endpoint, cluster/mint configuration, real Devnet transaction signatures, verified token movements, error handling, and a reproducible setup. Explain which wallet signs each operation. Label test tokens and any seed history. Confirm the event's specific Solana/MLH judging and eligibility requirements rather than assuming a transfer automatically qualifies.
+1. A re-encoded duplicate clip arrives.
+2. Its second payable is blocked.
+3. The controller sees the hash evidence.
+4. The finance agent proposes the payout but cannot approve its own proposal.
 
-## Convex: the authoritative application backend
+## Coinbase: Best Use of x402
 
-Use Convex for orders, rubric versions, submission evidence, acceptance decisions, contributor earnings, approvals, journals, payment attempts, and live order/controller views. Every financial transition should execute in a bounded mutation that preserves invariants. Schedule outside work from persistent state and reconcile uncertain outcomes.
+$500 USDC plus a recruiter call per eligible team member, per track. There are two tracks with one winning team each. The [brief](https://drive.google.com/file/d/12TnPLguduV3gh1zY_TJ176XmVDz2RGW9/view) defines them:
 
-Evidence should show live state propagation between buyer, contributor, and controller; a duplicate event being rejected/idempotently reused; and atomic update of acceptance, payable, journal, and audit history. This is substantial backend usage. Keeping the financial source of truth elsewhere while mirroring it into Convex solely for a dashboard would weaken the integration. [Convex mutations](https://docs.convex.dev/functions/mutation-functions), [Convex scheduled functions](https://docs.convex.dev/scheduling/scheduled-functions)
+- **Payment Agents (our primary Coinbase track):** "Use the Coinbase MCP for Agents and x402" to let an agent pay for things, earn money, or both. The brief's examples include "manages the budget for a small business."
+- **Trading Agents:** not applicable.
 
-## Conditional: Coinbase Payment Agents
+**Judging:** usefulness, technical design (reliability; explain the choice of models, tools, memory and scheduling), ease of reuse (someone else can install it and finish the core task from our instructions), and product feedback. Real-money transactions are not required; label simulated actions clearly, keep credentials private, and don't manage other people's funds.
 
-Target the payment-agent category if eligible; skarl has no trading feature. The event brief must be checked directly for required product usage, member eligibility, and submission evidence. [Official Coinbase track brief](https://drive.google.com/file/d/12TnPLguduV3gh1zY_TJ176XmVDz2RGW9/view)
+**What we build:** see [payments](payments.md#where-coinbase-for-agents-fits).
 
-A technical distinction affects eligibility:
+- **x402 funding:** the order-funding endpoint is a real x402 V2 `exact` resource on Base Sepolia, settled by the CDP facilitator. A buyer agent pays it through [Wallet MCP](https://docs.cdp.coinbase.com/ai-agents/coinbase-for-agents/wallet-mcp) `initiate_x402_request`/`complete_x402_request` with a `maxPayment` cap.
+- **Payouts:** the finance agent pays contributors via Wallet MCP `send`, only for a stored, approved intent. Every write needs the controller's approval in Coinbase Wallet.
+- **Coinbase MCP (retail):** x402 on Base mainnet, capped at 5 USDC. It is optional and not on the demo path.
 
-| Integration | Current documented behavior | Fit with this Solana-only prototype |
-| --- | --- | --- |
-| CDP facilitator / x402 SVM SDK | Solana mainnet and Devnet are supported in the facilitator's documented matrix | Technically relevant planned payment infrastructure; not proof of Coinbase MCP usage |
-| Coinbase retail MCP | Account-funded x402 fetch uses curated catalog resources on Base; payment cap is 5 USDC | Does not establish a route for the Solana funding flow |
-| Coinbase Wallet MCP | Its x402 calls support Base/Base Sepolia, with wallet approval | Not a Solana x402 buyer adapter |
+**Submission requirements (choose Payment Agents as the primary track):**
 
-Sources: [CDP facilitator](https://docs.cdp.coinbase.com/x402/seller/facilitator), [Coinbase MCP](https://docs.cdp.coinbase.com/ai-agents/coinbase-for-agents/coinbase-mcp), [Wallet MCP](https://docs.cdp.coinbase.com/ai-agents/coinbase-for-agents/wallet-mcp).
+1. Project summary: who it's for, what it does, which agent platform and Coinbase tools.
+2. Working example: a short demo plus the repo, with setup instructions.
+3. Architecture: components, controls and known limitations.
+4. Builder feedback: the biggest blocker, the workaround, and the one missing Coinbase capability we most want.
 
-**Coinbase prize eligibility remains conditional.** Ask the sponsor whether a Solana x402 payment agent built with CDP qualifies when the brief mentions Coinbase for Agents/MCP. Do not claim that x402 SDK use alone satisfies an MCP requirement. Do not add Base or create an unrelated paid market-data call merely to imply product usage. A low-level Coinbase MCP payment-header tool exists, but its presence does not establish support for a Solana payment or a newly deployed skarl endpoint.
+### Team eligibility checklist
 
-If a qualifying path is confirmed, make the integration part of the actual buyer purchase and document the exact tool, network, authorization, and settlement outcome. Otherwise submit honestly for the tracks whose requirements the product demonstrates.
+The prize is paid only to eligible members. Each member confirms:
 
-## Supporting tracks: Gemini and Auth0
+- [ ] at least 18 years old
+- [ ] a legal resident of the US or Canada (not Quebec)
+- [ ] a **verified Coinbase account** they personally hold, created before participating
+- [ ] they understand the limit of one prize per person; winners may need an affidavit, and Canadian winners a skill-testing question
 
-Gemini is central visual reasoning rather than a token API call: show timestamped silent-video evidence, independent speech comparison and schema-validated reports. Include model/version, prompts, measured latency and held-out results. The current stable Gemini 3.8 Flash model supports video, audio and structured output, but not the Live API; the proposed pipeline is asynchronous. [Gemini model capabilities](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)
+Record each member's answer before submitting. An ineligible member does not change the build; they simply cannot claim the prize.
 
-Auth0 protects real buyer/contributor/controller boundaries. Demonstrate verified identity plus backend organization membership and independent controller authorization; a login button alone is weak evidence. [Convex Auth0 integration](https://docs.convex.dev/auth/auth0)
+## Convex
 
-The live event prize cards should be checked for the exact MLH Gemini/Auth0 submission requirements and eligibility. Cartesia remains optional: add a responsive spoken coaching loop only if it helps contributors complete a task and the core pipeline works. Batch transcription alone does not demonstrate a compelling real-time voice application. Do not add a second database or an unrelated Claude call to pursue extra categories. [Live event prize cards](https://hive.hackberkeley.org/prizes)
+All orders, reports, decisions, payables, approvals and journals live in Convex. Show live propagation between the contributor and controller views, a duplicate event rejected inside a mutation, and an atomic acceptance + payable + journal write.
 
-## Shared submission evidence
+Convex judges ask for real features ("live queries and components"), so the approval wait uses Convex Workflow. [Mutations](https://docs.convex.dev/functions/mutation-functions), [Workflow](https://www.convex.dev/components/workflow)
 
-Maintain a concise package of real evidence:
+## Gemini
 
-1. Product summary, roles, architecture, setup instructions, and current limitations.
-2. An opening demo moment: duplicate detection with evidence, followed by the correct financial consequence.
-3. Actual model evaluation results and a clear inventory of real versus simulated data/services.
-4. Payment trace linking one order to its incoming payment, approved payable, payout, refund, and journal.
-5. Spending controls, independent approvals, idempotency behavior, and recovery from an uncertain transaction.
-6. Developer feedback based on observed SDK/MCP/facilitator behavior. A doc-only incompatibility finding should be described as research, not a reproduced runtime failure.
+The pipeline makes two separate calls so the visual evidence is not contaminated by narration: one on the video with the sound off, one on the audio. Each returns structured output validated against the shared schema, with timestamps.
 
-Prepare feedback as a submission artifact. Do not automatically send feedback or contact sponsors through messaging tools without the user's authorization. Prize categories, eligibility, and award stacking follow the event's current rules; architecture choices do not establish eligibility on their own.
+The model ID is configurable. The default is Gemini 3.8 Flash (stable; video, audio and structured output). The models page also announces `gemini-4-argon`; switch only if measured latency at the venue is acceptable. Record the model, prompt version and measured latency. [Gemini models](https://ai.google.dev/gemini-api/docs/models)
+
+## Not targeted
+
+- **MLH Best Use of Solana:** dropped with the move to Base Sepolia.
+- **Auth0:** Cal Hacks 13.0 has no Auth0 prize. Demo identities are seeded Convex users whose roles are checked on the server, and they are labeled as demo identities.
+- **Cartesia or other extra layers:** out of scope.
+
+## Submission package
+
+1. Product summary, roles, setup and limitations.
+2. A video that opens with the duplicate moment.
+3. A real-vs-simulated inventory, covering live, replayed or simulated status per segment.
+4. A payment trace linking the order → x402 funding tx → payable → approval → payout tx → journal.
+5. Coinbase builder feedback based on observed SDK/MCP/facilitator behavior; mark doc-only findings as research.
+
+Do not contact sponsors or send feedback through messaging tools without the user's authorization.

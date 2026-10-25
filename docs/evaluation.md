@@ -2,6 +2,8 @@
 
 Status: protocol and synthetic metadata examples. No media corpus, model predictions, or measured AI results are included. A passing manifest check validates dataset organization, not inference quality.
 
+**Deferred for the event.** There is no labeled corpus to run this protocol on before the deadline. Tonight's evidence is the three staged clips in [demo](demo.md) (valid, re-encoded duplicate, narration mismatch); present them as demo cases, never as a benchmark or held-out result.
+
 ## Initial task family
 
 Use a fixed camera, clearly distinguishable red and blue cups, one marked coaster, English narration, and 10–30 second recordings. These are capture constraints, not evidence that the system generalizes to arbitrary demonstrations.
@@ -71,7 +73,7 @@ These are deterministic system checks, separate from AI accuracy:
 - A likely duplicate does not create an accepted-sample payment automatically.
 - A changed rubric creates a new version and does not rewrite previously approved terms.
 - A controller rejection does not mark a payout as settled.
-- Unknown/pending Solana Devnet transactions are reconciled before retrying a transfer.
+- Unknown/pending Base Sepolia transactions are reconciled before retrying a transfer.
 - Debits equal credits; received funds, delivered order value, open obligations, contributor payables, payments, and refunds agree.
 - The verifier cannot approve payments, invoke a wallet signer, or write accounting entries.
 

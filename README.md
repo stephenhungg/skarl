@@ -1,6 +1,6 @@
 # Skarl
 
-Verified human demonstrations, paid on Solana. Buyers request narrated demonstrations; contributors record them; multimodal AI grounds quality checks in video and audio evidence. A bounded finance agent prepares payouts, handles exceptions and reconciles the resulting books.
+Verified human demonstrations, paid with x402 on Base. The AP/settlement seat for a human-data company. Buyers request narrated demonstrations; contributors record them; multimodal AI grounds quality checks in video and audio evidence. A bounded finance agent prepares payouts, handles exceptions and reconciles the resulting books.
 
 Built for Cal Hacks 13.0. **Current state: development scaffold, not a working marketplace.** No live inference, authentication, payments or cloud database connection is implemented. Pure contracts, report validation and local accounting/payment-policy helpers are executable.
 
@@ -19,26 +19,26 @@ No API keys are required to run the shell. See [setup](docs/setup.md) for Python
 
 | Owner | Workstream | Primary folders |
 | --- | --- | --- |
-| MatthewKim323 | Web dashboard and dashboard data integration | `apps/web/app/dashboard`, `apps/web/features/dashboard` |
-| silaswu4 | Shared UI, app shell and contributor recording flow | `apps/web/components`, `apps/web/features/contributor`, root web layout/page/styles |
-| Stephen | Backend, auth, AI verification, finance logic and shared contracts | `convex`, `services/verifier`, `evals`, `fixtures`, `packages/contracts`, `packages/ledger` |
-| qtzx06 | Solana/x402, wallet integration and onchain settlement | `packages/payments`, `apps/web/lib/solana`, payment API routes |
+| MatthewKim323 | Web dashboard and dashboard data integration | `apps/web/app/dashboard`, `apps/web/features/dashboard` (to create) |
+| silaswu4 | Shared UI, app shell and contributor recording flow | `apps/web/components`, `apps/web/features/contributor` (to create), root web layout/page/styles |
+| Stephen | Backend, demo identities, AI verification, finance logic and shared contracts | `convex`, `services/verifier`, `evals`, `fixtures`, `packages/contracts`, `packages/ledger` |
+| qtzx06 | x402 on Base Sepolia, Coinbase for Agents (Wallet MCP), onchain settlement | `packages/payments`, `apps/web/lib/payments` (to create), payment API routes (to create) |
 
-These assignments reflect Stephen's requested split. Folder paths describe ownership boundaries; some are implementation targets rather than existing routes. [Workstreams](docs/workstreams.md) defines tasks, dependencies and acceptance checks; [the docs index](docs/README.md) covers product, architecture, APIs, sponsors, research and the demo.
+These assignments reflect Stephen's requested split. Folder paths describe ownership boundaries; some are implementation targets rather than existing routes. [Workstreams](docs/workstreams.md) is the 8-hour plan to the 9:00 AM PDT deadline; [the docs index](docs/README.md) covers product, architecture, APIs, sponsors, research and the demo.
 
 ## Repository map
 
 ```text
 apps/web/               Next.js App Router shell and health endpoint
 convex/                 Database schema, validators and scaffold health query
-packages/contracts/    Shared statuses, Devnet constants and verification schema
+packages/contracts/    Shared statuses, Base Sepolia chain constants and verification schema
 packages/ledger/       Exact USDC arithmetic and pure double-entry journal replay
-packages/payments/     Devnet policy and explicitly unimplemented payment adapter
-services/verifier/     Python report validator and unavailable-inference CLI
+packages/payments/     Payment policy helpers and explicitly unimplemented payment adapter
+services/verifier/     Python report validator (the Railway inference worker is deferred)
 fixtures/              Instructions for consented media; no private recordings
-evals/                 Evaluation manifest and scoring scaffolding
+evals/                 Evaluation scoring scaffolding (split protocol deferred)
 docs/                  Build specification, research and ownership
 scripts/               Repository validation
 ```
 
-The payment target is **Solana Devnet USDC**, using x402 V2 `exact` for funding and SPL transfers for payouts/refunds. There is no custom token or escrow contract. Sponsor eligibility is not implied by a placeholder integration: [sponsor evidence and limitations](docs/sponsor-tracks.md).
+The payment target is **Base Sepolia USDC** (`eip155:84532`), using x402 V2 `exact` via the CDP facilitator for funding and controller-approved USDC transfers (Coinbase Wallet / Wallet MCP) for payouts. There is no custom token or escrow contract. Sponsor eligibility is not implied by a placeholder integration: [sponsor evidence and limitations](docs/sponsor-tracks.md).

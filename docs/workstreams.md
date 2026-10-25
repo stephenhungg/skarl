@@ -1,78 +1,61 @@
-# Workstreams and Ownership
+# Workstreams: 8-Hour Build Plan
 
-Assignments requested by Stephen: Matthew owns the web dashboard, Silas owns UI, Stephen owns the backend, and qtzx06 owns onchain. Backend includes multimodal verification, financial business logic and accounting so those responsibilities remain covered. Each person builds against shared contracts and pairs at the boundaries below.
+Submission closes **October 25, 2026, 9:00 AM PDT** and teams must be at the venue by 8:00 AM ([Devpost](https://cal-hacks-13-0.devpost.com/), the authoritative source). This plan starts at roughly 00:30. It builds **one live demo path**; everything else in these docs is deferred design.
 
-## MatthewKim323 — Web dashboard
+## The one demo path
 
-**Own:** `apps/web/app/dashboard/**` and `apps/web/features/dashboard/**`. These are planned dashboard folders; no dashboard route is implemented yet. Suggested branch: `matthew/web-dashboard`.
+Buyer agent funds an order with x402 on Base Sepolia (Coinbase Wallet MCP) → contributor records the red-cup task → Gemini returns a timestamped report → controller accepts → payable and balanced journal are created → **a duplicate (re-encoded) clip arrives, its second payable is blocked and the controller sees the evidence** → the finance agent proposes the payout but **cannot approve its own proposal** → the controller approves the payout in Coinbase Wallet → the USDC transfer is reconciled by tx hash and log index. See [demo](demo.md).
 
-1. Build buyer and operator dashboard pages: task/order creation, funding progress, submission queue, review details and delivered manifests.
-2. Build finance views for outstanding payables, refunds, balances, payment attempts and reconciliation exceptions. Render backend projections; do not calculate authoritative balances in the browser.
-3. Wire dashboard queries/actions to Stephen's Convex contracts and qtzx06's payment status. Show unavailable, loading, empty, pending and error states explicitly.
-4. Build timestamp-linked evidence review using the verifier report. Never show unconfirmed payouts as paid or make acceptance decisions solely in client code.
+Named Hyphenate seats: **settlement accountant + AP clerk**.
 
-**Done when:** the dashboard can follow an order from funding through submission review, delivery and settlement status; live updates and failure states are visible; displayed financial amounts are formatted from exact micro-units.
+## Schedule
 
-**Dependencies:** Stephen supplies authenticated queries, mutations, evidence and financial projections; Silas supplies shared components and visual patterns; qtzx06 supplies wallet/payment integration contracts. Request changes to shared components from Silas instead of maintaining a second UI kit.
+| Time (PDT) | Everyone |
+| --- | --- |
+| 00:30–01:30 | Hour 0–1: deploy Convex, seed demo identities (buyer, contributor, controller, finance agent) with roles, one order and the rubric. qtzx06 installs `@x402/evm`, `@x402/next` and `@x402/paywall`, then typechecks. **Every member confirms Coinbase eligibility and a verified Coinbase account** ([checklist](sponsor-tracks.md#team-eligibility-checklist)). Get a CDP API key and Base Sepolia ETH/USDC from the faucet. |
+| 01:30–05:00 | Parallel build against the seeded deployment (sections below). Merge to `main` small and often. |
+| 05:00–06:30 | Integrate the full path end to end; stage the three clips (valid, duplicate re-encode, narration mismatch). |
+| 06:30–07:00 | **Record the fallback demo video** (opens with the duplicate moment). Write the real-vs-simulated inventory. |
+| 07:00–08:00 | Submit on Devpost, travel, rehearse. Venue by 08:00. |
 
-## silaswu4 — UI and contributor experience
+Cut rule: if a step is not working by its slot, replace it with a clearly labeled simulation and move on. Never display a fake signature or a fake analysis as live.
 
-**Own:** `apps/web/components/**`, `apps/web/features/contributor/**`, contributor routes under `apps/web/app/contribute/**`, and the root web `layout.tsx`, `page.tsx` and `globals.css`. These feature folders/routes are implementation targets. Suggested branch: `silas/ui`.
+## Stephen — backend, AI and finance logic
 
-1. Establish the shared visual system, responsive app shell, navigation, inputs, buttons, dialogs, status badges and accessible loading/error patterns.
-2. Build the contributor task/consent screens, camera and microphone preview, recording controls, private-upload experience and timestamped correction feedback.
-3. Handle browser permission denial, unsupported recording codecs, upload progress and retry states. Keep original-media access behind Stephen's authorized backend.
-4. Supply reusable evidence, amount and payment-status components for Matthew's dashboard. Coordinate wallet UI with qtzx06's adapter; do not put signing secrets in UI code.
+**Own:** `convex/**`, `convex.json`, `services/verifier/**`, `evals/**`, `fixtures/**`, `packages/contracts/**`, `packages/ledger/**`.
 
-**Done when:** the contributor flow is usable on the demo device, recording and upload states are clear, the layout works on mobile and desktop, and the dashboard can reuse the same components without duplicated styles.
+1. Seed script and demo identities with roles checked on the server in every mutation. These are labeled demo identities, not production auth.
+2. Gemini Convex action with **two separate calls**: silent video only, then audio only. It validates the report against the shared schema before storing it; anything that fails validation, or any unavailable analysis, routes to review.
+3. Mutations `acceptAndPublish` (payable + journal via `packages/ledger`, idempotent event keys, duplicate SHA-256/perceptual hash blocks a second payable), `proposePayment` and `approve` (the requester cannot approve; the agent identity can never approve).
+4. Approval wait via Convex Workflow; finance-agent explanation call over the deterministic projections.
 
-**Dependencies:** Stephen supplies auth/session, consent, upload and submission endpoints; Matthew provides dashboard component needs; qtzx06 provides wallet connection/signing interfaces. Matthew owns dashboard page composition and data wiring; Silas owns shared presentation and contributor page composition.
+## qtzx06 — x402 on Base and Coinbase for Agents
 
-## Stephen — Backend, AI and finance logic
+**Own:** `packages/payments/**`, `apps/web/lib/payments/**` (to create), payment routes such as `apps/web/app/api/orders/[id]/fund/**` (to create), `docs/payments.md`.
 
-**Own:** `convex/**`, `convex.json`, `services/verifier/**`, `evals/**`, `fixtures/**`, `packages/contracts/**`, `packages/ledger/**`, non-payment API routes, root tooling and backend/AI/accounting/integration docs. Suggested branch: `stephen/backend`.
+1. One real Base Sepolia x402 `exact` funding through the CDP facilitator; observe the USDC `Transfer` and call Stephen's funding-confirmation mutation.
+2. Coinbase for Agents: the buyer agent pays the funding endpoint via Wallet MCP (`initiate_x402_request`/`complete_x402_request`, tight `maxPayment`). The finance agent pays an **approved** intent via Wallet MCP `send` (the controller approves in Coinbase Wallet). No treasury key in the web runtime or the agent.
+3. Reconcile by `(txHash, logIndex)`: check the token, recipient, amount and receipt status, then report the facts to Convex. Save BaseScan links.
+4. Write the Coinbase builder feedback (biggest blocker, workaround, most-wanted capability) from what you actually hit.
 
-1. Configure Convex and Auth0, trusted organization memberships and role checks; implement task/order, consent, private media and submission APIs.
-2. Implement fenced analysis jobs and the purpose-limited worker gateway. Build the multimodal pipeline: silent visual evidence, independent speech transcription, temporal copy checks and schema-validated reports.
-3. Implement atomic review, delivery, budget allocation, payable creation, journal persistence and payment-command/outbox records. Acceptance racing cancellation must never spend the same budget twice.
-4. Build the [bounded finance-agent tools](finance-agent.md), policy and independent approval workflow, deterministic financial projections and prior/current-period reports.
-5. Supply typed frontend contracts and integration fixtures to Matthew/Silas. Evaluate model evidence and financial invariants with consented recordings and synthetic finance scenarios; report actual results.
+## silaswu4 — UI and contributor flow
 
-**Done when:** authenticated clients can complete the order/submission/review/delivery loop; stale worker completions, cross-organization access, duplicate financial events and overspending are rejected; evidence and balanced journals are traceable. The verifier cannot approve payments, and the finance agent cannot approve its own proposals.
+**Own:** `apps/web/components/**` (to create), `apps/web/features/contributor/**` (to create), `apps/web/app/contribute/**` (to create), root `layout.tsx`, `page.tsx`, `globals.css`.
 
-**Dependencies:** Matthew and Silas consume the backend interfaces and surface real errors; qtzx06 executes approved onchain intents and returns independently checked settlement facts. Stephen owns accounting and financial policy; qtzx06 owns chain execution and observation. Network inference and RPC calls stay outside database mutations.
+1. Recorder page served over HTTPS (camera access fails on plain-HTTP LAN), with camera/mic preview and a 10–30 second capture.
+2. Upload straight to Convex storage, then create the submission; show queued/review/accepted states.
 
-## qtzx06 — Onchain and Solana/x402
+## MatthewKim323 — controller dashboard
 
-**Own:** `packages/payments/**`, `apps/web/lib/solana/**`, payment routes such as `apps/web/app/api/orders/[id]/fund/**`, and `docs/payments-solana.md`. Coordinate any additional payout/refund API path with Stephen before adding it. Suggested branch: `qtzx/solana-onchain`.
+**Own:** `apps/web/app/dashboard/**` (to create), `apps/web/features/dashboard/**` (to create).
 
-1. Implement Solana Devnet wallet integration and x402 V2 `exact` funding with server-owned quotes, facilitator support checks and post-settlement confirmation.
-2. Implement approved contributor payouts/refunds using checked SPL transfers, correct associated token accounts, native SOL fee/rent handling and isolated signing boundaries.
-3. Persist transaction attempts through Stephen's backend before submission; retain signatures, blockhash lifetime and confirmation/finality observations. Reconcile an uncertain attempt before replacing it.
-4. Verify expected network, mint, token-account owners, recipient, amount and transfer identity, then report observed facts to the backend. Do not post ledger entries or grant approval authority from the chain adapter.
-5. Provide Matthew/Silas with typed wallet actions, payment status and explorer links. Verify the Coinbase MCP eligibility question without switching Skarl off Solana.
+1. Live controller dashboard: order and funding, report evidence with timestamps, payables, journal, and the approve/sign button.
+2. Show the duplicate block and the agent's refused self-approval with their audit reasons. Format amounts from exact micro-units; never show an unconfirmed payout as paid.
 
-**Done when:** funding, one contributor payout and the unused-balance refund are observed on Solana Devnet; replay, lost responses, wrong mint/recipient, expired transaction validity and missing token accounts have explicit handling. No unapproved transfer can execute.
+## Deferred (design only; not built tonight)
 
-**Dependencies:** Stephen supplies durable intents, approval/policy checks, service gateway and accounting; Matthew/Silas provide the dashboard and wallet presentation. Wallet connection/signing mechanics belong here; shared wallet presentation belongs to Silas. Never expose signer credentials to the verifier or browser UI. The current payment adapter remains explicitly unimplemented.
+The Railway Python worker, HMAC service gateway, job leasing, faster-whisper, SSCD, the eval split protocol, period close, refunds (unless funding and payout both work by hour 6), Auth0, the Coinbase retail MCP (Base mainnet only) and Solana. Their designs remain in the subsystem docs, marked deferred.
 
-## Folder boundaries and handoffs
+## Shared rules
 
-- Matthew owns dashboard routes, dashboard-specific components and dashboard data wiring. Silas owns reusable components, the global shell and contributor UI. Both can work inside `apps/web` without editing the same feature folders.
-- Stephen owns server business rules, AI processing, shared schemas, finance-agent behavior and ledger persistence. UI code consumes these APIs; it does not duplicate their authority.
-- qtzx06 owns wallet adapters and payment route internals. Coordinate changes to the shared shell with Silas, payment screens with Matthew and intent/approval contracts with Stephen.
-- Coordinate root dependencies and configuration with Stephen. Shared-schema changes require matching JSON Schema, Python models, examples and cross-language checks.
-
-## Integration order
-
-1. **Contract freeze:** agree fixed task, report v1, money representation and event identities. Current code supplies a starting contract; rubric membership validation remains backend work.
-2. **Local vertical slice:** consented fixture → verifier report → authorized review → delivery event → pure journal projection. Label fixture paths clearly.
-3. **Live persistence:** wire auth, private upload, fenced worker gateway and real report publication. Verify real concurrent/race cases before adding finance execution.
-4. **Devnet finance:** implement funding, payout and refund one by one; reconcile each before adding retries or an agent UI.
-5. **Judge rehearsal:** one good clip plus one deceptive narration or copied clip, then an injected finance exception. Complete the evidence checklist in [demo](demo.md).
-
-Given the remaining hackathon window, favor one complete loop. If the verifier lacks grounded evidence, freeze finance UI expansion. If settlement is not proven, label a deterministic simulation rather than display a fake signature. Optional sponsor embellishments come only after the core path.
-
-## Shared change protocol
-
-Pull `main`, work in the assigned folder and make small reviewable PRs. Schema changes require a matching JSON Schema, Python-model update, examples and both-language tests. Tell the affected owner before changing contract semantics. Do not commit `.env` files, wallet keys, raw contributor media, generated Convex code or large model weights. Pin downloaded model identity/checksum in deployment configuration when introduced.
+Pull `main` before you push; stay in your folders. Shared-schema changes need the matching JSON Schema, Python model and both-language tests. Never commit `.env` files, wallet keys or contributor media.

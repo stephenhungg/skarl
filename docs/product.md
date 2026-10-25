@@ -2,9 +2,11 @@
 
 ## Grand thesis
 
-Skarl turns everyday human skill into licensed, verified training data, with a finance agent that can pay contributors and keep accountable books on Solana.
+Pitch line: **the AP/settlement seat for a human-data company.**
 
-The Kled-inspired premise is a marketplace for human data. Our engineering wedge is an evidence pipeline for narrated demonstrations and a real operational loop from funded work to delivery, liability, payout and reconciliation. Prior discussion establishes product inspiration; it does not establish Kled's current revenue, growth, defensibility or permission to copy its assets. Do not include unverified traction claims in the pitch.
+Skarl turns everyday human skill into licensed, verified training data, with a finance agent that can pay contributors and keep accountable books, with x402 payments on Base.
+
+The Kled-inspired premise is a marketplace for human data. Our engineering wedge is an evidence pipeline for narrated demonstrations and a real operational loop from funded work to delivery, liability, payout and reconciliation. Prior discussion establishes product inspiration; it does not establish Kled's current revenue, growth, defensibility or permission to copy its assets. Do not include unverified traction claims in the pitch. Kled already pays people for photos and videos, so "Kled with AI" is not a differentiator. Ours is verified procedural evidence plus an accountable finance seat, and that only lands if the finance loop runs live in the demo.
 
 ## Narrow first customer and task
 
@@ -14,7 +16,7 @@ This is a test task, not evidence that the dataset already improves a robot or a
 
 ## Core features
 
-- Buyer defines an immutable task version, criteria, quota, per-sample price and allowed license; funds an order using x402 on Solana Devnet.
+- Buyer defines an immutable task version, criteria, quota, per-sample price and allowed license; funds an order using x402 on Base Sepolia (directly or through a buyer agent on Coinbase Wallet MCP).
 - Contributor sees scope and payment terms, consents, records video plus narration and uploads privately.
 - Verifier independently extracts silent visual evidence and speech, tests their agreement, checks for copied footage and returns timestamps for every supported claim.
 - Review view links each criterion to video or audio. Unobservable work receives correction or human review instead of a confident guess.
@@ -27,10 +29,10 @@ This is a test task, not evidence that the dataset already improves a robot or a
 ### Buyer
 
 1. Authenticate into a buyer organization; set sample count, price and task criteria.
-2. Review the frozen task version and funding quote; authorize a Devnet USDC payment.
+2. Review the frozen task version and funding quote; authorize a Base Sepolia USDC payment.
 3. See `pending` while settlement is checked. `funded` requires a matching observed transfer, not merely a signed payload.
 4. Watch submission progress and delivered count update from Convex queries.
-5. Download only licensed accepted samples through authenticated access. Cancel unused work and track the approved refund.
+5. Download only licensed accepted samples through authenticated access. Cancel unused work (refunds are deferred unless time allows).
 
 ### Contributor
 
@@ -38,7 +40,7 @@ This is a test task, not evidence that the dataset already improves a robot or a
 2. Check camera/microphone preview and record a short demonstration. Narration supplies evidence, not instructions to the verifier.
 3. Upload original media, attach its storage ID to the expected task version and receive a queued submission ID.
 4. See timestamped correction requests or the acceptance outcome. Show amounts as pending obligations until an actual payout confirms.
-5. View the transfer signature and amount once the payout is observed. A new payout address requires explicit re-verification and payment-policy checks.
+5. View the transaction hash and amount once the payout is observed. A new payout address requires explicit re-verification and payment-policy checks.
 
 ### Operator / finance agent
 
@@ -46,7 +48,7 @@ This is a test task, not evidence that the dataset already improves a robot or a
 2. Ask the agent to explain outstanding obligations and prepare a bounded payment batch.
 3. An independent authorized approver approves exceptions or batches above policy thresholds; the requester cannot approve their own exception.
 4. Execute only stored approved intents. Reconcile RPC results; retry observation, not blind transfers.
-5. Inspect balanced journals, open liabilities, cash and a period report. An AI explanation is never the ledger itself.
+5. Inspect balanced journals, open liabilities and cash (period reports are deferred). An AI explanation is never the ledger itself.
 
 ## Explicit scope limits
 
