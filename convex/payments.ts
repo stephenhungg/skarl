@@ -181,6 +181,7 @@ export const recordPayoutObservation = mutation({
     if (!attempt || !intent || intent.kind !== "contributor_payout" || !attempt.payerAddress) throw new Error("payout_attempt_not_found");
     const command = await ctx.db.get(intent.paymentCommandId), payable = await ctx.db.get(intent.payableId);
     if (!command || !command.approvalId || !payable || command.attemptCount !== 1) throw new Error("payout_not_dispatched");
+    if (args.observation.observedAt < attempt.createdAt - 1000) throw new Error("transfer_predates_approval_claim");
     validateTransfer(args.observation, { fromAddress: attempt.payerAddress, toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic });
     const result = await insertObservation(ctx, attempt, args.observation);
     if (result.replayed) return result;
