@@ -13,6 +13,7 @@ import type * as finance from "../finance.js";
 import type * as health from "../health.js";
 import type * as lib_demoAuth from "../lib/demoAuth.js";
 import type * as lib_finance from "../lib/finance.js";
+import type * as payments from "../payments.js";
 import type * as seed from "../seed.js";
 import type * as validators from "../validators.js";
 
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   health: typeof health;
   "lib/demoAuth": typeof lib_demoAuth;
   "lib/finance": typeof lib_finance;
+  payments: typeof payments;
   seed: typeof seed;
   validators: typeof validators;
 }>;
