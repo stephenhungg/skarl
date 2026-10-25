@@ -27,40 +27,40 @@ function headline(slug: ProofSlug, s: Summary): Headline {
       const funded = s.fundingTimeline.rows.find(row => row.steps.some(step => step.stage === "chain" && !step.missing));
       const paid = s.payouts.rows.filter(row => row.status === "paid").length;
       return funded ? { status: "ok", text: `${formatUsdc(funded.amountAtomic)} USDC funded on ${funded.label}${paid ? `, ${paid} paid out` : ""}` }
-        : { status: "idle", text: s.fundingTimeline.missing ?? "No observed funding yet" };
+        : { status: "waiting", text: s.fundingTimeline.missing ?? "No observed funding yet" };
     }
     case "agent": {
       const refusals = s.agentRuns.refusalEvents.length + s.agentRuns.rows.reduce((n, row) => n + row.toolRefusals.length, 0);
-      return s.agentRuns.rows.length ? { status: "ok", text: `${s.agentRuns.rows.length} runs, ${refusals} approval ${refusals === 1 ? "attempt" : "attempts"} refused` }
-        : { status: "idle", text: s.agentRuns.missing ?? "No runs yet" };
+      return s.agentRuns.rows.length ? { status: "ok", text: `${s.agentRuns.rows.length} runs, ${refusals ? `${refusals} approval ${refusals === 1 ? "attempt" : "attempts"} refused` : "none tried to approve"}` }
+        : { status: "waiting", text: s.agentRuns.missing ?? "No runs yet" };
     }
     case "jury": {
       const scored = s.jury.rows.filter(row => row.agreementFraction !== null);
-      if (!scored.length) return { status: "idle", text: s.jury.rows.find(row => row.missing)?.missing ?? s.jury.missing ?? "No jury yet" };
+      if (!scored.length) return { status: "waiting", text: s.jury.rows.find(row => row.missing)?.missing ?? s.jury.missing ?? "No jury yet" };
       const mean = scored.reduce((n, row) => n + (row.agreementFraction ?? 0), 0) / scored.length;
       return { status: "ok", text: `Two models agree on ${Math.round(mean * 100)}% of criteria across ${scored.length} ${scored.length === 1 ? "clip" : "clips"}` };
     }
     case "licenses": {
       const minted = s.solanaLicenses.rows.filter(row => row.status === "minted").length;
-      return minted ? { status: "ok", text: `${minted} ${minted === 1 ? "license" : "licenses"} minted on Solana Devnet` } : { status: "idle", text: s.solanaLicenses.missing ?? "No license yet" };
+      return minted ? { status: "ok", text: `${minted} ${minted === 1 ? "license" : "licenses"} minted on Solana Devnet` } : { status: "waiting", text: s.solanaLicenses.missing ?? "No license yet" };
     }
     case "bank": {
       const bad = s.bank4Way.rows.filter(row => [row.order, row.ledger, row.chain, row.bank].some(c => c.status === "mismatch")).length;
-      if (s.bank4Way.missing) return { status: "idle", text: s.bank4Way.missing };
-      return bad ? { status: "fail", text: `${bad} of ${s.bank4Way.rows.length} payments disagree with the bank` } : { status: "ok", text: `Order, ledger, chain and bank agree on ${s.bank4Way.rows.length} payments` };
+      if (s.bank4Way.missing) return { status: "waiting", text: s.bank4Way.missing };
+      return bad ? { status: "fail", text: `${bad} of ${s.bank4Way.rows.length} payments disagree with the bank` } : { status: "ok", text: `Order, ledger, chain and bank agree on ${s.bank4Way.rows.length} ${s.bank4Way.rows.length === 1 ? "payment" : "payments"}` };
     }
     case "attestations": {
       const done = s.attestations.rows.filter(row => row.attestation).length;
-      return done ? { status: "ok", text: `${done} of ${s.attestations.rows.length} clips attested on Base Sepolia` } : { status: "idle", text: s.attestations.rows[0]?.missing ?? s.attestations.missing ?? "No attestation yet" };
+      return done ? { status: "ok", text: `${done} of ${s.attestations.rows.length} clips attested on Base Sepolia` } : { status: "waiting", text: s.attestations.rows[0]?.missing ?? s.attestations.missing ?? "No attestation yet" };
     }
     case "guard":
       return { status: "ok", text: `${s.guard.feedExceptionCount} exceptions eligible for Jira. Jira cannot approve money.` };
     case "platform": {
       const ran = s.convexFeatures.crons.filter(row => row.lastRunAt).length;
-      return { status: ran ? "ok" : "idle", text: `${s.convexFeatures.crons.length} crons, ${ran} with a recorded run, ${s.convexFeatures.httpActions.length} HTTP routes` };
+      return { status: ran ? "ok" : "waiting", text: `${s.convexFeatures.crons.length} crons, ${ran} with a recorded run, ${s.convexFeatures.httpActions.length} HTTP routes` };
     }
     case "tax":
-      return { status: "idle", text: "Year-to-date payouts per contributor" };
+      return { status: "ok", text: "Year-to-date payouts per contributor, with form status" };
   }
 }
 
@@ -69,7 +69,7 @@ const Testnet = ({ children = "Testnet" }: { children?: ReactNode }) =>
 
 function Missing({ text }: { text: string | null | undefined }) {
   if (!text) return null;
-  return <p className="flex items-center gap-2 type-body-sm text-text-2"><StatusMark status="idle" />Not yet: {text}</p>;
+  return <p className="flex items-center gap-2 type-body-sm text-text-2"><StatusMark status="waiting" />Not yet: {text}</p>;
 }
 
 function Block({ title, meta, children }: { title: string; meta?: ReactNode; children: ReactNode }) {
@@ -198,7 +198,7 @@ function Payments({ s, orderId }: { s: Summary; orderId: Id<"orders"> }) {
             <ol className="grid gap-2 sm:grid-cols-5">
               {row.steps.map(step => (
                 <li key={step.stage} className="flex flex-col gap-1 rounded-tag bg-field/60 p-2">
-                  <span className="flex items-center gap-1.5 type-label-sm"><StatusMark status={step.missing ? "idle" : "ok"} />{STAGE[step.stage] ?? humanize(step.stage)}</span>
+                  <span className="flex items-center gap-1.5 type-label-sm"><StatusMark status={step.missing ? "waiting" : "ok"} />{STAGE[step.stage] ?? humanize(step.stage)}</span>
                   {step.timestamp ? <span className="type-label-sm text-text-3">{formatTime(step.timestamp)}</span>
                     : step.missing ? <span className="type-label-sm text-text-3">{step.missing}</span> : null}
                   {step.stage === "chain" && row.observations[0] && <Ext href={row.observations[0].explorerUrl}>BaseScan</Ext>}
@@ -229,7 +229,7 @@ function Payments({ s, orderId }: { s: Summary; orderId: Id<"orders"> }) {
           <span className="mono">{shortHash(address, 6, 4)}</span>
           <Ext href={wallet.explorerUrl ?? `https://sepolia.basescan.org/address/${address}`}>BaseScan</Ext>
           <span className="text-text-2">Cap <Amount value={wallet.capAtomic ?? wallet.recorded.capAtomic} /> per payout, enforced by CDP</span>
-          <span className="text-text-2">Executor {humanize(wallet.executorMode)}</span>
+          <span className="text-text-2">Sends from {wallet.executorMode === "cdp_agent" ? "the CDP agent wallet" : "the buyer wallet"}</span>
         </div>
         <p className="mt-1 type-label-sm text-text-3">Sends CDP refused (recorded {new Date(wallet.recorded.recordedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })})</p>
         {wallet.recordedRejections.map(row => (
@@ -262,7 +262,7 @@ function Agent({ s, orderId }: { s: Summary; orderId: Id<"orders"> }) {
         {refusals.length ? refusals.slice(0, 5).map(row => (
           <p key={row.key} className="flex items-center gap-2 type-body-sm"><StatusMark status="fail" />{row.text}<span className="ms-auto text-text-3">{formatTime(row.when)}</span></p>
         )) : <Missing text={s.agentRuns.refusalMissing} />}
-        <p className="flex items-center gap-2 type-body-sm"><StatusMark status={s.agentRuns.policyApprovalMissing ? "idle" : "ok"} />
+        <p className="flex items-center gap-2 type-body-sm"><StatusMark status={s.agentRuns.policyApprovalMissing ? "waiting" : "ok"} />
           {s.agentRuns.policyApprovalMissing ? `Not yet: ${s.agentRuns.policyApprovalMissing}` : "Approvals come only from your signed rule or from you"}</p>
       </Block>
       <Block title="Runs" meta={<Link href="/dashboard/agent" className="underline underline-offset-4">Open chat</Link>}>
@@ -277,26 +277,36 @@ function Agent({ s, orderId }: { s: Summary; orderId: Id<"orders"> }) {
         )) : <Missing text={s.agentRuns.missing} />}
       </Block>
       <Block title="Analyst notes" meta="Advisory">
-        {notes === undefined ? <Loading rows={2} /> : notes.length ? notes.slice(0, 5).map(note => (
+        {notes !== undefined && notes.some(note => note.status !== "completed") && (
+          <p className="flex items-center gap-2 type-body-sm text-text-2"><StatusMark status="waiting" />{notes.filter(note => note.status === "queued" || note.status === "running").length} queued, {notes.filter(note => note.status === "provider_error").length} failed</p>
+        )}
+        {notes === undefined ? <Loading rows={2} /> : notes.some(note => note.status === "completed") ? notes.filter(note => note.status === "completed").slice(0, 5).map(note => (
           <div key={note._id} className="flex flex-col gap-0.5 type-body-sm">
-            <span className="flex items-center gap-2"><StatusMark status={note.status === "provider_error" ? "fail" : "ok"} />
+            <span className="flex items-center gap-2"><StatusMark status="ok" />
               <span className="type-label">{humanize(note.kind)}</span>
               <span className="text-text-2">suggests {humanize(note.recommendation).toLowerCase()}</span>
               <span className="ms-auto text-text-3">{humanize(note.provider)} · {note.model}</span></span>
             <span className="ps-6 text-text-2">{note.summary}</span>
           </div>
-        )) : <Missing text="No analyst note yet" />}
+        )) : <Missing text="No completed analyst note yet" />}
       </Block>
     </>
   );
 }
 
-const VERDICT: Record<string, Mark> = { supported: "ok", contradicted: "fail", unobservable: "idle" };
+const VERDICT: Record<string, Mark> = { supported: "ok", contradicted: "fail", unobservable: "warn" };
 function Jury({ s }: { s: Summary }) {
   if (!s.jury.rows.length) return <Missing text={s.jury.missing} />;
+  const judged = s.jury.rows.filter(row => row.judges.length), pending = s.jury.rows.filter(row => !row.judges.length);
   return (
     <>
-      {s.jury.rows.map(row => (
+      {pending.length > 0 && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 type-body-sm text-text-2"><StatusMark status="waiting" />
+          {pending.length} {pending.length === 1 ? "clip has" : "clips have"} no two-model jury yet:
+          {pending.map(row => <Link key={row.submissionId} href={`/dashboard/submissions/${row.submissionId}`} className="underline underline-offset-4 hover:text-text-1">{row.submissionId.slice(0, 8)}</Link>)}
+        </p>
+      )}
+      {judged.map(row => (
         <Block key={row.submissionId} title={`Clip ${row.submissionId.slice(0, 8)}`}
           meta={row.agreementFraction !== null ? `${Math.round(row.agreementFraction * 100)}% agreement · advisory` : "advisory"}>
           {row.judges.length ? (
@@ -309,7 +319,7 @@ function Jury({ s }: { s: Summary }) {
                 <tbody>
                   {row.criteria.map(c => (
                     <tr key={c.criterionId} className="border-t border-line-faint">
-                      <td className="py-1.5 pe-3">{humanize(c.criterionId ?? "criterion")}</td>
+                      <td className="py-1.5 pe-3">{humanize((c.criterionId ?? "criterion").replace(/-/g, " "))}</td>
                       {c.verdicts.map((v, i) => <td key={i} className="py-1.5 pe-3"><span className="flex items-center gap-1.5"><StatusMark status={VERDICT[v.verdict ?? ""] ?? "idle"} />{v.verdict ? humanize(v.verdict) : "None"}</span></td>)}
                     </tr>
                   ))}
@@ -380,7 +390,7 @@ function Attestations({ s }: { s: Summary }) {
     <Block title="One attestation per verified clip" meta={<Testnet>Base Sepolia</Testnet>}>
       {s.attestations.rows.length ? s.attestations.rows.map(row => (
         <div key={row.submissionId} className="flex flex-wrap items-center gap-x-3 gap-y-1 type-body-sm">
-          <StatusMark status={row.attestation ? "ok" : "idle"} />
+          <StatusMark status={row.attestation ? "ok" : "waiting"} />
           <Link href={`/dashboard/submissions/${row.submissionId}`} className="type-label hover:underline">Clip {row.submissionId.slice(0, 8)}</Link>
           {row.attestation ? <span className="ms-auto flex gap-3"><Ext href={row.attestation.easscanUrl}>EASScan</Ext><Ext href={row.attestation.basescanUrl}>BaseScan</Ext></span>
             : <span className="text-text-2">{row.missing}</span>}
@@ -408,15 +418,15 @@ function Platform({ s }: { s: Summary }) {
       <Block title="Scheduled jobs" meta={`${f.crons.length} crons`}>
         {f.crons.map(cron => (
           <div key={cron.name} className="flex flex-wrap items-center gap-x-3 type-body-sm">
-            <StatusMark status={cron.lastRunAt ? (cron.lastStatus === "failed" ? "fail" : "ok") : "idle"} />
+            <StatusMark status={cron.lastRunAt ? (cron.lastStatus === "failed" ? "fail" : "ok") : "waiting"} />
             <span className="type-label">{humanize(cron.name)}</span>
             <span className="ms-auto text-text-3">{cron.lastRunAt ? `ran ${formatTime(cron.lastRunAt)}` : "no run recorded"}</span>
           </div>
         ))}
       </Block>
       <Block title="Also running on Convex">
-        <p className="flex items-center gap-2 type-body-sm"><StatusMark status={f.workflow.missing ? "idle" : "ok"} />Durable workflow waits on approval: {f.workflow.approvalWaitCount} payouts</p>
-        <p className="flex items-center gap-2 type-body-sm"><StatusMark status={f.storage.missing ? "idle" : "ok"} />File storage: {f.storage.assetCount} private media files</p>
+        <p className="flex items-center gap-2 type-body-sm"><StatusMark status={f.workflow.missing ? "waiting" : "ok"} />Durable workflow waits on approval: {f.workflow.approvalWaitCount} payouts</p>
+        <p className="flex items-center gap-2 type-body-sm"><StatusMark status={f.storage.missing ? "waiting" : "ok"} />File storage: {f.storage.assetCount} private media files</p>
         <p className="flex items-center gap-2 type-body-sm"><StatusMark status="ok" />{f.nodeActions.length} Node actions: verifier, finance agent, wallet, attestations</p>
         <p className="flex items-center gap-2 type-body-sm"><StatusMark status="ok" />{f.httpActions.length} HTTP routes, including MCP and health</p>
         <p className="flex items-center gap-2 type-body-sm"><StatusMark status="ok" />Every page on this dashboard updates live by subscription</p>
@@ -430,7 +440,7 @@ function Tax({ orderId }: { orderId: Id<"orders"> }) {
   if (tax === undefined) return <Loading rows={3} />;
   const csv = `data:text/csv;charset=utf-8,${encodeURIComponent(tax.csv)}`;
   return (
-    <Block title={`${tax.year} payouts per contributor`} meta={tax.label.replace(/\s*[—–]\s*/g, ". ")}>
+    <Block title={`${tax.year} payouts per contributor`} meta={tax.label.replace(/\s*[—–]\s*(\w)/g, (_, c: string) => `. ${c.toUpperCase()}`)}>
       {tax.rows.length ? (
         <table className="w-full type-body-sm">
           <thead><tr className="type-label-sm text-text-3">{["Contributor", "Country", "Form", "Year to date", "Flags"].map(h => <th key={h} className="py-1 pe-3 text-start font-normal">{h}</th>)}</tr></thead>
