@@ -5,11 +5,11 @@ import { BUILT_ON, type BuiltOnItem } from "./evidence";
 // M7: the set repeats until it overfills the track, then slides left at 25px/s and wraps after
 // one set width plus one gap. Hover eases the speed to 0.15x over 0.4s. Paused while offscreen.
 const VELOCITY = 25;
-const GAP = 96;
+const GAP = 84;
 const HOVER_RATE = 0.15;
 const RATE_MS = 400;
 
-const LOGO_H = 42;
+const LOGO_H = 34;
 
 // Logos only, through a CSS mask so every mark takes the same ink colour.
 function Item({ item }: { item: BuiltOnItem }) {
