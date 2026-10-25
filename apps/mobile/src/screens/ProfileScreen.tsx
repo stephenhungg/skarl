@@ -7,13 +7,13 @@ import { colors as c, fonts as f, gutter, radius } from '../../theme';
 import { identity, money } from '../api';
 import { contributorStats, IN_REVIEW, totals, useContributorActivity, when } from '../data';
 import { useSession } from '../session';
-import { Button, Empty, ListRow, Pill, StatusPill } from '../components/Primitives';
+import { Button, Empty, ListRow, StatusPill } from '../components/Primitives';
 import { Segmented } from '../components/Segmented';
 import { CountUp } from '../components/CountUp';
 import { PressableScale } from '../components/PressableScale';
-import { ChevronRight, LinkIcon, ProfileIcon } from '../components/Icons';
+import { ChevronLeft, ChevronRight, LinkIcon, ProfileIcon } from '../components/Icons';
 import { enter } from '../components/motion';
-import type { TabProps } from '../navigation';
+import type { RootProps } from '../navigation';
 
 const SEGMENTS = ['Payouts', 'Submissions', 'Ledger'] as const;
 type Segment = (typeof SEGMENTS)[number];
@@ -25,7 +25,7 @@ function Stat({ value, label, index }: { value: string; label: string; index: nu
   </Animated.View>;
 }
 
-export function ProfileScreen({ navigation, route }: TabProps<'Profile'>) {
+export function ProfileScreen({ navigation, route }: RootProps<'Profile'>) {
   const insets = useSafeAreaInsets();
   const { signOut, draft } = useSession();
   const { earnings, submissions, loading, error } = useContributorActivity();
@@ -51,20 +51,20 @@ export function ProfileScreen({ navigation, route }: TabProps<'Profile'>) {
   const pending = submissions.filter(row => IN_REVIEW.includes(row.status)).length + unsent;
   const dash = loading ? '...' : null;
 
-  return <ScrollView style={s.screen} contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 110, paddingHorizontal: gutter }}>
+  return <ScrollView style={s.screen} contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40, paddingHorizontal: gutter }}>
+    <PressableScale accessibilityRole="button" accessibilityLabel="Back" onPress={() => navigation.goBack()} style={s.back}><ChevronLeft /></PressableScale>
     <Animated.View entering={FadeIn.duration(360)} style={s.identity}>
       <View style={s.avatar}><ProfileIcon size={24} color={c.accentInk} /></View>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={s.name}>Contributor #{shortId || '...'}</Text>
         <Text style={s.sub}>Demo identity</Text>
       </View>
-      <Pill>Testnet</Pill>
     </Animated.View>
 
     <Animated.View entering={enter(60)} style={s.balance}>
       <View style={s.balanceTop}>
         <Text style={s.balanceLabel}>Balance</Text>
-        <Text style={s.unit}>Test USDC</Text>
+        <Text style={s.unit}>USDC</Text>
       </View>
       {earnings.error ? <Text style={s.amount}>0.00</Text> : <CountUp atomic={sum.pending + sum.paid} style={s.amount} />}
       <View style={s.split}>
@@ -120,6 +120,8 @@ export function ProfileScreen({ navigation, route }: TabProps<'Profile'>) {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: c.paper },
+  back: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', marginBottom: 18,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.hairline },
   identity: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
   name: { fontFamily: f.medium, fontSize: 20, letterSpacing: -0.3, color: c.ink },

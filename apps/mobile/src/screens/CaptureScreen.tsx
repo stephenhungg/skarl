@@ -217,7 +217,7 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
     const id = draft?.submissionId;
     if (!(await retake())) return;
     if (to === 'Submission' && id) navigation.replace('Submission', { submissionId: id });
-    else navigation.navigate('Tabs', { screen: 'Profile', params: { segment: 'Submissions' } });
+    else navigation.navigate('Profile', { segment: 'Submissions' });
   }
 
   const wordsFresh = !!challenge && challenge.expiresAt - now >= 60_000;

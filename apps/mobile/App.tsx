@@ -4,14 +4,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer, DefaultTheme, useNavigation, type NavigationProp } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { colors as c, fonts as f, gutter } from './theme';
 import { SessionProvider, useSession } from './src/session';
-import type { RootParamList, TabParamList } from './src/navigation';
-import { TabBar } from './src/components/TabBar';
+import type { RootParamList } from './src/navigation';
 import { Button } from './src/components/Primitives';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { EmailScreen } from './src/screens/EmailScreen';
@@ -26,22 +24,7 @@ const client = url && /^https:\/\/[a-z0-9-]+\.convex\.cloud$/.test(url) ? new Co
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 
 const Stack = createNativeStackNavigator<RootParamList>();
-const Tab = createBottomTabNavigator<TabParamList>();
 const theme = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: c.paper, card: c.paper, text: c.ink, border: c.hairline, primary: c.ink } };
-
-const Empty = () => null;
-function Tabs() {
-  const navigation = useNavigation<NavigationProp<RootParamList>>();
-  const { draft } = useSession();
-  // Capture opens full screen: straight to a saved take, otherwise via the live task and its consent.
-  const onCapture = () => draft ? navigation.navigate('Capture', { consented: true }) : navigation.navigate('TaskDetail');
-  return <Tab.Navigator tabBar={props => <TabBar {...props} onCapture={onCapture} />}
-    screenOptions={{ headerShown: false, animation: 'shift', sceneStyle: { backgroundColor: c.paper } }}>
-    <Tab.Screen name="Tasks" component={TasksScreen} />
-    <Tab.Screen name="CaptureTab" component={Empty} />
-    <Tab.Screen name="Profile" component={ProfileScreen} />
-  </Tab.Navigator>;
-}
 
 function Root() {
   const { ready, signedIn } = useSession();
@@ -51,7 +34,8 @@ function Root() {
       <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ animation: 'fade' }} />
       <Stack.Screen name="Email" component={EmailScreen} />
     </> : <>
-      <Stack.Screen name="Tabs" component={Tabs} options={{ animation: 'fade' }} />
+      <Stack.Screen name="Tasks" component={TasksScreen} options={{ animation: 'fade' }} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
       <Stack.Screen name="Submission" component={SubmissionScreen} />
       <Stack.Screen name="Capture" component={CaptureScreen}
