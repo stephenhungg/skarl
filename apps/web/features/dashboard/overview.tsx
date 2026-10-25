@@ -21,23 +21,7 @@ export function Overview() {
       <PageHeader title={order.title}
         description={<>Order <span className="mono">{order.publicId}</span> &middot; {humanize(order.status)} &middot; {order.acceptedCount} of {order.quantityRequested} samples accepted</>} />
       <NeedsYouList orderId={orderId!} submissions={submissions} payables={payables} />
-      <Operations orderId={orderId!} />
-      <Section title="Money">
-        <dl className="grid grid-cols-2 border-y border-line-faint md:grid-cols-4">
-          {[
-            ["Funded by buyer", order.budgetAtomic],
-            ["Cash in treasury", balances["asset:usdc"]],
-            ["Owed to contributors", balances["liability:contributor_payables"]],
-            ["Revenue recognized", balances["revenue:dataset_sales"]],
-          ].map(([label, value], index) => (
-            <div key={label} className={cn("flex flex-col gap-1 py-4 md:px-5", index % 2 === 1 && "ps-5", index > 0 && "md:border-s md:border-line-faint", index === 0 && "md:ps-0", index === 1 && "border-s border-line-faint md:border-s")}>
-              <dt className="type-label-sm text-text-2">{label}</dt>
-              <dd><Amount value={value} className="type-heading" /></dd>
-            </div>
-          ))}
-        </dl>
-        <p className="mt-2 type-label-sm text-text-3">Prepaid but undelivered: <Amount value={balances["liability:customer_prepayments"]} /></p>
-      </Section>
+      <AtAGlance orderId={orderId!} budget={order.budgetAtomic} funded={!["draft", "awaiting_funding", "funding_failed"].includes(order.status)} balances={balances} />
       <Funding orderId={orderId!} />
       <RecentActivity orderId={orderId!} />
     </>
@@ -120,28 +104,42 @@ function RecentActivity({ orderId }: { orderId: Id<"orders"> }) {
   );
 }
 
-function Operations({ orderId }: { orderId: Id<"orders"> }) {
+/** One strip, four questions: how much cash, what we owe, how the work is going, how fast the AI is. Zeros that ask nothing stay hidden. */
+function AtAGlance({ orderId, budget, funded, balances }: { orderId: Id<"orders">; budget: string; funded: boolean; balances: Record<string, string> }) {
   const stats = useQuery(api.analytics.overview, { demoIdentity: CONTROLLER, orderId });
-  if (!stats) return null;
-  const rate = stats.acceptanceRate.basisPoints;
-  const p = stats.verificationLatencyMs;
-  const items: [string, string, string?][] = [
-    ["Licensed clips", stats.submitted, `${stats.accepted} accepted${rate != null ? ` (${(Number(rate) / 100).toFixed(0)}%)` : ""}`],
-    ["AI check time", p.p50 != null ? formatMs(p.p50) : "No runs", p.p95 != null ? `p95 ${formatMs(p.p95)} over ${p.sampleCount} runs` : undefined],
-    ["Duplicates blocked", stats.duplicatesBlocked],
-    ["Refused actions", stats.refusals],
+  const p = stats?.verificationLatencyMs;
+  const cells: { label: string; value: React.ReactNode; sub: React.ReactNode }[] = [
+    { label: "Treasury", value: <Amount value={balances["asset:usdc"]} className="type-heading" />,
+      sub: funded
+        ? <><Amount value={budget} /> funded &middot; <Amount value={balances["liability:customer_prepayments"]} /> owed back to buyer</>
+        : <><Amount value={budget} /> budget, not funded yet</> },
+    { label: "Owed to contributors", value: <Amount value={balances["liability:contributor_payables"]} className="type-heading" />,
+      sub: <><Amount value={balances["revenue:dataset_sales"]} /> revenue recognized</> },
+    { label: "Clips", value: <span className="type-heading">{stats ? `${stats.submitted} licensed` : "Loading"}</span>,
+      sub: stats ? `${stats.accepted} accepted` : "" },
+    { label: "AI check time", value: <span className="type-heading">{p?.p50 != null ? `${formatMs(p.p50)} typical` : "No runs"}</span>,
+      sub: p?.p95 != null ? `slowest ${formatMs(p.p95)} \u00b7 ${p.sampleCount} runs` : "" },
   ];
+  const alerts = [
+    stats && Number(stats.duplicatesBlocked) > 0 ? `${stats.duplicatesBlocked} ${stats.duplicatesBlocked === "1" ? "duplicate" : "duplicates"} blocked` : null,
+    stats && Number(stats.refusals) > 0 ? `${stats.refusals} refused ${stats.refusals === "1" ? "action" : "actions"}` : null,
+  ].filter(Boolean);
   return (
-    <Section title="Operations">
+    <section className="mt-8" aria-label="At a glance">
       <dl className="grid grid-cols-2 border-y border-line-faint md:grid-cols-4">
-        {items.map(([label, value, sub], index) => (
-          <div key={label} className={cn("flex flex-col gap-0.5 py-4 md:px-5", index % 2 === 1 && "ps-5 border-s border-line-faint", index > 1 && "md:border-s md:border-line-faint", index === 0 && "md:ps-0")}>
-            <dt className="type-label-sm text-text-2">{label}</dt>
-            <dd className="type-heading tabular-nums">{value}</dd>
-            {sub && <dd className="type-label-sm text-text-3">{sub}</dd>}
+        {cells.map((cell, index) => (
+          <div key={cell.label} className={cn("flex min-w-0 flex-col gap-1 py-4", index % 2 === 1 ? "border-s border-line-faint ps-5" : "md:pe-5",
+            index === 2 && "md:border-s md:border-line-faint md:ps-5", index > 1 && "border-t border-line-faint md:border-t-0")}>
+            <dt className="type-label-sm text-text-2">{cell.label}</dt>
+            <dd>{cell.value}</dd>
+            {cell.sub && <dd className="type-label-sm text-text-3">{cell.sub}</dd>}
           </div>
         ))}
       </dl>
-    </Section>
+      {alerts.length > 0 && (
+        <Link href="/dashboard/audit" className="mt-2 inline-block type-label-sm text-fail-text underline underline-offset-4">{alerts.join(" \u00b7 ")}</Link>
+      )}
+    </section>
   );
 }
+
