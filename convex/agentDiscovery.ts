@@ -21,6 +21,10 @@ export const llmsText = `# Skarl
 - Agent docs and client configuration: ${docsUrl}
 - Claude skill: https://github.com/stephenhungg/skarl/tree/main/integrations/claude-skill/skarl
 
+## One prompt for any agent
+Paste into any MCP-capable agent:
+"Connect yourself to Skarl. Add the remote MCP server named skarl (Streamable HTTP, no API key): ${AGENT_ORIGIN}/mcp. If you can't add MCP servers yourself, give me the exact steps for my app. Then call skarl_about and show me the open tasks and what each pays. Ask me before creating an order or paying anything; only humans approve payouts."
+
 ## Guest access
 ${guestAccess}
 Guest tools: ${guestTools.join(", ")}. Public responses exclude buyer identities, private media and ledger internals. Only the explicit public seed and outsider demo orders appear; knowing a private role order ID does not make it public. skarl_create_order_public uses the same payments.createDemoOrder path and durable demoOrderLimits as POST ${paymentOrigin}/api/orders: fixed terms, three orders per IP per hour and thirty globally. The MCP IP bucket hashes the first x-forwarded-for hop, then cf-connecting-ip; absent headers share the mcp-unknown digest. Forwarded headers require trusted ingress; MCP and Vercel use different per-IP digest derivations and share the global creation limit. No separate durable budget for guest reads is implemented.

@@ -6,7 +6,16 @@ import { SectionHeader } from "@/components/section-header";
 const MCP_URL = "https://keen-marmot-986.convex.site/mcp";
 // Cursor's install link takes the base64-encoded server config, without the mcpServers wrapper.
 const CURSOR_INSTALL_URL = "cursor://anysphere.cursor-deeplink/mcp/install?name=skarl&config=eyJ1cmwiOiJodHRwczovL2tlZW4tbWFybW90LTk4Ni5jb252ZXguc2l0ZS9tY3AifQ%3D%3D";
-const EXAMPLE_PROMPT = "Use Skarl to post a 0.01 USDC order for red-cup pick-and-place demos and pay it with my Coinbase wallet.";
+// One prompt for any MCP-capable agent: agents that can install MCP servers do it; chat apps print setup steps.
+const UNIVERSAL_PROMPT = `Connect yourself to Skarl, a marketplace for verified robot-training demonstrations.
+
+1. Add this remote MCP server named "skarl" (Streamable HTTP, no API key needed):
+   ${MCP_URL}
+   If you can't add MCP servers yourself, give me the exact steps for the app I'm using.
+2. Read https://keen-marmot-986.convex.site/llms.txt and call the skarl_about tool.
+3. Show me the open tasks and what each one pays.
+
+Rules: ask me before creating an order or paying anything; payments use x402 (test USDC on Base Sepolia). You can propose and pay, but only humans approve payouts.`;
 const CLIENTS = [
   {
     id: "claude-code", label: "Claude Code", heading: "Run once in your terminal.",
@@ -97,7 +106,13 @@ export function ConnectAgent() {
           Bring your own agent. Browse tasks, post an order, and pay with x402. Public tools work without a key; keys unlock role tools.
         </p>
 
-        <div className="mt-8 overflow-hidden rounded-[12px] bg-paper">
+        <div className="mt-8">
+          <p className="cut-regular mb-3 text-[14px] text-deep">Paste this into any AI agent</p>
+          <CopySnippet text={UNIVERSAL_PROMPT} label="agent prompt" />
+        </div>
+
+        <p className="cut-regular mb-3 mt-8 text-[14px] text-deep">Or set it up manually</p>
+        <div className="overflow-hidden rounded-[12px] bg-paper">
           <div role="tablist" aria-label="Choose your agent client" className="flex flex-wrap gap-1 border-b border-haze p-2">
             {CLIENTS.map((item, index) => (
               <button
@@ -144,10 +159,6 @@ export function ConnectAgent() {
           ))}
         </div>
 
-        <div className="mt-6">
-          <p className="cut-regular mb-3 text-[14px] text-deep">Then give your agent a task</p>
-          <CopySnippet text={EXAMPLE_PROMPT} label="example prompt" light />
-        </div>
         <p className="mb-0 mt-5 text-[12px] leading-[1.5] text-slate-700">
           Testnet USDC on Base Sepolia. Agents can pay and propose; humans approve payouts.
         </p>
