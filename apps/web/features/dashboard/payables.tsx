@@ -8,8 +8,8 @@ import { CopyButton } from "@/components/glaze/ui/copy-button";
 import { Status } from "@/components/glaze/ui/status";
 import { cn } from "@/lib/glaze/utils";
 import { usePayout } from "@/lib/payments/use-payout";
-import { getPayoutRecovery } from "@/lib/payments/payout";
-import { api, CONTROLLER, FINANCE_AGENT, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type PayableRow } from "./data";
+import { executePayablePayout, getPayablePayoutRecovery } from "./payable-payout";
+import { api, CONTROLLER, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type PayableRow } from "./data";
 import { basescanAddress, basescanTx, formatTime, humanize, parseChainIdentity, shortHash } from "./format";
 import { ReceiptRule } from "@/components/ui/payment-receipt-printer";
 import { Receipt } from "./receipt";
@@ -108,7 +108,6 @@ function useInjectedWallet(): EIP1193Provider | null {
 }
 
 function Actions({ payable, step }: { payable: PayableRow; step: number }) {
-  const propose = useMutation(api.finance.proposePayment);
   const approve = useMutation(api.finance.approve);
   const reject = useMutation(api.finance.reject);
   const provider = useInjectedWallet();
@@ -137,7 +136,7 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   if (payable.status === "paid") buttons = <span className="me-auto type-label-sm text-text-2">Confirmed on chain and posted to the journal.</span>;
   else if (step === 0) buttons = <>
     <span className="me-auto type-label-sm text-text-3">Waiting for the finance agent to propose this payout.</span>
-    <Button size="sm" disabled={busy} onClick={() => act(() => propose({ demoIdentity: FINANCE_AGENT, payableId: payable._id }), "The finance agent proposed this payout.")}>Ask agent to propose</Button>
+    <Link href="/dashboard/agent" className="type-label-sm underline underline-offset-4">Open finance agent</Link>
   </>;
   else if (step === 1 && intentId) buttons = <>
     <Button variant="secondary" size="sm" className="me-auto" disabled={busy}
@@ -159,14 +158,18 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   else if (step === 2 && payable.intent) buttons = <>
     <span className="me-auto type-label-sm text-text-3">{payable.dispatchReady ? (provider ? "Approved for the configured executor; manual wallet recovery is also available." : "Approved for the configured executor.") : "Approved. Waiting for the workflow to release it."}</span>
     <Button size="sm" disabled={!payable.dispatchReady || !provider || payout.busy}
-      onClick={() => payout.execute(payable.intent!.intentId).catch(() => undefined)}>{payout.busy ? humanize(payout.status) : "Manual wallet recovery"}</Button>
+      onClick={() => executePayablePayout(payable.intent!, payout.execute).catch(() => undefined)}>{payout.busy ? humanize(payout.status) : "Manual wallet recovery"}</Button>
   </>;
   else if (step === 3 && payable.intent) buttons = <>
     <span className="me-auto type-label-sm text-text-3">Submitted. Waiting for confirmations. A timeout is not a failure, so nothing is resent.</span>
     <Button variant="secondary" size="sm" disabled={payout.busy} onClick={() => {
-      const saved = payout.recovery ?? getPayoutRecovery(payable.intent!.intentId);
-      if (saved?.txHash) payout.recover({ ...saved, txHash: saved.txHash }).catch(() => undefined);
-      else setMessage({ ok: false, text: "No saved transaction in this browser. Check the wallet before doing anything else." });
+      try {
+        const saved = getPayablePayoutRecovery(payable.intent!, payout.recovery);
+        if (saved?.txHash) payout.recover({ ...saved, txHash: saved.txHash }).catch(() => undefined);
+        else setMessage({ ok: false, text: "No saved transaction in this browser. Check the wallet before doing anything else." });
+      } catch (error) {
+        setMessage({ ok: false, text: error instanceof Error ? error.message : "Saved recovery could not be read. Reconcile the existing claim before continuing." });
+      }
     }}>Reconcile saved transaction</Button>
   </>;
 
