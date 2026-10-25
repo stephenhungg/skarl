@@ -10,7 +10,7 @@ Truthful state as of October 25, 2026, after the adversarial audit and the move 
 | Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; live audio measured | Successful live visual response blocked by Flash 503/timeouts and Argon zero quota; real demonstration quality/copy calibration unmeasured; Python worker deferred |
 | Evaluation | Scoring scaffolding | Deferred: no labeled corpus. Staged demo clips only |
 | Ledger | Audited pure helpers plus atomic Convex journal/line persistence, fulfillment accrual, event fingerprints and replay protection | Live funding/payout settlement and reconciliation evidence |
-| Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | Supply controller treasury address; complete Wallet MCP authentication; run real funding/payout. Live buyer balance verified at 20 USDC; no live transfer yet |
+| Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | Supply controller treasury address; complete Wallet MCP authentication; run real funding/payout. Live buyer balance verified at 20 USDC; v2 seeded and awaiting funding; no live transfer yet |
 | Finance agent | Server payment proposal, independent approval, durable refused self/agent approval audit and exact dashboard projections | Model explanation/tool loop, Workflow wait, approved-command execution |
 | Sponsors | Requirements checked against Devpost and the briefs | Working integrations; Coinbase eligibility checklist per member |
 
@@ -57,12 +57,25 @@ requires human sign-in. The local funding endpoint returns HTTP 503 with
 `treasury_not_configured`, and no funding authorization or transfer was sent.
 There is no transaction hash or BaseScan funding link to report.
 
+Deployment polling observed the payment functions at 01:33 PDT. `pnpm seed`
+returned v2 order `kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg`. A trusted live
+`payments.fundingStatus` read verified public ID `skarl-red-cup-demo-v2`,
+`budgetAtomic: 10000000`, four samples at `2500000` micro-USDC,
+`status: awaiting_funding`, and null intent/attempt. Running
+`pnpm agent:fund skarl-red-cup-demo-v2` stopped with the actionable missing
+`SKARL_TREASURY_ADDRESS` error before signing. The payment owner did not deploy
+Convex; the main-checkout owner supplied the deployment.
+
 Wallet MCP is configured as `base-mcp` at `https://wallet-mcp.coinbase.com` in
 both Claude Code and Codex. Claude Code reports `Needs authentication`;
 configuration alone is not a connected wallet session. A human must sign in to
 the existing Coinbase Wallet, authorize the MCP connection, and provide its
 Base Sepolia receiving address. No wallet was created, credentials entered,
-message signed or transaction approved during this preflight.
+message signed or transaction approved during this preflight. Both OAuth waits
+timed out without authentication. Restart with `claude mcp login base-mcp`
+(or `codex mcp login base-mcp`), then complete the human Coinbase sign-in and
+connection approval. No existing wallet address could be read; this does not
+establish that the operator has no wallet.
 
 `pnpm check` passed: typechecks, 74 package tests, 49 Convex tests, 24 payment
 tests, documentation checks and the production build. These tests use synthetic
