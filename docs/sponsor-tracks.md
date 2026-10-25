@@ -96,7 +96,7 @@ Current configurable defaults are `gemini-4-argon` for visual evidence, `gemini-
 
 ## Solana
 
-**MLH Best Use of Solana** remains a pending submission claim through the optional CDP-backed Solana Devnet x402 funding path. Base/Coinbase remain primary; payouts remain Base-only. Implementation and treasury ATA setup are complete; live funding evidence is pending the backend deployment. See [Solana rail](payments.md#solana-rail).
+**MLH Best Use of Solana** remains a pending submission claim through the optional CDP-backed Solana Devnet x402 funding path. Base/Coinbase remain primary; payouts remain Base-only. The backend is deployed and the production challenge advertises Base first and Solana second through CDP. The October 25, 03:13 PDT bounded buyer attempt returned HTTP 402 before settlement because changing fee-payer metadata prevented quote matching. Convex has zero funding matches and no journal; the order remains unfunded. This is live integration/debugging evidence, not live Solana funding evidence, and no Explorer funding link exists. See the [recorded attempt and RPC checks](status.md#solana-live-attempt--october-25-2026-03130315-pdt). See [Solana rail](payments.md#solana-rail).
 
 ## Not targeted
 

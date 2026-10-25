@@ -565,7 +565,7 @@ Validation for this follow-up: `pnpm check` passed all typechecks, **466 tests**
 
 ## Solana funding rail (October 25)
 
-Implemented optional Solana Devnet x402 funding with Base first, durable message-hash claims, strict RPC reconciliation, a bounded CDP buyer, and an idempotent 1 USDC demo seed. Base payouts and human approval remain unchanged. Receive-only treasury `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh` and its canonical USDC ATA are live; the treasury address is configured in Vercel production and Convex. This is setup evidence, not a funding claim. Live x402 funding awaits the deployment owner's Convex deploy of `origin/main` and is not yet demonstrated. See [Solana rail](payments.md#solana-rail).
+Implemented optional Solana Devnet x402 funding with Base first, durable message-hash claims, strict RPC reconciliation, a bounded CDP buyer, and an idempotent 1 USDC demo seed. Base payouts and human approval remain unchanged. Receive-only treasury `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh` and its canonical USDC ATA are live; the treasury address is configured in Vercel production and Convex. This is setup evidence, not a funding claim. The backend deployment is complete, but the first live request was rejected before settlement because the CDP fee payer changed between challenges; funding is not demonstrated. See [Solana rail](payments.md#solana-rail).
 
 ## Wallet MCP buyer-to-agent revenue path — October 25, 03:12 PDT
 
@@ -768,3 +768,21 @@ returned **HTTP 200** with **`valid:false`**, endpoint **404 `sample_unavailable
 ```
 
 </details>
+
+
+### Solana live attempt — October 25, 2026, 03:13–03:15 PDT
+
+**Outcome: no funding transaction and no Solana Explorer funding link.** The single bounded CDP buyer authorization received HTTP 402 before any Convex funding intent was created. The order correctly remained `awaiting_funding`; this run does not demonstrate a successful transition to `funded` or live RPC-confirmed funding.
+
+| Check | Observed result |
+| --- | --- |
+| Deployment | The deployment owner reported `ff79f59` deployed to `keen-marmot-986`. Vercel's production alias was independently observed READY on `ff79f59`, deployment `dpl_51qWCiyDm2Kx68SiGvBCZVuwWfgA`, before the buyer ran. No manual deployment was performed. |
+| Seed | `seed:solanaDemo` returned order `kh70wdg1psv4np16bfkq4hkc6d8gz715`, public ID `skarl-red-cup-demo-sol`, one sample costing `1000000` micro-USDC. |
+| Production configuration | Vercel production lists `SKARL_SOLANA_TREASURY_ADDRESS`; the live quote and Convex environment both match `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh`. |
+| Live challenge | At 03:13:22 PDT, HTTP 402 advertised Base Sepolia `exact` first and Solana Devnet `exact` second, each for `1000000` micro-USDC. `X-Skarl-Facilitator: cdp`; Solana memo `skarl:kh70wdg1psv4np16bfkq4hkc6d8gz715`. |
+| Buyer attempt | Managed buyer `35pgsKg8sUYQRbLuWSmgYnham9rWhqNuG1JJhGKN6TWy`; approved treasury, canonical mint and Devnet allowlisted; per-payment and 24-hour cumulative cap both `1000000`. One authorization was saved before dispatch. Its signed request returned HTTP 402. One recovery replay of that identical authorization also returned 402; no second authorization was created. |
+| Diagnosis | CDP read-only verification returned `isValid:true` for the saved payload. Its accepted fee payer was `BENrLoUbndxoNMUS5JXApGMtNykLjFXXixMtpDwDR9SP`; later live challenges advertised different fee payers. The installed x402 requirement matcher returned false against a fresh live challenge and true when only that challenge's fee payer was restored to the original. This reproduces a quote-matching failure before settlement. |
+| Convex reconciliation | `payments:reconciliation` returned `{"exceptions":[],"matches":[]}`; `dashboard:journal` returned `[]`. The funding endpoint had no attempt or transaction hash. Empty matches are absence of funding, not successful reconciliation. |
+| Independent RPC | At 03:15:14 PDT, finalized reads showed buyer USDC `2000000`, buyer SOL `0`, treasury USDC `1000000` from its earlier setup faucet, and no later treasury ATA transaction. The signed message's recent blockhash was no longer valid. No setup faucet is counted as order funding. |
+
+Private authorization, spend reservation, response and RPC records are retained. The original replay did not settle and no replacement authorization was signed. The next implementation must preserve a facilitator-authorized fee payer across the challenge/payment round trip without weakening mint, amount, payee, memo or signature validation. A successful live funding attempt remains required before claiming MLH Best Use of Solana with live funding evidence.
