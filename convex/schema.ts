@@ -50,6 +50,11 @@ const analysisContext = {
   perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))),
 };
 export default defineSchema({
+  reconciliationDispositions: defineTable({
+    ...tenant, orderId: v.id("orders"), exceptionKey: v.string(), snapshotJson: v.string(),
+    status: v.union(v.literal("acknowledged"), v.literal("resolved")), reason: v.string(),
+    actorTokenIdentifier: tokenIdentifier, updatedAt: v.number(),
+  }).index("by_exception", ["organizationId", "orderId", "exceptionKey"]).index("by_order", ["orderId"]),
   financeAgentRuns: defineTable({
     ...tenant, orderId: v.id("orders"), requestId: v.string(), prompt: v.string(),
     requesterTokenIdentifier: tokenIdentifier, model: v.string(), maxToolCalls: v.number(),
