@@ -73,7 +73,7 @@ Convex is the system of record and agent memory. Its transactions keep acceptanc
 | Workflow component | [convex.config.ts](../convex/convex.config.ts), [approvalWorkflow.ts](../convex/approvalWorkflow.ts): durable approval event, revalidation, one dispatch. | Component installed; wait/resume/refusal proven with component tests; live payout pending. |
 | Scheduler | [submissions.ts](../convex/submissions.ts): transactionally queue verification and interrupted-job checks. | Scheduled negative-smoke inference ran live. |
 | Crons | [crons.ts](../convex/crons.ts), [scheduledJobs.ts](../convex/scheduledJobs.ts): bounded settlement observation and finance review; report-attestation sweep. | Attestation cron observed live at 03:50/03:52; settlement/finance cron runs remain unverified in status. No blind resend. |
-| File storage | [submissions.ts](../convex/submissions.ts), [verify.ts](../convex/verify.ts), [media.ts](../convex/media.ts): private source media and access-checked evidence. | Original uploads read live; new persisted-frame rollout separately pending. |
+| File storage | [submissions.ts](../convex/submissions.ts), [verify.ts](../convex/verify.ts), [media.ts](../convex/media.ts): private source media and access-checked evidence. | Original uploads read live; frame code deployed at 03:50, post-deployment frame execution unverified. |
 | Node actions | [verify.ts](../convex/verify.ts), [financeAgent.ts](../convex/financeAgent.ts): FFmpeg/provider calls outside transactions. | Live isolated inference and read-only Gemini finance run. |
 | Typed validators | [schema.ts](../convex/schema.ts), [validators.ts](../convex/validators.ts), [verification.ts](../packages/contracts/src/verification.ts): typed records, exact money and report validation. | Deployed core validation plus local trust-boundary regressions. |
 
@@ -102,7 +102,7 @@ Rubric: **Completeness, Creativity, Complexity**. The proposed Nessie witness co
 
 ### MLH — Best Use of Gemini API
 
-Gemini produces timestamped observations instead of final payment authority. Argon + Flash inspect silent frames, Transcribe receives isolated audio, and Flash explains exact finance tool results. The current jury is simulated/tested pending live deployment evidence; historical Flash/Transcribe negative inference and the read-only Flash tool loop are live. No human-task accuracy or model-superiority claim is made. Missing evidence and disagreement route to review.
+Gemini produces timestamped observations instead of final payment authority. Argon + Flash inspect silent frames, Transcribe receives isolated audio, and Flash explains exact finance tool results. The current jury is deployed and tested with simulated provider responses; live jury execution remains unverified; historical Flash/Transcribe negative inference and the read-only Flash tool loop are live. No human-task accuracy or model-superiority claim is made. Missing evidence and disagreement route to review.
 
 ### MLH — Best Use of Solana
 

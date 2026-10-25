@@ -1,31 +1,31 @@
 # Every claim has a witness
 
-**Skarl is the autonomous settlement desk for human-data companies. Independent witnesses must agree before anything moves: agents argue the case, deterministic code decides, and humans approve exceptions.** Today, every payout also requires independent human approval; “autonomous” describes bounded inspection, proposals and recovery, not unrestricted spending.
+**Skarl is the autonomous settlement desk for human-data companies. Independent witnesses must agree before anything moves: agents argue the case, deterministic code decides, and humans approve exceptions.** Every payout also requires independent human approval. Autonomy covers bounded inspection, proposals and recovery.
 
-A company buying narrated demonstrations needs to know three things: did the work happen, is this a new obligation, and did the money settle? A fluent explanation cannot answer all three. Skarl fills two seats—**settlement accountant + AP clerk**—by making each claim answerable to evidence outside the agent's own explanation.
+The **settlement accountant + AP clerk** seats answer three questions: did the work happen, is this a new obligation, and did the money settle?
 
 ## The witness table
 
-Evidence snapshot: **October 25, 2026, 03:53 PDT**, from the dated [build status](status.md). **Live** means observed provider/testnet behavior; **simulated** means local or mocked control tests; **pending** means live proof is missing. Deployment alone does not establish an end-to-end result.
+**October 25, 2026, 03:53 PDT** — [dated evidence](status.md). **Live** = observed provider/testnet operation; **simulated** = local/mocked controls; **pending** = missing live proof. Deployment is not execution.
 
-| Layer | Witness and responsibility | Evidence status |
+| Layer | Witness | Evidence status |
 | --- | --- | --- |
-| WORK | **Gemini Argon + Flash vision jury:** inspect silent timestamped frames; disagreement routes to review. | **Simulated / pending:** jury implemented and tested; live historical Flash inference and separate Argon probes do not prove a live jury. |
-| WORK | **Gemini Transcribe audio:** independently transcribe speech, then compare it with observed actions. | **Live:** separate audio inference on negative smoke clips; task accuracy unmeasured. |
-| WORK | **Trim-tolerant copy witness:** server hashes and monotonic frame alignment flag likely reuse before another payable. | **Simulated / pending:** local FFmpeg re-encode and shifted-frame regressions; real trim recall and independent-retake false positives unmeasured. |
-| WORK | **EAS public receipt:** commit the report and source/rubric hashes without exposing original media. | **Live:** all 11 finalized reports attested by the two-minute cron; EASScan/RPC verified. All remain `needs_review`; provenance is not acceptance. |
-| MONEY | **Contract = Convex order:** frozen rubric, budget, quota, license and rate establish what is owed. | **Live:** funded order records; a licensed accepted contribution remains pending. |
-| MONEY | **Ledger = Convex double-entry:** exact micro-USDC journals and balanced statements establish recorded obligations and cash. | **Live:** funding journals and trial balance; payout lifecycle tests are simulated. |
-| MONEY | **Chain = x402 via CDP facilitator + signed CDP webhooks + Base/Solana RPC:** verify actual transfers independently of an HTTP response. | **Live:** Base funding/webhook/reconciliation and Solana Devnet funding/RPC. No Solana webhook or payout claim; payouts are Base-only. |
-| JUDGMENT | **Deterministic judge:** enforce rubric, source, consent, duplicate and financial invariants. | **Live:** negative inference stays review-only; duplicate/payable boundaries have simulated regression proof. |
-| JUDGMENT | **Claude + Gemini finance agents:** argue and explain; cannot approve. | **Gemini live:** read-only trial-balance tool loop. **Claude pending:** no runtime finance-agent evidence in status. |
-| JUDGMENT | **CDP Policy Engine; human controller in Coinbase Wallet:** enforce wallet limits and independent approval/signing. | **Policy live:** actual over-cap/recipient `403 policy_violation` responses. **Payout pending:** no completed controller-signed contributor payment. |
-| NERVOUS SYSTEM | **Convex live queries, Workflow component, scheduler, crons, file storage, Node actions, typed validators:** persist evidence, coordinate waits and expose state. | **Live:** stored queries, uploads, scheduled inference and finance action. Workflow installed, wait/resume tested with its component adapter. Attestation cron/backfill live; settlement/finance cron observations and full approval-to-settlement flow pending. |
+| WORK | **Gemini Argon + Flash vision jury:** silent frames; disagreement goes to review. | **Simulated / pending:** deployed; jury tests pass. Historical Flash inference/Argon probes do not prove live jury execution. |
+| WORK | **Gemini Transcribe audio:** independently transcribe and compare narration. | **Live:** negative-smoke inference; task accuracy unmeasured. |
+| WORK | **Trim-tolerant copy witness:** server hashes and monotonic frame alignment. | **Simulated:** re-encode/shifted-frame regressions; real trim recall and retake false positives unmeasured. |
+| WORK | **EAS public receipt:** report/source/rubric commitment, without original media. | **Live:** 11 reports attested by cron; EASScan/RPC verified. All remain `needs_review`. |
+| MONEY | **Contract = Convex order:** frozen terms, quota and price. | **Live:** funded orders; accept-eligible licensed work pending. |
+| MONEY | **Ledger = Convex double-entry:** exact micro-USDC obligations and cash. | **Live:** funding journals/trial balance; payout lifecycle simulated. |
+| MONEY | **Chain = x402 via CDP facilitator + CDP webhooks + Base/Solana RPC.** | **Live:** Base funding/signed webhook/reconciliation; Solana Devnet funding/RPC. Payouts Base-only and pending. |
+| JUDGMENT | **Deterministic judge:** rubric, consent, source and financial invariants. | **Live:** negative inference stays review-only; duplicate/payable refusals simulated. |
+| JUDGMENT | **Claude + Gemini finance agents:** argue/explain; cannot approve. | **Gemini live:** read-only tool loop. **Claude pending:** no runtime finance evidence. |
+| JUDGMENT | **CDP Policy Engine; human controller in Coinbase Wallet.** | **Policy live:** actual cap/recipient `403`s. **Payout pending:** independent approval and signing still required. |
+| NERVOUS SYSTEM | **Convex live queries, Workflow component, scheduler, crons, storage, Node actions, typed validators.** | **Live:** stored queries/uploads/scheduled inference/finance action/EAS cron. Workflow installed; wait/resume tested. Settlement/finance cron observations pending. |
 
-Cartesia, physical iPhone IMU capture and Nessie bank observations have no live evidence at this snapshot and are excluded as working witnesses. EAS hashes prove what was recorded, not that a model was correct. Same-family models and shared infrastructure can fail together; “independent” means separated inputs and checks, not statistical independence.
+Cartesia, physical iPhone IMU and Nessie have no live evidence and are excluded as working witnesses. EAS proves recorded provenance, not correctness. Same-family models and shared infrastructure can fail together: separated checks are not statistical independence.
 
 ## The moment
 
-**Duplicate caught → second payable blocked → agent self-approval refused → controller approves in Coinbase Wallet → chain + ledger agree.** Add a bank comparison only after live Nessie evidence exists, always labeled a mock bank. The complete moment is currently **pending**; show tested controls as simulated and existing funding receipts as funding. Never substitute funding for payout evidence.
+**Duplicate caught → second payable blocked → agent self-approval refused → controller approves in Coinbase Wallet → chain + ledger agree.** Full live sequence: **pending**. Show controls as simulated and funding receipts as funding. Add bank agreement only after live Nessie evidence, labeled **mock bank**.
 
-The adoption test is fewer duplicate obligations and less reconciliation work without unauthorized payments. No customer interviews, time savings or production accuracy are claimed. Start with consented red-cup demonstrations, preserve private originals, measure false acceptance, and replace impersonable demo identities before real use. [Submission](devpost.md) · [Demo](demo-script.md) · [Judge scenarios](hyphenate-scenarios.md).
+Target: fewer duplicate obligations and less reconciliation work. No measured savings or customer adoption claimed. Preserve private originals, evaluate consented clips, and replace impersonable demo identities before production. [Submission](devpost.md) · [Demo](demo-script.md) · [Judge scenarios](hyphenate-scenarios.md).
