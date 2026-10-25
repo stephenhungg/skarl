@@ -10,7 +10,7 @@ Truthful state as of October 25, 2026, after the adversarial audit and the move 
 | Verifier | Python report models and validation CLI (scaffold, no inference) | Gemini runs in a Convex action for the demo; the Python worker is deferred |
 | Evaluation | Scoring scaffolding | Deferred: no labeled corpus. Staged demo clips only |
 | Ledger | Audited pure helpers plus atomic Convex journal/line persistence, fulfillment accrual, event fingerprints and replay protection | Real funding/payout import and chain reconciliation |
-| Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | Deploy merged Convex backend; set controller treasury address; fund buyer; run real funding/payout and Wallet MCP login/approval. No live transfer yet |
+| Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | Deploy merged Convex backend; supply controller treasury address; complete Wallet MCP authentication; run real funding/payout. Live buyer balance verified at 20 USDC; no live transfer yet |
 | Finance agent | Server payment proposal, independent approval, durable refused self/agent approval audit and exact dashboard projections | Model explanation/tool loop, Workflow wait, approved-command execution |
 | Sponsors | Requirements checked against Devpost and the briefs | Working integrations; Coinbase eligibility checklist per member |
 
@@ -46,3 +46,24 @@ Payment work reuses the existing schema without additions. `convex/payments.ts` 
 The public facilitator was queried live and advertises V2 `exact` on Base Sepolia. A live RPC query returned chain ID 84532 and zero USDC/ETH for buyer `0xa54DABc8583B869d488d63d691EC5d6a256c1a9D`. No signed payment or transaction was sent. The private testnet key and service secret are outside source control with mode 600. The service secret is installed in the shared Convex deployment; payment functions must be deployed together with the concurrent backend builder's newer verifier functions.
 
 `pnpm check` includes package, Convex and actual Next/x402 route tests plus typechecks, docs validation and the production build. Payment tests use synthetic chain/facilitator evidence. They do not prove a live settlement. See [payment setup and handoff](payments.md) for the browser hook, MCP arguments and recovery procedure.
+
+## Live funding preflight (October 25, 2026)
+
+A live Base Sepolia RPC read returned chain ID `84532` and `20000000` micro-USDC
+(20 USDC) for buyer `0xa54DABc8583B869d488d63d691EC5d6a256c1a9D`.
+The shared Convex payment service secret is synchronized with the private local
+configuration. No treasury address has been configured: the wallet web session
+requires human sign-in. The local funding endpoint returns HTTP 503 with
+`treasury_not_configured`, and no funding authorization or transfer was sent.
+There is no transaction hash or BaseScan funding link to report.
+
+Wallet MCP is configured as `base-mcp` at `https://wallet-mcp.coinbase.com` in
+both Claude Code and Codex. Claude Code reports `Needs authentication`;
+configuration alone is not a connected wallet session. A human must sign in to
+the existing Coinbase Wallet, authorize the MCP connection, and provide its
+Base Sepolia receiving address. No wallet was created, credentials entered,
+message signed or transaction approved during this preflight.
+
+`pnpm check` passed: typechecks, 74 package tests, 49 Convex tests, 24 payment
+tests, documentation checks and the production build. These tests use synthetic
+payment evidence and do not establish live settlement.
