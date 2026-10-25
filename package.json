@@ -26,7 +26,9 @@
     "cdp:policy:apply": "node scripts/cdp-policy-apply.ts",
     "demo:policy": "node scripts/cdp-policy-demo.ts",
     "agent:buy-evidence": "node packages/payments/src/agent-buy-evidence.ts",
-    "agent:validate-evidence": "node packages/payments/src/agent-validate-evidence.ts"
+    "agent:validate-evidence": "node packages/payments/src/agent-validate-evidence.ts",
+    "cdp:webhooks:create": "node scripts/cdp-webhooks-create.mjs",
+    "cdp:sql:witness": "node scripts/cdp-sql-witness.mjs"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "1.60.0",
