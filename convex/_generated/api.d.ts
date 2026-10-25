@@ -64,6 +64,7 @@ import type * as liveness from "../liveness.js";
 import type * as media from "../media.js";
 import type * as orders from "../orders.js";
 import type * as payments from "../payments.js";
+import type * as proof from "../proof.js";
 import type * as policy from "../policy.js";
 import type * as lib_policyReview from "../lib/policyReview.js";
 import type * as provenance from "../provenance.js";
@@ -144,6 +145,7 @@ declare const fullApi: ApiFromModules<{
   media: typeof media;
   orders: typeof orders;
   payments: typeof payments;
+  proof: typeof proof;
   policy: typeof policy;
   "lib/policyReview": typeof lib_policyReview;
   provenance: typeof provenance;

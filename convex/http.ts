@@ -63,3 +63,7 @@ http.route({ path: "/mcp", method: "GET", handler: mcpHandler });
 // Additive auth endpoints; keep Jira, MCP and agent discovery routes intact.
 import { auth } from "./auth";
 auth.addHttpRoutes(http);
+
+import { handle as proofHandler } from "./proofPublic";
+http.route({ path: "/proof.json", method: "GET", handler: proofHandler });
+http.route({ path: "/proof.json", method: "OPTIONS", handler: preflight });

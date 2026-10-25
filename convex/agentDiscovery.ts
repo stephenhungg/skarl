@@ -21,6 +21,7 @@ export const llmsText = `# Skarl
 - Agent card: ${AGENT_ORIGIN}/.well-known/agent-card.json (A2A v0.3-style metadata only; no A2A message/send endpoint).
 - MCP discovery: ${AGENT_ORIGIN}/.well-known/mcp.json
 - OpenAPI: ${AGENT_ORIGIN}/openapi.json
+- Public sponsor proof: ${AGENT_ORIGIN}/proof.json?orderId=PUBLIC_ORDER_ID (redacted, explicitly public demo orders only; missing evidence is labelled).
 - Agent docs and client configuration: ${docsUrl}
 - Claude skill: https://github.com/stephenhungg/skarl/tree/main/integrations/claude-skill/skarl
 
@@ -56,6 +57,7 @@ export const agentCard = {
   preferredTransport: "JSONRPC",
   version: "0.1.0",
   documentationUrl: docsUrl,
+  proofUrl: `${AGENT_ORIGIN}/proof.json?orderId=PUBLIC_ORDER_ID`,
   capabilities: { streaming: false, pushNotifications: false },
   securitySchemes: { bearerAuth: bearer },
   security: [{}, { bearerAuth: [] }],

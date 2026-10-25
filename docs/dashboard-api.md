@@ -9,6 +9,70 @@
 
 Handoff for MatthewKim323. Snapshot queried with `pnpm exec convex run` on October 25, 2026 against **https://keen-marmot-986.convex.cloud**; no deployment performed. Examples below omit metadata and long evidence strings. Mutation success shapes are **source-derived, not live executions** unless stated otherwise.
 
+## Sponsor proof
+
+Source API; an operator must deploy Convex before these new functions or the HTTP
+route are available. Every dashboard surface uses one reactive query; the entire
+proof page can use `api.proof.summary`. All queries require `demoIdentity: string`
+(ignored for signed-in callers) and the existing dashboard read authority:
+the owning buyer, legacy controller, or finance-agent in the same organization.
+Proof keeps the owning-buyer restriction even where shared dashboard helpers
+grant buyers broader operational reads within their organization.
+Contributors cannot read these financial projections. Money and counts are decimal
+integer strings; timestamps are epoch milliseconds. `missing: string | null`
+names absent evidence. An empty array or a missing timestamp is never success.
+
+| Query | Additional arguments | Result |
+| --- | --- | --- |
+| `proof.bank4Way` | `orderId: Id<"orders">` | Canonical four-way reconciliation, `bankExceptions`, snapshot time and availability. Label **Mock bank (Capital One Nessie)**; `simulated: true` applies to the bank witness. |
+| `proof.agentWallet` | None | Configured `address`, BaseScan `explorerUrl`, `policyId`, `capAtomic`, `executorMode` from `PAYOUT_EXECUTOR`; separately labelled `recorded` policy and `recordedRejections` with source links. |
+| `proof.payouts` | `orderId` | `rows` with intent, exact amount, tx/explorer links, attempts, validated observations, `chainObserved`, status and executor evidence gap. Only a confirmed intent with one exact, successful, sufficiently confirmed transfer is `paid`. |
+| `proof.fundingTimeline` | `orderId` | `rows` per funding intent with rail label, observations, matching webhooks and ordered `steps`: `402`, `signed`, `settled`, `webhook`, `chain`. Each step has timestamp, evidence and missing reason. |
+| `proof.attestations` | `orderId` | `rows` per submission with current confirmed attestation and EASScan/BaseScan links, or its prerequisite. |
+| `proof.guard` | None | SKARL Jira project link, visible reconciliation snapshot exception count, and explicit missing mirror/sync/uncertain-write evidence. Agents cannot approve payments. |
+| `proof.convexFeatures` | None | Actual cron registrations and HTTP router entries, approval Workflow references, visible storage asset count, Node action inventory and scheduledData checkpoint timestamps/statuses. |
+| `proof.jury` | `submissionId: Id<"submissions">` | Source-bound visual judges, per-criterion verdicts/agreement, model runs and recorded latency. Audio runs do not count as a second visual judge; unavailable inference has no agreement. Advisory only. |
+| `proof.agentRuns` | `orderId` | `rows` with provider/model badges and dispatcher `toolRefusals`, scoped audit `refusalEvents`, persisted `approvals` and `policyEngine` flags; missing refusal/approval prerequisites. |
+| `proof.summary` | `orderId` | `bank4Way`, `agentWallet`, `payouts`, `fundingTimeline`, `attestations`, `guard`, `convexFeatures`, `agentRuns`, and `jury.rows` for all submissions. Organization-wide cards retain the caller's visible order scope. |
+
+```tsx
+const proof = useQuery(api.proof.summary, { demoIdentity, orderId });
+// Render proof.payouts.rows[i].status; never replace it with payableStatus.
+// Keep simulated/testnet labels, missing reasons, and external evidence links visible.
+```
+
+`GET https://keen-marmot-986.convex.site/proof.json?orderId=PUBLIC_ORDER_ID`
+is keyless, read-only and redacted. It uses the same explicit public-order boundary
+as guest MCP: the published v2 demo and fixed outsider demo orders only. A private
+order ID returns 404 even with a bearer header. Exactly one
+`orderId` parameter is accepted (extra parameters return 400). The route shares
+the existing durable discovery abuse budget (429 with `Retry-After`); its only
+write consumes that anonymous budget, never business or financial state. Responses disable
+caching and allow browser GET/OPTIONS. The allowlist contains order quota counts,
+validated funding transaction/explorer links, a count of chain-observed payouts,
+confirmed current EAS links, testnet/simulation labels and missing prerequisites.
+It omits identities, addresses, private text/media, raw documents, internal payment
+records and outgoing transaction identities. Discovery links appear in `/llms.txt`
+and the agent card's `proofUrl`. Public proof never impersonates a demo role.
+
+Current evidence limits are deliberate: HTTP 402 issuance and facilitator receipts
+are not persisted, so the timeline cannot invent their timestamps; payout attempts
+do not retain their historical executor; Jira mirrors, last sync and uncertain
+writes live in Forge KVS and are not available in Convex. The Guard count is from
+scheduled reconciliation snapshots, **not confirmed Jira mirrors**. Cron checkpoint
+timestamps are last checkpoint updates, not evidence that every cron or external
+side effect succeeded. Attestation/bank crons have no scheduledData run timestamp.
+Buyer views omit organization-wide job checkpoints to avoid leaking other orders.
+
+No new secret or env change is required to serve proof. For the wallet card, the
+operator should ensure existing `CDP_AGENT_ADDRESS`, `CDP_AGENT_POLICY_ID` and
+`PAYOUT_EXECUTOR` reflect the intended deployment. Optional
+`CDP_PAYOUT_CAP_ATOMIC` displays the configured integer cap, with a label that this
+is configuration rather than a live CDP inspection. The separately recorded cap
+and rejection evidence are dated in [agent-wallet.md](agent-wallet.md). This task
+does not deploy, enable an executor, configure credentials or verify external calls.
+G2 remains the existing scenario API; G12 remains the separate tax-ledger API.
+
 ## Buyer-signed policy and Review
 
 Current source changes require operator deployment; dated live examples below do not establish that auto-pay has run. The product has two humans: buyer and contributor. The agent proposes; the buyer-signed policy (or the buyer in review) approves; an independent CDP cap guards execution. The buyer’s **Review** queue contains exceptions only: failed clip checks, duplicates, over-cap payouts and bank/chain mismatches. Keep the exact reason and supporting evidence visible. Legacy `controller` selectors and routes remain compatibility APIs. Order review and financial reads use owning-organization buyer authority; creation and auto-pay policy changes still bind to the individual order buyer.

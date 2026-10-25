@@ -162,6 +162,19 @@ Never fund `skarl-policy-probe`.
 
 ## Demonstration and evidence
 
+### Recorded finance-account policy rejections — October 25, 03:05 PDT
+
+The [dated live trace](status.md#live-retry-after-recovery-deployment--october-25-2026-0305-pdt)
+records the finance account `0x0A9EfDF66c58543538824906aE267B969Ed651c5`,
+policy `fa62ac94-e420-4013-bb4f-2dcab18deb7b`, and a per-transfer cap of
+`2000000` micro-USDC. Actual send requests for `2000001` micro-USDC
+(over cap) and `100000` micro-USDC (non-allowlisted recipient) returned
+HTTP 403 `policy_violation`, correlations `a5006791aba9be62-IAD` and
+`a500679519ddbe62-IAD`. Neither returned a transaction hash. These are
+recorded external rejections, separate from simulations and from the current
+runtime configuration. They do not establish a contributor payout or today's
+policy state. `proof.agentWallet` labels this evidence separately.
+
 ```sh
 CDP_PAYOUT_CAP_ATOMIC=2000000 pnpm demo:policy APPROVED_INTENT_ID
 # Equivalent direct command:
