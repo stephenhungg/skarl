@@ -33,7 +33,7 @@ export function Hero() {
         }}
       >
         <ResilientCanvas className="h-full w-full">
-          <ContourTide className="h-full w-full" colors={["#7d8c76", "#eef8e3"]} backgroundColor="#10120e" horizon={0.12} interactive={false} clickRipples={false} />
+          <ContourTide className="h-full w-full" colors={["#7d8c76", "#eef8e3"]} backgroundColor="#10120e" horizon={0.12} interactive={false} clickRipples={false} blocks={1} />
         </ResilientCanvas>
       </motion.div>
 

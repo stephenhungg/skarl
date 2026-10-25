@@ -26,6 +26,8 @@ export interface ContourTideProps {
   horizon?: number;
   fog?: number;
   glow?: number;
+  /** 0 is open water; 1 breaks the surface into square blocks riding the swell, with pulses running between them. */
+  blocks?: number;
   foam?: number;
   speed?: number;
   interactive?: boolean;
@@ -157,9 +159,15 @@ uniform float uSize;
 uniform float uFocal;
 uniform float uPixelRatio;
 uniform float uGlow;
+uniform float uBlocks;
 
 varying float vBright;
 varying float vTone;
+
+const float BLOCK = 0.32;
+const float GAP = 0.12;
+
+float blockHash(float n) { return fract(sin(n * 127.1) * 43758.5453); }
 
 void main() {
   float depth = gridDepth(aGrid.y + aJitter.y / uRows);
@@ -170,6 +178,27 @@ void main() {
   float fold;
   float swell;
   vec3 world = surfacePoint(ground, normal, fold, swell);
+
+  // Blocks: every particle in a square cell rides the swell at its cell centre, so the surface reads as
+  // flat tiles. Particles in the thin gaps between tiles stay dim, and some gap rows carry a travelling pulse.
+  vec2 cellId = floor(ground / BLOCK);
+  vec2 local = fract(ground / BLOCK);
+  float inGap = 1.0 - step(GAP, local.x) * step(local.x, 1.0 - GAP) * step(GAP, local.y) * step(local.y, 1.0 - GAP);
+  float pulse = 0.0;
+  if (uBlocks > 0.0) {
+    vec2 centre = (cellId + 0.5) * BLOCK;
+    vec3 cn; float cf; float cs;
+    vec3 cw = surfacePoint(centre, cn, cf, cs);
+    vec3 tiled = cw + vec3(ground.x - centre.x, 0.0, ground.y - centre.y);
+    world = mix(world, tiled, uBlocks);
+    normal = normalize(mix(normal, cn, uBlocks));
+    fold = mix(fold, cf, uBlocks);
+    float rowHash = blockHash(cellId.y);
+    float onRow = step(0.72, rowHash) * step(local.y, GAP);
+    float front = mod(uTime * (1.4 + rowHash * 1.2) + rowHash * 37.0, 24.0) - 12.0;
+    float behind = front - ground.x;
+    pulse = onRow * (exp(-behind * behind * 40.0) * 1.0 + step(0.0, behind) * exp(-behind * 2.2) * 0.45) * uBlocks;
+  }
   vec3 offset = vec3(world.x - ground.x, world.y, world.z - ground.y);
   vec4 view = viewMatrix * vec4(world, 1.0);
   gl_Position = projectionMatrix * view;
@@ -188,7 +217,9 @@ void main() {
   float edgeOn = clamp(abs(dot(n, toEye)) / 0.35, 0.06, 1.0);
   float pileUp = mix(edgeOn, 1.0, smoothstep(uNear * 3.0, uNear * 14.0, depth));
   float brightness = (0.24 + 0.05 * lit + 0.9 * fresnel * distant + (glint * 2.6 + 2.4 * crest * crest * crest + froth * 2.6) * mix(0.3, 1.0, distant)) * pileUp * near * far;
-  vTone = clamp(glint * 0.9 + crest * 0.6 + froth, 0.0, 1.0);
+  brightness *= mix(1.0, mix(1.0, 0.18, inGap), uBlocks);
+  brightness += pulse * 3.2 * near * far;
+  vTone = clamp(glint * 0.9 + crest * 0.6 + froth + pulse * 2.0, 0.0, 1.0);
 
   float pixels = uSize * uFocal / max(-view.z, 0.05) * (1.0 + crest * 0.35) * uPixelRatio;
   float coverage = min(pixels, 1.0);
@@ -313,6 +344,7 @@ interface TideSettings {
   horizon: number;
   fog: number;
   glow: number;
+  blocks: number;
   foam: number;
   speed: number;
   interactive: boolean;
@@ -419,6 +451,7 @@ const createUniforms = () => ({
   uFocal: { value: 900 },
   uPixelRatio: { value: 1 },
   uGlow: { value: 1 },
+  uBlocks: { value: 0 },
   uCursor: { value: new THREE.Vector4(0, -8, 0, 0) },
   uCursorRadius: { value: 1.2 },
   uRipple: {
@@ -655,6 +688,7 @@ const TideScene = ({ settings, pointerRef, wakeRef }: TideSceneProps) => {
     values.uFocal.value = size.height / 2 / tanHalf;
     values.uPixelRatio.value = pixelRatio;
     values.uGlow.value = clamp(s.glow, 0, 2);
+    values.uBlocks.value = clamp(s.blocks, 0, 1);
     values.uCursor.value.set(
       motion.cursorX,
       motion.cursorZ,
@@ -711,6 +745,7 @@ export const ContourTide = ({
   horizon = 0.1,
   fog = 1,
   glow = 0.35,
+  blocks = 0,
   foam = 1,
   speed = 1,
   interactive = true,
@@ -758,6 +793,7 @@ export const ContourTide = ({
     horizon,
     fog,
     glow,
+    blocks,
     foam,
     speed,
     interactive,
