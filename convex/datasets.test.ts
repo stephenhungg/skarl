@@ -344,3 +344,59 @@ describe("expiring buyer original-media grants (synthetic storage)", () => {
       submissionId: sample.submissionId, binding: exported.media.binding })).rejects.toThrow("sample_not_available");
   });
 });
+
+const contributorEarnings = makeFunctionReference<"query">("datasets:contributorEarnings");
+
+describe("contributor earnings ownership (synthetic obligations)", () => {
+  it("shows only the caller's rows, excluding another contributor in the same order and the same token in another tenant", async () => {
+    const f = await setup(), own = await delivered(f);
+    await f.t.run(async ctx => {
+      await ctx.db.insert("submissions", { organizationId: f.organizationId, orderId: f.orderId,
+        taskVersionId: f.taskVersionId, contributorTokenIdentifier: "another-contributor", status: "queued",
+        clientRequestId: "another-contributor-same-order", updatedAt: Date.now() });
+      const organizationId = await ctx.db.insert("organizations", { name: "Other organization", createdByTokenIdentifier: "other", status: "active" });
+      await ctx.db.insert("submissions", { organizationId, orderId: f.orderId, taskVersionId: f.taskVersionId,
+        contributorTokenIdentifier: CONTRIBUTOR, status: "queued", clientRequestId: "same-token-other-tenant", updatedAt: Date.now() });
+    });
+    const rows = await f.t.query(contributorEarnings, { demoIdentity: "contributor" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ submissionId: own.submissionId, orderId: f.orderId, status: "accepted",
+      amountAtomic: "9007199254740993", payableStatus: "accrued", payout: { status: "pending" } });
+    expect(rows[0]).not.toHaveProperty("media");
+  });
+
+  it("reports zero earned for a submission without a payable instead of promising the order's rate", async () => {
+    const f = await setup();
+    const submissionId = await f.t.run(ctx => ctx.db.insert("submissions", { organizationId: f.organizationId,
+      orderId: f.orderId, taskVersionId: f.taskVersionId, contributorTokenIdentifier: CONTRIBUTOR, status: "queued",
+      clientRequestId: "not-yet-accepted", updatedAt: Date.now() }));
+    const rows = await f.t.query(contributorEarnings, { demoIdentity: "contributor" });
+    expect(rows).toEqual([{ submissionId, orderId: f.orderId, status: "queued", amountAtomic: "0", payableStatus: null,
+      payout: { status: "not_payable", amountAtomic: null, txHash: null, explorerUrl: null } }]);
+  });
+
+  it("preserves an exact payable amount above JavaScript's safe integer range", async () => {
+    const f = await setup();
+    await delivered(f);
+    const rows = await f.t.query(contributorEarnings, { demoIdentity: "contributor" });
+    expect(rows[0].amountAtomic).toBe("9007199254740993");
+    expect(rows[0].payout.amountAtomic).toBe("9007199254740993");
+    expect(() => JSON.stringify(rows)).not.toThrow();
+  });
+
+  it("links a validated payout while keeping an uncertain attempt pending", async () => {
+    const f = await setup(), sample = await delivered(f), payment = await paidEvidence(f, sample);
+    const paid = (await f.t.query(contributorEarnings, { demoIdentity: "contributor" }))[0];
+    expect(paid).toMatchObject({ payableStatus: "paid", payout: { status: "paid", txHash: payment.txHash,
+      explorerUrl: `https://sepolia.basescan.org/tx/${payment.txHash}` } });
+    await f.t.run(ctx => ctx.db.patch(payment.attemptId, { status: "reconciling" }));
+    const uncertain = (await f.t.query(contributorEarnings, { demoIdentity: "contributor" }))[0];
+    expect(uncertain.payout).toMatchObject({ status: "pending", txHash: null, explorerUrl: null });
+  });
+
+  it.each(["buyer", "controller", "finance-agent"])("refuses %s access to the contributor earnings endpoint", async demoIdentity => {
+    const f = await setup();
+    await delivered(f);
+    await expect(f.t.query(contributorEarnings, { demoIdentity })).rejects.toThrow("forbidden");
+  });
+});

@@ -1037,6 +1037,23 @@ in Convex and the web server, and fails closed if it is absent. Buyer dataset
 grants do not reuse the paid sample endpoint's x402 grants. No deployment or live
 download was performed as part of this implementation.
 
+### Contributor earnings
+
+`datasets.contributorEarnings({demoIdentity: "contributor"})` returns only that
+contributor's submissions in their active organization. Buyers, controllers and
+finance agents are refused; there is no HTTP route. Each row has `submissionId`,
+`orderId`, submission `status`, exact decimal-string `amountAtomic`,
+`payableStatus` (`accrued`, `payout_in_progress`, `paid`, `reversed`, or null),
+and `payout` with `status`, `amountAtomic`, `txHash`, and `explorerUrl`.
+
+No recorded payable means `amountAtomic: "0"`, `payableStatus: null`, and
+`payout.status: "not_payable"`; an upload or the advertised order rate is not
+earned compensation. When present, `amountAtomic` is the stored obligation's
+original amount; a `reversed` obligation must not be counted as current earnings.
+Recorded obligations use the same conservative `pending`/confirmed `paid`
+projection and BaseScan links as the buyer export. No media, destination wallet,
+or another contributor's rows are returned.
+
 ## Bank witness — Capital One Nessie
 
 **Deployment required.** The additive bank witness exposes

@@ -179,3 +179,29 @@ export const originalMedia = query({
     throw new Error("sample_not_available");
   },
 });
+
+/** Only recorded obligations count as earnings; the order's rate is not a promise. */
+export const contributorEarnings = query({
+  args: { demoIdentity: v.string() },
+  handler: async (ctx, args) => {
+    const principal = await requireRole(ctx, args.demoIdentity, "contributor");
+    if (args.demoIdentity === "finance-agent" || principal.roles.includes("finance-agent")) throw new Error("forbidden");
+    const submissions = await ctx.db.query("submissions").withIndex("by_contributor", q =>
+      q.eq("organizationId", principal.organizationId).eq("contributorTokenIdentifier", principal.tokenIdentifier)).collect();
+    const orderIds = [...new Set(submissions.map(row => row.orderId))];
+    const payables = (await Promise.all(orderIds.map(async orderId => {
+      const order = await ctx.db.get(orderId);
+      if (!order) throw new Error("order_not_found");
+      requireTenant(principal, order);
+      return ctx.db.query("payables").withIndex("by_order", q => q.eq("orderId", orderId)).collect();
+    }))).flat().filter(row => row.organizationId === principal.organizationId && row.contributorTokenIdentifier === principal.tokenIdentifier);
+    return Promise.all(submissions.map(async submission => {
+      const obligations = payables.filter(row => row.submissionId === submission._id && row.orderId === submission.orderId);
+      if (obligations.length > 1) throw new Error("duplicate_payable_reference");
+      const payable = obligations[0];
+      return { submissionId: submission._id, orderId: submission.orderId, status: submission.status,
+        amountAtomic: payable?.amountAtomic.toString() ?? "0", payableStatus: payable?.status ?? null,
+        payout: payable ? await payout(ctx, payable) : { status: "not_payable" as const, amountAtomic: null, txHash: null, explorerUrl: null } };
+    }));
+  },
+});
