@@ -3,7 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps } from '@react-navigation/native';
 
-export type TabParamList = { Tasks: undefined; CaptureTab: undefined; Wallet: { segment?: 'Payouts' | 'Submissions' | 'Ledger' } | undefined; Profile: undefined };
+export type TabParamList = { Tasks: undefined; CaptureTab: undefined; Profile: { segment?: 'Payouts' | 'Submissions' | 'Ledger' } | undefined };
 export type RootParamList = {
   Welcome: undefined; Email: undefined;
   Tabs: NavigatorScreenParams<TabParamList>;

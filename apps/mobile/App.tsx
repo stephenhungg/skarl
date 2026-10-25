@@ -18,7 +18,6 @@ import { EmailScreen } from './src/screens/EmailScreen';
 import { TasksScreen } from './src/screens/TasksScreen';
 import { TaskDetailScreen } from './src/screens/TaskDetailScreen';
 import { CaptureScreen } from './src/screens/CaptureScreen';
-import { WalletScreen } from './src/screens/WalletScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { SubmissionScreen } from './src/screens/SubmissionScreen';
 
@@ -40,7 +39,6 @@ function Tabs() {
     screenOptions={{ headerShown: false, animation: 'shift', sceneStyle: { backgroundColor: c.paper } }}>
     <Tab.Screen name="Tasks" component={TasksScreen} />
     <Tab.Screen name="CaptureTab" component={Empty} />
-    <Tab.Screen name="Wallet" component={WalletScreen} />
     <Tab.Screen name="Profile" component={ProfileScreen} />
   </Tab.Navigator>;
 }

@@ -7,10 +7,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { timing } from './motion';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { colors as c, fonts as f } from '../../theme';
-import { CaptureIcon, ProfileIcon, TasksIcon, WalletIcon } from './Icons';
+import { CaptureIcon, ProfileIcon, TasksIcon } from './Icons';
 import { PressableScale } from './PressableScale';
 
-const ICONS = { Tasks: TasksIcon, Wallet: WalletIcon, Profile: ProfileIcon } as const;
+const ICONS = { Tasks: TasksIcon, CaptureTab: CaptureIcon, Profile: ProfileIcon } as const;
+const LABELS: Record<keyof typeof ICONS, string> = { Tasks: 'Tasks', CaptureTab: 'Capture', Profile: 'Profile' };
 const tap = () => { if (Platform.OS !== 'web') void Haptics.selectionAsync().catch(() => {}); };
 
 function TabItem({ name, focused, onPress }: { name: keyof typeof ICONS; focused: boolean; onPress(): void }) {
@@ -19,10 +20,10 @@ function TabItem({ name, focused, onPress }: { name: keyof typeof ICONS; focused
   const lift = useAnimatedStyle(() => ({ transform: [{ translateY: -1.5 * active.value }] }));
   const dot = useAnimatedStyle(() => ({ opacity: active.value }));
   const Icon = ICONS[name];
-  return <PressableScale accessibilityRole="tab" accessibilityState={{ selected: focused }} accessibilityLabel={name}
+  return <PressableScale accessibilityRole="tab" accessibilityState={{ selected: focused }} accessibilityLabel={LABELS[name]}
     onPress={onPress} style={s.item} scale={0.96}>
     <Animated.View style={lift}><Icon color={focused ? c.ink : c.slate300} width={focused ? 1.9 : 1.7} /></Animated.View>
-    <Text style={[s.label, focused && { color: c.ink }]}>{name}</Text>
+    <Text style={[s.label, focused && { color: c.ink }]}>{LABELS[name]}</Text>
     <Animated.View style={[s.dot, dot]} />
   </PressableScale>;
 }
@@ -35,11 +36,8 @@ export function TabBar({ state, navigation, onCapture }: BottomTabBarProps & { o
     <View style={s.row}>
       {state.routes.map((route, index) => {
         const focused = state.index === index;
-        if (route.name === 'CaptureTab') return <PressableScale key={route.key} accessibilityRole="button" accessibilityLabel="Capture"
-          onPress={() => { tap(); onCapture(); }} style={s.captureSlot} scale={0.96}>
-          <View style={s.capture}><CaptureIcon color={c.ink} width={1.7} size={24} /></View>
-          <Text style={[s.label, { color: c.ink }]}>Capture</Text>
-        </PressableScale>;
+        // Capture opens full screen instead of switching tabs, but looks like any other tab.
+        if (route.name === 'CaptureTab') return <TabItem key={route.key} name="CaptureTab" focused={false} onPress={() => { tap(); onCapture(); }} />;
         return <TabItem key={route.key} name={route.name as keyof typeof ICONS} focused={focused} onPress={() => {
           const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
           if (!focused && !event.defaultPrevented) { tap(); navigation.navigate(route.name); }
@@ -54,8 +52,6 @@ const s = StyleSheet.create({
   glass: { backgroundColor: 'rgba(253,253,250,0.78)' },
   row: { flexDirection: 'row', alignItems: 'flex-end', paddingTop: 8, paddingHorizontal: 8 },
   item: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 4 },
-  captureSlot: { flex: 1, alignItems: 'center', gap: 3 },
-  capture: { alignItems: 'center', justifyContent: 'center', paddingTop: 4 },
   label: { fontFamily: f.medium, fontSize: 11, color: c.slate300 },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: c.ink, marginTop: 1 },
 });

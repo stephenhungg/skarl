@@ -213,11 +213,11 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
     } catch (error) { setError(message(error)); return false; }
   }
 
-  async function finish(to: 'Wallet' | 'Submission') {
+  async function finish(to: 'Profile' | 'Submission') {
     const id = draft?.submissionId;
     if (!(await retake())) return;
     if (to === 'Submission' && id) navigation.replace('Submission', { submissionId: id });
-    else navigation.navigate('Tabs', { screen: 'Wallet', params: { segment: 'Submissions' } });
+    else navigation.navigate('Tabs', { screen: 'Profile', params: { segment: 'Submissions' } });
   }
 
   const wordsFresh = !!challenge && challenge.expiresAt - now >= 60_000;
@@ -315,7 +315,7 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
         {draft?.attachmentClosed && <Text style={[s.sheetMeta, { textAlign: 'center' }]}>Already reviewed, motion data not attached</Text>}
         <View style={s.reviewRow}>
           <Button kind="dark" title="Status" onPress={() => void finish('Submission')} style={{ flex: 0.6 }} />
-          <Button kind="accent" title="Done" onPress={() => void finish('Wallet')} style={{ flex: 1 }} />
+          <Button kind="accent" title="Done" onPress={() => void finish('Profile')} style={{ flex: 1 }} />
         </View>
       </Animated.View>}
     </Sheet>

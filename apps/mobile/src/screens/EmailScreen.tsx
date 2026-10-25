@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { enter } from '../components/motion';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { colors as c, fonts as f, gutter } from '../../theme';
 import { Button, H1 } from '../components/Primitives';
 import { ChevronLeft } from '../components/Icons';
