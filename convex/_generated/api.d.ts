@@ -23,6 +23,7 @@ import type * as lib_media from "../lib/media.js";
 import type * as lib_verificationReport from "../lib/verificationReport.js";
 import type * as payments from "../payments.js";
 import type * as seed from "../seed.js";
+import type * as statements from "../statements.js";
 import type * as submissions from "../submissions.js";
 import type * as validators from "../validators.js";
 import type * as verify from "../verify.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   "lib/verificationReport": typeof lib_verificationReport;
   payments: typeof payments;
   seed: typeof seed;
+  statements: typeof statements;
   submissions: typeof submissions;
   validators: typeof validators;
   verify: typeof verify;

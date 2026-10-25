@@ -9,7 +9,7 @@ Truthful state as of October 25, 2026, after the adversarial audit and the move 
 | Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads and verified contributor wallets; production auth is out of demo scope |
 | Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; live audio measured | Successful live visual response blocked by Flash 503/timeouts and Argon zero quota; real demonstration quality/copy calibration unmeasured; Python worker deferred |
 | Evaluation | Scoring scaffolding | Deferred: no labeled corpus. Staged demo clips only |
-| Ledger | Audited pure helpers plus atomic Convex journal/line persistence, fulfillment accrual, event fingerprints and replay protection | Live funding/payout settlement and reconciliation evidence |
+| Ledger | Atomic journal persistence; journal-derived trial balance, cash, deferred revenue, revenue/expense and payables by contributor; exact replay protection | Live payout settlement and end-to-end reconciliation evidence |
 | Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | First x402 funding recorded below; v2 read-back is funded with 10000000 micro-USDC cash and deferred revenue. Complete the independent approval, wallet payout and reconciliation demo |
 | Finance agent | Gemini function-calling action; six typed tools; persisted transcript/explanation; cumulative exact batch and call caps; existing proposal and refused approval audits | Live model measurement below; durable Workflow approval wait implemented; wallet execution remains separate |
 | Sponsors | Requirements checked against Devpost and the briefs | Working integrations; Coinbase eligibility checklist per member |
@@ -193,3 +193,20 @@ actual event wait/resume through the component test adapter. The shared cloud
 deployment installed `workflow`, its Workpool and batch worker successfully.
 A separate live query read v2 as funded with exactly `10000000` micro-USDC cash
 and customer prepayments; that read does not demonstrate a live approval/payout.
+
+## Task 3 — financial statements
+
+`statements.forOrder` derives the trial balance, cash, deferred revenue, sales,
+contributor expense, net income and contributor liabilities directly from posted
+journal lines. It asserts per-entry balance and tenant bindings, and returns
+exact integer micro-USDC strings. The finance agent's balance tool uses this
+same query. Nine new synthetic regressions cover the full funding/fulfillment/
+payout lifecycle, contributor and order scoping, values above JavaScript's safe
+integer range and corrupt journals that cancel only at aggregate level.
+
+Statements validation: `pnpm check` passed 74 package, 156 Convex and 24
+payment-route tests plus typechecks/docs/build; cloud deploy/typecheck passed.
+One live query took **145 ms** and returned cash `10000000`, deferred revenue
+`10000000`, revenue `0`, and equal debit/credit totals of `10000000` micro-USDC.
+This is a current journal projection of the funded v2 order, not new inference
+or a new transfer.

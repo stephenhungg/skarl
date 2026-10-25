@@ -85,3 +85,27 @@ Raw clips, personal data, and consent documents remain access-controlled offchai
 ## Verification boundary
 
 `packages/ledger/src/index.test.ts` checks exact amount parsing, balanced postings, the complete $100 lifecycle, event retries/conflicts, over-refunds, cross-order/contributor leakage, and append-only reversals. These are pure unit checks. They do not prove authentication, concurrent Convex behavior, correct AI acceptance, a working x402 integration, or successful Base settlement. Each of those requires its own integration evidence.
+
+## Implemented journal-derived statements
+
+`statements.forOrder({demoIdentity:"controller",orderId})` returns a reactive
+finance-only projection for an order. `finance-agent` may also query it. All
+monetary values are decimal integer micro-USDC strings, including signed net
+amounts; no float-dollar conversion occurs.
+
+The response contains `trialBalance` (account debit, credit and net debit,
+total debits/credits, and an asserted balanced flag), `cashAtomic`,
+`deferredRevenueAtomic`, `revenueAtomic`, `contributorExpenseAtomic`,
+`netIncomeAtomic`, and sorted `payablesByContributor` rows with contributor token
+identifier and `amountAtomic`. Cash is the USDC account's debit-minus-credit;
+liabilities/revenue are credit-minus-debit; net income is revenue less contributor
+expense under the demo's principal model. Paid contributors may remain with zero
+liability. Gas, inference expense, taxes and other unposted costs are not inferred.
+
+This projection reads posted journal entries and lines, not wallet balances or
+estimated payable totals. Each entry must balance independently; offsetting
+corrupt entries cannot make a valid trial balance. Entry/line tenant and source
+bindings are checked, and contributor-payable lines require contributor
+attribution. A broken invariant raises an error rather than displaying a false
+balanced statement. The finance agent's `getTrialBalance` tool reads this same
+query. No statement query posts, adjusts or reverses a journal.
