@@ -617,6 +617,11 @@ channels/array explicitly mean unavailable. Timestamp order is strict per
 channel and nondecreasing across channels, bounded by duration; sample rates are capped, vectors finite/bounded,
 unknown fields rejected. Acceleration is **g including gravity**, gyro **rad/s**,
 and DeviceMotion linear acceleration **m/s² excluding gravity**.
+Version 1 also permits `attitude` (x/y/z = alpha/beta/gamma **radians**) and
+`gravity` (**m/s²**, including-gravity acceleration minus linear acceleration).
+The old three-channel example remains valid. Up to five channels and 31,000
+samples are allowed, still within 2 MiB; the mobile client caps each channel at
+50 Hz. Deploy the updated validators before attaching five-channel uploads.
 
 `media:submissionEvidence` adds this field (null when absent):
 
@@ -630,6 +635,8 @@ sensorTrace: {
     accelRmsG: number | null,
     gyroRmsRadPerSec: number | null,
     linearAccelerationRmsMps2: number | null,
+    meanTiltDegrees?: number | null, // portrait horizon roll; absent in legacy summaries
+    steadinessRatio?: number | null, // fraction of gyro samples <=0.15 rad/s
     activeMotionIntervals: Array<{ startMs: number; endMs: number }>,
     bins: Array<{
       startMs: number; endMs: number; sampleCount: number;

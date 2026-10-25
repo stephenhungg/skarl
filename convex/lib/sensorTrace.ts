@@ -1,6 +1,7 @@
 /** Untrusted client IMU evidence. Validation and summaries confer no acceptance authority. */
 export const MAX_SENSOR_TRACE_BYTES = 2 * 1024 * 1024;
-const NAMES = ["accelerometer", "gyroscope", "deviceMotion"] as const;
+const NAMES = ["accelerometer", "gyroscope", "deviceMotion", "attitude", "gravity"] as const;
+const STEADY_GYRO_RAD_PER_SEC = 0.15;
 type Sensor = typeof NAMES[number];
 interface Sample { sensor: Sensor; timestampMs: number; x: number; y: number; z: number }
 interface Device {
@@ -43,11 +44,13 @@ export function validateSensorTrace(value: unknown): Trace {
   const device: Device = { model: string(info.model), os: string(info.os), osVersion: string(info.osVersion), appVersion: string(info.appVersion),
     cameraFacing: "back", requestedVideoQuality: "720p", ...(info.resolution === undefined ? {} : { resolution: string(info.resolution) }),
     ...(info.fps === undefined ? {} : { fps: finite(info.fps, 1, 240) }) };
-  if (!Array.isArray(raw.sensors) || raw.sensors.length > 3) return fail();
+  if (!Array.isArray(raw.sensors) || raw.sensors.length > 5) return fail();
   const sensors = raw.sensors.map(sensor);
   if (new Set(sensors).size !== sensors.length) return fail();
   // An empty trace explicitly records sensor unavailability; it is not stationary evidence.
-  if (!Array.isArray(raw.samples) || raw.samples.length > 18_600) return fail();
+  // Five channels, 31 seconds, up to 200 callbacks/second. The upload's independent
+  // 2 MiB byte limit still applies; this count does not enlarge stored uploads.
+  if (!Array.isArray(raw.samples) || raw.samples.length > 31_000) return fail();
   const last = new Map<Sensor, number>(), counts = new Map<string, number>();
   let previousTimestamp = -1;
   const samples = raw.samples.map((value): Sample => {
@@ -70,16 +73,26 @@ export function validateSensorTrace(value: unknown): Trace {
 
 export function summarizeMotion(trace: Trace) {
   type Accumulator = { count: number; sumSquares: number };
-  const empty = (): Record<Sensor, Accumulator> => ({ accelerometer: { count: 0, sumSquares: 0 }, gyroscope: { count: 0, sumSquares: 0 }, deviceMotion: { count: 0, sumSquares: 0 } });
+  const empty = (): Record<Sensor, Accumulator> => ({ accelerometer: { count: 0, sumSquares: 0 }, gyroscope: { count: 0, sumSquares: 0 },
+    deviceMotion: { count: 0, sumSquares: 0 }, attitude: { count: 0, sumSquares: 0 }, gravity: { count: 0, sumSquares: 0 } });
   const total = empty();
+  let tiltSumDegrees = 0, tiltCount = 0, steadyGyroCount = 0;
   const buckets = Array.from({ length: Math.ceil(trace.durationMs / 250) }, () => ({ ...empty(), active: false }));
   for (const sample of trace.samples) {
     const squared = sample.x ** 2 + sample.y ** 2 + sample.z ** 2;
     const magnitude = Math.sqrt(squared), bucket = buckets[Math.min(buckets.length - 1, Math.floor(sample.timestampMs / 250))]!;
     for (const accumulator of [total[sample.sensor], bucket[sample.sensor]]) { accumulator.count++; accumulator.sumSquares += squared; }
     const active = sample.sensor === "accelerometer" ? Math.abs(magnitude - 1) > 0.08
-      : sample.sensor === "gyroscope" ? magnitude > 0.15 : magnitude > 0.8;
+      : sample.sensor === "gyroscope" ? magnitude > STEADY_GYRO_RAD_PER_SEC
+      : sample.sensor === "deviceMotion" && magnitude > 0.8;
     bucket.active ||= active;
+    if (sample.sensor === "gyroscope" && magnitude <= STEADY_GYRO_RAD_PER_SEC) steadyGyroCount++;
+    if (sample.sensor === "gravity" && magnitude > 0 && Math.hypot(sample.x, sample.y) >= 0.1 * magnitude) {
+      // Portrait horizon roll, not forward pitch. When looking straight up/down,
+      // gravity projects poorly onto the image plane, so no level claim is made.
+      tiltSumDegrees += Math.atan2(Math.abs(sample.x), Math.abs(sample.y)) * 180 / Math.PI;
+      tiltCount++;
+    }
   }
   const rms = (item: Accumulator) => item.count ? Math.sqrt(item.sumSquares / item.count) : null;
   const values = (item: Record<Sensor, Accumulator>) => ({ accelRmsG: rms(item.accelerometer), gyroRmsRadPerSec: rms(item.gyroscope), linearAccelerationRmsMps2: rms(item.deviceMotion) });
@@ -92,5 +105,8 @@ export function summarizeMotion(trace: Trace) {
     if (last && last.endMs === bin.startMs) last.endMs = bin.endMs;
     else activeMotionIntervals.push({ startMs: bin.startMs, endMs: bin.endMs });
   }
-  return { source: "clientReported" as const, version: 1 as const, binWidthMs: 250 as const, ...values(total), activeMotionIntervals, bins };
+  return { source: "clientReported" as const, version: 1 as const, binWidthMs: 250 as const, ...values(total),
+    meanTiltDegrees: tiltCount ? tiltSumDegrees / tiltCount : null,
+    steadinessRatio: total.gyroscope.count ? steadyGyroCount / total.gyroscope.count : null,
+    activeMotionIntervals, bins };
 }

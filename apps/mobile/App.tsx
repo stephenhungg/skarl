@@ -12,6 +12,7 @@ import * as Crypto from 'expo-crypto';
 import { ConvexProvider, ConvexReactClient, useConvex, useConvexConnectionState, useQuery } from 'convex/react';
 import { api, identity, usdc } from './src/api';
 import { availableSensors, startTrace, type Sensor } from './src/sensors';
+import { createMotionCoach, type MotionCoaching } from './src/motionCoach';
 import { clearDraft, loadDraft, saveDraft, submitDraft, type Draft } from './src/upload';
 
 const url = process.env.EXPO_PUBLIC_CONVEX_URL;
@@ -58,6 +59,9 @@ function Contribute() {
   const [ready, setReady] = useState(false);
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [recording, setRecording] = useState(false);
+  const [coaching, setCoaching] = useState<MotionCoaching>({ steady: null, tilted: null });
+  const motionCoach = useRef(createMotionCoach());
+  const motionStartedAt = useRef(0);
   const [elapsed, setElapsed] = useState(0);
   const recordedDuration = useRef(0);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -72,6 +76,17 @@ function Contribute() {
   const interrupted = useRef(false);
   const permitted = cameraPermission?.granted && micPermission?.granted;
   const closed = summary && ['closed', 'cancelled', 'cancelling', 'fulfilled', 'refunded'].includes(summary.order.status);
+
+  useEffect(() => {
+    if (!recording) return;
+    // Read at 10 Hz instead of rerendering for every sensor sample. The timer
+    // also clears stale advice if native callbacks stop while the camera runs.
+    const timer = setInterval(() => {
+      const next = motionCoach.current.status(performance.now() - motionStartedAt.current);
+      setCoaching(previous => previous.steady === next.steady && previous.tilted === next.tilted ? previous : next);
+    }, 100);
+    return () => clearInterval(timer);
+  }, [recording]);
 
   useEffect(() => {
     let mounted = true;
@@ -105,7 +120,10 @@ function Contribute() {
     if (!camera.current || !context || !ready || !consent || captureBusy.current) return;
     captureBusy.current = true; interrupted.current = false; recordedDuration.current = 0; setError(null); setElapsed(0); setRecording(true);
     try {
-      trace.current = startTrace(sensors);
+      motionCoach.current = createMotionCoach();
+      setCoaching({ steady: null, tilted: null });
+      motionStartedAt.current = performance.now();
+      trace.current = startTrace(sensors, sample => motionCoach.current.sample(sample));
       const result = await camera.current.recordAsync({ maxDuration: 30, maxFileSize: 24 * 1024 * 1024, codec: 'avc1', progressUpdateInterval: 0.1 });
       const data = trace.current.stop();
       if (interrupted.current) throw new Error('Recording was interrupted. Keep Skarl open and record a new take.');
@@ -177,7 +195,7 @@ function Contribute() {
       <CardTitle step="02" title="Consent" aside={<Pill>{consent ? 'AGREED' : 'REQUIRED'}</Pill>} />
       <Text style={s.body}>The camera stays off until you agree to all the terms.</Text>
       {CONSENT.map(text => <View key={text} style={s.consentRow}><Text style={s.label}>{text}</Text></View>)}
-      <Text style={s.body}>I also agree to share synchronized accelerometer, gyroscope and device motion data with this contribution. No location is collected.</Text>
+      <Text style={s.body}>I also agree to share synchronized accelerometer, gyroscope and device motion data, including phone orientation and gravity, with this contribution. No location is collected.</Text>
       <Pressable accessibilityRole="checkbox" accessibilityLabel="I agree to all contribution and sensor terms" accessibilityState={{ checked: consent, disabled: busy || recording }} disabled={busy || recording}
         onPress={() => { setConsent(!consent); if (consent) { setEnabled(false); setReady(false); } }} style={s.consentRow}>
         <View style={[s.checkbox, consent && { backgroundColor: c.accent }]}><Text style={s.checkText}>{consent ? '✓' : ''}</Text></View>
@@ -189,9 +207,15 @@ function Contribute() {
       <CardTitle step="03" title="Record" aside={recording ? <Pill tone="accent">RECORDING</Pill> : undefined} />
       <Text style={s.body}>Set the camera where it can see both cups and the coaster, then narrate as you go. Takes run 10 to 30 seconds and stop on their own at 30.</Text>
       {enabled && permitted && consent
-        ? <CameraView ref={camera} style={s.camera} facing="back" mode="video" videoQuality="720p" videoBitrate={4_000_000} mute={false}
+        ? <View style={s.camera}>
+          <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode="video" videoQuality="720p" videoBitrate={4_000_000} mute={false}
           onRecordingProgress={event => { recordedDuration.current = event.duration * 1000; setElapsed(recordedDuration.current); }}
           onCameraReady={() => setReady(true)} onMountError={event => { setReady(false); setError(event.message); }} />
+          {recording && <View pointerEvents="none" style={s.coaching}>
+            <Pill tone={coaching.steady === null ? 'strong' : 'accent'}>{coaching.steady === null ? 'Motion unavailable' : coaching.steady ? 'Steady' : 'Hold still'}</Pill>
+            {coaching.tilted && <Pill tone="accent">Level the phone</Pill>}
+          </View>}
+        </View>
         : <View style={[s.camera, s.placeholder]}><Text style={[s.placeholderText, { fontFamily: f.regular, fontSize: 18 }]}>Camera is off</Text><Text style={s.placeholderText}>Agree to the consent terms to turn it on.</Text><Text style={s.cameraMeta}>BACK CAMERA · PORTRAIT</Text></View>}
       {enabled && <Text style={s.meta}>{sensors.length ? `Motion capture: ${sensors.join(', ')} · target 50 Hz` : 'Motion unavailable or permission denied. The trace will explicitly contain no samples.'}</Text>}
       <Text style={recording ? s.meta : s.body}>{recording ? `${(elapsed / 1000).toFixed(1)} / 30 seconds · recording video, audio and motion` : 'Keep the camera fixed as the task asks. Include red and blue cups and the marked coaster.'}</Text>
@@ -262,6 +286,7 @@ const s = StyleSheet.create({
   checkbox: { width: 20, height: 20, borderRadius: 5, backgroundColor: c.haze, alignItems: 'center', justifyContent: 'center' },
   checkText: { fontSize: 14, color: c.accentInk },
   camera: { width: '100%', aspectRatio: 9 / 16, borderRadius: 10, overflow: 'hidden', backgroundColor: c.ink },
+  coaching: { position: 'absolute', top: 12, left: 12, right: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   placeholder: { justifyContent: 'center', alignItems: 'center', padding: 18, gap: 10 },
   placeholderText: { fontFamily: f.book, color: c.haze, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   cameraMeta: { fontFamily: f.mono, color: c.slate300, fontSize: 10, marginTop: 14 },
