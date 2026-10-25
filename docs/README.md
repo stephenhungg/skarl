@@ -27,6 +27,7 @@ Research checked October 24, 2026; updated October 25 after the audit and the mo
 | [Dashboard API handoff](dashboard-api.md) | Exact live query/mutation contracts, demo identities, refusals and browser payout signing |
 | [Payments](payments.md) | How do x402 funding on Base Sepolia, Coinbase Wallet MCP, payouts and uncertain transactions work? |
 | [Finance agent](finance-agent.md) | How do typed tools, proposals, approvals and agent evaluations work? |
+| [Remote MCP](mcp.md) | How does a personal AI agent connect to Skarl, order data and read witnesses without settlement authority? |
 | [Accounting](accounting.md) | What gets posted, when, and how do we reconcile it? |
 | [Security](security.md) | Where are identities, secrets, media and payment permissions enforced? |
 | [Deployment](deployment.md) | How do the web app, Convex and Gemini connect (Python worker deferred)? |

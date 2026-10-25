@@ -51,3 +51,8 @@ http.route({ path: "/openapi.json", method: "GET", handler: apiSpec });
 for (const path of ["/llms.txt", "/.well-known/agent-card.json", "/.well-known/mcp.json", "/openapi.json"]) {
   http.route({ path, method: "OPTIONS", handler: preflight });
 }
+
+// Append-only integration: preserve the concurrently maintained Jira feed.
+import { handle as mcpHandler } from "./mcp";
+http.route({ path: "/mcp", method: "POST", handler: mcpHandler });
+http.route({ path: "/mcp", method: "GET", handler: mcpHandler });
