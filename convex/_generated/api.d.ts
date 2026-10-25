@@ -22,6 +22,7 @@ import type * as lib_gemini from "../lib/gemini.js";
 import type * as lib_media from "../lib/media.js";
 import type * as lib_verificationReport from "../lib/verificationReport.js";
 import type * as payments from "../payments.js";
+import type * as review from "../review.js";
 import type * as seed from "../seed.js";
 import type * as statements from "../statements.js";
 import type * as submissions from "../submissions.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   "lib/media": typeof lib_media;
   "lib/verificationReport": typeof lib_verificationReport;
   payments: typeof payments;
+  review: typeof review;
   seed: typeof seed;
   statements: typeof statements;
   submissions: typeof submissions;

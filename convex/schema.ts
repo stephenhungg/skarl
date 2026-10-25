@@ -259,6 +259,8 @@ export default defineSchema({
     analysisResultId: v.optional(v.id("analysisResults")),
     taskVersionId: v.id("rubricVersions"),
     decisionKey: v.string(),
+    reasonCode: v.optional(v.string()),
+    note: v.optional(v.string()),
     decision: v.union(
       v.literal("accepted"),
       v.literal("rejected"),

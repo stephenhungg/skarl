@@ -10,27 +10,25 @@ import { compareFrameHashes } from "./lib/copyDetection";
 import { createFulfillmentJournal } from "../packages/ledger/src/index";
 import { MAX_ATOMIC_USDC, PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
 
-async function authorize(ctx: MutationCtx, identity: string, roles: DemoRole | readonly DemoRole[]) {
+export async function authorize(ctx: MutationCtx, identity: string, roles: DemoRole | readonly DemoRole[]) {
   try { return { principal: await requireRole(ctx, identity, roles), denied: undefined }; }
   catch (error) {
     if (!(error instanceof DemoRoleError)) throw error;
     return { principal: error.principal, denied: error.code };
   }
 }
-async function refuse(ctx: MutationCtx, principal: DemoPrincipal, entity: { _id: string; organizationId: Id<"organizations"> },
+export async function refuse(ctx: MutationCtx, principal: DemoPrincipal, entity: { _id: string; organizationId: Id<"organizations"> },
   action: string, code: string, evidenceReferences: string[] = []) {
   await audit(ctx, { organizationId: entity.organizationId,
     eventKey: `refused:${action}:${entity._id}:${principal.tokenIdentifier}:${code}`,
-    actor: actorFor(principal), action: `${action}_refused`, entityType: action === "acceptance" ? "submissions" : action === "payment_proposal" ? "payables" : "paymentIntents",
+    actor: actorFor(principal), action: `${action}_refused`, entityType: ["acceptance", "review"].includes(action) ? "submissions" : action === "payment_proposal" ? "payables" : "paymentIntents",
     entityId: entity._id, reason: code, evidenceReferences });
   // Returning a refusal commits its audit event. Throwing here would roll it back.
   return { ok: false as const, code };
 }
 
 
-export const acceptAndPublish = mutation({
-  args: { demoIdentity: v.string(), submissionId: v.id("submissions") },
-  handler: async (ctx, args) => {
+export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity: string; submissionId: Id<"submissions"> }) {
     const auth = await authorize(ctx, args.demoIdentity, "controller");
     if (!auth.principal) return { ok: false as const, code: auth.denied! };
     const principal = auth.principal;
@@ -147,7 +145,10 @@ export const acceptAndPublish = mutation({
       action: "submission_accepted_and_published", entityType: "submissions", entityId: submission._id,
       reason: "Licensed manifest published; fulfillment and contributor obligation posted atomically.", evidenceReferences: [decisionId, deliveryId, payableId, journalEntryId] });
     return { ok: true as const, payableId, deliveryId, journalEntryId, replayed: false };
-  },
+}
+export const acceptAndPublish = mutation({
+  args: { demoIdentity: v.string(), submissionId: v.id("submissions") },
+  handler: acceptAndPublishFor,
 });
 
 export async function proposePaymentFor(ctx: MutationCtx, args: { demoIdentity: string; payableId: Id<"payables"> }) {
