@@ -99,10 +99,22 @@ The CLI may select that developer's own cloud dev deployment. To use the shared
 backend, retain the shared client URL above and coordinate backend writes;
 operator deployment selection must explicitly point at `dev:keen-marmot-986`.
 Do not commit root or app `.env.local`, and do not create a second project merely
-to typecheck. **`pnpm check:convex` can sync the cloud when a checkout already has
-`CONVEX_DEPLOYMENT` configured; its anonymous flag does not isolate it.** Use
-`pnpm test:convex` for offline tests. During parallel work, only the deployment
-owner deploys merged `origin/main` to the cloud.
+to typecheck. **`pnpm check:convex` now refuses remote selection by default.**
+Its wrapper checks the process environment, root `.env.local` and `.env` before
+starting Convex. A cloud value in any source is refused even if another source
+selects local. Quoted and `export` entries are parsed with the pinned CLI’s
+actual dotenv parser. Deploy keys/tokens and non-loopback self-hosted URLs are
+also refused. No deployment selection, `local:` deployments and anonymous local
+deployments remain allowed, with `CONVEX_AGENT_MODE=anonymous` set for the CLI.
+
+Use `pnpm test:convex` for offline application tests; `pnpm check:convex` still
+syncs a native backend and can write local generated/configuration files. A
+cloud-linked checkout must use `pnpm check:convex --allow-cloud` deliberately,
+after passing the [clean-main deployment gate](../convex/README.md#shared-deployment-coordination).
+The wrapper consumes that flag rather than passing it to Convex, and does not
+accept arbitrary CLI flags that could bypass its configuration checks. During
+parallel work, only the deployment owner deploys merged `origin/main` to the cloud.
+The anonymous mode flag alone never guarantees isolation from a configured cloud target.
 
 The idempotent seed creates one org, the four memberships, and two **unfunded**
 orders with the same frozen red-cup rubric. The default `skarl-red-cup-demo-v2`

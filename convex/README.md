@@ -63,10 +63,10 @@ is configured.
 ```sh
 pnpm test:convex
 pnpm check
-# Cloud dev deploy/typecheck (only after the clean-origin/main gate below):
-pnpm exec convex dev --once --typecheck enable
-# Only in a throwaway copy with cloud deployment selection removed:
+# Guarded local/anonymous native-backend sync; refuses remote configuration:
 pnpm check:convex
+# Deliberate cloud sync/typecheck, only after the clean-origin/main gate below:
+pnpm check:convex --allow-cloud
 ```
 
 The native backend enforces schemas/indexes; indexes are not unique constraints.
@@ -92,8 +92,19 @@ one deployment owner and avoid overlapping cloud deploys. The orchestrator
 redeploys merged `origin/main` after each batch. A successful local typecheck does
 not establish that the checkout contains every currently deployed feature.
 
-`CONVEX_AGENT_MODE=anonymous` does **not** isolate `pnpm check:convex` when this
-checkout already selects a cloud deployment. Use `pnpm test:convex` for isolated
-application tests, or a throwaway copy with all cloud selection removed for a
-local backend check. Never deploy uncommitted functions to make a runner work;
-the evaluation harness and `submissions:evaluationRun` must land together.
+`pnpm check:convex` runs [the guarded wrapper](../scripts/check-convex.mjs).
+It refuses cloud or unknown `CONVEX_DEPLOYMENT` values in the process environment,
+`.env.local` or `.env`, including quoted/export entries. Every source is checked:
+a local file value cannot hide a cloud shell value or vice versa. Deploy keys,
+deployment tokens and non-loopback self-hosted URLs also require `--allow-cloud`.
+No configured deployment, `local:` deployments and anonymous local deployments
+remain allowed; the CLI runs with `CONVEX_AGENT_MODE=anonymous`.
+
+That anonymous flag alone does **not** isolate a cloud-linked checkout. The
+wrapper checks before starting the CLI and does not modify configuration files
+or print credentials. It forwards no arbitrary Convex flags; `--allow-cloud`
+is a wrapper-only opt-in for the deliberate cloud sync above. The clean-main
+gate and deployment-owner coordination still apply. Use `pnpm test:convex` for
+isolated application tests, or a throwaway copy with all remote selection removed
+for a local native-backend check. Never deploy uncommitted functions to make a
+runner work; the evaluation harness and `submissions:evaluationRun` must land together.

@@ -531,3 +531,7 @@ call-count, cumulative amount and deadline caps. `SKARL_SCHEDULED_JOBS_DISABLED=
 disables both jobs; `FINANCE_AGENT_BACKGROUND_ENABLED=false` disables finance.
 The existing payment service secret and RPC settings must be configured. Jobs
 become active only after the designated deployment owner's clean-main deploy.
+
+### Safe backend checks
+
+Use `pnpm test:convex` for isolated application tests. `pnpm check:convex` now refuses any remote deployment selected by process environment, `.env.local` or `.env`, including alternate deployment keys/remote self-hosted URLs. An explicit `--allow-cloud` is required for intentional remote sync; it does not waive the clean-checkout/matching-`origin/main` deployment rule or the designated deployment owner. The wrapper never forwards arbitrary CLI flags.

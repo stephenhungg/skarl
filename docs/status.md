@@ -923,3 +923,11 @@ orchestrator's clean-main deployment; no hosted execution or live settlement is
 claimed from the new mocked tests.
 
 Cron commit validation: isolated staged-source `pnpm check` passed **567 tests** (122 Node, 304 Convex, 141 payment-route), typechecks, docs and production build. The 17 new cron cases cover Base/Solana receipt reconciliation, existing payout observation, ambiguity without resend, status/call caps, fair pagination, unchanged/failed finance runs, approval refusal and tenant/role fences. CLI API generation completed without activating a deployment; all provider/chain observations in these tests are mocked.
+
+## Backend batch — guarded Convex check command
+
+`pnpm check:convex` now uses a Node wrapper that checks process environment, `.env.local` and `.env` independently using the pinned CLI dotenv parser. Cloud/unknown deployment selections and remote deployment credentials/URLs are refused before starting the CLI unless `--allow-cloud` is explicit. Exact local/anonymous selectors are allowed; surrounding whitespace cannot disguise a cloud selection. Arbitrary forwarded CLI overrides are refused. The designated owner and clean-`origin/main` deploy rule still apply. No actual backend check/sync was run from the cloud-linked checkout.
+
+The prior cron change also passed a later rebased full check of **613 tests** (126 Node, 319 Convex, 168 payment-route), including the concurrently merged visual jury and monotonic duplicate alignment.
+
+Guard commit validation: isolated staged-source `pnpm check` passed **649 tests** (162 Node, 319 Convex, 168 payment-route), typechecks, documentation and production build. All 36 wrapper tests inject command execution and configuration reads; none start a real Convex backend. Tests include process/file precedence, quoted/export/colon dotenv grammar, whitespace bypass refusal, local/anonymous allowance and explicit remote opt-in.
