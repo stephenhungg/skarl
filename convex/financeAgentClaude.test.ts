@@ -67,6 +67,40 @@ async function noAuthority(f: Fixture) {
 }
 
 describe("Claude finance provider with synthetic SDK HTTP responses", () => {
+  it("reads tax projections to draft advisory notes without changing forms or acquiring payment authority", async () => {
+    const f = await setup();
+    await payable(f);
+    const scope = { demoIdentity: "controller", orderId: f.orderId };
+    const before = await f.t.query(api.tax.summary, scope);
+    provider((body, index) => {
+      expect(body.system).toContain("Not tax advice — demo data");
+      expect(body.system).toContain("never change form status");
+      if (!index) return turn([call("tax", "taxSummary", { orderId: f.orderId, year: null }),
+        call("forms", "contributorsNeedingForms"), call("forbidden-form", "setProfile", { taxForm: "w9_on_file" }),
+        call("other-order", "taxSummary", { orderId: f.organizationId, year: 2026 }),
+        call("injected-status", "taxSummary", { orderId: null, year: null, taxForm: "w9_on_file" })]);
+      const envelopes = body.messages.at(-1)?.content.map((block: any) => JSON.parse(block.content));
+      expect(envelopes.every((envelope: any) => envelope.type === "untrusted_tool_data" && envelope.untrusted === true)).toBe(true);
+      const results = envelopes.map((envelope: any) => envelope.data);
+      expect(results[0]).toMatchObject({ label: "Not tax advice — demo data", rows: expect.any(Array) });
+      expect(results[1]).toMatchObject({ label: "Not tax advice — demo data", rows: expect.any(Array) });
+      expect(results.slice(2)).toEqual([{ ok: false, code: "tool_not_allowed" },
+        { ok: false, code: "not_found" }, { ok: false, code: "invalid_tool_arguments" }]);
+      return turn([{ type: "text", text: "Tax-ready ledger: request missing form attestations. USDC is assumed equal to USD 1:1; no tax is calculated or filed." }]);
+    });
+    await run(f);
+    const row = await stored(f);
+    expect(row.status).toBe("completed");
+    expect(row.explanation).toMatch(/^Not tax advice — demo data/);
+    expect(await f.t.query(api.tax.summary, scope)).toEqual(before);
+    await f.t.run(async ctx => {
+      expect(await ctx.db.query("paymentIntents").collect()).toHaveLength(0);
+      expect(await ctx.db.query("paymentCommands").collect()).toHaveLength(0);
+      expect(await ctx.db.query("journalEntries").collect()).toHaveLength(0);
+    });
+    await noAuthority(f);
+  });
+
   it("uses the same strict tools and persists the same transcript; sends tool_result with no prefill", async () => {
     const f = await setup();
     const fetcher = provider((body, index) => {
@@ -233,6 +267,23 @@ describe("Claude finance provider with synthetic SDK HTTP responses", () => {
 });
 
 describe("Claude strict tool schemas", () => {
+  it("requires typed tax scope and rejects fractional years, role changes and form mutations", () => {
+    const taxCall = (args: Record<string, unknown>) => ({ id: "tax", name: "taxSummary", arguments: args });
+    expect(() => validateToolCall(taxCall({ orderId: null, year: null }))).not.toThrow();
+    expect(() => validateToolCall(taxCall({ orderId: "current_order", year: 2026 }))).not.toThrow();
+    for (const year of [2026.5, "2026", 1969, 10000, false]) {
+      expect(() => validateToolCall(taxCall({ orderId: null, year }))).toThrow("invalid_tool_arguments");
+    }
+    expect(() => validateToolCall(taxCall({ orderId: null, year: null, demoIdentity: "controller" }))).toThrow("invalid_tool_arguments");
+    expect(() => validateToolCall({ id: "forms", name: "contributorsNeedingForms", arguments: { taxForm: "w9_on_file" } })).toThrow("invalid_tool_arguments");
+    expect(() => validateToolCall({ id: "set", name: "setTaxProfile", arguments: {} })).toThrow("tool_not_allowed");
+    for (const tool of claudeFinanceTools.filter(t => ["taxSummary", "contributorsNeedingForms"].includes(t.name))) {
+      expect(tool.strict).toBe(true);
+      expect(tool.input_schema.additionalProperties).toBe(false);
+      expect(tool.input_schema.required).toEqual(Object.keys(tool.input_schema.properties ?? {}));
+    }
+  });
+
   // Anthropic strict mode returns HTTP 400 for array maxItems; a live run failed on it before this guard.
   it("advertises no keyword that strict tool use rejects, while the runtime still caps batch size", () => {
     expect(JSON.stringify(claudeFinanceTools)).not.toContain("maxItems");

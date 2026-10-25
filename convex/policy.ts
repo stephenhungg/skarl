@@ -1,3 +1,4 @@
+import { recordTaxThresholdAdvisory } from "./lib/tax";
 import { hasOrderAuthority } from "./lib/demoAuth";
 import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
@@ -98,6 +99,7 @@ export async function policyApprovalFor(ctx: MutationCtx, args: { intentId: Id<"
     contributor.walletVerification.verifiedAt <= 0 || contributor.walletVerification.verifiedAt > Date.now() ||
     !contributor.walletVerification.nonce || !contributor.walletVerification.signature || !contributor.walletVerification.siweMessageHash ||
     normalizeAddress(contributor.walletAddress) !== intent.recipientAddress) failures.push("verified_contributor_wallet_required");
+  if (!contributor?.taxProfile || contributor.taxProfile.taxForm === "none") failures.push("tax_form_missing");
   const consent = submission?.consentRecordId ? await ctx.db.get(submission.consentRecordId) : null;
   if (!consent || consent.organizationId !== order.organizationId || consent.submissionId !== submission?._id ||
     consent.contributorTokenIdentifier !== payable?.contributorTokenIdentifier || consent.revocationStatus ||
@@ -111,6 +113,8 @@ export async function policyApprovalFor(ctx: MutationCtx, args: { intentId: Id<"
   if (!["funded", "collecting", "fulfilled"].includes(order.status) || fundedAtomic !== order.budgetAtomic ||
     accountBalance(ledger, "asset:usdc", { orderId: order._id }) < reserved + intent.amountAtomic) failures.push("insufficient_funded_remaining");
   if (failures.length) return queuePolicyReview(ctx, { organizationId: order.organizationId, orderId: order._id, intentId: intent._id, failures });
+  // Reporting review is advisory; it is deliberately outside the approval failures list.
+  await recordTaxThresholdAdvisory(ctx, { organizationId: order.organizationId, orderId: order._id, contributorTokenIdentifier: payable!.contributorTokenIdentifier, year: new Date().getUTCFullYear() });
   const result = await approveFor(ctx, { demoIdentity: "", intentId: intent._id }, principal);
   if (!result.ok) return queuePolicyReview(ctx, { organizationId: order.organizationId, orderId: order._id, intentId: intent._id, failures: [result.code] });
   await audit(ctx, { organizationId: order.organizationId, eventKey: `policy_approved:${intent._id}`, actor: actorFor(principal),

@@ -37,6 +37,8 @@ const SCENARIOS: Scenario[] = [
     control: "The policy engine refuses it and opens a review exception. Nothing is approved or sent.", needs: "Needs an accepted clip on this order" },
   { name: "policy_auto_pay", title: "Auto-pay within policy", injects: "An agent payout proposal that passes every buyer rule.",
     control: "The policy engine approves it and the agent still cannot approve itself. No transfer is sent.", needs: "Needs an unaccepted clip on this order" },
+  { name: "tax_form_missing", title: "Missing tax form", injects: "An otherwise eligible payout to a contributor without a form-on-file attestation. Not tax advice — demo data.",
+    control: "The policy engine holds it for buyer review with no approval or dispatch. Source tax status stays unchanged.", needs: "Needs a licensed accepted payable from a contributor without a form" },
 ];
 /** A missing prerequisite is a failed run, but not a control that let something through. */
 const blocked = (run: ScenarioRun) => !run.passed && run.observedOutcome.startsWith("requires ");

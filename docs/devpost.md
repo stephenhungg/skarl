@@ -16,6 +16,8 @@ Our first task is deliberately narrow: pick up a red cup, put it on a marked coa
 
 ## What it does
 
+The [Tax-ready ledger](tax.md) adds journal-derived YTD payouts, contributor form-on-file attestations, deterministic missing-form buyer review and read-only finance-agent summaries: **Not tax advice — demo data**. It collects no tax IDs and never computes, withholds or files real tax; deployment and the live tax scenario remain unverified.
+
 Skarl fills the **settlement accountant + AP clerk** seats through the finance agent and buyer-signed policy. The work witnesses are silent visual observations, separately transcribed audio and server-derived copy evidence. The money witnesses are frozen Convex order terms, exact double-entry journals and independently observed chain transfers. A deterministic judge checks the evidence and stored authority. Finance agents explain discrepancies and propose bounded payments; they cannot approve them. The buyer sets an auto-pay rule when funding. A separate internal `policy-engine` applies it deterministically; the CDP executor enforces an independent wallet cap.
 
 The rule is on by default with a cap equal to the order’s per-clip price; buyers can change or disable it. Completed accept evidence, a clear copy check, liveness when required, no injection flag, and consent/license are required. Failed checks go to the buyer’s Review queue with their reasons. Acceptance atomically creates a licensed delivery, one payable and balanced journals. An incomplete, unavailable or scaffold report cannot recommend acceptance. Unknown transfers become exceptions; an uncertain attempt remains pending while the original transaction is reconciled. Neither a persuasive agent nor an HTTP success is proof of settlement.

@@ -18,6 +18,8 @@ const SUGGESTIONS = [
   { label: "What do we owe?", prompt: "Summarize what we owe contributors and what has been paid." },
   { label: "Propose payouts", prompt: "Propose payouts for every eligible payable and request approval." },
   { label: "Explain the books", prompt: "Explain the trial balance and any reconciliation exceptions." },
+  { label: "Year-end summary", prompt: "Use the Tax-ready ledger to draft a plain-language year-end payout summary. Read-only; do not propose payments. Not tax advice — demo data." },
+  { label: "Forms needed", prompt: "Draft a forms-needed note from contributor attestations. Read-only; do not change tax status or propose payments. Not tax advice — demo data." },
 ];
 const PROPOSE = SUGGESTIONS[1]!.prompt;
 // Earlier turns ride along in the prompt so follow-ups make sense; the server caps a prompt at 2000 characters.
@@ -55,6 +57,12 @@ function factFor(step: Step): Fact | null {
   const r = (step.result ?? {}) as Record<string, unknown>;
   const list = (key: string) => (Array.isArray(r[key]) ? (r[key] as unknown[]) : null);
   switch (step.call.name) {
+    case "taxSummary":
+      if (r.ok === false) return { status: "fail", text: `Tax summary refused: ${humanize(String(r.code ?? "tool_refused"))}. Not tax advice — demo data` };
+      return { status: "idle", text: `Tax-ready ledger (${String(r.year ?? "current year")}): ${(list("rows") ?? []).length} contributors. Not tax advice — demo data` };
+    case "contributorsNeedingForms":
+      if (r.ok === false) return { status: "fail", text: `Forms note refused: ${humanize(String(r.code ?? "tool_refused"))}. Not tax advice — demo data` };
+      return { status: "idle", text: `${(list("rows") ?? []).length} contributors need a form attestation. Not tax advice — demo data` };
     case "listOutstandingPayables": {
       const rows = list("payables") ?? [];
       if (!rows.length) return { status: "ok", text: "Nothing owed to contributors" };

@@ -121,6 +121,9 @@ export default defineSchema({
     roles: v.array(membershipRole),
     grantedByTokenIdentifier: tokenIdentifier,
     status: v.union(v.literal("active"), v.literal("revoked")),
+    // Demo attestation only: never store forms, tax identifiers or identity documents.
+    taxProfile: v.optional(v.object({ country: v.string(),
+      taxForm: v.union(v.literal("none"), v.literal("w9_on_file"), v.literal("w8ben_on_file")), updatedAt: v.number() })),
     // Written only by a dedicated wallet-verification mutation after it checks
     // an EIP-191 (SIWE) signature over a server-issued nonce. Payables copy the
     // address from a verified record.
@@ -569,6 +572,10 @@ export default defineSchema({
     contributorTokenIdentifier: v.optional(tokenIdentifier),
     reference: v.optional(v.string()),
     fingerprint: v.optional(v.string()),
+    // Payout valuation assumption: USDC = USD 1:1, exact integer micro-USD.
+    // Optional for legacy posted entries; queries derive their value from journal lines.
+    usdValueAtPayment: v.optional(v.int64()),
+    taxYear: v.optional(v.number()),
     effectiveAt: v.number(),
     recordedAt: v.number(),
     reversalOf: v.optional(v.id("journalEntries")),

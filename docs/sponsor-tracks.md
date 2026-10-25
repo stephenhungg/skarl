@@ -9,6 +9,7 @@ Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devne
 | Track (Devpost name) | What we demonstrate |
 | --- | --- |
 | [Hyphenate] The Hyphenated Enterprise: Autonomous Systems for Finance (**primary**) | Implemented duplicate/payable controls, separate agent proposer and buyer-policy approver, balanced journals and recorded funding; complete live policy-approved payout remains pending |
+| [Hyphenate] Tax-ready ledger | **Not tax advice — demo data**: journal-derived contributor YTD, form-on-file attestations, missing-form buyer review, advisory threshold flags and read-only finance-agent summaries; deployment and live tax scenario remain unverified. [Scope and checks](tax.md). |
 | [Coinbase] Best Use of x402, **Payment Agents** track | Live x402 funding via CDP, a reusable Wallet MCP approval plugin, and live CDP wallet cap/allowlist rejections; contributor payout and MCP purchase still pending |
 | [Convex] Best use of Convex | Convex as the system of record: live queries, atomic financial mutations, file storage, and a Workflow for the approval wait |
 | [MLH] Best Use of Solana | Live 1-USDC Solana Devnet x402 funding and finalized RPC reconciliation; Base stays primary and the only payout rail |

@@ -44,7 +44,7 @@ async function licensedInference(f: Fixture, accept = false) {
   const submissionId = await f.t.run(async ctx => {
     const now = Date.now(), sourceHash = digest(`synthetic-test-ready:${accept}`);
     const contributor = (await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", CONTRIBUTOR)).unique())!;
-    await ctx.db.patch(contributor._id, { walletAddress: RECIPIENT, walletVerification: {
+    await ctx.db.patch(contributor._id, { taxProfile: { country: "US", taxForm: "w9_on_file", updatedAt: now }, walletAddress: RECIPIENT, walletVerification: {
       siweMessageHash: "e".repeat(64), nonce: "synthetic-test-only", signature: `0x${"1".repeat(130)}`, chainId: PAYMENT_CHAIN_ID, verifiedAt: now,
     } });
     const liveness = { words: ["apple", "river", "cloud"], issuedAt: now, consumedAt: now };
@@ -234,6 +234,33 @@ describe("scenario lab invokes real controls and reads persisted evidence", () =
 });
 
 describe("buyer-signed policy scenarios retain separation of duties", () => {
+  it("holds an otherwise eligible missing-form payout for buyer review without approval or dispatch", async () => {
+    const f = await setup();
+    await licensedInference(f, true);
+    await f.t.mutation(api.tax.setProfile, { demoIdentity: "contributor", country: "US", taxForm: "none" });
+    const result = await run(f, "tax_form_missing"), state = await lab(f, result);
+    expect(result.passed, result.observedOutcome).toBe(true);
+    expect(result.simulated).toBe(true);
+    const intent = state.intents.find(row => row.kind === "contributor_payout")!;
+    expect(intent.status).toBe("proposed");
+    expect(intent.amountAtomic <= state.order!.autoPay!.maxPerClipAtomic).toBe(true);
+    const exceptions = await f.t.query(api.exceptions.list, { demoIdentity: "buyer", orderId: result.labOrderId });
+    expect(exceptions.some(row => row.exception.code === "policy_review" && row.exception.failures.length === 1 && row.exception.failures[0] === "tax_form_missing")).toBe(true);
+    expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
+    expect(await f.t.run(ctx => ctx.db.query("outboxEvents").collect())).toEqual([]);
+    expect(await f.t.run(ctx => ctx.db.query("paymentAttempts").collect())).toEqual([]);
+    expect((await f.t.query(api.tax.myProfile, { demoIdentity: "contributor" })).taxForm).toBe("none");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not claim a missing-form control passed from a returned code without durable review evidence", async () => {
+    const f = await setup();
+    await licensedInference(f, true);
+    await f.t.mutation(api.tax.setProfile, { demoIdentity: "contributor", country: "US", taxForm: "none" });
+    vi.spyOn(policy, "policyApprovalFor").mockResolvedValue({ ok: false, code: "tax_form_missing", failures: ["tax_form_missing"] });
+    expect((await run(f, "tax_form_missing")).passed).toBe(false);
+  });
+
   it("replays licensed evidence through acceptance and approves the agent proposal as policy-engine, never paid", async () => {
     const f = await setup();
     const sourceId = await licensedInference(f);
@@ -335,7 +362,7 @@ describe("buyer-signed policy scenarios retain separation of duties", () => {
     expect((await run(f, "over_cap_payout")).passed).toBe(false);
   });
 
-  for (const scenario of ["over_cap_payout", "policy_auto_pay"] as const) {
+  for (const scenario of ["over_cap_payout", "policy_auto_pay", "tax_form_missing"] as const) {
     it(`records the missing licensed evidence prerequisite for ${scenario} honestly`, async () => {
       const f = await setup(), result = await run(f, scenario), state = await lab(f, result);
       expect(result.passed).toBe(false);

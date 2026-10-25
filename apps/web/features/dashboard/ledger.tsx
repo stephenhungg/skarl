@@ -6,7 +6,8 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { useExceptions, useJournal, useOrderId, useStatements } from "./data";
 import { formatTime, formatUsdc, humanize } from "./format";
 import { JournalReceipt } from "./receipt";
-import { Amount, Loading, PageHeader, Section, Unavailable } from "./ui";
+import { TaxPanel } from "./tax-panel";
+import { Amount, Loading, PageHeader, QueryBoundary, Section, Unavailable } from "./ui";
 
 const ACCOUNT_LABEL: Record<string, string> = {
   "asset:usdc": "USDC cash",
@@ -23,7 +24,7 @@ export function Ledger() {
   const statements = useStatements(orderId);
   const journal = useJournal(orderId);
   const exceptions = useExceptions(orderId);
-  const [tab, setTab] = useState<"books" | "journal" | "exceptions">("books");
+  const [tab, setTab] = useState<"books" | "journal" | "exceptions" | "tax">("books");
   const openExceptions = (exceptions ?? []).filter(item => item.stillDetected && item.disposition?.status !== "resolved").length;
   if (orderId === null) return <Unavailable title="No staged order" description="Run pnpm seed to stage the demo order." />;
   return (
@@ -34,6 +35,7 @@ export function Ledger() {
           <TabsTrigger value="books">Books</TabsTrigger>
           <TabsTrigger value="journal">Journal<TabsCount>{journal?.length ?? 0}</TabsCount></TabsTrigger>
           <TabsTrigger value="exceptions">Exceptions<TabsCount>{openExceptions}</TabsCount></TabsTrigger>
+          <TabsTrigger value="tax">Tax</TabsTrigger>
         </TabsList>
         <TabsContent value="books">
       <Section title="Trial balance" className="mt-2">
@@ -96,6 +98,7 @@ export function Ledger() {
         )}
       </Section>
         </TabsContent>
+        <TabsContent value="tax"><QueryBoundary><TaxPanel orderId={orderId} /></QueryBoundary></TabsContent>
         <TabsContent value="exceptions">
       <Section className="mt-2" title="Reconciliation exceptions">
         {exceptions === undefined ? <Loading rows={2} /> : exceptions.length === 0
@@ -106,6 +109,7 @@ export function Ledger() {
                 <li key={item.exceptionKey} className="flex flex-wrap items-baseline gap-3 px-4 py-3">
                   <Status status={item.disposition?.status === "resolved" ? "ok" : "fail"}>{humanize(item.exception.code)}</Status>
                   <span className="min-w-0 flex-1 type-body-sm text-text-2">{item.exception.detail}</span>
+                  {item.exception.code === "policy_review" && item.exception.failures.includes("tax_form_missing") ? <span className="type-label-sm text-text-3">Not tax advice — demo data</span> : null}
                   <span className="type-label-sm text-text-3">{item.stillDetected ? "Still detected" : "No longer detected"}{item.disposition ? ` · ${humanize(item.disposition.status)}` : ""}</span>
                 </li>
               ))}

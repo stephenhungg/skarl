@@ -116,10 +116,10 @@ Record the commit/deployment, fixture or real input, before/after authoritative 
 
 ## Buyer Policy Scenarios
 
-The deployed lab exposes eight named controls through `pnpm scenario all`. It now also includes `over_cap_payout` (an accepted obligation above the buyer cap stays unapproved in Review) and `policy_auto_pay` (completed licensed evidence replay is accepted and approved by `policy-engine`). Run their local controls with:
+The source lab exposes nine named controls through `pnpm scenario all` after backend deployment. These include `over_cap_payout` (an accepted obligation above the buyer cap stays unapproved in Review), `policy_auto_pay` (completed licensed evidence replay is accepted and approved by `policy-engine`) and `tax_form_missing` (an otherwise eligible accepted payout is held for buyer review, without approval or dispatch). The Tax-ready ledger scenario is labeled **Not tax advice — demo data**. Run their local controls with:
 
 ```sh
 pnpm exec vitest run --config test/convex.config.mts convex/policy.test.ts convex/scenarios.test.ts
 ```
 
-The over-cap replay needs an existing accepted source and payable; the auto-pay replay needs an unaccepted licensed completed-inference source with a passing jury. Missing prerequisites are reported as failures. Replay accounting is confined to labeled scenario orders, excluded from ordinary copy checks and aggregate balances, and blocked from every payout executor. No model call or transfer is invented by a passing replay.
+The over-cap replay needs an existing accepted source and payable; the auto-pay replay needs an unaccepted licensed completed-inference source with a passing jury and an attested form on file. The missing-form replay needs an existing accepted licensed inference source and payable whose contributor has no form attestation. It does not change the source contributor's profile. Missing prerequisites are reported as failures. Replay accounting is confined to labeled scenario orders, excluded from ordinary copy checks, tax YTD totals and aggregate balances, and blocked from every payout executor. No model call or transfer is invented by a passing replay.

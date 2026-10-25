@@ -4,6 +4,7 @@ import { assertBalanced, postJournal, type Journal, type LedgerState } from "../
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../../packages/contracts/src/chain";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { recordTaxThresholdAdvisory } from "./tax";
 import { hasOrderAuthority, isPolicyEngine, isFinanceAgent, type DemoPrincipal } from "./demoAuth";
 
 export function canonical(value: unknown): string {
@@ -72,12 +73,14 @@ export async function recordJournal(ctx: MutationCtx, organizationId: Id<"organi
     ...(journal.recipientAddress ? { recipientAddress: journal.recipientAddress } : {}),
     ...(journal.reference ? { reference: journal.reference } : {}),
     ...(journal.contributorId ? { contributorTokenIdentifier: journal.contributorId } : {}),
+    ...(journal.kind === "payout" ? { usdValueAtPayment: journal.lines.filter(line => line.account === "asset:usdc").reduce((sum, line) => sum + line.credit - line.debit, 0n), taxYear: new Date(now).getUTCFullYear() } : {}),
     fingerprint, effectiveAt: now, recordedAt: now,
   });
   for (const [lineNumber, line] of journal.lines.entries()) {
     await ctx.db.insert("journalLines", { organizationId, journalEntryId, account: line.account,
       side: line.debit > 0n ? "debit" : "credit", amountAtomic: line.debit || line.credit, lineNumber });
   }
+  if (journal.kind === "payout" && journal.contributorId) await recordTaxThresholdAdvisory(ctx, { organizationId, orderId: journal.orderId as Id<"orders">, contributorTokenIdentifier: journal.contributorId, year: new Date(now).getUTCFullYear() });
   return journalEntryId;
 }
 

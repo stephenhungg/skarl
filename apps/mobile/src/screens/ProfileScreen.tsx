@@ -10,6 +10,7 @@ import { useSession } from '../session';
 import { Button, Empty, ListRow, StatusPill } from '../components/Primitives';
 import { Segmented } from '../components/Segmented';
 import { WalletCard } from '../components/WalletCard';
+import { TaxProfileCard } from '../components/TaxProfileCard';
 import { CountUp } from '../components/CountUp';
 import { PressableScale } from '../components/PressableScale';
 import { ChevronLeft, ChevronRight, LinkIcon, ProfileIcon } from '../components/Icons';
@@ -82,6 +83,7 @@ export function ProfileScreen({ navigation, route }: RootProps<'Profile'>) {
     </Animated.View>
 
     <WalletCard />
+    <TaxProfileCard />
 
     <View style={s.grid}>
       <Stat index={0} value={dash ?? String(stats.uploads)} label="Uploads" />

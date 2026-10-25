@@ -85,7 +85,9 @@ export const journal = query({
     return Promise.all(entries.map(async entry => {
       const lines = await ctx.db.query("journalLines").withIndex("by_entry", q => q.eq("journalEntryId", entry._id)).collect();
       if (entry.organizationId !== order.organizationId || lines.some(line => line.organizationId !== order.organizationId)) throw new Error("cross_organization_reference");
-      return { ...entry, lines: lines.map(line => ({ ...line, amountAtomic: line.amountAtomic.toString() })) };
+      const { usdValueAtPayment, ...metadata } = entry;
+      return { ...metadata, ...(usdValueAtPayment === undefined ? {} : { usdValueAtPayment: usdValueAtPayment.toString() }),
+        lines: lines.map(line => ({ ...line, amountAtomic: line.amountAtomic.toString() })) };
     }));
   },
 });

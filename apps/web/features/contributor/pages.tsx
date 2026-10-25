@@ -4,11 +4,12 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Status } from "@/components/glaze/ui/status";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/glaze/ui/table";
-import { Amount, Loading, PageHeader, RequireConvex, Section, Unavailable } from "@/features/dashboard/ui";
+import { Amount, Loading, PageHeader, QueryBoundary, RequireConvex, Section, Unavailable } from "@/features/dashboard/ui";
 import { basescanTx, formatTime, readableReason, shortHash } from "@/features/dashboard/format";
 import { TableToolbar } from "@/features/dashboard/table-tools";
 import { cn } from "@/lib/glaze/utils";
 import { clipSteps, totals, useClips, type Clip, type EarningRow, type Step } from "./data";
+import { TaxProfile } from "./tax-profile";
 
 const EXPO_GO = "https://apps.apple.com/us/app/expo-go/id982107779";
 
@@ -176,6 +177,7 @@ function Earnings() {
   return (
     <>
       <PageHeader title="Earnings" />
+      <QueryBoundary><TaxProfile /></QueryBoundary>
       <EarningsStrip rows={clips} />
       <Section title="Payouts">
         {owed.length === 0

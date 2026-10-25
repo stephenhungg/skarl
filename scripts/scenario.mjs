@@ -13,6 +13,7 @@ export const SCENARIOS = [
   "bank_mismatch",
   "over_cap_payout",
   "policy_auto_pay",
+  "tax_form_missing",
 ];
 
 /** Calls only the deployed lab. No --push, dev, deploy, signing, or send command. */

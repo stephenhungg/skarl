@@ -8,9 +8,10 @@ import type { ReconciliationException as PaymentReconciliationException } from "
 import { makeFunctionReference } from "convex/server";
 const webhookExceptions = makeFunctionReference<"query", { demoIdentity: string; orderId: Id<"orders"> }, ReconciliationException[]>("chainWitness:webhookExceptions");
 
+import type { TaxException } from "./lib/tax";
 import type { PolicyException } from "./lib/policyReview";
 import type { BankException } from "./bankWitness";
-type ReconciliationException = PaymentReconciliationException | BankException | PolicyException;
+type ReconciliationException = PaymentReconciliationException | BankException | PolicyException | TaxException;
 const bankExceptions = makeFunctionReference<"query", { demoIdentity: string; orderId: Id<"orders"> }, BankException[]>("bankWitness:bankExceptions");
 
 const scope = { demoIdentity: v.string(), orderId: v.id("orders") };
@@ -38,7 +39,7 @@ export const list = query({
       ...[...current].map(([key, exception]) => ({ exceptionKey: key, exception, stillDetected: true,
         disposition: dispositions.find(row => row.exceptionKey === key) ?? null })),
       ...dispositions.filter(row => !current.has(row.exceptionKey)).map(row => ({ exceptionKey: row.exceptionKey,
-        exception: JSON.parse(row.snapshotJson) as ReconciliationException, stillDetected: JSON.parse(row.snapshotJson).code === "policy_review" && row.status !== "resolved", disposition: row })),
+        exception: JSON.parse(row.snapshotJson) as ReconciliationException, stillDetected: ["policy_review", "info_return_needed"].includes(JSON.parse(row.snapshotJson).code) && row.status !== "resolved", disposition: row })),
     ];
   },
 });

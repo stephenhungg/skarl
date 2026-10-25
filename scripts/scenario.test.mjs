@@ -52,7 +52,7 @@ test("all runs every scenario after a recorded failure and returns nonzero", () 
 test("all returns zero only when every backend result passes", () => {
   const h = harness();
   assert.equal(runScenarios(["all"], h.api), 0);
-  assert.equal(h.tables[0].length, 8);
+  assert.equal(h.tables[0].length, 9);
   assert.ok(h.tables[0].every(row => row.result === "PASS"));
 });
 

@@ -123,6 +123,7 @@ function ExceptionCard({ orderId, item }: { orderId: Id<"orders">; item: Excepti
   }
   return <article className="rounded-panel border border-line-faint p-4">
     <h3 className="type-label">{humanize(evidence.code)}</h3>
+    {evidence.code === "info_return_needed" || evidence.failures?.includes("tax_form_missing") ? <p className="mt-1 type-label-sm text-text-3">Not tax advice — demo data</p> : null}
     <p className="mt-1 type-body-sm text-text-2">{evidence.message ?? evidence.detail}</p>
     {evidence.failures?.length ? <ul className="mt-2 list-inside list-disc type-body-sm">{evidence.failures.map(check => <li key={check}>{humanize(check)}</li>)}</ul> : null}
     {evidence.submissionId && !evidence.intentId ? <Link href={`/dashboard/submissions/${evidence.submissionId}`} className="mt-3 inline-block type-label underline underline-offset-4">Review evidence and accept or reject clip</Link> : <div className="mt-3 flex flex-wrap items-center gap-2">

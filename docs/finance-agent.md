@@ -4,7 +4,7 @@
 
 The target agent fills two financial seats: settlement accountant and accounts-payable clerk. It explains obligations, proposes bounded payments and identifies reconciliation exceptions (period close is deferred). It does not decide whether a clip contains the right action, approve its own payment, hold a wallet key or rewrite the ledger.
 
-The Convex `financeAgent.run` action implements a configurable Gemini/Claude function-calling loop over the same six allowlisted tools. Tool results, provider/model and the final advisory explanation persist in `financeAgentRuns` for buyer Review. Server mutations enforce cumulative exact proposal limits and existing independent-approval rules. A Convex Workflow waits for separate policy or buyer exception approval, revalidates the stored proposal and releases the execution outbox; wallet execution remains separate. Mocked responses test policy boundaries; live Gemini measurements are recorded in [status](status.md). Claude currently has synthetic provider coverage only; deployment, credentials and live inference remain pending in the [Anthropic handoff](anthropic.md).
+The Convex `financeAgent.run` action implements a configurable Gemini/Claude function-calling loop over the same eight allowlisted tools. Tool results, provider/model and the final advisory explanation persist in `financeAgentRuns` for buyer Review. Server mutations enforce cumulative exact proposal limits and existing independent-approval rules. A Convex Workflow waits for separate policy or buyer exception approval, revalidates the stored proposal and releases the execution outbox; wallet execution remains separate. Mocked responses test policy boundaries; live Gemini measurements are recorded in [status](status.md). Claude currently has synthetic provider coverage only; deployment, credentials and live inference remain pending in the [Anthropic handoff](anthropic.md).
 
 ## Bounded tool surface
 
@@ -16,10 +16,14 @@ Implement tools as typed application operations, not arbitrary SQL, shell, gener
 | `explainPayable` | Existing payable ID; returns amount/status plus explicitly untrusted report/narration excerpts | Read only; same order |
 | `getTrialBalance` | No arguments; sums stored journal lines and asserts each entry balances | Read only; exact integer strings |
 | `listReconciliationExceptions` | No arguments; reads the existing payment reconciliation query | Read only; bounded exceptions |
+| `taxSummary` | `{orderId: string or null, year: integer or null}`; null selects this run's order/current UTC year; non-null order must match the run | Read only; Tax-ready ledger, exact micro-USD strings |
+| `contributorsNeedingForms` | No arguments; reads missing form attestations for the run's order | Read only; never collects forms or identifiers |
 | `proposePaymentBatch` | Up to 20 unique existing payable IDs; server resolves amounts and destinations atomically | Proposal only; cumulative per-run amount cap |
 | `requestApproval` | Existing payout intent ID | Records an approval request; never approves |
 
 Do not expose signing or `approvePayment` as agent tools. The internal `policy-engine` applies the buyer-signed rule to the exact proposal in Convex; failures go to the order’s buyer for review. The agent may then call Coinbase Wallet MCP `send` **only for that stored, approved intent** (exact recipient, amount and token; no other parameters), as a legacy signing path. The happy path uses the existing CDP executor with its independent wallet cap. The Coinbase retail MCP's x402 tools run on Base mainnet with a 5 USDC cap and are not used on the demo path. An attempt to approve its own proposal is refused and logged; this refusal is part of the demo moment. The payment executor consumes the approved command and stores the attempt before submission. Recipient, amount, token, network or payable-version changes invalidate the prior approval.
+
+The tax tools support plain-language year-end summaries and forms-needed notes labeled **Not tax advice — demo data**. They return deterministic journal-derived payouts and advisory country notes, under the explicit USDC-to-USD 1:1 assumption. They cannot update a contributor's tax status, approve a payout, compute or withhold real tax, or file anything. Null fields preserve Claude's strict tool schema while selecting the current authenticated scope; supplied years must be integral UTC calendar years (1970–9999). Source implementation and synthetic provider tests do not establish live Claude inference or external reporting compliance. See [Tax-ready ledger](tax.md).
 
 ## Reasoning loop and persistence
 

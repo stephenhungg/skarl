@@ -5,7 +5,7 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { audioFromTranscriptSegments, buildVerificationReport, PIPELINE_VERSION } from "./lib/verificationReport";
 import { canonical, digest, recordJournal } from "./lib/finance";
-import { createFundingJournal } from "../packages/ledger/src/index";
+import { createFundingJournal, createFulfillmentJournal, createPayoutJournal } from "../packages/ledger/src/index";
 import { PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { proposeAgentPaymentFor } from "./finance";
 
@@ -26,7 +26,7 @@ async function licensedInference(f: Fixture, accept = false) {
   const submissionId = await f.t.run(async ctx => {
     const now = Date.now(), sourceHash = digest(`synthetic-test-ready:${accept}`);
     const contributor = (await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", CONTRIBUTOR)).unique())!;
-    await ctx.db.patch(contributor._id, { walletAddress: RECIPIENT, walletVerification: {
+    await ctx.db.patch(contributor._id, { taxProfile: { country: "US", taxForm: "w9_on_file", updatedAt: now }, walletAddress: RECIPIENT, walletVerification: {
       siweMessageHash: "e".repeat(64), nonce: "synthetic-test-only", signature: `0x${"1".repeat(130)}`, chainId: PAYMENT_CHAIN_ID, verifiedAt: now,
     } });
     const liveness = { words: ["apple", "river", "cloud"], issuedAt: now, consumedAt: now };
@@ -152,6 +152,7 @@ describe("policy approval preserves buyer caps, bindings and independent authori
     expect(await f.t.run(ctx => ctx.db.query("chainObservations").collect())).toEqual([]);
   });
   const cases: [string, string, (f: Ready, p: Awaited<ReturnType<typeof proposed>>) => Promise<unknown>][] = [
+    ["missing tax form", "tax_form_missing", f => f.t.mutation(api.tax.setProfile, { demoIdentity: "contributor", country: "US", taxForm: "none" })],
     ["one micro above buyer cap", "over_cap_payout", f => f.t.mutation(api.orders.setAutoPay, { demoIdentity: "buyer", orderId: f.orderId, enabled: true, maxPerClipAtomic: "1874999" })],
     ["changed accepted payable", "accepted_payable_binding_required", (f, p) => f.t.run(ctx => ctx.db.patch(p.payableId, { amountAtomic: 2n }))],
     ["unverified wallet", "verified_contributor_wallet_required", f => f.t.run(async ctx => { const m = (await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", CONTRIBUTOR)).unique())!; await ctx.db.patch(m._id, { walletVerification: undefined }); })],
@@ -167,6 +168,32 @@ describe("policy approval preserves buyer caps, bindings and independent authori
     expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
     const queue = await f.t.query(api.exceptions.list, { demoIdentity: "buyer", orderId: f.orderId });
     expect(queue.some(row => row.exception.code === "policy_review" && row.exception.failures.includes(code))).toBe(true);
+  });
+  it("keeps a reporting-threshold flag informational so a form-complete eligible payout still approves", async () => {
+    const f = await ready(), p = await proposed(f);
+    vi.stubEnv("SKARL_TAX_REPORTING_THRESHOLD_MICRO_USD", "1000000");
+    await f.t.run(async ctx => {
+      const { _id, _creationTime, ...order } = (await ctx.db.get(f.orderId))!;
+      const historyId = await ctx.db.insert("orders", { ...order, publicId: "synthetic-tax-threshold-history" });
+      await recordJournal(ctx, f.organizationId, createFundingJournal({ eventId: "tax-history:fund", orderId: historyId, amountMicroUsdc: 1000000n }));
+      await recordJournal(ctx, f.organizationId, createFulfillmentJournal({ eventId: "tax-history:earn", orderId: historyId, sampleId: "synthetic-tax-history", contributorId: CONTRIBUTOR, priceMicroUsdc: 1000000n, contributorMicroUsdc: 1000000n }));
+      await recordJournal(ctx, f.organizationId, createPayoutJournal({ eventId: "tax-history:pay", orderId: historyId, payableId: "synthetic-tax-history", contributorId: CONTRIBUTOR, amountMicroUsdc: 1000000n }));
+    });
+    expect((await f.t.query(api.tax.summary, { demoIdentity: "buyer", orderId: f.orderId })).rows[0]?.flags).toEqual(["info_return_needed"]);
+    expect((await f.t.mutation(internal.policy.policyApproval, { intentId: p.intentId })).ok).toBe(true);
+    expect((await f.t.run(ctx => ctx.db.get(p.intentId)))?.status).toBe("approved");
+    expect((await f.t.query(api.exceptions.list, { demoIdentity: "buyer", orderId: f.orderId })).some(row => row.exception.code === "info_return_needed")).toBe(true);
+  });
+  it("never approves or dispatches an otherwise eligible payout when no profile exists", async () => {
+    const f = await ready(), p = await proposed(f);
+    await f.t.run(async ctx => {
+      const member = (await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", CONTRIBUTOR)).unique())!;
+      await ctx.db.patch(member._id, { taxProfile: undefined });
+    });
+    expect(await f.t.mutation(internal.policy.policyApproval, { intentId: p.intentId })).toMatchObject({ ok: false, code: "tax_form_missing" });
+    expect((await f.t.run(ctx => ctx.db.get(p.intentId)))?.status).toBe("proposed");
+    expect(await f.t.run(ctx => ctx.db.query("approvals").collect())).toEqual([]);
+    expect((await f.t.run(ctx => ctx.db.query("outboxEvents").collect())).filter(row => row.kind === "dispatch_settlement")).toEqual([]);
   });
   it("reserves already approved intents before authorizing another payout from the same funded order", async () => {
     const f = await ready(), p = await proposed(f);

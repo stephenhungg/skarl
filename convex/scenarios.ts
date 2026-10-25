@@ -13,7 +13,7 @@ import { createFundingJournal, createFulfillmentJournal } from "../packages/ledg
 import { audioFromTranscriptSegments, buildVerificationReport, PIPELINE_VERSION } from "./lib/verificationReport";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 
-export const SCENARIOS = ["wrong_amount_transfer", "unknown_transfer", "duplicate_submission", "agent_self_approval", "prompt_injection_narration", "bank_mismatch", "over_cap_payout", "policy_auto_pay"] as const;
+export const SCENARIOS = ["wrong_amount_transfer", "unknown_transfer", "duplicate_submission", "agent_self_approval", "prompt_injection_narration", "bank_mismatch", "over_cap_payout", "policy_auto_pay", "tax_form_missing"] as const;
 type Scenario = typeof SCENARIOS[number];
 const scenario = v.union(...SCENARIOS.map(name => v.literal(name)));
 const expected: Record<Scenario, string> = {
@@ -25,6 +25,7 @@ const expected: Record<Scenario, string> = {
   bank_mismatch: "four-way bank_mismatch exception with the observed wrong amount; no journal",
   over_cap_payout: "buyer cap refusal and review exception; no approval or dispatch",
   policy_auto_pay: "licensed evidence replay accepted and agent proposal approved by policy-engine; no external transfer",
+  tax_form_missing: "Not tax advice — demo data: otherwise eligible payout held for buyer review with tax_form_missing; no approval or dispatch",
 };
 export type ScenarioRun = {
   scenario: Scenario; scenarioId: string; runId: Id<"auditEvents">; orderId: Id<"orders">; labOrderId: Id<"orders">;
@@ -96,7 +97,7 @@ export const prepare = internalMutation({ args: { ...runArgs, scenarioId: v.stri
         paymentIntentId: intentId, intentId: `funding:${labOrderId}`, kind: "deposit", amountAtomic: source.budgetAtomic,
         accountId: `SIMULATED:${args.scenarioId}:treasury`, status: "uncertain", errorCode: label, createdAt: now, updatedAt: now }));
     }
-  } else if (args.scenario === "over_cap_payout" || args.scenario === "policy_auto_pay") {
+  } else if (["over_cap_payout", "policy_auto_pay", "tax_form_missing"].includes(args.scenario)) {
     await preparePolicyReplay(ctx, state, source._id, taskVersionId);
   } else if (args.scenario === "agent_self_approval") {
     const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", source._id)).collect();
@@ -137,20 +138,25 @@ export const prepare = internalMutation({ args: { ...runArgs, scenarioId: v.stri
 async function preparePolicyReplay(ctx: MutationCtx, state: State, orderId: Id<"orders">, taskVersionId: Id<"rubricVersions">) {
   const sourceOrder = (await ctx.db.get(orderId))!;
   const candidates = await ctx.db.query("submissions").withIndex("by_order_status", q => q.eq("orderId", orderId)).collect();
+  const replayAccepted = state.scenario === "over_cap_payout" || state.scenario === "tax_form_missing";
   for (const candidate of candidates) {
-    if (candidate.verificationOnly || (state.scenario === "over_cap_payout" ? candidate.status !== "accepted" : candidate.status === "accepted")) continue;
+    if (candidate.verificationOnly || (replayAccepted ? candidate.status !== "accepted" : candidate.status === "accepted")) continue;
+    if (state.scenario === "tax_form_missing") {
+      const contributor = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", candidate.contributorTokenIdentifier)).unique();
+      if (contributor?.taxProfile && contributor.taxProfile.taxForm !== "none") continue;
+    }
     const analysis = candidate.currentAnalysisId && await ctx.db.get(candidate.currentAnalysisId);
     const asset = candidate.originalAssetId && await ctx.db.get(candidate.originalAssetId);
     const consent = candidate.consentRecordId && await ctx.db.get(candidate.consentRecordId);
     if (!analysis || analysis.implementation !== "inference" || analysis.pipelineStatus !== "completed" || analysis.recommendation !== "accept" ||
       !analysis.reportJson || !analysis.observationsJson || !asset || asset.status !== "verified" || !consent || consent.revocationStatus) continue;
-    const originalPayable = state.scenario === "over_cap_payout" ? await ctx.db.query("payables").withIndex("by_source_event", q =>
+    const originalPayable = replayAccepted ? await ctx.db.query("payables").withIndex("by_source_event", q =>
       q.eq("organizationId", sourceOrder.organizationId).eq("sourceEventKey", `fulfillment:${candidate._id}`)).unique() : null;
-    if (state.scenario === "over_cap_payout" && (!originalPayable || originalPayable.amountAtomic <= 1n)) continue;
+    if (replayAccepted && (!originalPayable || originalPayable.amountAtomic <= 1n)) continue;
     const now = Date.now(), label = `SIMULATED ${state.scenarioId}: replay of ${candidate._id}; no inference or transfer`;
     const { _id, _creationTime, currentDecisionId, currentAnalysisId, originalAssetId, consentRecordId, ...submissionTerms } = candidate;
     const submissionId = await ctx.db.insert("submissions", { ...submissionTerms, simulationOnly: true, orderId: state.labOrderId, taskVersionId,
-      status: state.scenario === "over_cap_payout" ? "accepted" : "needs_review", clientRequestId: label, updatedAt: now });
+      status: replayAccepted ? "accepted" : "needs_review", clientRequestId: label, updatedAt: now });
     const { _id: assetId, _creationTime: assetTime, ...assetTerms } = asset;
     const replayAssetId = await ctx.db.insert("mediaAssets", { ...assetTerms, submissionId });
     const { _id: consentId, _creationTime: consentTime, ...consentTerms } = consent;
@@ -193,7 +199,9 @@ async function preparePolicyReplay(ctx: MutationCtx, state: State, orderId: Id<"
     state.evidenceIds.push(candidate._id, submissionId, replayAssetId, replayConsentId, replayAnalysisId, fundingId);
     return;
   }
-  state.prerequisite = state.scenario === "over_cap_payout"
+  state.prerequisite = state.scenario === "tax_form_missing"
+    ? "requires an existing licensed accepted inference clip and payable from a contributor without a tax form; no acceptance or tax attestation was invented"
+    : state.scenario === "over_cap_payout"
     ? "requires an existing licensed accepted inference clip and payable; no acceptance was invented"
     : "requires an existing unaccepted licensed accept-eligible inference clip; no inference or acceptance was invented";
 }
@@ -230,7 +238,7 @@ export const injectionReport = internalQuery({args: idArgs, handler: async (ctx,
 /** Store a separately labeled replay report; retain the original source in scenario evidence. */
 export const policyReplayReport = internalQuery({ args: idArgs, handler: async (ctx, args) => {
   const { state } = await load(ctx, args.runId);
-  if (!["over_cap_payout", "policy_auto_pay"].includes(state.scenario) || !state.submissionId) throw new Error("invalid_policy_replay");
+  if (!["over_cap_payout", "policy_auto_pay", "tax_form_missing"].includes(state.scenario) || !state.submissionId) throw new Error("invalid_policy_replay");
   const submission = await ctx.db.get(state.submissionId);
   const analysis = submission?.currentAnalysisId ? await ctx.db.get(submission.currentAnalysisId) : null;
   if (!analysis?.reportJson || analysis.submissionId !== state.submissionId) throw new Error("scenario_replay_report_missing");
@@ -244,7 +252,7 @@ export const inject = internalMutation({ args: {...idArgs, reportStorageId: v.op
   const label = `SIMULATED ${state.scenarioId}`;
   const artifacts: string[] = [];
   let controlResult: unknown;
-  if (state.scenario === "over_cap_payout" || state.scenario === "policy_auto_pay") {
+  if (["over_cap_payout", "policy_auto_pay", "tax_form_missing"].includes(state.scenario)) {
     if (!args.reportStorageId) throw new Error("scenario_report_storage_required");
     const submission = (await ctx.db.get(state.submissionId!))!;
     await ctx.db.patch(submission.currentAnalysisId!, { reportStorageId: args.reportStorageId });
@@ -268,7 +276,7 @@ export const inject = internalMutation({ args: {...idArgs, reportStorageId: v.op
       await finishWebhookFor(ctx, { receiptId: received.receiptId, status: "unknown_transfer" });
       artifacts.push(received.receiptId);
     }
-  } else if (state.scenario === "over_cap_payout") {
+  } else if (state.scenario === "over_cap_payout" || state.scenario === "tax_form_missing") {
     controlResult = await policyApprovalFor(ctx, { intentId: state.intentId! });
   } else if (state.scenario === "policy_auto_pay") {
     const accepted = await evaluateSubmissionFor(ctx, { submissionId: state.submissionId! });
@@ -362,7 +370,7 @@ export const assess = internalQuery({ args: idArgs, handler: async (ctx, args): 
     if (snapshot) evidenceIds.push(snapshot._id);
     observedOutcome = `bank=${row?.bank.status ?? "missing"}; reason=${row?.bank.reason ?? "none"}; journals=${journals.length}`;
   }
-  if (!state.prerequisite && (state.scenario === "over_cap_payout" || state.scenario === "policy_auto_pay")) {
+  if (!state.prerequisite && ["over_cap_payout", "policy_auto_pay", "tax_form_missing"].includes(state.scenario)) {
     const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", state.labOrderId)).collect();
     const intent = intents.find(row => row.kind === "contributor_payout");
     const command = intent?.kind === "contributor_payout" ? await ctx.db.get(intent.paymentCommandId) : null;
@@ -371,7 +379,22 @@ export const assess = internalQuery({ args: idArgs, handler: async (ctx, args): 
     const policyAudits = audits.filter(row => row.actor.identity === "service:skarl:policy-engine" &&
       (row.entityId === state.submissionId || row.entityId === intent?._id));
     const order = (await ctx.db.get(state.labOrderId))!;
-    if (state.scenario === "over_cap_payout") {
+    if (state.scenario === "tax_form_missing") {
+      const dispositions = await ctx.db.query("reconciliationDispositions").withIndex("by_order", q => q.eq("orderId", state.labOrderId)).collect();
+      const taxReview = dispositions.find(row => {
+        const snapshot = JSON.parse(row.snapshotJson);
+        return row.status !== "resolved" && snapshot.code === "policy_review" && snapshot.intentId === intent?._id && snapshot.failures.includes("tax_form_missing");
+      });
+      const dispatch = command ? await ctx.db.query("outboxEvents").withIndex("by_event_key", q =>
+        q.eq("organizationId", principal.organizationId).eq("eventKey", `dispatch:${command._id}`)).unique() : null;
+      // Require this exact control call to fail only the tax check, plus durable evidence.
+      const result = invoked as { ok?: boolean; code?: string; failures?: string[] } | undefined;
+      passed = result?.ok === false && result.code === "tax_form_missing" && result.failures?.length === 1 &&
+        intent?.status === "proposed" && command?.status === "proposed" && approvals.length === 0 && !dispatch && !!taxReview &&
+        policyAudits.some(row => row.action === "policy_review_required" && row.reason === "tax_form_missing");
+      if (taxReview) evidenceIds.push(taxReview._id);
+      observedOutcome = `Not tax advice — demo data: refusal=${result?.code ?? "missing"}; approvals=${approvals.length}; dispatch=${!!dispatch}; buyer review=${!!taxReview}`;
+    } else if (state.scenario === "over_cap_payout") {
       const dispositions = await ctx.db.query("reconciliationDispositions").withIndex("by_order", q => q.eq("orderId", state.labOrderId)).collect();
       const capReview = dispositions.find(row => {
         const snapshot = JSON.parse(row.snapshotJson);
@@ -417,7 +440,7 @@ export const run = action({ args: runArgs, handler: async (ctx, args): Promise<S
     const report = await ctx.runQuery(internal.scenarios.injectionReport, ids);
     reportStorageId = await ctx.storage.store(new Blob([report.reportJson], {type: "application/json"}));
   }
-  if (!prepared.prerequisite && (args.scenario === "over_cap_payout" || args.scenario === "policy_auto_pay")) {
+  if (!prepared.prerequisite && ["over_cap_payout", "policy_auto_pay", "tax_form_missing"].includes(args.scenario)) {
     const report = await ctx.runQuery(internal.scenarios.policyReplayReport, ids);
     reportStorageId = await ctx.storage.store(new Blob([report.reportJson], { type: "application/json" }));
   }
