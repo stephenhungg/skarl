@@ -65,7 +65,12 @@ export function Studio(props: StudioProps) {
     <>
       <div className="mb-6 max-w-2xl">
         <h1 className="type-title">{summary?.order.title ?? "Record a task"}</h1>
-        <p className="mt-1 type-body text-text-2">{summary?.rubric?.taskPrompt ?? "Film one short take of the task while you say what you are doing."}</p>
+        {summary && (
+          <p className="mt-1.5 type-body text-text-2">
+            Earn <span className="type-label-lg text-text-1">{formatUsdc(summary.order.contributorRateAtomic)} USDC</span> per accepted clip
+            {" \u00b7 "}{Math.max(0, Number(summary.order.quantityRequested) - Number(summary.order.acceptedCount))} of {summary.order.quantityRequested} spots left
+          </p>
+        )}
       </div>
       {props.unavailable && (
         <Alert status={props.live ? "neutral" : "warn"} className="mb-6">
@@ -81,36 +86,33 @@ export function Studio(props: StudioProps) {
   );
 }
 
+/** The one tip that most often decides each check, keyed by rubric criterion. */
+const TIP: Record<string, string> = {
+  "red-cup-pickup": "Keep both cups in frame so the choice is visible.",
+  "coaster-placement": "Move steadily and let the cup settle on the coaster.",
+  "narration-alignment": "Say each step as you do it, not before or after.",
+};
+
 function TaskRail({ summary }: { summary: OrderSummary | null | undefined }) {
-  const order = summary?.order;
-  const open = order ? Math.max(0, Number(order.quantityRequested) - Number(order.acceptedCount)) : null;
+  const criteria = summary?.rubric?.criteria ?? [];
   return (
-    <aside className="flex flex-col gap-4 lg:sticky lg:top-18 lg:self-start">
+    <aside className="lg:sticky lg:top-18 lg:self-start">
       <div className="shell">
-        <div className="panel flex flex-col gap-4 p-4">
-          <div>
-            <p className="type-label-sm text-text-2">You earn per accepted clip</p>
-            <p className="mt-0.5 type-title tabular-nums">{order ? formatUsdc(order.contributorRateAtomic) : "—"} <span className="type-label text-text-3">test USDC</span></p>
-            {open !== null && <p className="mt-1 type-body-sm text-text-2">{open} of {order!.quantityRequested} spots open</p>}
-          </div>
-          <div>
-            <p className="mb-2 type-label">What the reviewer checks</p>
-            <ul className="flex flex-col gap-2">
-              {(summary?.rubric?.criteria ?? []).map(criterion => (
-                <li key={criterion.criterionId} className="flex gap-2 type-body-sm"><span aria-hidden className="text-text-3">&ndash;</span>{criterion.description}</li>
-              ))}
-            </ul>
-          </div>
+        <div className="panel p-4">
+          <h2 className="mb-3 type-label">How to pass</h2>
+          <ol className="flex flex-col gap-3">
+            {criteria.map((criterion, index) => (
+              <li key={criterion.criterionId} className="flex gap-3">
+                <span className="grid size-5 shrink-0 place-items-center rounded-pill bg-field type-label-sm text-text-2">{index + 1}</span>
+                <span className="min-w-0">
+                  <span className="block type-label">{criterion.description}</span>
+                  {TIP[criterion.criterionId] && <span className="mt-0.5 block type-body-sm text-text-2">{TIP[criterion.criterionId]}</span>}
+                </span>
+              </li>
+            ))}
+          </ol>
         </div>
-      </div>
-      <div className="px-1">
-        <p className="mb-2 type-label">Tips for a take that passes</p>
-        <ul className="flex flex-col gap-1.5 type-body-sm text-text-2">
-          <li>Keep both cups and the coaster in frame the whole time.</li>
-          <li>Say what you are doing as you do it, not before or after.</li>
-          <li>Move steadily. Quick grabs are hard to see.</li>
-          <li>Record somewhere quiet, with only you in the shot.</li>
-        </ul>
+        <div className="shell-foot type-label-sm text-text-2">Fixed camera, somewhere quiet, only you in the shot.</div>
       </div>
     </aside>
   );
