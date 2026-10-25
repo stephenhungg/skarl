@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { EvidenceTimeline, formatDuration } from "@/components/evidence-timeline";
+import { formatDuration } from "@/components/evidence-timeline";
+import { CheckSheet } from "./check-sheet";
 import { StatusPill } from "@/components/status-pill";
 import type { CatchCard as CatchCardData } from "../evidence";
 
@@ -27,11 +28,11 @@ export function CatchCard({ card, active, visible }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill status={card.status} />
           <span className="skc-chip mono">{formatDuration(card.report.source.durationMs)}</span>
-          <span className="mono ml-auto text-[11px] leading-none text-[rgb(var(--paper)/.5)] max-[809px]:hidden">Example report written by hand</span>
+          <span className="mono ml-auto text-[11px] leading-none text-[rgb(var(--paper)/.5)] max-[809px]:hidden">Example</span>
         </div>
         <p className="skc-title cut-regular">{card.title}</p>
         <div className="mt-auto">
-          {visible ? <EvidenceTimeline report={card.report} active={active} tone="dark" result={card.result} provenance={card.provenance} /> : null}
+          {visible ? <CheckSheet report={card.report} active={active} result={card.result} provenance={card.provenance} /> : null}
         </div>
       </div>
       {card.href && (

@@ -346,8 +346,8 @@ export type CatchCard = {
 };
 
 export const CATCH_CARDS: CatchCard[] = [
-  { id: "mismatch", status: "HELD", title: "Narration says red cup, video shows blue", result: "Held, nothing is paid", report: CATCH_REPORT_MISMATCH, provenance: "SIMULATED" },
-  { id: "retake", status: "ACCEPTED", title: "Retake matches its narration", result: "Accepted, contributor is owed 7.50", report: CATCH_REPORT_RETAKE, provenance: "SIMULATED" },
-  { id: "duplicate", status: "DUPLICATE", title: "A cropped copy of an earlier clip", result: "Flagged as a copy of paid work", report: CATCH_REPORT_DUPLICATE, provenance: "SIMULATED" },
-  { id: "unobservable", status: "REVIEW", title: "Coaster is hidden, so a person checks it", result: "Waiting on a person", report: CATCH_REPORT_UNOBSERVABLE, provenance: "SIMULATED" },
+  { id: "mismatch", status: "HELD", title: "If narration and video disagree, payment is held", result: "Held for a retake", report: CATCH_REPORT_MISMATCH, provenance: "SIMULATED" },
+  { id: "retake", status: "ACCEPTED", title: "If everything matches, contributor gets paid", result: "Paid 7.50 after approval", report: CATCH_REPORT_RETAKE, provenance: "SIMULATED" },
+  { id: "duplicate", status: "DUPLICATE", title: "Reused footage gets flagged as a copy", result: "Flagged, no second payment", report: CATCH_REPORT_DUPLICATE, provenance: "SIMULATED" },
+  { id: "unobservable", status: "REVIEW", title: "Human review required if AI can't verify a clip", result: "Sent to human review", report: CATCH_REPORT_UNOBSERVABLE, provenance: "SIMULATED" },
 ];
