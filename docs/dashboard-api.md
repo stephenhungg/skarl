@@ -1,5 +1,10 @@
 # Controller dashboard API
 
+> **Design alignment (read first).** The dashboard must look like the landing page and the iOS app: one product.
+> Use only the tokens in `apps/web/app/globals.css` (`paper` background, `ink` text, sage neutrals `mist/haze/fog/slate-*`, `deep`, and the lime `accent` reserved for primary actions and live/selected states), the Montreal cuts (`.cut-book/.cut-regular/.cut-medium`) for UI and `.mono` (Fono) for amounts, hashes, timestamps and tx links, and the `--ease-settle` curve for motion.
+> Reuse `components/logo-mark`, `wordmark`, `status-pill`, `evidence-timeline`, `stepper`, `button`, `ui/payment-status`, `ui/activity-feed`, `ui/payment-receipt-printer` instead of new primitives. Keep the testnet disclosure visible, label demo identities and simulated data, and show a chain badge (Base Sepolia / Solana Devnet) plus an explorer link on every on-chain item.
+
+
 Handoff for MatthewKim323. Snapshot queried with `pnpm exec convex run` on October 25, 2026 against **https://keen-marmot-986.convex.cloud**; no deployment performed. Examples below omit metadata and long evidence strings. Mutation success shapes are **source-derived, not live executions** unless stated otherwise.
 
 ## Live state and identities
@@ -285,11 +290,44 @@ controllerApprovalRequired:true,executionAvailable:false,replayed}`. This is
 **proposal-only**: it creates the existing `paymentCommands.kind="buyer_refund"`
 and links it through the original confirmed funding intent's optional
 `refundPaymentCommandId`. It does not create a new executable refund intent,
-controller approval, dispatch, signature or transfer. The existing
-`finance.approve`/browser payout adapter handles contributor payouts only;
-refund approval/execution needs the payments integration owner. Never pass the
-funding ID to the payout signing hook or display `refunded`. Retry with the same
-reason; changed proposal bindings produce `refund_proposal_changed`.
+controller approval, dispatch, signature or transfer. Continue with the refund-specific approval/execution flow below. Never pass the funding ID to a payout signing hook or display `refunded` before observation. Retry with the same reason; changed proposal bindings produce `refund_proposal_changed`.
+
+### Execute an approved buyer refund
+
+Base-funded orders only; Solana funding does not yet support cancellation/refund.
+The original funding intent stays `confirmed`; refunds use its linked standalone
+`paymentCommands.kind="buyer_refund"` command. No new funding intent is created.
+
+1. Owning buyer calls `orders.cancelRemainder` and retains `paymentCommandId`.
+2. Query `refunds.forOrder({demoIdentity,orderId})` as controller or owning buyer.
+   It returns `{commandId,orderId,status,recipientAddress,amountAtomic,network,
+   tokenAddress,controllerApprovalRequired,executionAvailable,approval,claimId,
+   txHash,explorerUrl}`. `amountAtomic` is an integer string. Approval includes
+   status, approver identity, expiry and reason. Proposed refunds are not executable.
+3. Independent controller calls `refunds.approve({demoIdentity,commandId,reason})`.
+   Buyer self-approval and finance-agent approval return audited refusals. Current
+   controller membership, expiry, source and exact amount/recipient bindings are
+   revalidated before execution. `forOrder.executionAvailable` becomes true only
+   for a valid approved, unclaimed command.
+4. Browser imports `executeApprovedRefund` from `apps/web/lib/payments/refund.ts`
+   and calls `{commandId,demoIdentity,provider,onProgress?}`. It reuses the existing
+   treasury-wallet USDC transfer client with the allowlisted refund endpoint.
+   The server derives recipient/amount from the approved command. It creates
+   one execution attempt before any signature; the controller signs in the wallet.
+5. `POST /api/payments/refund` records the submitted hash before receipt observation.
+   Pending RPC returns HTTP 202/reconciling, never paid. Recover with
+   `getRefundRecovery(commandId)` and `reportRefundTransaction({commandId,claimId,
+   txHash,demoIdentity})`; report the same hash without signing/sending again.
+   The observer-only two-minute sweeper also resumes these command-bound attempts
+   under its existing caps/leases.
+
+The endpoint internally uses the existing browser client's opaque `intentId`
+field to carry this **command ID**. It ignores caller-supplied amount/recipient.
+Only an observed exact canonical Base USDC transfer with two confirmations posts
+one `refund_paid` journal and changes the order to `refunded`. The journal debits
+customer-refund liability and credits cash; reservation itself does not move cash.
+`payments.reconciliation` includes this refund obligation, journal and chain log.
+No live refund or wallet signature is claimed by the implementation tests.
 
 ### Reconciliation exceptions
 
@@ -526,3 +564,85 @@ call-count, cumulative amount and deadline caps. `SKARL_SCHEDULED_JOBS_DISABLED=
 disables both jobs; `FINANCE_AGENT_BACKGROUND_ENABLED=false` disables finance.
 The existing payment service secret and RPC settings must be configured. Jobs
 become active only after the designated deployment owner's clean-main deploy.
+
+### Safe backend checks
+
+Use `pnpm test:convex` for isolated application tests. `pnpm check:convex` now refuses any remote deployment selected by process environment, `.env.local` or `.env`, including alternate deployment keys/remote self-hosted URLs. An explicit `--allow-cloud` is required for intentional remote sync; it does not waive the clean-checkout/matching-`origin/main` deployment rule or the designated deployment owner. The wrapper never forwards arbitrary CLI flags.
+
+## Mobile sensor evidence
+
+Additive mobile backend; **deploy from main before using**. Existing submissions
+and queries remain valid without a trace. No Convex deployment was performed by
+the mobile work. See [mobile capture](mobile.md) and the [phone quickstart](../apps/mobile/README.md).
+
+| Function | Kind | Exact args / identity |
+| --- | --- | --- |
+| `submissions:generateUploadUrl` | M | `{demoIdentity: "contributor"}`; obtain a separate URL for video and JSON |
+| `sensorTraces:attachSensorTrace` | A | `{demoIdentity: "contributor", submissionId: Id<"submissions">, storageId: Id<"_storage">}` |
+| `media:submissionEvidence` | Q | Existing `{demoIdentity: "controller" \| "contributor", submissionId: Id<"submissions">}`; contributors must own the submission |
+
+POST the JSON with `Content-Type: application/json`, maximum 2 MiB. Create the
+video submission normally, with acknowledged consent and a stable request UUID;
+then attach its trace. Action returns `{submissionId, replayed}`. Same storage ID
+replays; a different attachment is refused. Role, ownership, tenant and consent
+are checked server-side, including again at persistence. Accepted/rejected
+submissions cannot gain new sensor evidence. Explicit sensor failures leave the
+existing video contribution intact and must not trigger another creation.
+
+Trace format (synthetic shape illustration, not device evidence):
+
+```json
+{
+  "version": 1,
+  "sampleRateHz": 50,
+  "durationMs": 10000,
+  "recordedAt": "2026-10-25T10:30:00.000Z",
+  "clock": "js-callback-performance-now",
+  "sensors": ["accelerometer", "gyroscope", "deviceMotion"],
+  "device": {
+    "model": "iPhone", "os": "iOS", "osVersion": "26", "appVersion": "0.1.0",
+    "cameraFacing": "back", "requestedVideoQuality": "720p"
+  },
+  "samples": [
+    {"sensor": "accelerometer", "timestampMs": 0, "x": 0, "y": 0, "z": 1},
+    {"sensor": "gyroscope", "timestampMs": 0, "x": 0, "y": 0, "z": 0},
+    {"sensor": "deviceMotion", "timestampMs": 0, "x": 0, "y": 0, "z": 0}
+  ]
+}
+```
+
+Optional `device.resolution: string`, `device.fps: number` are actual measurements
+only; mobile currently omits them. Channels must match actual samples; empty
+channels/array explicitly mean unavailable. Timestamp order is strict per
+channel and nondecreasing across channels, bounded by duration; sample rates are capped, vectors finite/bounded,
+unknown fields rejected. Acceleration is **g including gravity**, gyro **rad/s**,
+and DeviceMotion linear acceleration **m/s² excluding gravity**.
+
+`media:submissionEvidence` adds this field (null when absent):
+
+```ts
+sensorTrace: {
+  storageId, sampleRateHz, sampleCount, durationMs, sensors, device,
+  recordedAt, clock, sizeBytes, attachedAt,
+  url: string | null, // private bearer URL; never publish/cache
+  motionSummary: {
+    source: "clientReported", version: 1, binWidthMs: 250,
+    accelRmsG: number | null,
+    gyroRmsRadPerSec: number | null,
+    linearAccelerationRmsMps2: number | null,
+    activeMotionIntervals: Array<{ startMs: number; endMs: number }>,
+    bins: Array<{
+      startMs: number; endMs: number; sampleCount: number;
+      accelRmsG: number | null; gyroRmsRadPerSec: number | null;
+      linearAccelerationRmsMps2: number | null; active: boolean;
+    }>
+  }
+}
+```
+
+Matthew can plot `bins` against video seconds (`startMs / 1000`), with separate
+axes/units per channel and gaps for `null`. `sampleCount` counts all channel
+readings, not video frames. Activity thresholds and approximation limits are in
+[mobile motion summary](mobile.md#motion-summary-for-the-dashboard). A still
+phone is normal for the fixed-camera task. These client-reported signals do not
+change report recommendations, human acceptance, payables or payment authority.

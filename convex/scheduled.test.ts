@@ -101,6 +101,20 @@ async function dispatchedPayout(f: Fixture, index = 0) {
     confirmations: 2, succeeded: true, observedAt: Date.now() };
   return { attemptId, payableId, observation };
 }
+async function dispatchedRefund(f: Fixture, includeHash = true) {
+  const paid = await funding(f);
+  await f.t.mutation(api.payments.confirmFunding, { serviceSecret: SECRET, attemptId: paid.attemptId,
+    authorizationNonce: NONCE, observation: paid.observation });
+  const proposal = await f.t.mutation(api.orders.cancelRemainder, { demoIdentity: "buyer", orderId: f.orderId, reason: "Unused quota refund" });
+  await f.t.mutation(makeFunctionReference<"mutation">("refunds:approve"), { demoIdentity: "controller", commandId: proposal.paymentCommandId,
+    reason: "Controller independently approved the unused quota refund" });
+  const claimed = await f.t.mutation(makeFunctionReference<"mutation">("refunds:claim"), { serviceSecret: SECRET, demoIdentity: "controller",
+    commandId: proposal.paymentCommandId, senderAddress: TREASURY, treasuryAddress: TREASURY, claimId: "synthetic-scheduled-refund-claim" });
+  const txHash = `0x${"d".repeat(64)}`;
+  if (includeHash) await f.t.mutation(api.payments.recordTransaction, { serviceSecret: SECRET, attemptId: claimed.attemptId, txHash });
+  return { commandId: proposal.paymentCommandId, attemptId: claimed.attemptId, txHash,
+    observation: { ...paid.observation, txHash, fromAddress: TREASURY, toAddress: BUYER } };
+}
 async function counts(f: Fixture) {
   return f.t.run(async ctx => ({ attempts: (await ctx.db.query("paymentAttempts").collect()).length,
     observations: (await ctx.db.query("chainObservations").collect()).length, journals: (await ctx.db.query("journalEntries").collect()).length,
@@ -144,6 +158,40 @@ describe("observation-only scheduled reconciliation", () => {
     expect(after.approvals).toBe(before.approvals); expect(after.attempts).toBe(before.attempts);
     expect(after.observations).toBe(1); expect(after.journals).toBe(before.journals + 1);
     expect((await f.t.run(ctx => ctx.db.get(item.payableId)))?.status).toBe("paid");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("observes a standalone approved refund once and posts refund_paid without signing or new attempts", async () => {
+    const f = await setup(), item = await dispatchedRefund(f);
+    observers.base.mockResolvedValue(item.observation);
+    const before = await counts(f), result = await f.t.action(reconcile, {}), after = await counts(f);
+    expect(result.confirmed).toBe(1);
+    expect(after.attempts).toBe(before.attempts); expect(after.approvals).toBe(before.approvals);
+    expect(after.observations).toBe(before.observations + 1); expect(after.journals).toBe(before.journals + 1);
+    expect((await f.t.run(ctx => ctx.db.get(item.commandId)))?.status).toBe("confirmed");
+    expect((await f.t.run(ctx => ctx.db.get(f.orderId)))?.status).toBe("refunded");
+    const journal = await f.t.run(ctx => ctx.db.query("journalEntries").withIndex("by_event_key", q =>
+      q.eq("organizationId", f.organizationId).eq("eventKey", `refund_paid:${item.commandId}`)).unique());
+    expect(journal?.kind).toBe("refund_paid");
+    expect(observers.base).toHaveBeenCalledWith(item.txHash, { network: PAYMENT_NETWORK,
+      fromAddress: TREASURY, toAddress: BUYER, amountAtomic: item.observation.amountAtomic });
+    vi.setSystemTime(Date.now() + RECONCILIATION_INTERVAL_MS + 1000);
+    await f.t.action(reconcile, {});
+    expect(observers.base).toHaveBeenCalledTimes(1);
+    expect((await counts(f)).journals).toBe(after.journals);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("leaves hashless or mismatched refunds pending without a resend or refund-paid journal", async () => {
+    const f = await setup(), item = await dispatchedRefund(f, false), before = await counts(f);
+    expect(await f.t.action(reconcile, {})).toMatchObject({ pending: 1 });
+    expect(observers.base).not.toHaveBeenCalled();
+    await f.t.mutation(api.payments.recordTransaction, { serviceSecret: SECRET, attemptId: item.attemptId, txHash: item.txHash });
+    vi.setSystemTime(Date.now() + RECONCILIATION_INTERVAL_MS + 1000);
+    observers.base.mockResolvedValue({ ...item.observation, toAddress: RECIPIENT });
+    expect(await f.t.action(reconcile, {})).toMatchObject({ pending: 1, confirmed: 0 });
+    const after = await counts(f);
+    expect(after.attempts).toBe(before.attempts); expect(after.approvals).toBe(before.approvals);
+    expect(after.journals).toBe(before.journals); expect(after.observations).toBe(before.observations);
+    expect((await f.t.run(ctx => ctx.db.get(item.commandId)))?.status).toBe("reconciling");
     expect(fetch).not.toHaveBeenCalled();
   });
   it("caps each order at four observation attempts and gives unchecked attempts the next turn", async () => {

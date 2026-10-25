@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Skarl",
+    "slug": "skarl-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.skarl.mobile"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Record your consented Skarl task video.",
+          "microphonePermission": "Record your narration alongside the task.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Capture synchronized device motion during your consented task recording."
+        }
+      ],
+      "expo-font"
+    ]
+  }
+}

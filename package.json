@@ -14,7 +14,7 @@
     "check:docs": "python3 scripts/check_docs.py",
     "check": "pnpm typecheck && pnpm test && pnpm test:convex && pnpm test:payments && pnpm check:docs && pnpm build",
     "convex:dev": "convex dev",
-    "check:convex": "CONVEX_AGENT_MODE=anonymous convex dev --once --typecheck enable",
+    "check:convex": "node scripts/check-convex.mjs",
     "seed": "convex run seed:demo",
     "test:convex": "vitest run --config test/convex.config.mts",
     "agent:fund": "node packages/payments/src/agent-fund.ts",

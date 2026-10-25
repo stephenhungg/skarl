@@ -71,7 +71,7 @@ export const listOrders = query({
   },
 });
 
-/** Reservation/proposal only. The payment adapter does not yet execute buyer-refund commands. */
+/** Reserves unused funds; execution requires separate independent controller approval. */
 export const cancelRemainder = mutation({
   args: { demoIdentity: v.string(), orderId: v.id("orders"), reason: v.string() },
   handler: async (ctx, args): Promise<{ ok: true; paymentCommandId: Id<"paymentCommands">;

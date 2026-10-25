@@ -54,6 +54,9 @@ pnpm dev
 
 The local UI uses the public demo Convex URL and treasury in the example; no private API keys are required to browse it. Create and fund outsider demo orders through `https://skarl.vercel.app/api/orders`. Running payment mutations on your own server requires operator configuration. The pnpm “ignored build scripts” warning for optional dependencies is harmless for this quickstart; required `esbuild` and `ffmpeg-static` scripts are already allowed. [Setup](docs/setup.md) covers cloud integration; [deployment](docs/deployment.md) covers operator configuration. `pnpm check` runs TypeScript, package/Convex/payment tests, documentation links and the production web build. It does not prove live inference or settlement.
 
+Record from an iPhone with the standalone [Expo Go mobile app](apps/mobile/README.md):
+video, narration and device motion, using Bun. [Sensor evidence and limits](docs/mobile.md).
+
 ## Team handoffs
 
 | Owner | Workstream | Primary folders |
@@ -68,6 +71,7 @@ These assignments reflect Stephen's requested split. Folder paths describe owner
 ## Repository map
 
 ```text
+apps/mobile/            Standalone Bun / Expo Go iPhone contributor app (outside pnpm)
 apps/web/               Next.js contributor recorder and payment API routes
 convex/                 Demo finance API, uploads, scheduled Gemini verification and generated types
 packages/contracts/    Shared statuses, Base Sepolia chain constants and verification schema

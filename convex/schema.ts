@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { sensorTrace } from "./sensorTraceValidators";
 import { vWorkflowId } from "@convex-dev/workflow";
 import {
   actor,
@@ -183,6 +184,7 @@ export default defineSchema({
     clientRequestId: v.string(),
     originalAssetId: v.optional(v.id("mediaAssets")),
     consentRecordId: v.optional(v.id("consentRecords")),
+    sensorTrace: v.optional(sensorTrace),
     expectedSourceHash: v.optional(v.string()),
     sourceHash: v.optional(v.string()),
     perceptualHash: v.optional(v.string()),
@@ -197,6 +199,7 @@ export default defineSchema({
     supersedesSubmissionId: v.optional(v.id("submissions")),
     updatedAt: v.number(),
   })
+    .index("by_sensor_storage", ["sensorTrace.storageId"])
     .index("by_order_status", ["orderId", "status"])
     .index("by_eval_run", ["organizationId", "evalRunId"])
     .index("by_org_status", ["organizationId", "status"])

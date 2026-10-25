@@ -64,6 +64,7 @@ async function evidence(ctx: QueryCtx, submission: Doc<"submissions">) {
     framesAvailable: frames.some(frame => frame.url !== null),
     transcriptSegments: transcript(analysis?.observationsJson),
     perceptualHashSource: submission.perceptualHashSource ?? null,
+    sensorTrace: submission.sensorTrace ? { ...submission.sensorTrace, url: await ctx.storage.getUrl(submission.sensorTrace.storageId) } : null,
   };
 }
 
