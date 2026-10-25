@@ -18,7 +18,20 @@ Skarl fills the **settlement accountant + AP clerk** seats. The work witnesses a
 
 Acceptance atomically creates a licensed delivery, one payable and balanced journals. An incomplete, unavailable or scaffold report cannot recommend acceptance. Unknown transfers become exceptions; an uncertain attempt remains pending while the original transaction is reconciled. Neither a persuasive agent nor an HTTP success is proof of settlement.
 
-**The moment:** duplicate caught → second payable blocked → agent self-approval refused → controller approves in Coinbase Wallet → chain + ledger agree. The complete sequence is **pending live proof**. The demo labels isolated control tests as **SIMULATED — NO TRANSFER** and recorded provider operations as **RECORDED LIVE TESTNET**. Add a bank comparison only after a dated live Nessie API observation, still labeled a **mock bank**.
+**The moment:** duplicate caught → second payable blocked → agent self-approval refused → controller approves in Coinbase Wallet → chain + ledger agree. The complete sequence is **pending live proof**. The demo labels isolated control tests as **SIMULATED — NO TRANSFER** and recorded provider operations as **RECORDED LIVE TESTNET**. The bank comparison is a dated live Nessie API observation (October 25, 2026, 04:11 PDT: four funding deposits observed; order, ledger, chain and bank all `match` for the 10 USDC order), still labeled a **mock bank**.
+
+## How we're different
+
+Existing human-data marketplaces such as [Kled AI](https://www.kled.ai/) proved people will sell real-world data at scale (500k+ contributors by Kled's own count) and already record consent and provenance receipts on-chain. What they publish about quality is a closed fraud score and a self-reported accuracy figure, and public App Store reviews complain about opaque, tiny per-item payouts. Skarl competes on proof, not scale:
+
+- **Auditable verdicts:** two vision models must agree or a human reviews; every rubric criterion cites timestamped evidence; evals publish Wilson intervals, kappa and risk-coverage.
+- **The verdict is attested, not just the consent:** each verification result and its evidence hash go to EAS on Base Sepolia.
+- **Built for robot learning:** task rubrics plus narration and phone motion sensors, not a photo upload.
+- **Agents can buy:** an AI buyer funds an order over x402 without a sales form.
+- **Payments a controller can defend:** agents propose but never approve, CDP policy caps reject over-limit payouts, and order, ledger, chain and bank reconcile.
+- **Contributors get reasons:** a Claude coach explains each outcome with cited timestamps and cannot change the verdict.
+
+Kled leads on what matters for a business today: real contributors, mainnet payouts, buyers and fraud models trained on real attacks. Skarl is a testnet prototype.
 
 ## How we built it
 
