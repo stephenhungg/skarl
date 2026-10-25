@@ -52,7 +52,7 @@ export function Money() {
   const transfer = step.transfer;
 
   return (
-    <section id="money" aria-labelledby="money-title" className="py-[72px] min-[810px]:py-[108px]">
+    <section id="money" aria-labelledby="money-title" className="pb-[180px] pt-[72px] min-[810px]:pb-[216px] min-[810px]:pt-[108px]">
       <div className="frame">
         <SectionHeader id="money-title" eyebrow="Payments" title="How Skarl pays out a test order" href="https://github.com/stephenhungg/skarl/blob/main/docs/accounting.md" external />
 
