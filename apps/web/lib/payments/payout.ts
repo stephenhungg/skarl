@@ -10,6 +10,8 @@ const PAYOUT_ENDPOINT = "/api/payments/payout";
 export type PayoutRecovery = {
   intentId: string;
   claimId: string;
+  /** Refund command IDs reuse the transfer client but route to the refund authority. */
+  paymentKind?: "buyer_refund";
   txHash?: Hash;
 };
 export type PayoutProgress = "connecting" | "claiming" | "awaiting_signature" | "recording";
@@ -25,6 +27,7 @@ export type ExecutePayoutOptions = {
   /** Supply the connected Coinbase Wallet or other EIP-1193 provider. */
   provider: EIP1193Provider;
   onProgress?: (progress: PayoutProgress) => void;
+  paymentKind?: "buyer_refund";
 };
 
 type ClaimedPayout = {
@@ -59,6 +62,7 @@ export function getPayoutRecovery(intentId: string): PayoutRecovery | null {
   if (!value) return null;
   const parsed: unknown = JSON.parse(value);
   if (!isRecord(parsed) || parsed.intentId !== intentId || typeof parsed.claimId !== "string" || !parsed.claimId ||
+    (parsed.paymentKind !== undefined && parsed.paymentKind !== "buyer_refund") ||
     (parsed.txHash !== undefined && (typeof parsed.txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(parsed.txHash)))) {
     throw new PayoutExecutionError("Invalid saved payout recovery. Reconcile the stored intent before sending.");
   }
@@ -69,8 +73,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function requestPayout(body: Record<string, string>): Promise<unknown> {
-  const response = await fetch(PAYOUT_ENDPOINT, {
+async function requestPayout(body: Record<string, string>, paymentKind?: "buyer_refund"): Promise<unknown> {
+  const response = await fetch(paymentKind === "buyer_refund" ? "/api/payments/refund" : PAYOUT_ENDPOINT, {
     method: "POST", credentials: "same-origin", cache: "no-store",
     headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
@@ -102,11 +106,11 @@ export async function reportPayoutTransaction(input: PayoutRecovery & { txHash: 
   if (!/^0x[0-9a-fA-F]{64}$/.test(input.txHash) || !input.claimId || !input.intentId) {
     throw new PayoutExecutionError("A stored claim and valid transaction hash are required.", input);
   }
-  const recovery: PayoutRecovery & { txHash: Hash } = { intentId: input.intentId, claimId: input.claimId, txHash: input.txHash };
+  const recovery: PayoutRecovery & { txHash: Hash } = { intentId: input.intentId, claimId: input.claimId, txHash: input.txHash, ...(input.paymentKind ? { paymentKind: input.paymentKind } : {}) };
   // Keep trying the durable server write even if local browser storage becomes unavailable.
   try { saveRecovery(recovery); } catch { /* The thrown error below still retains the hash. */ }
   try {
-    const observation = await requestPayout({ action: "submitted", demoIdentity: input.demoIdentity, ...recovery });
+    const observation = await requestPayout({ action: "submitted", demoIdentity: input.demoIdentity, ...recovery }, input.paymentKind);
     return { ...recovery, explorerUrl: `${baseSepolia.blockExplorers.default.url}/tx/${input.txHash}`, observation };
   } catch (error) {
     throw new PayoutExecutionError("The transaction may have settled. Report this same hash again to reconcile; do not send again.", recovery, error);
@@ -115,7 +119,7 @@ export async function reportPayoutTransaction(input: PayoutRecovery & { txHash: 
 
 /** Executes only terms returned by the server's atomic claim of a stored approval. */
 export async function executeApprovedPayout(options: ExecutePayoutOptions): Promise<PayoutSubmission> {
-  const { intentId, demoIdentity, provider, onProgress } = options;
+  const { intentId, demoIdentity, provider, onProgress, paymentKind } = options;
   let recovery: PayoutRecovery | undefined;
   try {
     const existing = getPayoutRecovery(intentId);
@@ -127,8 +131,8 @@ export async function executeApprovedPayout(options: ExecutePayoutOptions): Prom
     await wallet.switchChain({ id: PAYMENT_CHAIN_ID });
     if (await wallet.getChainId() !== PAYMENT_CHAIN_ID) throw new Error("Payouts require Base Sepolia.");
     onProgress?.("claiming");
-    const claim = validateClaim(await requestPayout({ action: "claim", intentId, demoIdentity, senderAddress: account }), intentId);
-    recovery = { intentId, claimId: claim.claimId };
+    const claim = validateClaim(await requestPayout({ action: "claim", intentId, demoIdentity, senderAddress: account }, paymentKind), intentId);
+    recovery = { intentId, claimId: claim.claimId, ...(paymentKind ? { paymentKind } : {}) };
     // Abort before any signature if durable local recovery is unavailable.
     saveRecovery(recovery);
     const [currentAccount] = await wallet.getAddresses();

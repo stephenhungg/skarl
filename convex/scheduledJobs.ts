@@ -20,6 +20,7 @@ const reserveFinance = ref<"mutation", FunctionArgs<DataApi["reserveFinance"]>, 
 const finishFinance = ref<"mutation", FunctionArgs<DataApi["finishFinance"]>, FunctionReturnType<DataApi["finishFinance"]>>("mutation", "finishFinance");
 
 type JobResult = { status: "complete" | "partial" | "noop" | "disabled"; orders: number; confirmed: number; pending: number; errors: number; agentRuns: number };
+const recordRefundObservation = makeFunctionReference<"mutation">("refunds:recordObservation");
 const empty = (status: JobResult["status"]): JobResult => ({ status, orders: 0, confirmed: 0, pending: 0, errors: 0, agentRuns: 0 });
 
 /** Reads existing transaction identities only. No signer, claim, facilitator or resend API. */
@@ -38,25 +39,35 @@ export const reconcile = internalAction({
         result.orders++;
         try {
           const pending = await ctx.runQuery(pendingForOrder, { orderId });
-          await Promise.all(pending.map(async ({ attempt, intent }) => {
+          await Promise.all(pending.map(async payment => {
+            const { attempt } = payment;
             if (!await ctx.runMutation(reserveObservation, { attemptId: attempt._id })) return;
             if (!attempt.txHash || !secret || secret.length < 32) { result.pending++; return; }
             try {
-              if (intent.kind === "contributor_payout") {
-                if (intent.network !== PAYMENT_NETWORK || !attempt.payerAddress) throw new Error("unsupported_payout_observation");
+              if ("refund" in payment) {
+                const { refund } = payment;
+                if (refund.network !== PAYMENT_NETWORK || !attempt.payerAddress) throw new Error("unsupported_refund_observation");
                 const observation = await observeTransfer(attempt.txHash as Hash, { network: PAYMENT_NETWORK,
-                  fromAddress: attempt.payerAddress, toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic });
-                await ctx.runMutation(api.payments.recordPayoutObservation, { serviceSecret: secret, attemptId: attempt._id, observation });
+                  fromAddress: attempt.payerAddress, toAddress: refund.recipientAddress, amountAtomic: refund.amountAtomic });
+                await ctx.runMutation(recordRefundObservation, { serviceSecret: secret, attemptId: attempt._id, observation });
               } else {
-                if (!attempt.authorizationNonce) throw new Error("funding_authorization_missing");
-                const expected = { network: intent.network, fromAddress: intent.buyerWalletAddress,
-                  toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic };
-                const observation = intent.network === SOLANA_PAYMENT_NETWORK
-                  ? await observeSolanaTransfer(attempt.txHash, { ...expected, authorizationNonce: attempt.authorizationNonce, orderId })
-                  : intent.network === PAYMENT_NETWORK ? await observeTransfer(attempt.txHash as Hash, expected, attempt.authorizationNonce)
-                  : (() => { throw new Error("unsupported_payment_rail"); })();
-                await ctx.runMutation(api.payments.confirmFunding, { serviceSecret: secret, attemptId: attempt._id,
-                  authorizationNonce: attempt.authorizationNonce, observation });
+                const { intent } = payment;
+                if (intent.kind === "contributor_payout") {
+                  if (intent.network !== PAYMENT_NETWORK || !attempt.payerAddress) throw new Error("unsupported_payout_observation");
+                  const observation = await observeTransfer(attempt.txHash as Hash, { network: PAYMENT_NETWORK,
+                    fromAddress: attempt.payerAddress, toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic });
+                  await ctx.runMutation(api.payments.recordPayoutObservation, { serviceSecret: secret, attemptId: attempt._id, observation });
+                } else {
+                  if (!attempt.authorizationNonce) throw new Error("funding_authorization_missing");
+                  const expected = { network: intent.network, fromAddress: intent.buyerWalletAddress,
+                    toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic };
+                  const observation = intent.network === SOLANA_PAYMENT_NETWORK
+                    ? await observeSolanaTransfer(attempt.txHash, { ...expected, authorizationNonce: attempt.authorizationNonce, orderId })
+                    : intent.network === PAYMENT_NETWORK ? await observeTransfer(attempt.txHash as Hash, expected, attempt.authorizationNonce)
+                    : (() => { throw new Error("unsupported_payment_rail"); })();
+                  await ctx.runMutation(api.payments.confirmFunding, { serviceSecret: secret, attemptId: attempt._id,
+                    authorizationNonce: attempt.authorizationNonce, observation });
+                }
               }
               result.confirmed++;
             } catch { result.pending++; }

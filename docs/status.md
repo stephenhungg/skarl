@@ -951,3 +951,30 @@ were rendered from the Expo web export and deployed contributor page. These chec
 mic, sensors or live upload behavior. **Convex deployment is needed and was not
 performed by this work.** The operator deploys main, then follows the
 [phone run and smoke-test instructions](../apps/mobile/README.md).
+## Backend batch — buyer refund execution
+
+The existing buyer cancellation reservation now has a complete Base-only
+execution adapter: `refunds.approve` requires an independent controller;
+`refunds.forOrder` exposes approval/claim/transaction state; browser
+`executeApprovedRefund` reuses the treasury-wallet USDC transfer client and the
+allowlisted `/api/payments/refund` route. Current controller authority, expiry,
+source terms, remaining quota, original buyer recipient and exact amount are
+revalidated. Proposal `executionAvailable` stays false until approval is valid.
+
+One attempt is stored before signing. Ambiguous dispatch/receipt results retain
+the claim/hash; recovery observes the same hash and never signs/sends again.
+Exact canonical USDC receipt evidence with two confirmations posts one
+`refund_paid` journal, clears customer-refund liability/cash, and sets the order
+to `refunded`. The funding intent remains confirmed. Reconciliation includes
+refund obligations and exact chain identities. The scheduled sweeper now also
+observes standalone command-bound refund attempts using its existing caps and
+leases, without creating attempts or resending.
+
+Refunds for Solana-funded orders remain unsupported. No live wallet/refund was
+performed; tests use synthetic receipts and injected browser wallets. The source
+requires the orchestrator's next clean-main backend deployment plus the normal
+web deployment. The dashboard API includes the precise signing/recovery flow.
+
+Refund commit validation: isolated staged-source `pnpm check` passed **662 tests** (163 Node, 325 Convex, 174 payment-route/client), typechecks, docs and production build, including `/api/payments/refund`. Tests exercise exact reservation/payment accounts, approval refusal/revocation/expiry/tenant checks, same-hash replay, changed bindings, browser recovery, and one-time sweep posting. An independent read-only review found no blocking issue. API types were regenerated without activating a deployment. All wallet/chain evidence in these tests is simulated.
+
+After merging the concurrent receipt/mobile backend slice, the complete main checkout passed `pnpm check`: **670 tests** (163 Node, 333 Convex, 174 payment-route/client), all typechecks, 39 Markdown documents’ links/anchors and the production web build. Both `/api/payments/refund` and the incoming receipt route built successfully. This confirms merged source compatibility; no live wallet transfer or cloud deployment was performed.

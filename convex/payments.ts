@@ -12,7 +12,7 @@ import { DEMO_ORDER_BUDGET, DEMO_ORDER_CONTRIBUTOR_RATE, DEMO_ORDER_GLOBAL_LIMIT
 import { audit } from "./lib/finance";
 
 // Trusted Next server reads RPC receipts; browsers cannot submit settlement facts directly.
-function service(secret: string) {
+export function service(secret: string) {
   const expected = process.env.SKARL_PAYMENTS_SERVICE_SECRET;
   if (!expected || expected.length < 32 || secret.length !== expected.length) throw new Error("payment_service_unauthorized");
   let mismatch = 0;
@@ -160,7 +160,7 @@ export const recordTransaction = mutation({
     await ctx.db.patch(attempt._id, { txHash, status: "reconciling", updatedAt: Date.now() });
   },
 });
-async function insertObservation(ctx: MutationCtx, attempt: Doc<"paymentAttempts">, observation: TransferObservation) {
+export async function insertObservation(ctx: MutationCtx, attempt: Doc<"paymentAttempts">, observation: TransferObservation) {
   if (observation.network !== attempt.network) throw new Error("wrong_network");
   const txHash = transactionHash(attempt.network, observation.txHash);
   if (attempt.txHash && attempt.txHash !== txHash) throw new Error("transaction_already_bound");
@@ -316,6 +316,19 @@ export const reconciliation = query({
         toAddress: intent.recipientAddress, amountAtomic: intent.kind === "contributor_payout" ? intent.amountAtomic : order.budgetAtomic,
         deadlineAt: intent.expiresAt, ...(seen[0] ? { transfer: seen[0] } : {}) });
     }
+    const refunds = await ctx.db.query("paymentCommands").withIndex("by_order_kind", q =>
+      q.eq("orderId", order._id).eq("kind", "buyer_refund")).collect();
+    for (const command of refunds) {
+      if (command.organizationId !== order.organizationId) throw new Error("refund_source_changed");
+      const attempts = await ctx.db.query("paymentAttempts").withIndex("by_command", q => q.eq("paymentCommandId", command._id)).collect();
+      const seen: Doc<"chainObservations">[] = [];
+      for (const attempt of attempts) seen.push(...await ctx.db.query("chainObservations").withIndex("by_attempt", q => q.eq("paymentAttemptId", attempt._id)).collect());
+      const eventKey = `refund_paid:${command._id}`;
+      for (const observation of seen) observations.push({ ...observation, eventKey, orderId: order._id });
+      obligations.push({ eventKey, orderId: order._id, kind: "refund_paid", network: command.network,
+        fromAddress: attempts[0]?.payerAddress ?? "", toAddress: command.recipientAddress, amountAtomic: command.amountAtomic,
+        ...(seen[0] ? { transfer: seen[0] } : {}) });
+    }
     // Standalone evidence sales bind a durable business intent in their audit row,
     // not in order funding intents. Reconcile them without changing funded quota.
     const saleClaims = await ctx.db.query("auditEvents").withIndex("by_org_time", q => q.eq("organizationId", order.organizationId)).collect();
@@ -342,7 +355,7 @@ export const reconciliation = query({
     const entries = await ctx.db.query("journalEntries").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
     const journals: PaymentJournal[] = [];
     for (const entry of entries) {
-      if (entry.kind !== "funding" && entry.kind !== "payout" && entry.kind !== "evidence_sale" && entry.kind !== "evidence_sale_deferred") continue;
+      if (entry.kind !== "funding" && entry.kind !== "payout" && entry.kind !== "refund_paid" && entry.kind !== "evidence_sale" && entry.kind !== "evidence_sale_deferred") continue;
       const lines = await ctx.db.query("journalLines").withIndex("by_entry", q => q.eq("journalEntryId", entry._id)).collect();
       const linked = observations.find(o => chainIdentity(o) === entry.sourceReference);
       journals.push({ eventKey: entry.eventKey, orderId: order._id, kind: entry.kind, network: entry.network,

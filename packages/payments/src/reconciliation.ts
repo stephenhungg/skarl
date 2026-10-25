@@ -50,14 +50,14 @@ export function validateTransfer(observation: TransferObservation, expected: Exp
 export type PaymentObligation = ExpectedTransfer & Readonly<{
   eventKey: string;
   orderId: string;
-  kind: "funding" | "payout" | "evidence_sale";
+  kind: "funding" | "payout" | "refund_paid" | "evidence_sale";
   deadlineAt?: number;
   transfer?: TransferIdentity;
 }>;
 export type PaymentJournal = Readonly<{
   eventKey: string;
   orderId: string;
-  kind: "funding" | "payout" | "evidence_sale" | "evidence_sale_deferred";
+  kind: "funding" | "payout" | "refund_paid" | "evidence_sale" | "evidence_sale_deferred";
   recipientAddress?: string;
   network: string;
   tokenAddress: string;
@@ -85,7 +85,9 @@ function correctJournal(journal: PaymentJournal, obligation: PaymentObligation, 
     ? { debit: "asset:usdc", credit: "liability:customer_prepayments" }
     : obligation.kind === "evidence_sale"
       ? { debit: "asset:evidence_usdc", credit: journal.kind === "evidence_sale_deferred" ? "liability:evidence_receipts" : "revenue:evidence_sales" }
-      : { debit: "liability:contributor_payables", credit: "asset:usdc" };
+      : obligation.kind === "refund_paid"
+        ? { debit: "liability:customer_refunds", credit: "asset:usdc" }
+        : { debit: "liability:contributor_payables", credit: "asset:usdc" };
   const matchingKind = journal.kind === obligation.kind ||
     (obligation.kind === "evidence_sale" && journal.kind === "evidence_sale_deferred");
   return journal.orderId === obligation.orderId && matchingKind &&

@@ -290,11 +290,44 @@ controllerApprovalRequired:true,executionAvailable:false,replayed}`. This is
 **proposal-only**: it creates the existing `paymentCommands.kind="buyer_refund"`
 and links it through the original confirmed funding intent's optional
 `refundPaymentCommandId`. It does not create a new executable refund intent,
-controller approval, dispatch, signature or transfer. The existing
-`finance.approve`/browser payout adapter handles contributor payouts only;
-refund approval/execution needs the payments integration owner. Never pass the
-funding ID to the payout signing hook or display `refunded`. Retry with the same
-reason; changed proposal bindings produce `refund_proposal_changed`.
+controller approval, dispatch, signature or transfer. Continue with the refund-specific approval/execution flow below. Never pass the funding ID to a payout signing hook or display `refunded` before observation. Retry with the same reason; changed proposal bindings produce `refund_proposal_changed`.
+
+### Execute an approved buyer refund
+
+Base-funded orders only; Solana funding does not yet support cancellation/refund.
+The original funding intent stays `confirmed`; refunds use its linked standalone
+`paymentCommands.kind="buyer_refund"` command. No new funding intent is created.
+
+1. Owning buyer calls `orders.cancelRemainder` and retains `paymentCommandId`.
+2. Query `refunds.forOrder({demoIdentity,orderId})` as controller or owning buyer.
+   It returns `{commandId,orderId,status,recipientAddress,amountAtomic,network,
+   tokenAddress,controllerApprovalRequired,executionAvailable,approval,claimId,
+   txHash,explorerUrl}`. `amountAtomic` is an integer string. Approval includes
+   status, approver identity, expiry and reason. Proposed refunds are not executable.
+3. Independent controller calls `refunds.approve({demoIdentity,commandId,reason})`.
+   Buyer self-approval and finance-agent approval return audited refusals. Current
+   controller membership, expiry, source and exact amount/recipient bindings are
+   revalidated before execution. `forOrder.executionAvailable` becomes true only
+   for a valid approved, unclaimed command.
+4. Browser imports `executeApprovedRefund` from `apps/web/lib/payments/refund.ts`
+   and calls `{commandId,demoIdentity,provider,onProgress?}`. It reuses the existing
+   treasury-wallet USDC transfer client with the allowlisted refund endpoint.
+   The server derives recipient/amount from the approved command. It creates
+   one execution attempt before any signature; the controller signs in the wallet.
+5. `POST /api/payments/refund` records the submitted hash before receipt observation.
+   Pending RPC returns HTTP 202/reconciling, never paid. Recover with
+   `getRefundRecovery(commandId)` and `reportRefundTransaction({commandId,claimId,
+   txHash,demoIdentity})`; report the same hash without signing/sending again.
+   The observer-only two-minute sweeper also resumes these command-bound attempts
+   under its existing caps/leases.
+
+The endpoint internally uses the existing browser client's opaque `intentId`
+field to carry this **command ID**. It ignores caller-supplied amount/recipient.
+Only an observed exact canonical Base USDC transfer with two confirmations posts
+one `refund_paid` journal and changes the order to `refunded`. The journal debits
+customer-refund liability and credits cash; reservation itself does not move cash.
+`payments.reconciliation` includes this refund obligation, journal and chain log.
+No live refund or wallet signature is claimed by the implementation tests.
 
 ### Reconciliation exceptions
 

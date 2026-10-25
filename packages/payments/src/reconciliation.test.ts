@@ -135,3 +135,17 @@ test("evidence receipts reconcile to their revenue wallet and cannot masquerade 
     }
   }
 });
+
+test("refund settlement reconciles customer-refund debit and cash credit, never a contributor-payable debit", () => {
+  const refund: PaymentObligation = { ...obligation, kind: "refund_paid" };
+  const refundJournal: PaymentJournal = { ...journal, kind: "refund_paid", lines: [
+    { account: "liability:customer_refunds", side: "debit", amountAtomic: obligation.amountAtomic },
+    { account: "asset:usdc", side: "credit", amountAtomic: obligation.amountAtomic },
+  ] };
+  const result = reconcilePayments({ ...input, obligations: [refund], journals: [refundJournal] });
+  assert.equal(result.matches.length, 1); assert.deepEqual(result.exceptions, []);
+  const wrong = { ...refundJournal, lines: refundJournal.lines.map(line => line.side === "debit" ? { ...line, account: "liability:contributor_payables" } : line) };
+  const mismatch = reconcilePayments({ ...input, obligations: [refund], journals: [wrong] });
+  assert.equal(mismatch.matches.length, 0);
+  assert.ok(mismatch.exceptions.some(exception => exception.code === "ledger_mismatch"));
+});

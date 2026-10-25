@@ -15,6 +15,11 @@ export type ScheduledJob = "reconciliation" | "finance";
 export type JobReservation = { stateId: Id<"scheduledCheckpoints">; generation: number; cursor: string | null };
 export type FinanceReservation = { stateId: Id<"scheduledCheckpoints">; generation: number; requestId: string; prompt: string };
 export type PendingPayment = { attempt: Doc<"paymentAttempts">; intent: Doc<"paymentIntents"> };
+export type PendingRefund = { attempt: Doc<"paymentAttempts">; refund: {
+  kind: "buyer_refund"; commandId: Id<"paymentCommands">; network: Doc<"paymentCommands">["network"];
+  tokenAddress: Doc<"paymentCommands">["tokenAddress"]; recipientAddress: string; amountAtomic: bigint;
+} };
+export type PendingSettlement = PendingPayment | PendingRefund;
 type ScheduledSnapshot = Omit<Doc<"scheduledCheckpoints">, "payloadJson"> & { snapshot: unknown };
 
 async function checkpoint(ctx: QueryCtx | MutationCtx, organizationId: Id<"organizations">, key: string) {
@@ -63,11 +68,11 @@ export const ordersPage = internalQuery({
 });
 export const pendingForOrder = internalQuery({
   args: { orderId: v.id("orders") },
-  handler: async (ctx, args): Promise<PendingPayment[]> => {
+  handler: async (ctx, args): Promise<PendingSettlement[]> => {
     const { order } = await orderScope(ctx, args.orderId);
     const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id)).take(101);
     if (intents.length > 100) throw new Error("scheduled_order_inventory_limit");
-    const pending: { attempt: Doc<"paymentAttempts">; intent: Doc<"paymentIntents">; lastChecked: number }[] = [];
+    const pending: (PendingSettlement & { lastChecked: number })[] = [];
     for (const intent of intents) {
       if (intent.organizationId !== order.organizationId) throw new Error("payment_tenant_mismatch");
       const attempts = await ctx.db.query("paymentAttempts").withIndex("by_intent", q => q.eq("paymentIntentId", intent._id)).take(2);
@@ -79,8 +84,26 @@ export const pendingForOrder = internalQuery({
         if (!state || state.nextAt <= Date.now()) pending.push({ attempt, intent, lastChecked: state?.updatedAt ?? 0 });
       }
     }
+    // Refunds reuse command-bound attempts without masquerading as funding intents.
+    const refunds = await ctx.db.query("paymentCommands").withIndex("by_order_kind", q =>
+      q.eq("orderId", order._id).eq("kind", "buyer_refund")).take(2);
+    if (refunds.length > 1) throw new Error("ambiguous_refund_command");
+    for (const command of refunds) {
+      if (command.organizationId !== order.organizationId) throw new Error("payment_tenant_mismatch");
+      const attempts = await ctx.db.query("paymentAttempts").withIndex("by_command", q => q.eq("paymentCommandId", command._id)).take(2);
+      if (attempts.length > 1) throw new Error("ambiguous_payment_attempt");
+      for (const attempt of attempts) {
+        if (attempt.paymentIntentId || attempt.organizationId !== order.organizationId || attempt.network !== command.network ||
+          attempt.tokenAddress !== command.tokenAddress || attempt.amountAtomic !== command.amountAtomic) throw new Error("payment_attempt_binding_changed");
+        if (!observableStatuses.has(attempt.status)) continue;
+        const state = await checkpoint(ctx, order.organizationId, `observation:${attempt._id}`);
+        if (!state || state.nextAt <= Date.now()) pending.push({ attempt, refund: { kind: "buyer_refund", commandId: command._id,
+          network: command.network, tokenAddress: command.tokenAddress, recipientAddress: command.recipientAddress, amountAtomic: command.amountAtomic },
+          lastChecked: state?.updatedAt ?? 0 });
+      }
+    }
     pending.sort((a, b) => a.lastChecked - b.lastChecked || a.attempt.createdAt - b.attempt.createdAt || a.attempt._id.localeCompare(b.attempt._id));
-    return pending.slice(0, ATTEMPTS_PER_ORDER).map(({ attempt, intent }) => ({ attempt, intent }));
+    return pending.slice(0, ATTEMPTS_PER_ORDER).map(({ lastChecked, ...payment }) => payment);
   },
 });
 export const reserveObservation = internalMutation({

@@ -114,3 +114,26 @@ describe("browser approved payout execution", () => {
     expect(sentTransactions()).toHaveLength(0);
   });
 });
+
+describe("buyer refunds reuse the approved browser transfer and recovery path", () => {
+  it("routes both claim and observation to the refund authority and signs only the stored buyer/amount", async () => {
+    const { executeApprovedRefund } = await import("../../../apps/web/lib/payments/refund");
+    const result = await executeApprovedRefund({ commandId: INTENT_ID, demoIdentity: "controller", provider });
+    expect(result.paymentKind).toBe("buyer_refund");
+    expect(http.mock.calls.map(([url]) => url)).toEqual(["/api/payments/refund", "/api/payments/refund"]);
+    const transaction = sentTransactions()[0]![0].params[0];
+    expect(decodeFunctionData({ abi: erc20Abi, data: transaction.data }).args).toEqual([RECIPIENT, 7_500_000n]);
+    expect(sentTransactions()).toHaveLength(1);
+  });
+  it("a lost refund report retains the claim/hash and reconciliation never signs a second transfer", async () => {
+    const { executeApprovedRefund, reportRefundTransaction, getRefundRecovery } = await import("../../../apps/web/lib/payments/refund");
+    loseReport = true;
+    await expect(executeApprovedRefund({ commandId: INTENT_ID, demoIdentity: "controller", provider })).rejects.toBeInstanceOf(PayoutExecutionError);
+    expect(getRefundRecovery(INTENT_ID)).toMatchObject({ claimId: CLAIM_ID, txHash: TX_HASH, paymentKind: "buyer_refund" });
+    loseReport = false;
+    await reportRefundTransaction({ commandId: INTENT_ID, claimId: CLAIM_ID, txHash: TX_HASH, demoIdentity: "controller" });
+    await expect(executeApprovedRefund({ commandId: INTENT_ID, demoIdentity: "controller", provider })).rejects.toBeInstanceOf(PayoutExecutionError);
+    expect(sentTransactions()).toHaveLength(1);
+    expect(http.mock.calls.every(([url]) => url === "/api/payments/refund")).toBe(true);
+  });
+});
