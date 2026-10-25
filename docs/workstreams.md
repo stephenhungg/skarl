@@ -1,61 +1,67 @@
 # Workstreams and Ownership
 
-Proposed assignments for the four-person team. Each person can build independently against shared contracts, then pair at the listed boundaries. These assignments are a handoff plan, not a claim that anyone has accepted it.
+Assignments requested by Stephen: Matthew owns the web dashboard, Silas owns UI, Stephen owns the backend, and qtzx06 owns onchain. Backend includes multimodal verification, financial business logic and accounting so those responsibilities remain covered. Each person builds against shared contracts and pairs at the boundaries below.
 
-## Stephen — Web and integration
+## MatthewKim323 — Web dashboard
 
-**Own:** `apps/web`, `packages/contracts`, root tooling and integration docs. Suggested branch: `stephen/web-integration`.
+**Own:** `apps/web/app/dashboard/**` and `apps/web/features/dashboard/**`. These are planned dashboard folders; no dashboard route is implemented yet. Suggested branch: `matthew/web-dashboard`.
 
-1. Build the buyer's fixed task, order funding status and delivered-manifest view.
-2. Build authenticated contributor consent, camera/microphone preview, recording, private upload and timestamped feedback.
-3. Build operator evidence, payable and reconciliation views using Convex live queries. Never show unconfirmed payouts as paid.
-4. Integrate typed backend/worker reports without making financial decisions in the browser.
+1. Build buyer and operator dashboard pages: task/order creation, funding progress, submission queue, review details and delivered manifests.
+2. Build finance views for outstanding payables, refunds, balances, payment attempts and reconciliation exceptions. Render backend projections; do not calculate authoritative balances in the browser.
+3. Wire dashboard queries/actions to Stephen's Convex contracts and qtzx06's payment status. Show unavailable, loading, empty, pending and error states explicitly.
+4. Build timestamp-linked evidence review using the verifier report. Never show unconfirmed payouts as paid or make acceptance decisions solely in client code.
 
-**Done when:** the chosen clip goes from upload to report to decision in the UI; a user without membership cannot see private media; blocked/unavailable states are visible. Browser permission failure and unsupported codec have useful recovery. Financial amounts are formatted from micro-units.
+**Done when:** the dashboard can follow an order from funding through submission review, delivery and settlement status; live updates and failure states are visible; displayed financial amounts are formatted from exact micro-units.
 
-**Dependencies:** Silas's auth/query/upload functions, Matthew's canonical report, qtzx06's funding result and account projections. Until ready, show unavailable states; fixture mode must be explicitly labeled.
+**Dependencies:** Stephen supplies authenticated queries, mutations, evidence and financial projections; Silas supplies shared components and visual patterns; qtzx06 supplies wallet/payment integration contracts. Request changes to shared components from Silas instead of maintaining a second UI kit.
 
-## MatthewKim323 — Multimodal verifier
+## silaswu4 — UI and contributor experience
 
-**Own:** `services/verifier`, `evals`, `fixtures`, `docs/ai-verification.md`, `docs/evaluation.md`. Suggested branch: `matthew/multimodal-verifier`.
+**Own:** `apps/web/components/**`, `apps/web/features/contributor/**`, contributor routes under `apps/web/app/contribute/**`, and the root web `layout.tsx`, `page.tsx` and `globals.css`. These feature folders/routes are implementation targets. Suggested branch: `silas/ui`.
 
-1. Capture a small consented fixed-task dataset with distinct recording sessions and labeled event times.
-2. Decode/hash media; preserve source time mapping; extract silent visual evidence with Gemini, independent faster-whisper word times and SSCD frame/copy alignment.
-3. Produce schema-valid reports with grounded criteria and copy status. Retry bounded transient model errors and fail to review when unavailable.
-4. Integrate signed worker requests, claim/renew leases and reject stale completion locally before submission.
-5. Run a raw audiovisual-model baseline versus the independent-trace pipeline. Report counts and failures; use no fabricated accuracy.
+1. Establish the shared visual system, responsive app shell, navigation, inputs, buttons, dialogs, status badges and accessible loading/error patterns.
+2. Build the contributor task/consent screens, camera and microphone preview, recording controls, private-upload experience and timestamped correction feedback.
+3. Handle browser permission denial, unsupported recording codecs, upload progress and retry states. Keep original-media access behind Stephen's authorized backend.
+4. Supply reusable evidence, amount and payment-status components for Matthew's dashboard. Coordinate wallet UI with qtzx06's adapter; do not put signing secrets in UI code.
 
-**Done when:** a correct clip is supported, missing action is localized, narration mismatch is flagged, transformed re-upload is detected, and a fresh valid retake is not rejected merely for similarity. A worker/model failure cannot recommend acceptance.
+**Done when:** the contributor flow is usable on the demo device, recording and upload states are clear, the layout works on mobile and desktop, and the dashboard can reuse the same components without duplicated styles.
 
-**Dependencies:** canonical schema from Stephen; fenced job gateway and private asset access from Silas. No treasury access or journal writes.
+**Dependencies:** Stephen supplies auth/session, consent, upload and submission endpoints; Matthew provides dashboard component needs; qtzx06 provides wallet connection/signing interfaces. Matthew owns dashboard page composition and data wiring; Silas owns shared presentation and contributor page composition.
 
-## silaswu4 — Convex, auth, jobs and media
+## Stephen — Backend, AI and finance logic
 
-**Own:** `convex`, `convex.json`, `docs/backend.md`, `docs/deployment.md`, `docs/security.md`. Suggested branch: `silas/convex-backend`.
+**Own:** `convex/**`, `convex.json`, `services/verifier/**`, `evals/**`, `fixtures/**`, `packages/contracts/**`, `packages/ledger/**`, non-payment API routes, root tooling and backend/AI/accounting/integration docs. Suggested branch: `stephen/backend`.
 
-1. Configure a team-owned Convex dev deployment and Auth0 JWT integration; add organization memberships and role checks to every boundary.
-2. Implement task/order and scoped private media flows, submission finalization and indexed idempotent event writes.
-3. Implement leased AI jobs and a purpose-limited HMAC worker gateway with replay/fencing checks.
-4. Implement review/delivery transactions plus outbox commands and immutable audit/journal persistence.
-5. Provide live queries for progress, evidence, payables and account projections.
+1. Configure Convex and Auth0, trusted organization memberships and role checks; implement task/order, consent, private media and submission APIs.
+2. Implement fenced analysis jobs and the purpose-limited worker gateway. Build the multimodal pipeline: silent visual evidence, independent speech transcription, temporal copy checks and schema-validated reports.
+3. Implement atomic review, delivery, budget allocation, payable creation, journal persistence and payment-command/outbox records. Acceptance racing cancellation must never spend the same budget twice.
+4. Build the [bounded finance-agent tools](finance-agent.md), policy and independent approval workflow, deterministic financial projections and prior/current-period reports.
+5. Supply typed frontend contracts and integration fixtures to Matthew/Silas. Evaluate model evidence and financial invariants with consented recordings and synthetic finance scenarios; report actual results.
 
-**Done when:** two concurrent acceptances cannot exceed quota, acceptance racing cancellation cannot spend refunded budget, duplicate worker completion does not duplicate fulfillment, an expired worker cannot overwrite a newer report and cross-organization access is rejected.
+**Done when:** authenticated clients can complete the order/submission/review/delivery loop; stale worker completions, cross-organization access, duplicate financial events and overspending are rejected; evidence and balanced journals are traceable. The verifier cannot approve payments, and the finance agent cannot approve its own proposals.
 
-**Dependencies:** report schema and domain decisions from Stephen; exact journal builders and intent contract from qtzx06. Do not invoke blockchain or models inside a database mutation.
+**Dependencies:** Matthew and Silas consume the backend interfaces and surface real errors; qtzx06 executes approved onchain intents and returns independently checked settlement facts. Stephen owns accounting and financial policy; qtzx06 owns chain execution and observation. Network inference and RPC calls stay outside database mutations.
 
-## qtzx06 — Solana/x402 and finance
+## qtzx06 — Onchain and Solana/x402
 
-**Own:** `packages/payments`, `packages/ledger`, `docs/payments-solana.md`, `docs/accounting.md`, `docs/sponsor-tracks.md`. Payment Node routes touch Stephen's folder; coordinate a narrow handoff or shared integration PR. Suggested branch: `qtzx/solana-finance`.
+**Own:** `packages/payments/**`, `apps/web/lib/solana/**`, payment routes such as `apps/web/app/api/orders/[id]/fund/**`, and `docs/payments-solana.md`. Coordinate any additional payout/refund API path with Stephen before adding it. Suggested branch: `qtzx/solana-onchain`.
 
-1. Implement Devnet x402 V2 `exact` funding with validated server quotes, runtime facilitator support check and post-settlement reconciliation.
-2. Implement approved contributor payouts/refunds using SPL checked transfers, correct ATAs, durable attempts and signature/blockhash lifetime tracking.
-3. Connect pure journal helpers to Convex atomic events and financial projections.
-4. Implement [allowlisted finance-agent tools](finance-agent.md) for explanation, proposal and policy checks; approvals/signing remain in deterministic control paths.
-5. Build a synthetic finance scenario set and a prior-period/current-period report. Confirm the Coinbase MCP eligibility question at the sponsor booth without switching off Solana.
+1. Implement Solana Devnet wallet integration and x402 V2 `exact` funding with server-owned quotes, facilitator support checks and post-settlement confirmation.
+2. Implement approved contributor payouts/refunds using checked SPL transfers, correct associated token accounts, native SOL fee/rent handling and isolated signing boundaries.
+3. Persist transaction attempts through Stephen's backend before submission; retain signatures, blockhash lifetime and confirmation/finality observations. Reconcile an uncertain attempt before replacing it.
+4. Verify expected network, mint, token-account owners, recipient, amount and transfer identity, then report observed facts to the backend. Do not post ledger entries or grant approval authority from the chain adapter.
+5. Provide Matthew/Silas with typed wallet actions, payment status and explorer links. Verify the Coinbase MCP eligibility question without switching Skarl off Solana.
 
-**Done when:** confirmed funding, one delivery, contributor payout and unused-balance refund reconcile; duplicate events, unknown transfer results, insufficient quota, wrong mint/recipient, excessive amount and self-approved exceptions are handled safely.
+**Done when:** funding, one contributor payout and the unused-balance refund are observed on Solana Devnet; replay, lost responses, wrong mint/recipient, expired transaction validity and missing token accounts have explicit handling. No unapproved transfer can execute.
 
-**Dependencies:** Silas's durable intent/outbox/gateway; Stephen's paid endpoint and UI. Never share signer credentials with the verifier or browser. The current adapter explicitly cannot submit transactions.
+**Dependencies:** Stephen supplies durable intents, approval/policy checks, service gateway and accounting; Matthew/Silas provide the dashboard and wallet presentation. Wallet connection/signing mechanics belong here; shared wallet presentation belongs to Silas. Never expose signer credentials to the verifier or browser UI. The current payment adapter remains explicitly unimplemented.
+
+## Folder boundaries and handoffs
+
+- Matthew owns dashboard routes, dashboard-specific components and dashboard data wiring. Silas owns reusable components, the global shell and contributor UI. Both can work inside `apps/web` without editing the same feature folders.
+- Stephen owns server business rules, AI processing, shared schemas, finance-agent behavior and ledger persistence. UI code consumes these APIs; it does not duplicate their authority.
+- qtzx06 owns wallet adapters and payment route internals. Coordinate changes to the shared shell with Silas, payment screens with Matthew and intent/approval contracts with Stephen.
+- Coordinate root dependencies and configuration with Stephen. Shared-schema changes require matching JSON Schema, Python models, examples and cross-language checks.
 
 ## Integration order
 

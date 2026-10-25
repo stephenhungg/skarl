@@ -17,14 +17,14 @@ No API keys are required to run the shell. See [setup](docs/setup.md) for Python
 
 ## Team handoffs
 
-| Proposed owner | Workstream | Primary folders |
+| Owner | Workstream | Primary folders |
 | --- | --- | --- |
-| Stephen | Web, product flow and integration | `apps/web`, `packages/contracts` |
-| MatthewKim323 | Multimodal verification and evaluations | `services/verifier`, `evals`, `fixtures` |
-| silaswu4 | Convex, auth, media and durable jobs | `convex` |
-| qtzx06 | Solana/x402, financial policy and accounting | `packages/payments`, `packages/ledger` |
+| MatthewKim323 | Web dashboard and dashboard data integration | `apps/web/app/dashboard`, `apps/web/features/dashboard` |
+| silaswu4 | Shared UI, app shell and contributor recording flow | `apps/web/components`, `apps/web/features/contributor`, root web layout/page/styles |
+| Stephen | Backend, auth, AI verification, finance logic and shared contracts | `convex`, `services/verifier`, `evals`, `fixtures`, `packages/contracts`, `packages/ledger` |
+| qtzx06 | Solana/x402, wallet integration and onchain settlement | `packages/payments`, `apps/web/lib/solana`, payment API routes |
 
-These are proposed ownership assignments. [Workstreams](docs/workstreams.md) defines dependencies and acceptance checks; [the docs index](docs/README.md) covers product, architecture, APIs, sponsors, research and the demo.
+These assignments reflect Stephen's requested split. Folder paths describe ownership boundaries; some are implementation targets rather than existing routes. [Workstreams](docs/workstreams.md) defines tasks, dependencies and acceptance checks; [the docs index](docs/README.md) covers product, architecture, APIs, sponsors, research and the demo.
 
 ## Repository map
 

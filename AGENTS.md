@@ -15,6 +15,6 @@ Read `docs/README.md`, `docs/workstreams.md` and the relevant subsystem document
 
 ## Ownership and checks
 
-Respect the folder ownership in `docs/workstreams.md`; coordinate changes to shared schemas before implementation. Extend existing contracts instead of creating slightly different copies. Keep public docs self-contained and free of personal context.
+Current owners: MatthewKim323 — dashboard; silaswu4 — shared UI and contributor flow; Stephen — backend, verifier, finance logic and contracts; qtzx06 — Solana/onchain. Respect the folder ownership in `docs/workstreams.md`; coordinate changes to shared schemas before implementation. Extend existing contracts instead of creating slightly different copies. Keep public docs self-contained and free of personal context.
 
 Use `pnpm check` for TypeScript and web changes. Run `python -m pytest services/verifier/tests` in the installed verifier environment for Python/contracts changes. Keep the Python models and canonical JSON Schema consistent. Add tests for meaningful financial invariants and trust boundaries. Never claim inference or chain transactions worked from fixture results alone.
