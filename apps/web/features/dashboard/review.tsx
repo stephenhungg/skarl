@@ -127,7 +127,7 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
                           </button>
                         ))}
                       </div>
-                    ) : finding ? <p className="type-label-sm text-text-3">No timestamped evidence. Nothing was invented to fill it.</p> : null}
+                    ) : finding ? <p className="type-label-sm text-text-3">No timestamped evidence.</p> : null}
                   </li>
                 );
               })}
@@ -177,7 +177,7 @@ function EvidenceTrack({ criteria, durationMs, now, focus, onFocus, onSeek }: {
 function Transcript({ segments, now, onSeek }: { segments: { startMs: number; endMs: number; text: string }[]; now: number; onSeek: (start: number) => void }) {
   return (
     <div className="rounded-panel border border-line-faint p-3">
-      <p className="mb-2 type-label-sm text-text-3">Narration, transcribed separately from the video</p>
+      <p className="mb-2 type-label-sm text-text-3">Narration</p>
       {segments.length === 0 ? <p className="type-body-sm text-text-2">No narration was transcribed.</p> : (
         <p className="type-body leading-7">
           {segments.map((segment, i) => {
@@ -287,7 +287,7 @@ function Decision({ submissionId, status, report, verificationOnly }: { submissi
         <Button size="sm" disabled={!!busy || !!acceptBlock} onClick={() => decide("accept")}>Accept</Button>
       </div>
       <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Accept this clip?" actionLabel="Accept and create payable"
-        description="This records your decision, delivers the sample to the buyer and accrues what the contributor is owed. It cannot be silently undone; a correction is a new, audited entry."
+        description="This delivers the sample to the buyer and creates what the contributor is owed."
         onConfirm={() => send("accept")}>
         <p className="type-body-sm text-text-2">Your note: <span className="text-text-1">{note.trim()}</span></p>
       </ConfirmDialog>

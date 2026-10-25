@@ -104,7 +104,6 @@ function LatestRun({ run }: { run: AgentRun }) {
           : <p className="type-body text-fail-text">{run.failureCode ? `The run stopped: ${humanize(run.failureCode)}. Nothing was proposed.` : "No answer was recorded."}</p>}
         <Tools steps={steps} />
       </div>
-      <div className="shell-foot type-label-sm text-text-2">Advisory. The ledger is the record; the agent can propose but never approve or sign.</div>
     </article>
   );
 }
@@ -145,7 +144,7 @@ export function Agent() {
   const [latest, ...earlier] = runs ?? [];
   return (
     <>
-      <PageHeader title="Finance agent" description="Settlement accountant and AP clerk. It reads the books through typed tools and may propose payouts. It cannot approve or sign." />
+      <PageHeader title="Finance agent" />
       <div className="shell">
         <div className="panel flex flex-col gap-3 p-3">
           <Textarea aria-label="Ask the finance agent" rows={2} value={prompt} maxLength={2000} onChange={event => setPrompt(event.target.value)}
@@ -191,7 +190,7 @@ function BackgroundJobs({ orderId }: { orderId: Id<"orders"> }) {
   if (!rows || rows.length === 0) return null;
   const ago = (ms: number) => { const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`; };
   return (
-    <Section title="Running on its own" meta="Observe and propose only">
+    <Section title="Running on its own">
       <ul className="divide-y divide-line-faint rounded-panel border border-line-faint">
         {rows.map(row => (
           <li key={row._id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5">

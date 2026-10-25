@@ -53,7 +53,7 @@ export function Submissions() {
   const next = all.find(row => row.status === "needs_review");
   return (
     <>
-      <PageHeader title="Submissions" description="Every clip for this order. Open one to review its evidence."
+      <PageHeader title="Submissions"
         actions={next && <Button size="sm" onClick={() => router.push(`/dashboard/submissions/${next._id}`)}>Review next clip</Button>} />
       {submissions === undefined ? <Loading rows={4} /> : all.length === 0
         ? <Unavailable title="No submissions yet" description="Clips appear here as contributors upload them from the recorder." />

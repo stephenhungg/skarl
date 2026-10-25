@@ -28,7 +28,7 @@ export function Ledger() {
   if (orderId === null) return <Unavailable title="No staged order" description="Run pnpm seed to stage the demo order." />;
   return (
     <>
-      <PageHeader title="Ledger" description="Double-entry books for this order, computed from posted journals. Corrections are new entries, never edits." />
+      <PageHeader title="Ledger" />
       <Tabs value={tab} onValueChange={value => setTab(value as typeof tab)}>
         <TabsList size="sm">
           <TabsTrigger value="books">Books</TabsTrigger>
@@ -36,7 +36,7 @@ export function Ledger() {
           <TabsTrigger value="exceptions">Exceptions<TabsCount>{openExceptions}</TabsCount></TabsTrigger>
         </TabsList>
         <TabsContent value="books">
-      <Section title="Trial balance" meta={statements ? (statements.trialBalance.balanced ? "Debits equal credits" : "Out of balance") : undefined} className="mt-2">
+      <Section title="Trial balance" className="mt-2">
         {statements === undefined ? <Loading rows={4} /> : (
           <>
             <div className="mb-3"><Status status={statements.trialBalance.balanced ? "ok" : "fail"}>{statements.trialBalance.balanced ? "Balanced" : "Not balanced"}</Status></div>
@@ -58,14 +58,13 @@ export function Ledger() {
                 <div key={label}><dt className="type-label-sm text-text-2">{label}</dt><dd><Amount value={value} className="type-heading-sm" /></dd></div>
               ))}
             </dl>
-            <p className="mt-2 type-label-sm text-text-3">Net income excludes inference, network fees and tax, which are not posted.</p>
           </>
         )}
       </Section>
 
         </TabsContent>
         <TabsContent value="journal">
-      <Section className="mt-2" title="Journal" meta={journal ? `${journal.length} posted ${journal.length === 1 ? "entry" : "entries"}` : undefined}>
+      <Section className="mt-2" title="Journal">
         {journal === undefined ? <Loading rows={3} /> : journal.length === 0 ? <p className="type-body-sm text-text-2">Nothing posted yet.</p> : (
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="flex flex-col gap-3">
@@ -98,7 +97,7 @@ export function Ledger() {
       </Section>
         </TabsContent>
         <TabsContent value="exceptions">
-      <Section className="mt-2" title="Reconciliation exceptions" meta="Order terms, ledger and chain compared">
+      <Section className="mt-2" title="Reconciliation exceptions">
         {exceptions === undefined ? <Loading rows={2} /> : exceptions.length === 0
           ? <p className="type-body-sm text-text-2">No exceptions. Every imported transfer matches an expected obligation.</p>
           : (

@@ -20,7 +20,7 @@ export function Overview() {
       <PageHeader title={order.title}
         description={<>Order <span className="mono">{order.publicId}</span> &middot; {humanize(order.status)} &middot; {order.acceptedCount} of {order.quantityRequested} samples accepted</>} />
       <NeedsYouList orderId={orderId!} submissions={submissions} payables={payables} />
-      <Section title="Money" meta="Derived from posted journals">
+      <Section title="Money">
         <dl className="grid grid-cols-2 border-y border-line-faint md:grid-cols-4">
           {[
             ["Funded by buyer", order.budgetAtomic],
@@ -34,7 +34,7 @@ export function Overview() {
             </div>
           ))}
         </dl>
-        <p className="mt-2 type-label-sm text-text-3">Prepaid but undelivered: <Amount value={balances["liability:customer_prepayments"]} />. Customer money is a liability until a sample is delivered.</p>
+        <p className="mt-2 type-label-sm text-text-3">Prepaid but undelivered: <Amount value={balances["liability:customer_prepayments"]} /></p>
       </Section>
       <Funding orderId={orderId!} />
       <RecentActivity orderId={orderId!} />
@@ -61,7 +61,7 @@ export function NeedsYouList({ orderId, submissions, payables, standalone }: { o
     <section className={standalone ? undefined : "mt-2"} aria-label="Needs you">
       {!standalone && <div className="mb-3 flex items-baseline gap-3"><h2 className="type-heading-sm">Needs you</h2>{rows.length > 0 && <Badge>{rows.length}</Badge>}</div>}
       {loading ? <Loading rows={2} /> : rows.length === 0
-        ? <div className="flex items-center gap-2 rounded-panel border border-line-faint px-4 py-3 type-body-sm text-text-2"><Lordicon name="check" size={16} trigger="in" />You are clear. Nothing that can be paid waits on you.</div>
+        ? <div className="flex items-center gap-2 rounded-panel border border-line-faint px-4 py-3 type-body-sm text-text-2"><Lordicon name="check" size={16} trigger="in" />Nothing to do.</div>
         : (
           <ul className="divide-y divide-line-faint rounded-panel border border-line-faint">
             {rows.map(row => (
@@ -80,7 +80,7 @@ export function NeedsYouList({ orderId, submissions, payables, standalone }: { o
         )}
       {!loading && n.testUploads.length > 0 && (
         <Link href="/dashboard/submissions" className="mt-2 block type-label-sm text-text-3 underline-offset-4 hover:underline">
-          {n.testUploads.length} test {n.testUploads.length === 1 ? "upload" : "uploads"} also waiting. Review only; they cannot be accepted or paid.
+          {n.testUploads.length} test {n.testUploads.length === 1 ? "upload" : "uploads"} (cannot be paid)
         </Link>
       )}
     </section>
@@ -92,7 +92,7 @@ function Funding({ orderId }: { orderId: Id<"orders"> }) {
   const funding = reconciliation?.matches.find(match => match.eventKey.startsWith("funding:"));
   const chain = parseChainIdentity(funding?.chainIdentity);
   return (
-    <Section title="Funding" meta="Base Sepolia, reconciled by transaction and log index">
+    <Section title="Funding">
       {reconciliation === undefined ? <Loading rows={1} /> : !funding || !chain
         ? <p className="type-body-sm text-text-2">No reconciled funding transfer yet. Work stays locked until one is observed on chain.</p>
         : (

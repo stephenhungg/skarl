@@ -7,7 +7,7 @@ import { cn } from "@/lib/glaze/utils";
 import { BreadcrumbTrail } from "@/components/glaze/ui/breadcrumb";
 import { Kbd } from "@/components/glaze/ui/kbd";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/glaze/ui/tooltip";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuLinkItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/glaze/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLinkItem, DropdownMenuTrigger } from "@/components/glaze/ui/dropdown-menu";
 import { Toaster } from "@/components/glaze/ui/toast";
 import { ChevronSort, Icon } from "@/components/glaze/icon";
 import { LogoMark } from "@/components/logo-mark";
@@ -103,16 +103,12 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
                     {!collapsed && <>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate type-label">Skarl</span>
-                        <span className="block truncate type-label-sm text-text-3">Controller, demo identity</span>
+                        <span className="block truncate type-label-sm text-text-3">Controller</span>
                       </span>
                       <Icon icon={ChevronSort} size={14} className="text-text-3" />
                     </>}
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel>Signed in as the demo controller. This is a selector, not authentication.</DropdownMenuLabel>
-                    </DropdownMenuGroup>
-                    <DropdownMenuSeparator />
                     <DropdownMenuLinkItem render={<Link href="/contribute" />}>Open contributor view</DropdownMenuLinkItem>
                     <DropdownMenuLinkItem render={<Link href="/" />}>Back to the landing page</DropdownMenuLinkItem>
                   </DropdownMenuContent>
@@ -155,7 +151,7 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
             <div className="flex min-w-0 flex-col pb-16 md:pb-0">
               <header className="sticky top-0 z-(--z-sticky) flex h-12 items-center gap-3 border-b border-line-faint bg-page px-4 md:px-6">
                 <BreadcrumbTrail items={crumbs} renderLink={href => <Link href={href} />} className="min-w-0 flex-1" />
-                <span className="hidden rounded-pill bg-[rgb(199_241_142)] px-2 py-0.5 type-label-sm text-[rgb(22_32_12)] sm:inline">Live</span>
+                
               </header>
               <main className="mx-auto w-full max-w-[1200px] flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
             </div>

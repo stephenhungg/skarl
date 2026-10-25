@@ -34,9 +34,9 @@ export function Payables() {
   if (orderId === null) return <Unavailable title="No staged order" description="Run pnpm seed to stage the demo order." />;
   return (
     <>
-      <PageHeader title="Payables" description="What each contributor is owed, and where its payout stands. Paid means a confirmed USDC transfer on Base Sepolia, nothing less." />
+      <PageHeader title="Payables" />
       {payables === undefined ? <Loading rows={3} /> : payables.length === 0
-        ? <Unavailable title="No payables yet" description="A payable is created only when a licensed clip is accepted and delivered. Test uploads never create one." />
+        ? <Unavailable title="No payables yet" description="One appears when you accept a licensed clip." />
         : <div className="flex flex-col gap-4">{payables.map(p => <PayableCard key={p._id} payable={p} audit={audit ?? []}
             matches={reconciliation?.matches ?? []} />)}</div>}
     </>
@@ -71,7 +71,7 @@ function PayableCard({ payable, audit, matches }: { payable: PayableRow; audit: 
           ))}
         </ol>
         {payable.approval && (
-          <p className="type-body-sm text-text-2">Approval {humanize(payable.approval.status).toLowerCase()} by an independent controller. Expires {formatTime(payable.approval.expiresAt)}. The amount and recipient are bound to it; any change voids it.</p>
+          <p className="type-body-sm text-text-2">{humanize(payable.approval.status)} &middot; expires {formatTime(payable.approval.expiresAt)}</p>
         )}
         {refusals.map(event => (
           <div key={event._id} className="flex items-start gap-3 rounded-panel border border-fail bg-fail-tint px-3 py-2">
@@ -135,7 +135,7 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   let buttons: React.ReactNode = null;
   if (payable.status === "paid") buttons = <span className="me-auto type-label-sm text-text-2">Confirmed on chain and posted to the journal.</span>;
   else if (step === 0) buttons = <>
-    <span className="me-auto type-label-sm text-text-3">Waiting for the finance agent to propose this payout.</span>
+    <span className="me-auto type-label-sm text-text-3">Not proposed yet</span>
     <Button size="sm" disabled={busy} onClick={() => act(() => propose({ demoIdentity: FINANCE_AGENT, payableId: payable._id }), "The finance agent proposed this payout.")}>Ask agent to propose</Button>
   </>;
   else if (step === 1 && intentId) buttons = <>
@@ -143,7 +143,7 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
       onClick={() => act(() => approve({ demoIdentity: FINANCE_AGENT, intentId }), "Unexpected: the agent approval went through.", "Agent approval refused")}>Let the agent approve</Button>
     <Button size="sm" disabled={busy} onClick={() => setConfirming(true)}>Approve payout</Button>
     <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Approve this payout?" actionLabel="Approve payout"
-      description="Your approval binds this exact amount, recipient and network. Any change voids it. Signing in the wallet is a separate step."
+      description="You sign the transfer in your wallet after this."
       onConfirm={async () => {
         const result = await act(() => approve({ demoIdentity: CONTROLLER, intentId }), "Approved. Waiting for the workflow to release it for signing.", "Approval refused");
         if (!result.ok) throw new Error(`Refused: ${humanize(result.code ?? "refused")}.`);
@@ -161,7 +161,7 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
       onClick={() => payout.execute(payable.intent!.intentId).catch(() => undefined)}>{payout.busy ? humanize(payout.status) : "Sign payout"}</Button>
   </>;
   else if (step === 3 && payable.intent) buttons = <>
-    <span className="me-auto type-label-sm text-text-3">Submitted. Waiting for confirmations. A timeout is not a failure, so nothing is resent.</span>
+    <span className="me-auto type-label-sm text-text-3">Submitted. Waiting for confirmations.</span>
     <Button variant="secondary" size="sm" disabled={payout.busy} onClick={() => {
       const saved = payout.recovery ?? getPayoutRecovery(payable.intent!.intentId);
       if (saved?.txHash) payout.recover({ ...saved, txHash: saved.txHash }).catch(() => undefined);
