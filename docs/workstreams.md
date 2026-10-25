@@ -75,6 +75,54 @@ The core path above is the floor, not the product. Cuts below remove infrastruct
 
 Ordering rule: never start a quality item while your core slice is red. At 05:00 freeze new items; 05:00–06:30 is integration and polish only.
 
+## Remaining before submission (as of 05:15 PDT, Oct 25)
+
+Submission closes 09:00 PDT; venue by 08:00. Code is largely done; what remains is running the live path once, deploying the web app, and recording.
+
+### Humans (blocking)
+
+- [ ] **Record one licensed red-cup clip** in the iOS app (`cd apps/mobile && bun install --frozen-lockfile && cp .env.example .env && bunx expo start --go --lan`) or at `/contribute`, against order `kh79y36etya5f3nn7mdt6y5q3s8gy425` (0.75 USDC per clip, cent-exact so the bank witness can record it). Say the liveness words, give consent. This unblocks the payout chain, the duplicate and self-approval scenarios, the evidence sale and the bank transfer.
+- [ ] **New Vercel project on a teammate's account** (our Hobby account hit 100 deploys/day). Import `stephenhungg/skarl`, root `apps/web`, build `pnpm build`, install `cd ../.. && corepack pnpm install --frozen-lockfile`, Node 22.x, paste env from the private `vercel-prod.env` (shared privately, never in chat). Send the URL so hardcoded `skarl.vercel.app` references and Devpost links can be switched.
+- [ ] **Coinbase Wallet MCP live purchase**: approve one x402 payment in Coinbase Wallet when the agent asks (approval-mode).
+- [ ] **Devpost opt-ins**: Most Technically Complex, Hyphenate, Coinbase, Convex, Capital One Nessie, Atlassian (write "Track: Best Security Solution for Agents" in the description), Anthropic Claude for Public Benefit, MLH Gemini, MLH Solana, Microsoft, Creao, Commit Fellowship (+ its supplemental form). All four members confirm Coinbase eligibility.
+- [ ] **Record the demo video** (≤3 min): duplicate caught → witness receipt → agent self-approval refused → controller approves → payout tx → four-way reconciliation green → judge-scenario run turns a row red live → "connect your agent" prompt.
+- [ ] **Record the Skarl Guard injection demo** in Jira project SKARL: create an issue containing planted instructions and show the guard limiting the agent to comment + human review.
+
+### Orchestrator / backend (after the clip exists)
+
+- [ ] Accept → payable → Claude finance agent proposes → self-approval refused → controller approves → payout (decide: `PAYOUT_EXECUTOR=cdp_agent` for no wallet popup, or controller signs in Coinbase Wallet) → reconcile chain, ledger, bank → EAS attestation.
+- [ ] Re-run `pnpm scenario all` (expect 6/6 once an accepted clip and agent proposal exist).
+- [ ] Live x402 evidence sale (`/api/samples/<id>/evidence`), ideally bought via Wallet MCP.
+- [ ] Switch hardcoded `skarl.vercel.app` (`convex/contributorWallet.ts` SIWE domain, orders route, payments server message, receipt data) to the new domain; redeploy Convex.
+- [ ] Deploy and verify the in-flight worker output: MCP guest mode + landing "Connect your agent", LeRobot/RLDS export + quality score + diversity quotas, chain of title + consent revocation + contributor transparency page + `docs/market.md`.
+- [ ] Investigate Skarl Guard's one `uncertain` comment write (likely comment body format).
+
+### Dashboard (Matthew)
+
+Build the P0 surfaces in [dashboard sponsor surfaces](dashboard-sponsor-surfaces.md): witness receipt, four-way reconciliation, scenario lab, agent-refused card, rail badge + explorer links.
+
+### Landing: universal "connect your agent" prompt
+
+The primary copy block on the landing page (and in `/llms.txt` and the agent docs) is one prompt that works in any MCP-capable agent. Agents that can install MCP servers do it themselves; chat apps print the exact connector steps.
+
+```text
+Connect yourself to Skarl, a marketplace for verified robot-training demonstrations.
+
+1. Add this remote MCP server named "skarl" (Streamable HTTP, no API key needed):
+   https://keen-marmot-986.convex.site/mcp
+   If you can't add MCP servers yourself, give me the exact steps for the app I'm using.
+2. Read https://keen-marmot-986.convex.site/llms.txt and call the skarl_about tool.
+3. Show me the open tasks and what each one pays.
+
+Rules: ask me before creating an order or paying anything; payments use x402 (test USDC on Base Sepolia). You can propose and pay, but only humans approve payouts.
+```
+
+Per-client commands (Claude Code, Cursor deeplink, VS Code, connector URL, Coinbase Wallet MCP) sit under a "Manual setup" disclosure below it. Requires the keyless guest mode on `/mcp` (in progress).
+
+### After the event
+
+- [ ] Rotate every key that appeared in chat or terminals: Gemini, CDP (API key, wallet secret, client key), Anthropic, Nessie, Atlassian (`skarl-forge`), MCP keys, payments service secret, Jira feed secret.
+
 ## Cut (infrastructure only; designs kept in subsystem docs)
 
 The Railway Python worker, HMAC service gateway, job leasing, faster-whisper and SSCD (Gemini plus perceptual hashing replace them), the held-out eval split protocol (the mini evaluation replaces it), period close, Auth0 (no prize; demo identities instead), the Coinbase retail MCP (Base mainnet only). Solana Devnet was reopened as a tightly scoped second funding rail; payouts remain Base-only.
