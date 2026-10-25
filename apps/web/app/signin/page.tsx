@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexConfig } from "@/components/convex-provider";
-import { Wordmark } from "@/components/wordmark";
+import { LogoMark } from "@/components/logo-mark";
 import { AccountMenu, RoleClaims } from "@/features/auth/account-menu";
 import { useSession } from "@/features/auth/session";
 import { QueryBoundary } from "@/features/dashboard/ui";
@@ -11,13 +11,12 @@ import { QueryBoundary } from "@/features/dashboard/ui";
 export default function SignInPage() {
   const config = useConvexConfig();
   return (
-    <main className="min-h-dvh bg-paper px-6 py-8 text-ink">
-      <header className="mx-auto flex max-w-[1200px] items-center justify-between">
-        <Link href="/" aria-label="Skarl home"><Wordmark /></Link>
-        <Link href="/dashboard" className="cut-regular rounded-[10px] bg-mist px-5 py-2 text-[14px] hover:bg-haze">Open console</Link>
-      </header>
-      <div className="mx-auto max-w-[440px] pt-[min(14vh,120px)]">
-        {config.status === "ready" ? <QueryBoundary><SignInForm /></QueryBoundary> : <h1 className="cut-medium text-center text-[32px] tracking-[-.02em]">Sign in is offline</h1>}
+    <main className="flex min-h-dvh flex-col items-center justify-center bg-paper px-6 text-ink">
+      <div className="flex w-full max-w-[410px] flex-col items-center text-center">
+        <Link href="/" aria-label="Skarl home" className="mb-6 grid size-[56px] place-items-center rounded-[14px] bg-ink text-paper">
+          <LogoMark size={16} />
+        </Link>
+        {config.status === "ready" ? <QueryBoundary><SignInForm /></QueryBoundary> : <h1 className="cut-medium text-[26px] leading-none">Sign in is offline</h1>}
       </div>
     </main>
   );
@@ -36,7 +35,7 @@ function SignInForm() {
     catch { setError(true); setBusy(false); }
   }
 
-  if (isLoading || me === undefined) return <p role="status" className="mono text-center text-sm text-slate-700">Checking your account…</p>;
+  if (isLoading || me === undefined) return <p role="status" className="cut-regular text-[15px] text-slate-700">Checking your account…</p>;
   if (me.userId) return <section>
     <div className="mb-8 flex items-start justify-between gap-3"><h1 className="cut-medium text-[32px] tracking-[-.02em]">Pick a role</h1><AccountMenu /></div>
     <RoleClaims />
@@ -46,14 +45,15 @@ function SignInForm() {
     </div>
   </section>;
 
-  return <section className="text-center">
-    <h1 className="cut-medium mb-8 text-[32px] tracking-[-.02em]">Sign in to Skarl</h1>
-    <button type="button" disabled={busy} onClick={() => void google()} className="cut-regular inline-flex h-12 w-full items-center justify-center gap-3 rounded-[10px] border border-haze bg-paper text-[15px] transition-colors hover:bg-mist disabled:opacity-50">
+  return <section className="flex w-full flex-col items-center">
+    <h1 className="cut-medium mb-3 text-[26px] leading-none">Sign in to Skarl</h1>
+    <p className="cut-regular mb-7 text-[15px] leading-snug text-slate-700">Verified human demonstrations, paid in USDC.</p>
+    <button type="button" disabled={busy} onClick={() => void google()} className="cut-medium flex h-[50px] w-full items-center justify-center gap-2.5 rounded-[12px] border border-haze bg-white px-5 text-[15px] shadow-sm transition hover:bg-mist disabled:opacity-60">
       <GoogleMark />
-      {busy ? "Please wait…" : "Continue with Google"}
+      {busy ? "Redirecting…" : "Continue with Google"}
     </button>
-    {error && <p role="alert" className="mt-4 text-sm text-slate-700">Couldn’t reach Google, try again.</p>}
-    {me.demoMode && <p className="mt-8 text-[13px] text-slate-700">The public demo is available without signing in. <Link href="/dashboard" className="text-ink underline underline-offset-4">View with a demo identity</Link>.</p>}
+    {error && <p role="alert" className="mt-4 text-sm text-red-600">Couldn’t reach Google, try again.</p>}
+    {me.demoMode && <p className="mt-6 text-[13px] leading-relaxed text-slate-700">No account? <Link href="/dashboard" className="text-ink underline underline-offset-4">View the demo</Link></p>}
   </section>;
 }
 
