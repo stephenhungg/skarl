@@ -1,6 +1,8 @@
 # Skarl — Coinbase Payment Agents submission
 
-**The AP/settlement seat for a human-data company.** Agents buy verified work; a finance agent explains obligations and proposes payouts; an independent human controls settlement.
+**Every claim has a witness.** Skarl is the autonomous settlement desk for human-data companies: independent witnesses must agree before anything moves. Agents argue the case, deterministic code decides, and humans approve exceptions. Every payout currently also requires independent human approval and wallet signing. The seats are **settlement accountant + AP clerk**.
+
+[The thesis and witness table](thesis.md) separate live work/money evidence from simulated controls and pending integrations. The intended moment is a duplicate blocked before a second payable, refused agent self-approval, then controller approval in Coinbase Wallet and chain/ledger agreement. The complete live sequence remains pending; the receipts below prove funding.
 
 [Hosted demo](https://skarl.vercel.app) · [Repository](https://github.com/stephenhungg/skarl) · [Two-minute demo and judging runbook](demo-script.md) · [Evidence log](status.md) · [Architecture SVG](architecture.svg)
 
@@ -159,3 +161,33 @@ The October 25 live CDP Solana Devnet attempt returned HTTP 402 before settlemen
 ### One capability we most want
 
 **Policy-bound autonomous agent wallets usable through Wallet MCP without a human click for each already-authorized transaction.** Let the operator define a revocable network/token/recipient/budget policy once, then allow bounded execution under that policy with a stable request ID. Skarl would still require its own independent business approval; this would remove the second manual signing handoff and the separate CDP SDK executor solely for bounded execution. Today's Wallet MCP remains in approval mode. No feature request has been sent externally.
+
+
+## Verify on-chain
+
+Skarl adds public report provenance through EAS on Base Sepolia. The CDP Server
+Wallet `skarl-attestor` is `0xbc1e957F2AE49e39014ea2a9D23e59C62832F26B`, with
+account policy `a3f55c34-6ba6-4c7f-b81d-c0203ce30ba0`. Live Policy Engine
+simulations accepted `attest`/`revoke` and rejected the wrong contract, network,
+function, nonzero native value and alternative transaction/hash/message signing.
+These are policy simulations, not report-attestation transactions. A separate
+registrar successfully registered the [revocable report schema](https://base-sepolia.easscan.org/schema/view/0x1ea6e2d3fd6c61ffc02b18bea15c4037f90f832e2ed82e2d50bb98bcfe6e804f);
+rerunning its script observed the schema and skipped registration.
+
+The attestor permits only zero-value `sendEvmTransaction` calls to EAS
+`attest`/`revoke` on Base Sepolia. Explicit rejection rules close alternative
+signing paths; project-level accept policies are refused during setup. The EOA
+uses faucet ETH. Sponsored smart-account execution would require
+`sendUserOperation`, outside this account's permitted operation. Account policy
+attachment follows [CDP's account-management API](https://docs.cdp.coinbase.com/server-wallets/v2/using-the-wallet-api/managing-accounts).
+
+Each public attestation contains report/source/rubric hashes, pipeline and visual
+model versions, the stored recommendation, analysis completion time and the
+license flag. Original media and contributor identity stay private. Finalized
+failed reports are eligible provenance records; verification-only clips remain
+`licensed: false`. No attestation grants acceptance or payout authority. Convex
+owns durable intents and retry/reconciliation state, while CDP holds the signing
+key. The [EAS predeploy](https://docs.attest.org/docs/quick--start/contracts) adds
+no custom Skarl contract. Backend deployment and report backfill are separate
+from the completed schema/account setup; [build status](status.md) is the live
+evidence inventory.

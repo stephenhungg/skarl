@@ -1,8 +1,8 @@
 # Sponsor track strategy and evidence
 
-Pitch: **Skarl is the AP/settlement seat for a human-data company.** It verifies narrated demonstrations with multimodal AI, then pays contributors and keeps the books, with x402 payments on Base Sepolia. The prize list on [Devpost](https://cal-hacks-13-0.devpost.com/) is authoritative. The deadline is October 25, 2026, 12:00 PM EDT (9:00 AM PDT).
+Pitch: **Every claim has a witness. Skarl is the autonomous settlement desk for human-data companies.** Agents argue the case, deterministic code decides, and humans approve exceptions and every payout. See the [thesis and witness table](thesis.md) and [per-prize rubric mapping](devpost.md#prize-specific-evidence). The prize list on [Devpost](https://cal-hacks-13-0.devpost.com/) is authoritative. The deadline is October 25, 2026, 12:00 PM EDT (9:00 AM PDT).
 
-Demonstrated payments are **Base Sepolia test USDC**. An optional Solana Devnet funding rail is implemented, but no live Solana funding transaction is recorded. Repository docs and fixture tests are not evidence of a working sponsor integration.
+Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devnet test USDC** (confirmed at 03:29 PDT). Base remains primary and the only payout target; a live contributor payout is still pending. Repository docs and fixture tests are not evidence of a working sponsor integration.
 
 ## Targeted tracks
 
@@ -11,7 +11,7 @@ Demonstrated payments are **Base Sepolia test USDC**. An optional Solana Devnet 
 | [Hyphenate] The Hyphenated Enterprise: Autonomous Systems for Finance (**primary**) | The duplicate-clip catch, the blocked second payable, the agent's refused self-approval, a reconciled payout and balanced books |
 | [Coinbase] Best Use of x402, **Payment Agents** track | Live x402 funding via CDP, a reusable Wallet MCP approval plugin, and live CDP wallet cap/allowlist rejections; contributor payout and MCP purchase still pending |
 | [Convex] Best use of Convex | Convex as the system of record: live queries, atomic financial mutations, file storage, and a Workflow for the approval wait |
-| [MLH] Best Use of Solana | Pending live evidence: optional Solana Devnet x402 funding and strict RPC reconciliation are implemented; Base stays primary |
+| [MLH] Best Use of Solana | Live 1-USDC Solana Devnet x402 funding and finalized RPC reconciliation; Base stays primary and the only payout rail |
 | [MLH] Best Use of Gemini API | Two independent Gemini calls (silent video, audio) producing schema-validated, timestamped evidence |
 
 ## Hyphenate
@@ -103,7 +103,8 @@ The earlier 03:13 attempt failed before settlement because fee-payer rotation br
 ## Not targeted
 
 - **Auth0:** Cal Hacks 13.0 has no Auth0 prize. Demo identities are seeded Convex users whose roles are checked on the server, and they are labeled as demo identities.
-- **Cartesia or other extra layers:** out of scope.
+- **Cartesia:** no live evidence in the current status snapshot; exclude it as a working witness.
+- **Anthropic / Capital One:** requested rubric mappings are in Devpost, but Claude runtime finance and Nessie API evidence are pending. Do not claim either integration works from an aspirational narrative.
 
 ## Submission package
 

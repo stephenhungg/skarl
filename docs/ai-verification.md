@@ -304,3 +304,36 @@ Grounding DINO can supply text-conditioned object proposals if necessary. Ultral
 - [Qwen3-Omni memory requirements](https://github.com/QwenLM/Qwen3-Omni#minimum-gpu-memory-requirements)
 - [Audio–visual modality bias study](https://arxiv.org/abs/2604.02605)
 - [Video timestamp citation verification preprint](https://arxiv.org/abs/2608.15574)
+
+
+## Verify on-chain
+
+The EAS integration commits finalized canonical reports, including failed or
+review-only reports, to Base Sepolia. `reportHash` is SHA-256 of the exact UTF-8
+bytes of the canonical stored `reportJson`; the action checks the existing hash,
+source and frozen rubric bindings before sending. The eight public fields are
+`reportHash`, `sourceSha256`, `rubricHash`, `pipelineVersion`, `videoModel`,
+`recommendation`, `verifiedAt`, and `licensed`. `verifiedAt` is analysis completion
+in Unix seconds, not the chain timestamp. `videoModel` lists the recorded visual
+models separated by commas, or `unavailable`; model IDs and pipeline versions
+must pass an allowlist rather than copying free-form model output.
+
+The source and rubric hashes identify the bytes and criteria committed to, while
+the report hash allows someone with authorized access to verify their report
+copy. No original media, URL, narration, name, contributor wallet or report text
+is published. Hashes can still correlate identical sources. `licensed: false`
+is mandatory for verification-only uploads, including the YouTube test clips;
+this metadata does not independently establish copyright ownership.
+
+A separate two-minute sweep persists one durable intent per analysis and retries
+failed attempts without blocking verification, acceptance or payments. Stable CDP
+request IDs, a 23-hour automatic send-replay limit, log recovery and receipt/payload
+checks prevent treating a timeout as proof of failure. An ambiguous older attempt
+requires reconciliation rather than a fresh send. Confirmed receipts are bound
+to the schema, attestor, zero recipient, exact encoded data and log index.
+
+This is a provenance commitment, not an accuracy certificate or payment authority.
+Revocable attestations use the existing [EAS Base Sepolia deployment](https://docs.attest.org/docs/quick--start/contracts),
+with no Skarl contract or resolver. Schema/account/policy setup is live; see
+[build status](status.md) for deployment and report backfill evidence, and the
+[dashboard query contract](dashboard-api.md#verify-on-chain) for presentation.

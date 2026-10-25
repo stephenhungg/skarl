@@ -1,4 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
+import { bankWitnessTables } from "./bankWitnessSchema";
+import { coachTables } from "./coachSchema";
+import { attestationTables } from "./attestationsSchema";
 import { v } from "convex/values";
 import { sensorTrace } from "./sensorTraceValidators";
 import { vWorkflowId } from "@convex-dev/workflow";
@@ -56,6 +59,9 @@ const analysisContext = {
   perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))),
 };
 export default defineSchema({
+  ...coachTables,
+  ...attestationTables,
+  ...bankWitnessTables,
   // Trusted web ingress supplies a keyed IP digest, never a raw IP. Atomic with order creation.
   demoOrderLimits: defineTable({ key: v.string(), windowStart: v.number(), count: v.number() })
     .index("by_key", ["key"]),
@@ -85,7 +91,7 @@ export default defineSchema({
   }).index("by_request", ["organizationId", "requesterTokenIdentifier", "requestId"]).index("by_order", ["orderId"]),
   financeAgentRuns: defineTable({
     ...tenant, orderId: v.id("orders"), requestId: v.string(), prompt: v.string(),
-    requesterTokenIdentifier: tokenIdentifier, model: v.string(), maxToolCalls: v.number(),
+    requesterTokenIdentifier: tokenIdentifier, provider: v.optional(v.union(v.literal("gemini"), v.literal("claude"))), model: v.string(), maxToolCalls: v.number(),
     maxBatchAtomic: amountAtomic, proposedAtomic: amountAtomic, reservedPayableIds: v.array(v.id("payables")),
     status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed"), v.literal("capped")),
     transcriptJson: v.string(), explanation: v.optional(v.string()), failureCode: v.optional(v.string()),

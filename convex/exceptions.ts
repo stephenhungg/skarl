@@ -4,9 +4,13 @@ import { mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
 import { actorFor, audit, digest, requireTenant } from "./lib/finance";
-import type { ReconciliationException } from "../packages/payments/src/reconciliation";
+import type { ReconciliationException as PaymentReconciliationException } from "../packages/payments/src/reconciliation";
 import { makeFunctionReference } from "convex/server";
 const webhookExceptions = makeFunctionReference<"query", { demoIdentity: string; orderId: Id<"orders"> }, ReconciliationException[]>("chainWitness:webhookExceptions");
+
+import type { BankException } from "./bankWitness";
+type ReconciliationException = PaymentReconciliationException | BankException;
+const bankExceptions = makeFunctionReference<"query", { demoIdentity: string; orderId: Id<"orders"> }, BankException[]>("bankWitness:bankExceptions");
 
 const scope = { demoIdentity: v.string(), orderId: v.id("orders") };
 const exceptionKey = (exception: ReconciliationException) => digest(exception);
@@ -23,8 +27,9 @@ export const list = query({
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
     requireTenant(principal, order);
-    const result = await ctx.runQuery(api.payments.reconciliation, args);
+    const result: { exceptions: ReconciliationException[] } = await ctx.runQuery(api.payments.reconciliation, args);
     result.exceptions.push(...await ctx.runQuery(webhookExceptions, args));
+    result.exceptions.push(...await ctx.runQuery(bankExceptions, args));
     const dispositions = await ctx.db.query("reconciliationDispositions").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
     for (const row of dispositions) requireTenant(principal, row);
     const current = new Map(result.exceptions.map(exception => [exceptionKey(exception), exception]));
@@ -64,8 +69,9 @@ async function setDisposition(ctx: MutationCtx, args: {
     return { dispositionId: prior._id, replayed: true };
   }
   if (prior?.status === "resolved") throw new Error("exception_already_resolved");
-  const current = await ctx.runQuery(api.payments.reconciliation, { demoIdentity: args.demoIdentity, orderId: order._id });
+  const current: { exceptions: ReconciliationException[] } = await ctx.runQuery(api.payments.reconciliation, { demoIdentity: args.demoIdentity, orderId: order._id });
   current.exceptions.push(...await ctx.runQuery(webhookExceptions, { demoIdentity: args.demoIdentity, orderId: order._id }));
+  current.exceptions.push(...await ctx.runQuery(bankExceptions, { demoIdentity: args.demoIdentity, orderId: order._id }));
   const exception = current.exceptions.find(row => exceptionKey(row) === args.exceptionKey);
   if (!exception && !prior) throw new Error("exception_not_found");
   const values = { status, reason, actorTokenIdentifier: principal.tokenIdentifier, updatedAt: Date.now() };

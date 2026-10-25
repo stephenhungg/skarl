@@ -26,12 +26,12 @@ export function Hero() {
         animate={{ opacity: 1 }}
         transition={{ delay: 0.25, duration: 0.65, ease: SETTLE }}
         style={{
-          filter: "blur(1.5px)",
+          filter: "blur(0.6px)",
           WebkitMaskImage: "linear-gradient(180deg, #000 0%, #000 55%, transparent 88%)",
           maskImage: "linear-gradient(180deg, #000 0%, #000 55%, transparent 88%)",
         }}
       >
-        <ContourTide className="h-full w-full" colors={["#7d8c76", "#eef8e3"]} backgroundColor="#10120e" horizon={0.12} />
+        <ContourTide className="h-full w-full" colors={["#7d8c76", "#eef8e3"]} backgroundColor="#10120e" horizon={0.12} interactive={false} clickRipples={false} />
       </motion.div>
 
       <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(60% 40% at 50% 45%, rgb(var(--ink) / .4), transparent 75%)" }} />

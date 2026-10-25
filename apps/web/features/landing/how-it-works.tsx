@@ -1,32 +1,32 @@
+"use client";
 import { SectionHeader } from "@/components/section-header";
-import { LandingFigure, type LandingFigureName } from "./figures/landing-figure";
+import { VerticalReel, type VerticalReelItem } from "@/components/react-bits/vertical-reel";
 
-const STEPS: { n: string; fig: LandingFigureName; title: string; body: string }[] = [
-  { n: "01", fig: "record", title: "Record", body: "A contributor films the task and narrates it." },
-  { n: "02", fig: "check", title: "Check", body: "AI compares video with narration and flags copies." },
-  { n: "03", fig: "approve", title: "Approve", body: "A person on the team signs off on each payout." },
-  { n: "04", fig: "pay", title: "Pay", body: "Test USDC moves on Base Sepolia and the books balance." },
+// The four steps in flow order on a curved reel that steps forward on its own.
+const STEPS: VerticalReelItem[] = [
+  { src: "/how/record.jpg", alt: "Phone on a tripod filming a desk with two cups", title: "Record", subtitle: "A contributor films the task and narrates it." },
+  { src: "/how/check.jpg", alt: "Verifier screen with a film strip and a waveform", title: "Check", subtitle: "AI compares video with narration and flags copies." },
+  { src: "/how/approve.jpg", alt: "Stamp landing on a signed sheet", title: "Approve", subtitle: "A person on the team signs off on each payout." },
+  { src: "/how/pay.jpg", alt: "Coins moving into a chain of blocks", title: "Pay", subtitle: "Test USDC moves on Base Sepolia and the books balance." },
 ];
 
-// Four lit panels, one per step: a row of four at 1200, two by two on tablet, stacked on mobile.
 export function HowItWorks() {
   return (
     <section id="how-it-works" aria-labelledby="how-it-works-title" className="py-[72px] xl:py-[108px]">
       <div className="frame">
         <SectionHeader id="how-it-works-title" eyebrow="How Skarl works" title="From task to payout" />
-        <ol className="m-0 mt-8 grid list-none grid-cols-1 gap-3 p-0 min-[810px]:grid-cols-2 min-[1200px]:grid-cols-4">
-          {STEPS.map((s) => (
-            <li key={s.n} className="flex flex-col gap-3">
-              <LandingFigure name={s.fig} />
-              <div className="flex flex-col gap-1 px-1">
-                <p className="m-0 flex items-baseline gap-2 text-[15px] leading-[1.3] text-deep">
-                  <span className="cut-regular">{s.title}</span>
-                </p>
-                <p className="cut-book m-0 text-[14px] leading-[1.4] text-slate-500">{s.body}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
+      </div>
+      <div className="mt-6 h-[460px] w-full max-[809px]:h-[380px]">
+        <VerticalReel
+          items={STEPS}
+          aspect={14 / 11}
+          size={0.62}
+          autoplay="step"
+          interval={2.6}
+          wheel={false}
+          ariaLabel="How Skarl works: record, check, approve, pay"
+          className="h-full w-full"
+        />
       </div>
     </section>
   );

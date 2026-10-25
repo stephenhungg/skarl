@@ -646,3 +646,202 @@ readings, not video frames. Activity thresholds and approximation limits are in
 [mobile motion summary](mobile.md#motion-summary-for-the-dashboard). A still
 phone is normal for the fixed-camera task. These client-reported signals do not
 change report recommendations, human acceptance, payables or payment authority.
+
+
+## Verify on-chain
+
+After the backend rollout, `attestations.forSubmission({submissionId})` is a
+public reactive query returning `null` or
+`{uid, txHash, easscanUrl, basescanUrl, fields}`. It returns only the current
+analysis's confirmed attestation. Render a **Verify on-chain** badge linking to
+`easscanUrl`; `basescanUrl` is the transaction detail link. A `null` result means
+no confirmed attestation is available for that analysis; show pending/unavailable,
+not a failed verification or a successful attestation. Do not display an older
+analysis's badge after a rerun.
+
+`fields` contains exactly `reportHash`, `sourceSha256`, `rubricHash`,
+`pipelineVersion`, `videoModel`, `recommendation`, `verifiedAt`, and `licensed`.
+Hashes are `0x`-prefixed bytes32 strings; `verifiedAt` is analysis completion time
+in Unix seconds; `licensed` is a boolean. Jury model IDs are comma-separated;
+`unavailable` means no visual model run was recorded. No report text, original
+media URL, contributor identity, or contributor wallet is returned.
+
+The badge proves that Skarl committed these report facts to EAS, not that the
+clip passed, was accepted, or was paid. Finalized failed reports can also be
+attested; recommendations remain as stored and verification-only submissions
+have `licensed: false`. Check the linked EAS record for current revocation state;
+the query records confirmation and does not continuously poll revocations.
+Schema/account/policy setup is live; deployment and report backfill evidence are
+tracked in [build status](status.md).
+
+## Claude provider and Contributor Coach
+
+**Source implementation; deployment pending.** This addition has synthetic
+provider coverage, with no live Claude response claimed. The Anthropic key was
+absent at the October 25 checkpoint. The deployment operator deploys merged
+`origin/main`; see [Claude setup and evidence status](anthropic.md). These
+contracts apply after that deployment and generated API update.
+
+### Finance provider fields
+
+`financeAgent.run({demoIdentity,orderId,requestId,prompt})` retains its arguments
+and `{runId,replayed}` result. Provider selection is server configuration, not a
+caller argument: `FINANCE_AGENT_PROVIDER=gemini|claude`, default `gemini`.
+`financeAgentData.runs({demoIdentity,orderId})` adds `provider: "gemini" | "claude"`
+to each row. Existing records without a stored provider project as `gemini`.
+`model` records the selected model; Claude defaults to `claude-sonnet-5-5`, with
+`ANTHROPIC_FINANCE_MODEL` then `ANTHROPIC_MODEL` overrides. Display provider and
+model next to the run without implying agreement between providers: one provider
+executes each run, and this option does not create an independent visual witness.
+
+The transcript stays `[{call:{id,name,arguments},result}]`. Statuses remain
+`running`, `completed`, `failed`, `capped`. Tool refusals remain results such as
+`{ok:false,code:"tool_not_allowed"}` or `invalid_tool_arguments`; the Claude
+conversation receives those as error tool results. Approval tools are not
+advertised. Existing exact amount limits, proposal idempotency and independent
+controller approval are unchanged.
+
+New sanitized failure codes include `anthropic_key_missing`, `claude_refusal`,
+`claude_timeout`, `claude_http_<status>`, `claude_request_failed`,
+`claude_response_invalid`, and `claude_response_incomplete`.
+`invalid_agent_provider` rejects invalid server configuration before starting a
+run. Show persisted tool results even if a later provider turn fails. Reusing a
+request ID returns its original run; switching providers does not rerun it.
+
+### Contributor Coach for web and iOS
+
+Both endpoints require the stored contributor role, active organization and
+ownership of the submission. Controller, buyer and finance-agent selectors do
+not gain access to the contributor's coach response. The existing demo selector
+is impersonable; these role checks are not production authentication.
+
+| Function | Kind | Arguments and result |
+| --- | --- | --- |
+| `coach.explainOutcome` | Action | `{demoIdentity:"contributor",submissionId:Id<"submissions">}` → `{explanationId,replayed}`. Generates or reuses the persisted explanation. |
+| `coachData.forSubmission` | Query | Same arguments → `null` or the current record described below. Subscribe to this query for completion. |
+
+```ts
+{
+  explanationId, submissionId, analysisId, reportHash,
+  provider: "claude", model, promptVersion,
+  status: "running" | "completed" | "unavailable",
+  startedAt, completedAt?, failureCode?,
+  advisory: true, demoOnly: true,
+  explanation: null | {
+    advisory: true,
+    introduction, submissionStatus, recommendation, pipelineStatus,
+    warnings: string[], paymentNotice,
+    items: Array<{
+      criterionId,
+      status: "supported" | "contradicted" | "unobservable",
+      explanation: string,
+      nextStep: string,
+      uncertain: boolean,
+      citation: null | { modality: string; startMs: number; endMs: number; label: string }
+    }>
+  }
+}
+```
+
+Treat this shape as illustrative; use the generated API return types. Date fields
+are Unix milliseconds. Citation ranges are milliseconds within the original
+recording, with a server-rendered `label` such as `0:04.000–0:05.000`. Seek to
+`citation.startMs / 1000` in a video player. A null citation means no cited
+evidence exists; do not invent a seek target. Keep `uncertain`, stored warnings,
+the authoritative status/recommendation and `paymentNotice` visible. Render all
+strings as plain text, never executable HTML or instructions.
+
+Call the action from an explicit contributor request, not during render. A
+`{explanationId,replayed}` response does not mean generation succeeded. In React,
+use `useAction(api.coach.explainOutcome)` and
+`useQuery(api.coachData.forSubmission,{demoIdentity:"contributor",submissionId})`.
+In iOS, invoke the same action and subscribe to the query. `undefined` means
+loading in React; `null` means no current explanation. Show a loading state for
+`running`, guidance for `completed`, and an unavailable state with a retry
+option for `unavailable`. Continue showing the stored report if coaching fails.
+
+The persisted binding includes the current analysis, report hash, submission
+status, decision and prompt version. A rerun or changed outcome hides the older
+explanation. Concurrent requests reuse one generation; completed output is
+cached, while an unavailable result can be retried after 60 seconds. A 90-second
+watchdog marks interrupted work unavailable. Coaching does not mutate a verdict,
+create a payable or promise payment.
+
+Missing reports reject with `coach_report_unavailable`; mismatched stored source
+bindings reject with `analysis_reference_mismatch`. Ownership failures include
+`submission_not_owned`, alongside the existing role/tenant errors. Persisted
+coach failures include `coach_invalid_output`, `coach_source_changed`,
+`coach_interrupted` and `coach_unavailable`; provider failures use the Claude
+codes above. Do not display a mock fallback as a live Claude response or describe
+an unavailable coach as successful inference.
+
+## Bank witness — Capital One Nessie
+
+**Deployment required.** The additive bank witness exposes
+`bankWitness.reconciliation4Way({demoIdentity, orderId})` to `controller` and
+`finance-agent` identities in the order's organization. All bank evidence must
+carry the label **simulated bank (Capital One Nessie mock)**, including when
+requests reach Nessie's hosted API. Nessie models a bank; it does not establish
+real fiat custody, a fiat sweep, or a contributor off-ramp.
+
+The query composes the existing payment reconciliation and chain witness with
+bank activity. Render each obligation as `order | ledger | chain | bank`, with
+`match`, `missing`, or `mismatch` states and the supplied explanation. Monetary
+amounts at JSON boundaries are decimal integer micro-USDC strings. Display bank
+mismatches in the exception queue; do not turn missing, stale, unavailable, or
+out-of-scope evidence into a green match. Refunds and standalone evidence sales
+are outside this bank simulation's funding/payout scope. Their bank column is
+`missing` with reason `outside_bank_simulation_scope`.
+
+The response contains `label`, `simulated: true`, `rows`, `exceptions`,
+`bankAvailable`, `bankFetchedAt`, and `reconciliation`. Each row has `intentId`,
+`kind`, `order`, `ledger`, `chain`, `bank`, and `activityIds`; each column has a
+`status`, optional `amountAtomic`, and optional `reason`. The `chain` column
+checks the canonical receipt; `reconciliation.witnesses` retains the separate
+CDP SQL witness results. `reconciliation.matches[].amountAtomic` is serialized
+as a decimal integer string. A bank snapshot expires after five minutes.
+`bank_mismatch` items also appear in `exceptions.list` and use the existing
+controller acknowledgment/resolution APIs. Unmatched Treasury activity is
+explicitly Treasury-wide and is not assigned to an arbitrary order.
+
+A confirmed x402 funding intent produces a simulated Treasury deposit; an
+observed contributor payout produces a simulated Treasury-to-contributor
+transfer. Each bank description is the original funding or payout intent ID.
+Matching requires that ID, the exact amount, and the expected account/direction;
+an equal amount alone is insufficient. The simulation uses one dollar per USDC
+as an explicit demo assumption, not an exchange-rate quotation. The projection
+never posts another journal, alters a payout destination, or approves/signs a
+payment. Bank agreement is corroborating evidence, not payment authority.
+
+Internal `bankWitness:seed` provisions one Treasury account and one account per
+active, wallet-verified contributor. `bankWitness:sweep` runs on a two-minute
+cron after deployment and configuration. Durable local intent precedes external
+requests; repeated seeds and sweeps reuse the original records. An ambiguous
+request outcome remains unresolved and is reconciled by observation rather
+than sent again. An operator must investigate unresolved account creation.
+
+### Configuration and live setup
+
+The implementation starts disabled. Enable only after the deployment owner
+has deployed `origin/main` and privately configured `NESSIE_API_KEY` plus
+`NESSIE_ENABLED=true` in the target Convex deployment. No Convex deployment or
+live Nessie request was performed by this implementation task.
+
+At the October 25 implementation check, `~/.config/skarl/nessie.env` was absent.
+To unblock live mock-provider integration:
+
+1. Open [Capital One Nessie](https://nessieisreal.com).
+2. Sign in using GitHub OAuth and complete the requested authorization.
+3. Create or copy the API key shown for the signed-in account.
+4. Save `NESSIE_API_KEY=<your key>` in the private local file
+   `~/.config/skarl/nessie.env`; do not commit or paste it into reports.
+5. Have the deployment owner configure the key and enable flag in Convex,
+   deploy the merged backend, then invoke `bankWitness:seed` and
+   `bankWitness:sweep` and inspect reconciliation results.
+
+The adapter uses `https://prod-api.nessieisreal.com` with its key query
+parameter. A bad key can return HTTP 200 and `[]` on GET; that response is not
+credential validation or proof of an empty account. Startup requires a
+successful customer POST probe or verification of a known account ID before
+accepting activity reads. Hosted-provider success must be recorded separately
+from mocked test results and must retain the simulated-bank label.
