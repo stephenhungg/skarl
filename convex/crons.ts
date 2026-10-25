@@ -9,4 +9,5 @@ crons.interval("observe simulated bank witness", { minutes: 2 }, makeFunctionRef
 crons.interval("read-only integration health probes", { minutes: 2 }, makeFunctionReference<"action">("health:refresh"), {});
 crons.interval("advisory finance analyst catch-up", { minutes: 1 }, makeFunctionReference<"action">("financeAnalystJobs:sweep"), {});
 crons.interval("advisory organization close", { minutes: 1 }, makeFunctionReference<"action">("financeAnalystJobs:close"), {});
+crons.interval("illustrate new tasks", { minutes: 10 }, makeFunctionReference<"action">("taskThumbnails:generateMissing"), {});
 export default crons;
