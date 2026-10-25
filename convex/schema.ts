@@ -240,7 +240,13 @@ export default defineSchema({
     scope: v.string(),
     acknowledgedAt: v.number(),
     receiptHash: v.string(),
-  }).index("by_submission", ["submissionId"]),
+    // Absence means no recorded request, not a claim about irrevocable rights.
+    revocationStatus: v.optional(v.union(v.literal("requested"), v.literal("revoked"))),
+    revocationRequestedAt: v.optional(v.number()),
+    revocationReason: v.optional(v.string()),
+    revokedAt: v.optional(v.number()),
+  }).index("by_submission", ["submissionId"])
+    .index("by_org_revocation", ["organizationId", "revocationStatus"]),
 
   mediaAssets: defineTable({
     ...tenant,

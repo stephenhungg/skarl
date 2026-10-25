@@ -228,6 +228,40 @@ describe("demo finance mutations against isolated Convex state", () => {
     expectBalanced(state);
   });
 
+  it.each(["requested", "revoked"] as const)("blocks first acceptance when consent is %s because delivery requires continuing permission", async revocationStatus => {
+    const fixture = await setup(), submissionId = await submission(fixture);
+    await fixture.t.run(async ctx => {
+      const sample = (await ctx.db.get(submissionId))!;
+      await ctx.db.patch(sample.consentRecordId!, { revocationStatus, revocationRequestedAt: Date.now() });
+    });
+    const before = await snapshot(fixture);
+    expect(await fixture.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "controller", submissionId }))
+      .toEqual({ ok: false, code: "consent_revocation_pending_or_revoked" });
+    const after = await snapshot(fixture);
+    expect(after.entries, "A consent exception cannot create revenue or a new contributor obligation").toEqual(before.entries);
+    expect(after.lines).toEqual(before.lines);
+    expect(after.payables).toEqual([]);
+    expect(after.deliveries).toEqual([]);
+    expect(after.order?.acceptedCount).toBe(0n);
+    expect(after.audits.find(event => event.entityId === submissionId && event.action === "acceptance_refused"))
+      .toMatchObject({ reason: "consent_revocation_pending_or_revoked" });
+  });
+
+  it("preserves the original earned obligation when acceptance is replayed after a withdrawal request", async () => {
+    const fixture = await acceptedFixture(), before = await snapshot(fixture);
+    await fixture.t.run(async ctx => {
+      const sample = (await ctx.db.get(fixture.submissionId))!;
+      await ctx.db.patch(sample.consentRecordId!, { revocationStatus: "requested", revocationRequestedAt: Date.now() });
+    });
+    expect(await fixture.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "controller", submissionId: fixture.submissionId }))
+      .toEqual({ ...fixture.accepted, replayed: true });
+    const after = await snapshot(fixture);
+    expect(after.payables, "Withdrawal concerns future use; it cannot erase compensation already earned").toEqual(before.payables);
+    expect(after.entries).toEqual(before.entries);
+    expect(after.lines).toEqual(before.lines);
+    expect(after.deliveries).toEqual(before.deliveries);
+  });
+
   it.each(["sha256", "perceptual"] as const)("blocks a distinct submission with the same %s identity and persists matching evidence", async (kind) => {
     const fixture = await setup();
     const originalId = await submission(fixture, { sourceHash: "a".repeat(64), perceptualHash: "perceptual-original" });

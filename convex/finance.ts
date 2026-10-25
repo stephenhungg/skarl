@@ -109,6 +109,7 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
       consent.contributorTokenIdentifier !== submission.contributorTokenIdentifier || !consent.licenseVersion.trim() || !consent.scope.trim()) {
       return refuse(ctx, principal, submission, "acceptance", "licensed_media_required");
     }
+    if (consent.revocationStatus) return refuse(ctx, principal, submission, "acceptance", "consent_revocation_pending_or_revoked");
     const contributor = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
       q.eq("tokenIdentifier", submission.contributorTokenIdentifier)).unique();
     if (!contributor || contributor.organizationId !== submission.organizationId || contributor.status !== "active" ||

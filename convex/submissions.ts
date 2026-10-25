@@ -277,7 +277,12 @@ export const getReport = query({
     if (principal.roles.includes("contributor") && submission.contributorTokenIdentifier !== principal.tokenIdentifier) throw new Error("submission_not_owned");
     const analysis = submission.currentAnalysisId ? await ctx.db.get(submission.currentAnalysisId) : null;
     if (analysis && (analysis.organizationId !== submission.organizationId || analysis.submissionId !== submission._id)) throw new Error("analysis_reference_mismatch");
+    const decision = submission.currentDecisionId ? await ctx.db.get(submission.currentDecisionId) : null;
+    if (decision && (decision.organizationId !== submission.organizationId || decision.submissionId !== submission._id)) throw new Error("decision_reference_mismatch");
     return { status: submission.status, sourceHash: submission.sourceHash, perceptualHashSource: submission.perceptualHashSource,
+      submittedAt: submission._creationTime, analysisCompletedAt: analysis?.completedAt ?? null,
+      decision: decision ? { _id: decision._id, decision: decision.decision, reason: decision.reason, reasonCode: decision.reasonCode,
+        note: decision.note, decidedAt: decision.decidedAt } : null,
       verificationOnly: submission.verificationOnly ?? false, evalRunId: submission.evalRunId, evalVideoModel: submission.evalVideoModel,
       ...(submission.liveness ? { liveness: submission.liveness } : {}),
       report: analysis?.reportJson ? JSON.parse(analysis.reportJson) : null,
