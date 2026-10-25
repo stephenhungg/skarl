@@ -189,7 +189,9 @@ async function featuresModel(ctx: QueryCtx, demoIdentity: string) {
   const runs = visible.map(row => ({ key: row.key, kind: row.kind, status: row.status, updatedAt: row.updatedAt,
     nextAt: row.nextAt, lastErrorCode: row.lastErrorCode ?? null }));
   const registeredCrons = Object.entries(crons.crons).map(([name, entry]) => {
-    const key = entry.name === "scheduledJobs:reconcile" ? "job:reconciliation" : entry.name === "scheduledJobs:finance" ? "job:finance" : null;
+    // Health wrappers invoke the same jobs; preserve their tenant-scoped checkpoint evidence.
+    const key = ["scheduledJobs:reconcile", "healthJobs:reconcile"].includes(entry.name) ? "job:reconciliation" :
+      ["scheduledJobs:finance", "healthJobs:finance"].includes(entry.name) ? "job:finance" : null;
     const checkpoint = key ? runs.find(row => row.key === key) : null;
     return { name, function: entry.name, schedule: entry.schedule, lastRunAt: checkpoint?.updatedAt ?? null,
       lastStatus: checkpoint?.status ?? null, missing: checkpoint ? null : "No visible scheduledData checkpoint for this cron" };

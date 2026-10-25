@@ -234,10 +234,10 @@ describe("jury and sponsor provenance", () => {
       kind: "job", generation: 1, nextAt: 2000, leaseUntil: 0, status: "failed", updatedAt: 1234 }));
     const result = await f.t.query(ref("convexFeatures"), { demoIdentity: "controller" });
     expect(result.crons.map(row => row.function)).toEqual(expect.arrayContaining([
-      "scheduledJobs:reconcile", "scheduledJobs:finance", "attestations:sweep", "bankWitness:sweep",
+      "healthJobs:reconcile", "healthJobs:finance", "healthJobs:attest", "healthJobs:bank", "health:refresh",
     ]));
-    expect(result.crons.find(row => row.function === "scheduledJobs:reconcile")).toMatchObject({ lastRunAt: 1234, lastStatus: "failed" });
-    expect(result.crons.find(row => row.function === "attestations:sweep")?.lastRunAt).toBeNull();
+    expect(result.crons.find(row => row.function === "healthJobs:reconcile")).toMatchObject({ lastRunAt: 1234, lastStatus: "failed" });
+    expect(result.crons.find(row => row.function === "healthJobs:attest")?.lastRunAt).toBeNull();
     expect(result.httpActions).toContainEqual({ path: "/proof.json", method: "GET" });
     expect(result.httpActions).toContainEqual({ path: "/mcp", method: "POST" });
     const buyer = await f.t.query(ref("convexFeatures"), { demoIdentity: "buyer" });
