@@ -1,0 +1,334 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "reportId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "submissionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "taskVersionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "sha256",
+        "durationMs"
+      ]
+    },
+    "pipeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "needs_review",
+            "failed",
+            "ml_unavailable"
+          ]
+        },
+        "implementation": {
+          "enum": [
+            "scaffold",
+            "inference"
+          ]
+        },
+        "modelRuns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              },
+              "promptVersion": {
+                "type": "string",
+                "minLength": 1
+              },
+              "inputTokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "outputTokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "elapsedMs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "costUsd": {
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d+)?$"
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "promptVersion"
+            ]
+          }
+        }
+      },
+      "required": [
+        "version",
+        "status",
+        "implementation",
+        "modelRuns"
+      ]
+    },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "criterionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "supported",
+              "contradicted",
+              "unobservable"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "modality": {
+                  "enum": [
+                    "video",
+                    "audio",
+                    "text"
+                  ]
+                },
+                "startMs": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "endMs": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "claim": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sourceId": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "modality",
+                "startMs",
+                "endMs",
+                "claim"
+              ]
+            }
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "criterionId",
+          "status",
+          "evidence",
+          "reason"
+        ]
+      }
+    },
+    "duplicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "not_checked",
+            "clear",
+            "suspected"
+          ]
+        },
+        "matches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "submissionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "overlapMs": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "submissionId",
+              "score",
+              "overlapMs"
+            ]
+          }
+        }
+      },
+      "required": [
+        "status",
+        "matches"
+      ]
+    },
+    "recommendation": {
+      "enum": [
+        "accept",
+        "request_correction",
+        "needs_review"
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "reportId",
+    "submissionId",
+    "taskVersionId",
+    "source",
+    "pipeline",
+    "criteria",
+    "duplicate",
+    "recommendation"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stephenhungg/skarl/verification-report/1.0",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "pipeline": {
+            "anyOf": [
+              {
+                "properties": {
+                  "implementation": {
+                    "const": "scaffold"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "status": {
+                    "not": {
+                      "const": "completed"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "recommendation": {
+            "const": "needs_review"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "recommendation": {
+            "const": "accept"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "pipeline": {
+            "properties": {
+              "implementation": {
+                "const": "inference"
+              },
+              "status": {
+                "const": "completed"
+              },
+              "modelRuns": {
+                "minItems": 1
+              }
+            }
+          },
+          "criteria": {
+            "minItems": 1,
+            "items": {
+              "properties": {
+                "status": {
+                  "const": "supported"
+                },
+                "evidence": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          "duplicate": {
+            "properties": {
+              "status": {
+                "const": "clear"
+              },
+              "matches": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

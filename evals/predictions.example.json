@@ -1,0 +1,26 @@
+[
+  {
+    "sampleId": "test-valid",
+    "recommendation": "accept",
+    "duplicateStatus": "clear",
+    "criteria": { "object": "supported", "action": "supported", "narration": "supported" }
+  },
+  {
+    "sampleId": "test-copy",
+    "recommendation": "needs_review",
+    "duplicateStatus": "suspected",
+    "criteria": { "object": "supported", "action": "supported", "narration": "supported" }
+  },
+  {
+    "sampleId": "test-mismatch",
+    "recommendation": "request_correction",
+    "duplicateStatus": "clear",
+    "criteria": { "object": "contradicted", "action": "supported", "narration": "contradicted" }
+  },
+  {
+    "sampleId": "test-retake",
+    "recommendation": "needs_review",
+    "duplicateStatus": "suspected",
+    "criteria": { "object": "supported", "action": "supported", "narration": "supported" }
+  }
+]

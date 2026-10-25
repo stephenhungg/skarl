@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "1.0",
+  "reportId": "synthetic-scaffold-report-001",
+  "submissionId": "synthetic-submission-001",
+  "taskVersionId": "synthetic-red-cup-v1",
+  "source": {
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "durationMs": 12000
+  },
+  "pipeline": {
+    "version": "scaffold-0.1.0",
+    "status": "ml_unavailable",
+    "implementation": "scaffold",
+    "modelRuns": []
+  },
+  "criteria": [
+    {
+      "criterionId": "red-cup-pickup",
+      "status": "unobservable",
+      "evidence": [],
+      "reason": "Synthetic metadata example; no video or model result exists."
+    },
+    {
+      "criterionId": "narration-alignment",
+      "status": "unobservable",
+      "evidence": [],
+      "reason": "No audio was transcribed."
+    }
+  ],
+  "duplicate": { "status": "not_checked", "matches": [] },
+  "recommendation": "needs_review",
+  "warnings": [
+    "This is synthetic contract plumbing, not a model inference result.",
+    "The zero source hash is a placeholder, not the hash of a media file."
+  ]
+}

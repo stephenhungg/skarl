@@ -1,0 +1,26 @@
+{
+  "name": "skarl",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.19.0",
+  "engines": {
+    "node": ">=22.18.0 <23"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @skarl/web dev",
+    "build": "pnpm --filter @skarl/web build",
+    "typecheck": "tsc --noEmit && pnpm --filter @skarl/web typecheck",
+    "test": "node --test packages/contracts/src/*.test.ts packages/payments/src/*.test.ts packages/ledger/src/*.test.ts",
+    "check:docs": "python3 scripts/check_docs.py",
+    "check": "pnpm typecheck && pnpm test && pnpm check:docs && pnpm build",
+    "convex:dev": "convex dev"
+  },
+  "dependencies": {
+    "@skarl/contracts": "workspace:*",
+    "convex": "1.48.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "~5.9.3"
+  }
+}

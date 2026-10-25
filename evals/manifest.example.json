@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "1.0",
+  "syntheticMetadata": true,
+  "description": "Illustrative labels only. No media or inference result exists for these records.",
+  "samples": [
+    {
+      "sampleId": "train-valid",
+      "actorId": "example-actor-train",
+      "sessionId": "example-session-train",
+      "originRecordingId": "example-origin-train-1",
+      "split": "train",
+      "variant": "original",
+      "mediaPath": null,
+      "expected": {
+        "recommendation": "accept",
+        "duplicateStatus": "clear",
+        "criteria": { "object": "supported", "action": "supported", "narration": "supported" }
+      }
+    },
+    {
+      "sampleId": "train-copy",
+      "actorId": "example-actor-train",
+      "sessionId": "example-session-train",
+      "originRecordingId": "example-origin-train-1",
+      "split": "train",
+      "variant": "cropped-reencode",
+      "mediaPath": null,
+      "expected": {
+        "recommendation": "needs_review",
+        "duplicateStatus": "suspected",
+        "criteria": { "object": "supported", "action": "supported", "narration": "supported" }
+      }
+    },
+    {
+      "sampleId": "validation-valid",
+      "actorId": "example-actor-validation",
+      "sessionId": "example-session-validation",
+      "originRecordingId": "example-origin-validation-1",
+      "split": "validation",
+      "variant": "original",
+      "mediaPath": null,
+      "expected": {
+        "recommendation": "accept",
+        "duplicateStatus": "clear",
+        "criteria": { "object": "supported", "action": "supported", "narration": "supported" }
+      }
+    },
+    {
+      "sampleId": "validation-occluded",
+      "actorId": "example-actor-validation",
+      "sessionId": "example-session-validation",
+      "originRecordingId": "example-origin-validation-2",
+      "split": "validation",
+      "variant": "original-occluded",
+      "mediaPath": null,
+      "expected": {
+        "recommendation": "needs_review",
+        "duplicateStatus": "clear",
+        "criteria": { "object": "supported", "action": "unobservable", "narration": "supported" }
+      }
+    },
+    {
+      "sampleId": "test-valid",
+      "actorId": "example-actor-test",
+      "sessionId": "example-session-test",
+      "originRecordingId": "example-origin-test-1",
+      "split": "test",
+      "variant": "original",
+      "mediaPath": null,
+      "expected": {
+        "recommendation": "accept",
+        "duplicateStatus": "clear",
+        "criteria": { "object": "supported", "action": "supported", "narration": "supported" }
+      }
+    },
+    {
+      "sampleId": "test-copy",
+      "actorId": "example-actor-test",
+      "sessionId": "example-session-test",
+      "originRecordingId": "example-origin-test-1",
+      "split": "test",
+      "variant": "cropped-reencode",
+      "mediaPath": null,
+      "expected": {
+        "recommendation": "needs_review",
+        "duplicateStatus": "suspected",
+        "criteria": { "object": "supported", "action": "supported", "narration": "supported" }
+      }
+    },
+    {
+      "sampleId": "test-mismatch",
+      "actorId": "example-actor-test",
+      "sessionId": "example-session-test",
+      "originRecordingId": "example-origin-test-2",
+      "split": "test",
+      "variant": "original-object-conflict",
+      "mediaPath": null,
+      "expected": {
+        "recommendation": "request_correction",
+        "duplicateStatus": "clear",
+        "criteria": { "object": "contradicted", "action": "supported", "narration": "contradicted" }
+      }
+    },
+    {
+      "sampleId": "test-retake",
+      "actorId": "example-actor-test",
+      "sessionId": "example-session-test",
+      "originRecordingId": "example-origin-test-3",
+      "split": "test",
+      "variant": "independent-retake",
+      "mediaPath": null,
+      "expected": {
+        "recommendation": "accept",
+        "duplicateStatus": "clear",
+        "criteria": { "object": "supported", "action": "supported", "narration": "supported" }
+      }
+    }
+  ]
+}

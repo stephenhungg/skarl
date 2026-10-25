@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skarl-verifier"
+version = "0.1.0"
+description = "Advisory multimodal evidence reports for Skarl"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2,<3",
+  "jsonschema>=4,<5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+# Install only after checking the target Python, CPU/GPU, and model compatibility.
+# Resolve and lock actual versions in the deployment environment; these are not
+# an assertion that every newest release is mutually compatible.
+ml = [
+  "google-genai",
+  "faster-whisper",
+  "numpy",
+  "Pillow",
+  "torch",
+  "torchvision",
+]
+
+[project.scripts]
+skarl-verifier = "skarl_verifier.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
