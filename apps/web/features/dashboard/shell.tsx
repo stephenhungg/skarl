@@ -7,6 +7,9 @@ import { cn } from "@/lib/glaze/utils";
 import { BreadcrumbTrail } from "@/components/glaze/ui/breadcrumb";
 import { Kbd } from "@/components/glaze/ui/kbd";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/glaze/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuLinkItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/glaze/ui/dropdown-menu";
+import { Toaster } from "@/components/glaze/ui/toast";
+import { ChevronSort, Icon } from "@/components/glaze/icon";
 import { LogoMark } from "@/components/logo-mark";
 import { useConvexConfig } from "@/components/convex-provider";
 import { Lordicon, type LordiconName } from "./lordicon";
@@ -92,12 +95,26 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
         <TooltipProvider>
           <div className={cn("grid min-h-dvh md:grid-cols-[var(--sidebar)_1fr]")} style={{ ["--sidebar" as string]: collapsed ? "52px" : "240px" }}>
             <aside className="sticky top-0 hidden h-dvh flex-col border-e border-line-faint bg-page md:flex" aria-label="Dashboard">
-              <div className={cn("flex h-12 items-center gap-2 px-3", collapsed && "justify-center px-0")}>
-                <Link href="/" className="flex min-w-0 items-center gap-2 rounded-tag text-text-1" aria-label="Skarl home">
-                  <LogoMark size={12} />
-                  {!collapsed && <span className="truncate type-label">Skarl</span>}
-                </Link>
-                {!collapsed && <span className="ms-auto type-label-sm text-text-3">Controller</span>}
+              <div className={cn("flex h-14 items-center px-2", collapsed && "justify-center px-0")}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger className={cn("flex w-full min-w-0 items-center gap-2 rounded-tag p-1.5 text-start hover:bg-hover", collapsed && "w-auto")}
+                    aria-label="Workspace and identity">
+                    <span className="grid size-7 shrink-0 place-items-center rounded-tag bg-ink text-text-inverse"><LogoMark size={8} /></span>
+                    {!collapsed && <>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate type-label">Skarl</span>
+                        <span className="block truncate type-label-sm text-text-3">Controller, demo identity</span>
+                      </span>
+                      <Icon icon={ChevronSort} size={14} className="text-text-3" />
+                    </>}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuLabel>Signed in as the demo controller. This is a selector, not authentication.</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLinkItem render={<Link href="/contribute" />}>Open contributor view</DropdownMenuLinkItem>
+                    <DropdownMenuLinkItem render={<Link href="/" />}>Back to the landing page</DropdownMenuLinkItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 pt-2">
                 {NAV.map((section, index) => (
@@ -127,7 +144,6 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
                   <Lordicon name="globe" size={16} />
                   {!collapsed && <span>Base Sepolia &middot; testnet</span>}
                 </div>
-                {!collapsed && <p className="px-2 type-label-sm text-text-3">Demo identity: controller. Not authentication.</p>}
                 <button type="button" onClick={toggle} className={cn("flex h-8 items-center gap-2 rounded-tag px-2 type-label-sm text-text-2 hover:bg-hover", collapsed && "justify-center px-0")}
                   aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
                   {collapsed ? <Kbd keys="[" /> : <><span>Collapse</span><Kbd keys="[" className="ms-auto" /></>}
@@ -159,6 +175,7 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
             })}
           </nav>
           </div>
+          <Toaster />
         </TooltipProvider>
       </GlazePortalProvider>
     </div>

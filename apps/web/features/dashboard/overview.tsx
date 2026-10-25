@@ -4,7 +4,7 @@ import { Status } from "@/components/glaze/ui/status";
 import { Badge } from "@/components/glaze/ui/badge";
 import { cn } from "@/lib/glaze/utils";
 import { needsYou, useAudit, useExceptions, useOrderData, useOrderId, useReconciliation, type Id, type PayableRow, type SubmissionRow } from "./data";
-import { basescanTx, formatTime, humanize, parseChainIdentity, shortHash } from "./format";
+import { basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
 import { Lordicon } from "./lordicon";
 import { Amount, Loading, PageHeader, Section, Unavailable } from "./ui";
 
@@ -47,7 +47,7 @@ export function NeedsYouList({ orderId, submissions, payables, standalone }: { o
   const open = (exceptions ?? []).filter(item => item.stillDetected && item.disposition?.status !== "resolved");
   const rows = [
     ...n.review.map(s => ({ key: s._id, href: `/dashboard/submissions/${s._id}`, title: `Review clip ${s._id.slice(0, 8)}`,
-      detail: s.analysis ? `AI recommends ${humanize(s.analysis.recommendation)}` : "Analysis pending", action: "Review" })),
+      detail: s.verificationOnly ? "Test upload. Review only, it cannot be paid" : s.analysis ? `AI suggests: ${humanize(s.analysis.recommendation).toLowerCase()}` : "Analysis pending", action: "Review" })),
     ...n.approve.map(p => ({ key: p._id, href: "/dashboard/payables", title: <>Approve payout of <Amount value={p.amountAtomic} /></>,
       detail: `Proposed by the finance agent to ${shortHash(p.recipientAddress)}`, action: "Approve" })),
     ...n.sign.map(p => ({ key: `${p._id}:sign`, href: "/dashboard/payables", title: <>Sign approved payout of <Amount value={p.amountAtomic} /></>,
@@ -111,7 +111,7 @@ function RecentActivity({ orderId }: { orderId: Id<"orders"> }) {
           {audit.slice(0, 6).map(event => (
             <li key={event._id} className="flex items-baseline gap-3 border-b border-line-faint py-2 last:border-b-0">
               <span className="w-28 shrink-0 type-label-sm text-text-3 tabular-nums">{formatTime(event.occurredAt)}</span>
-              <span className="min-w-0 flex-1 type-body-sm"><span className="type-label">{humanize(event.action)}</span> <span className="text-text-2">{event.reason}</span></span>
+              <span className="min-w-0 flex-1 type-body-sm"><span className="type-label">{humanize(event.action)}</span> <span className="text-text-2">{readableReason(event.reason)}</span></span>
               <span className="hidden shrink-0 type-label-sm text-text-3 sm:inline">{event.actor.kind === "service" ? "Service" : "Human"} &middot; {event.actor.identity}</span>
             </li>
           ))}

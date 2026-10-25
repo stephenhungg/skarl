@@ -36,3 +36,18 @@ export const basescanTx = (txHash: string) => `https://sepolia.basescan.org/tx/$
 export const basescanAddress = (address: string) => `https://sepolia.basescan.org/address/${address}`;
 
 export const humanize = (code: string) => code.replace(/[_:]+/g, " ").replace(/^\w/, c => c.toUpperCase());
+
+/**
+ * Backend audit reasons are machine strings ("needs_review: red-cup-pickup=unobservable, ..."). Turn them into a
+ * sentence a person can scan without changing what they say.
+ */
+export function readableReason(reason: string) {
+  const [head, ...rest] = reason.split(": ");
+  if (!rest.length) return /^[a-z0-9_:-]+$/.test(reason) ? humanize(reason) : reason;
+  const body = rest.join(": ");
+  const pairs = body.split(/,\s*/).map(part => part.split("="));
+  const tail = pairs.every(pair => pair.length === 2)
+    ? pairs.map(([key, value]) => `${humanize(key!.replace(/-/g, " "))} ${humanize(value!).toLowerCase()}`).join(", ")
+    : (/^[a-z0-9_]+$/.test(body.split(": ")[0]!) ? body.split(": ").map((part, i) => i === 0 ? humanize(part) : part).join(". ") : body);
+  return /^[a-z0-9_]+$/.test(head!) ? `${humanize(head!)}. ${tail}` : reason;
+}
