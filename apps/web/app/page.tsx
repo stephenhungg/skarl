@@ -4,6 +4,7 @@ import { BuiltOn } from "@/features/landing/built-on";
 import { HowItWorks } from "@/features/landing/how-it-works";
 import { CatchSection } from "@/features/landing/catch-carousel";
 import { Money } from "@/features/landing/money";
+import { Roles } from "@/features/landing/roles";
 import { Footer } from "@/features/landing/footer";
 
 export default function Home() {
@@ -16,6 +17,7 @@ export default function Home() {
         <HowItWorks />
         <CatchSection />
         <Money />
+        <Roles />
       </main>
       <Footer />
     </>
