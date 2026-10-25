@@ -8,6 +8,7 @@ import { validateFrameHashes, compareFrameHashes } from "./lib/copyDetection";
 import { PIPELINE_VERSION, validateEvaluationScope, applyVerificationOnlyGuard, EVALUATION_PROJECTION_VERSION } from "./lib/verificationReport";
 import { evaluationVideoModel } from "./validators";
 import { checkSpokenLiveness } from "./lib/spokenLiveness";
+import { normalizeDiversityTag } from "./lib/diversity";
 
 const frame = v.object({ timestampMs: v.number(), hash: v.string() });
 const evidenceFrame = v.object({ storageId: v.id("_storage"), timestampMs: v.number(), contentHash: v.string(), sizeBytes: v.number(),
@@ -20,7 +21,8 @@ export const generateUploadUrl = mutation({
 export const create = mutation({
   args: { demoIdentity: v.string(), orderId: v.id("orders"), storageId: v.id("_storage"), clientRequestId: v.string(),
     consentAcknowledged: v.boolean(), clientFrameDHashes: v.optional(v.array(frame)), verificationOnly: v.optional(v.boolean()), evalRunId: v.optional(v.string()),
-    evalVideoModel: v.optional(evaluationVideoModel), livenessChallengeId: v.optional(v.id("livenessChallenges")) },
+    evalVideoModel: v.optional(evaluationVideoModel), livenessChallengeId: v.optional(v.id("livenessChallenges")),
+    environment: v.optional(v.string()), variant: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, "contributor");
     const order = await ctx.db.get(args.orderId);
@@ -28,6 +30,7 @@ export const create = mutation({
     requireTenant(principal, order);
     if (!args.consentAcknowledged) throw new Error("consent_required");
     if (!/^[a-zA-Z0-9._:-]{1,120}$/.test(args.clientRequestId)) throw new Error("invalid_request_id");
+    const environment = normalizeDiversityTag(args.environment), variant = normalizeDiversityTag(args.variant);
     validateEvaluationScope(args.verificationOnly, args.evalRunId);
     if (args.evalVideoModel !== undefined && (!args.verificationOnly || args.evalRunId === undefined)) throw new Error("model_override_requires_scoped_evaluation");
     const existing = await ctx.db.query("submissions").withIndex("by_request", q => q.eq("organizationId", principal.organizationId)
@@ -35,6 +38,7 @@ export const create = mutation({
     if (existing) {
       const asset = existing.originalAssetId ? await ctx.db.get(existing.originalAssetId) : null;
       if (existing.orderId !== args.orderId || asset?.storageId !== args.storageId || existing.livenessChallengeId !== args.livenessChallengeId ||
+        existing.environment !== environment || existing.variant !== variant ||
         !!existing.verificationOnly !== !!args.verificationOnly || existing.evalRunId !== args.evalRunId || existing.evalVideoModel !== args.evalVideoModel || digest(existing.clientFrameDHashes ?? []) !== digest(args.clientFrameDHashes ?? [])) throw new Error("submission_request_conflict");
       return { submissionId: existing._id, replayed: true };
     }
@@ -66,6 +70,7 @@ export const create = mutation({
     }
     const submissionId = await ctx.db.insert("submissions", { organizationId: order.organizationId, orderId: order._id,
       taskVersionId: rubric._id, contributorTokenIdentifier: principal.tokenIdentifier, status: "queued",
+      ...(environment !== undefined ? { environment } : {}), ...(variant !== undefined ? { variant } : {}),
       clientRequestId: args.clientRequestId, expectedSourceHash: uploadedHash, ...(args.clientFrameDHashes ? { clientFrameDHashes: args.clientFrameDHashes } : {}),
       verificationOnly: args.verificationOnly ?? false, ...(args.evalRunId !== undefined ? { evalRunId: args.evalRunId } : {}),
       ...(args.evalVideoModel !== undefined ? { evalVideoModel: args.evalVideoModel } : {}),
@@ -277,7 +282,12 @@ export const getReport = query({
     if (principal.roles.includes("contributor") && submission.contributorTokenIdentifier !== principal.tokenIdentifier) throw new Error("submission_not_owned");
     const analysis = submission.currentAnalysisId ? await ctx.db.get(submission.currentAnalysisId) : null;
     if (analysis && (analysis.organizationId !== submission.organizationId || analysis.submissionId !== submission._id)) throw new Error("analysis_reference_mismatch");
+    const decision = submission.currentDecisionId ? await ctx.db.get(submission.currentDecisionId) : null;
+    if (decision && (decision.organizationId !== submission.organizationId || decision.submissionId !== submission._id)) throw new Error("decision_reference_mismatch");
     return { status: submission.status, sourceHash: submission.sourceHash, perceptualHashSource: submission.perceptualHashSource,
+      submittedAt: submission._creationTime, analysisCompletedAt: analysis?.completedAt ?? null,
+      decision: decision ? { _id: decision._id, decision: decision.decision, reason: decision.reason, reasonCode: decision.reasonCode,
+        note: decision.note, decidedAt: decision.decidedAt } : null,
       verificationOnly: submission.verificationOnly ?? false, evalRunId: submission.evalRunId, evalVideoModel: submission.evalVideoModel,
       ...(submission.liveness ? { liveness: submission.liveness } : {}),
       report: analysis?.reportJson ? JSON.parse(analysis.reportJson) : null,

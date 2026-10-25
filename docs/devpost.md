@@ -10,6 +10,8 @@
 
 Human-data companies buy demonstrations that must become licensed training samples and defensible contributor payments. But a new filename may conceal work already paid for; fluent narration may describe something the camera never saw; a timeout may hide a completed transfer. The settlement desk needs witnesses for the work, the obligation and the movement of money.
 
+The market is spending heavily on human demonstrations: Forbes reports Figure's plan to invest **$1 billion in data and compute over 12 months**. Contributors still need visibility into the bargain: MIT Technology Review reports workers' uncertainty about how their footage is used, stored and shared. That article could not be independently re-opened for this update. [Forbes](https://www.forbes.com/sites/johnkoetsier/2026/08/26/figure-launches-gig-platform-to-get-humans-to-do-work-to-train-robots-will-spend-1-billion/), [MIT Technology Review](https://www.technologyreview.com/2026/04/01/1134863/humanoid-data-training-gig-economy-2026-breakthrough-technology/).
+
 Our first task is deliberately narrow: pick up a red cup, put it on a marked coaster and narrate the action. Our first customer hypothesis is the operator buying those demonstrations for an AI team. No customer interviews, paid adoption or downstream model improvement are claimed.
 
 ## What it does
@@ -30,6 +32,8 @@ Existing human-data marketplaces such as [Kled AI](https://www.kled.ai/) proved 
 - **Agents can buy:** an AI buyer funds an order over x402 without a sales form.
 - **Payments a controller can defend:** agents propose but never approve, CDP policy caps reject over-limit payouts, and order, ledger, chain and bank reconcile.
 - **Contributors get reasons:** the implemented Claude coach cites stored evidence and cannot change the verdict; contributor-facing quality remains unmeasured.
+
+The opportunity is useful episodes with a defensible receipt. Flikforge reports that buyers discard approximately **90% of bulk pretraining footage for a specific robot-training task**. This is a **vendor claim**, not Skarl's measured result or an independent industry statistic; Forbes links Flikforge for price estimates, not independent validation of that discard rate. Our response is explained criteria, consent provenance and visible payment state. It is not a claim that short task clips replace sensor-rich robot demonstrations. [Flikforge, vendor](https://flikforge.com/robot-data-glut-egocentric-video-physical-ai/), [Forbes](https://www.forbes.com/sites/johnkoetsier/2026/08/26/figure-launches-gig-platform-to-get-humans-to-do-work-to-train-robots-will-spend-1-billion/). The [market summary](market.md) records prices, source limits and the hand-pose, depth, ARKit camera-pose, head-mount and fiat-payout roadmap.
 
 Kled leads on what matters for a business today: real contributors, mainnet payouts, buyers and fraud models trained on real attacks. Skarl is a testnet prototype.
 

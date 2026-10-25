@@ -1,13 +1,14 @@
 "use client";
 import Link from "next/link";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/glaze/ui/badge";
 import { Button } from "@/components/glaze/ui/button";
 import { Status } from "@/components/glaze/ui/status";
 import { toast } from "@/components/glaze/ui/toast";
-import { Loading, PageHeader, RequireConvex, Unavailable } from "@/features/dashboard/ui";
+import { ConfirmDialog, Loading, PageHeader, QueryBoundary, RequireConvex, Unavailable } from "@/features/dashboard/ui";
+import { Textarea } from "@/components/glaze/ui/textarea";
 import { formatMs, formatTime, humanize, readableReason } from "@/features/dashboard/format";
 import { Lordicon } from "@/features/dashboard/lordicon";
 import { cn } from "@/lib/glaze/utils";
@@ -124,6 +125,7 @@ function ClipDetail({ submissionId }: { submissionId: Id<"submissions"> }) {
             {parsed?.warnings?.length ? <ul className="flex flex-col gap-1">{parsed.warnings.map(w => <li key={w} className="type-body-sm text-text-2">{w}</li>)}</ul> : null}
           </section>
           {parsed && <Coach submissionId={submissionId} onSeek={playable ? seek : null} />}
+          <ConsentCard submissionId={submissionId} />
         </aside>
       </div>
     </>
@@ -276,4 +278,45 @@ function Coach({ submissionId, onSeek }: { submissionId: Id<"submissions">; onSe
 
 export function ClipDetailPage({ submissionId }: { submissionId: string }) {
   return <RequireConvex><ClipDetail submissionId={submissionId as Id<"submissions">} /></RequireConvex>;
+}
+
+/** The consent recorded with this clip, and the contributor's right to ask for it to be withdrawn. */
+function ConsentCard({ submissionId }: { submissionId: Id<"submissions"> }) {
+  return <QueryBoundary><ConsentInner submissionId={submissionId} /></QueryBoundary>;
+}
+
+function ConsentInner({ submissionId }: { submissionId: Id<"submissions"> }) {
+  const provenance = useQuery(api.provenance.forSubmission, { demoIdentity: CONTRIBUTOR, submissionId });
+  const request = useMutation(api.consent.requestRevocation);
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  if (!provenance) return null;
+  const status = provenance.revocation.status;
+  return (
+    <section className="rounded-panel border border-line-faint p-3" aria-label="Your consent">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h2 className="me-auto type-label">Your consent</h2>
+        {status === "revoked" && <Status status="ok" size="sm">Withdrawn {formatTime(provenance.revocation.revokedAt)}</Status>}
+        {status === "requested" && <Status status="waiting" size="sm">Withdrawal requested {formatTime(provenance.revocation.requestedAt)}</Status>}
+      </div>
+      {provenance.licenseVersion
+        ? <p className="mt-1 type-body-sm text-text-2">{provenance.licenseVersion}{provenance.consentTimestamp ? `, given ${formatTime(provenance.consentTimestamp)}` : ""}{provenance.licenseScope ? `. ${provenance.licenseScope}` : ""}</p>
+        : <p className="mt-1 type-body-sm text-text-2">No consent record for this clip.</p>}
+      {status === "not_requested" && (
+        <>
+          <Button variant="secondary" size="sm" className="mt-2" onClick={() => setOpen(true)}>Withdraw consent</Button>
+          <ConfirmDialog open={open} onOpenChange={setOpen} title="Withdraw consent for this clip?" actionLabel="Request withdrawal"
+            description="A controller reviews the request. Once withdrawn, the clip is excluded from datasets delivered from then on."
+            onConfirm={async () => {
+              if (!reason.trim()) throw new Error("Add a reason first.");
+              await request({ demoIdentity: CONTRIBUTOR, submissionId, reason: reason.trim() });
+              toast.success("Withdrawal requested");
+            }}>
+            <label className="mb-1 block type-label" htmlFor={`reason-${submissionId}`}>Reason</label>
+            <Textarea id={`reason-${submissionId}`} rows={3} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} />
+          </ConfirmDialog>
+        </>
+      )}
+    </section>
+  );
 }

@@ -1,6 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import type { NextRequest } from "next/server";
 import { api, paymentJson, type Id } from "../../../../../lib/payments/server";
+import { lerobotManifest, rldsJsonManifest } from "../../../../../../../convex/lib/trainingFormats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   const orderId = (await context.params).id;
   if (!/^[a-zA-Z0-9]+$/.test(orderId)) return paymentJson({ error: "invalid_order_id" }, 400);
   const format = request.nextUrl.searchParams.get("format") ?? "json";
-  if (format !== "json" && format !== "jsonl") return paymentJson({ error: "invalid_dataset_format" }, 400);
+  if (!["json", "jsonl", "lerobot", "rlds-json"].includes(format)) return paymentJson({ error: "invalid_dataset_format" }, 400);
   const url = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (!url) return paymentJson({ error: "dataset_not_configured" }, 503);
   try {
@@ -20,6 +21,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const manifest = await db.query(api.datasets.forOrder, { demoIdentity, orderId: orderId as Id<"orders">,
       refreshKey: Math.floor(Date.now() / 60_000) });
     if (format === "json") return paymentJson(manifest);
+    if (format === "lerobot") return paymentJson(lerobotManifest(manifest));
+    if (format === "rlds-json") return paymentJson(rldsJsonManifest(manifest));
     // Authorize and materialize the snapshot before starting the response. Each
     // pull emits one complete sample without a manifest or metadata line.
     const samples = manifest.samples[Symbol.iterator]();

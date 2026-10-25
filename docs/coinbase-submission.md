@@ -157,6 +157,14 @@ The October 25 live CDP Solana Devnet attempt returned HTTP 402 before settlemen
 
 **Requested improvement:** document signer-pool semantics and provide SDK support for rotating facilitator fee payers, with strict current-set validation and a stable quote identifier. This feedback is recorded here, not sent externally. Tests alone do not establish live settlement.
 
+### Wallet MCP refused a self-send (Oct 25, 05:15 PDT)
+
+A Claude Code buyer agent called `base-mcp` `initiate_x402_request` (POST `https://skarl.vercel.app/api/orders/kh77m8ye254372r0fs8p8dk28d8gzpm2/fund`, scheme `exact`, `maxPayment` 1.000000). The human approved in Coinbase Wallet; `complete_x402_request` then failed with `Payment was rejected by the x402 endpoint` / `self_send_not_allowed`, and no transaction hash was returned. Our order stayed `awaiting_funding` with no payment intent, so nothing settled. The approving Base account is the same wallet as the funding treasury (`payTo` `0x8408…695f`), so this was a buyer paying itself.
+
+- **Good:** the guard stopped a circular payment before settlement.
+- **Friction:** `initiate_x402_request` returned no network, asset or `payTo` to check before approval, and it accepts no `network` parameter. The self-send was only detected after the human approved. Surfacing the decoded `PAYMENT-REQUIRED` terms (and a self-send check) at initiate time would let an agent stop before asking for approval.
+- **Workaround:** demo Wallet MCP purchases against the evidence route, whose `payTo` is the separate `skarl-finance-agent` account (`0x0A9E…51c5`), or approve from a Base account that is not the treasury.
+
 ### One capability we most want
 
 **Policy-bound autonomous agent wallets usable through Wallet MCP without a human click for each already-authorized transaction.** Let the operator define a revocable network/token/recipient/budget policy once, then allow bounded execution under that policy with a stable request ID. Skarl would still require its own independent business approval; this would remove the second manual signing handoff and the separate CDP SDK executor solely for bounded execution. Today's Wallet MCP remains in approval mode. No feature request has been sent externally.

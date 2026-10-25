@@ -82,6 +82,29 @@ it("serializes JSON money without losing integer precision", async () => {
   expect((await response.json()).samples[0].amountAtomic).toBe("9007199254740993");
 });
 
+it.each(["lerobot", "rlds-json"])("serves %s only after the same licensed buyer query and preserves quality witnesses", async format => {
+  const accepted = { ...sample, durationMs: 12000, task: { id: "task123", languageInstruction: "Place the cup." },
+    usableStartMs: 500, usableEndMs: 2500, qualityScore: 70,
+    components: { duplicateClear: { score: 20, maxScore: 20, status: "supported", evidence: "Synthetic clear duplicate check" } },
+    media: { url: "https://private.example/video", fps: null }, sensorTrace: null };
+  mocks.query.mockResolvedValue({ ...manifest, samples: [accepted] });
+  const response = await GET(request("buyer", `?format=${format}`), context());
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+  const body = await response.json();
+  expect(body.episodes[0]).toMatchObject({ ...accepted, language_instruction: "Place the cup.",
+    success: true, episode_index: 0, task_index: 0, length: null });
+  expect(body.compatibility.directly_loadable).toBe(false);
+  expect(getFunctionName(mocks.query.mock.calls[0]![0])).toBe("datasets:forOrder");
+});
+
+it.each(["lerobot", "rlds-json"])("does not create a %s export for an unauthorized dataset", async format => {
+  mocks.query.mockRejectedValue(new Error("order_not_owned: private arguments"));
+  const response = await GET(request("contributor", `?format=${format}`), context());
+  expect(response.status).toBe(403);
+  expect(await response.json()).toEqual({ error: "dataset_forbidden" });
+});
+
 it.each(["order_not_owned", "cross_organization_access", "forbidden", "inactive_demo_identity", "unknown_demo_identity", "agent_approval_refused"])(
   "denies %s before opening a JSONL stream and masks backend arguments", async code => {
     mocks.query.mockRejectedValue(new Error(`[private request] ${code}: private media details`));

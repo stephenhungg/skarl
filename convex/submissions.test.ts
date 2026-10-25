@@ -31,6 +31,7 @@ async function upload(t: Test, content = "synthetic media bytes", type = "video/
 }
 async function create(f: Fixture, request = "sample-1", extras: {
   clientFrameDHashes?: typeof frames; verificationOnly?: boolean;
+  environment?: string; variant?: string;
 } = {}) {
   const storageId = await upload(f.t, `synthetic media ${request}`);
   const challenge = await f.t.mutation(api.liveness.issueChallenge, { demoIdentity: "contributor" });
@@ -391,6 +392,18 @@ describe("submission lifecycle and evidence boundaries", () => {
     expect(await f.t.run(ctx => ctx.db.query("payables").collect())).toHaveLength(1);
     expect(await f.t.run(ctx => ctx.db.query("deliveries").collect())).toHaveLength(1);
   });
+});
+
+it("binds optional self-reported diversity tags to the upload request so retries cannot relabel accepted coverage", async () => {
+  const f = await setup(), item = await create(f, "tagged", { environment: " kitchen-a ", variant: "low-light" });
+  expect(await f.t.run(ctx => ctx.db.get(item.submissionId))).toMatchObject({ environment: "kitchen-a", variant: "low-light" });
+  expect(await f.t.mutation(api.submissions.create, { ...item.args, environment: "kitchen-a" })).toMatchObject({ replayed: true });
+  for (const change of [{ environment: "kitchen-b" }, { variant: "left-hand" }, { environment: undefined }]) {
+    await expect(f.t.mutation(api.submissions.create, { ...item.args, ...change })).rejects.toThrow("submission_request_conflict");
+  }
+  for (const environment of ["", " ", "x".repeat(121), "kitchen\nother"]) {
+    await expect(create(f, "invalid-tag", { environment })).rejects.toThrow("invalid_diversity_tag");
+  }
 });
 
 it("accepts a browser MediaRecorder MIME value with codec parameters",async()=>{

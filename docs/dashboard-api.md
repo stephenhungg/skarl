@@ -1,5 +1,7 @@
 # Controller dashboard API
 
+> **Sponsor surfaces:** what the dashboard must show for each sponsor track is in [dashboard-sponsor-surfaces.md](dashboard-sponsor-surfaces.md).
+
 > **Design alignment (read first).** The dashboard must look like the landing page and the iOS app: one product.
 > Use only the tokens in `apps/web/app/globals.css` (`paper` background, `ink` text, sage neutrals `mist/haze/fog/slate-*`, `deep`, and the lime `accent` reserved for primary actions and live/selected states), the Montreal cuts (`.cut-book/.cut-regular/.cut-medium`) for UI and `.mono` (Fono) for amounts, hashes, timestamps and tx links, and the `--ease-settle` curve for motion.
 > Reuse `components/logo-mark`, `wordmark`, `status-pill`, `evidence-timeline`, `stepper`, `button`, `ui/payment-status`, `ui/activity-feed`, `ui/payment-receipt-printer` instead of new primitives. Keep the testnet disclosure visible, label demo identities and simulated data, and show a chain badge (Base Sepolia / Solana Devnet) plus an explorer link on every on-chain item.
@@ -1053,10 +1055,14 @@ curl -H 'x-skarl-demo-identity: buyer' \
   'https://skarl.vercel.app/api/orders/ORDER_ID/dataset' > dataset.json
 curl -H 'x-skarl-demo-identity: buyer' \
   'https://skarl.vercel.app/api/orders/ORDER_ID/dataset?format=jsonl' > samples.jsonl
+curl -H 'x-skarl-demo-identity: buyer' \
+  'https://skarl.vercel.app/api/orders/ORDER_ID/dataset?format=lerobot' > lerobot-manifest.json
+curl -H 'x-skarl-demo-identity: buyer' \
+  'https://skarl.vercel.app/api/orders/ORDER_ID/dataset?format=rlds-json' > rlds-manifest.json
 ```
 
 The JSON response has `schema: "skarl.dataset.v1"`, `orderId`, `generatedAt`
-(Unix milliseconds), `task: {id, version, criterionIds}`, and `samples`.
+(Unix milliseconds), `task: {id, version, criterionIds, languageInstruction}`, and `samples`.
 An order with no deliveries returns `samples: []`; a draft without a rubric has
 `task: null`. JSONL streams one complete sample per line, repeating task and
 license metadata so each line can be loaded independently. Empty JSONL is an
@@ -1114,6 +1120,10 @@ signature, expiry, order, caller's current membership/ownership and the current
 licensed delivery binding before streaming only the original asset. Changes to
 consent, delivery, source or eligibility invalidate an old grant. URLs are bearer
 credentials: do not publish or cache them.
+Requested/revoked consent excludes the sample from fresh exports and blocks old
+grants at serving time; existing downloaded copies cannot be recalled. Every
+sample includes `provenance: skarl.provenance.v1` from the delivered analysis
+snapshot and current consent. Historical payables are preserved.
 
 The HTTP route changes the query's optional `refreshKey` each minute so an
 unchanged dataset still receives fresh grants. Direct query clients should pass
@@ -1127,6 +1137,134 @@ redirect. The proxy uses the existing matching `SKARL_PAYMENTS_SERVICE_SECRET`
 in Convex and the web server, and fails closed if it is absent. Buyer dataset
 grants do not reuse the paid sample endpoint's x402 grants. No deployment or live
 download was performed as part of this implementation.
+
+### Training manifests
+
+`?format=lerobot` returns `schema: "skarl.lerobot-v2-manifest.v1"` with
+`info`, `tasks`, and `episodes`. `info` contains FPS and feature descriptors,
+including `observation.images.video` and only the sensor channels witnessed by
+an existing raw trace. Episodes include `episode_index`, `task_index`,
+`language_instruction` from the frozen rubric prompt, `success: true` from
+acceptance, and `length` in video frames. FPS, dimensions and frame count are
+not verified/persisted today, so `fps`, shape and `length` are null; optional
+`client_reported_fps` remains separate. Sensor columns are client-reported and
+asynchronous, with `frame_aligned: false`; raw sensor downloads are not exposed.
+
+`?format=rlds-json` returns `schema: "skarl.rlds-json.v1"` with episode metadata,
+the same language instruction and accepted success flag, and `step_metadata`
+describing conversion. Episodes have `steps: []`, `steps_status: "not_materialized"`:
+frame steps have not been decoded. No actions, joint states, rewards, discounts,
+or terminal signals are invented. Both formats retain all sample quality,
+license and provenance fields in each episode.
+
+These are human-video conversion manifests. Both explicitly set
+`compatibility.directly_loadable: false`; they are not complete LeRobot
+Parquet/video archives or RLDS TFDS datasets. A converter must decode the video,
+verify FPS/frame count, and materialize observation-only records. Full feature
+mapping, compatibility requirements and primary references are in
+[Buyer datasets](datasets.md).
+
+### Sample quality and usable segment
+
+All four HTTP formats and `datasets.forOrder` include derived
+`usableStartMs`, `usableEndMs`, `qualityScore`, `rawQualityScore`, `scoreCap`,
+`capReasons`, `components`, `method`, and `segment`. The usable window bounds
+supported frozen-rubric evidence with 500 ms padding, clamped to stored duration;
+both offsets are null without valid evidence. It is not a trimmed media file or
+a guarantee of continuous useful action.
+
+The versioned heuristic (`method: "skarl.quality.heuristic.v1"`) uses these fixed
+weights: jury agreement 25, all criteria supported 25, duplicate clear 20,
+spoken liveness 15, sensor steadiness 5, and confirmed bound attestation 10.
+Each `components` entry includes `score`, `maxScore`, `status`, and `evidence`.
+Missing evidence earns no points; optional missing sensors do not redistribute
+weight. Sensor steadiness remains client-reported; duplicate checks are
+heuristic; liveness is not identity; attestations commit to reports, not truth.
+
+The final score is capped at 49 for nonaccepted samples, unavailable/incomplete
+accepting inference, unclear duplicate checks, incomplete supported criteria,
+or a witnessed jury disagreement. A human override does not erase these limits.
+This score is advisory and cannot authorize acceptance or payment.
+
+`datasets.sampleQuality({demoIdentity, submissionId})` is a separate query for
+the owner contributor, order buyer, or organization controller. Finance agents,
+foreign tenants and unrelated owners are refused. It returns:
+
+```ts
+{
+  submissionId, submissionStatus, analysisId: Id<"analysisResults"> | null,
+  evidenceBasis: "published_delivery" | "current_analysis",
+  method: "skarl.quality.heuristic.v1",
+  qualityScore, rawQualityScore, scoreCap: number | null, capReasons: string[],
+  usableStartMs: number | null, usableEndMs: number | null,
+  components: {
+    juryAgreement, allCriteriaSupported, duplicateClear,
+    livenessPassed, sensorSteadiness, attestationPresent
+    // Each: {score, maxScore, status, evidence}
+  },
+  segment: {method: "supported_criterion_bounds", paddingMs: 500, evidenceCount,
+    durationSource: "supplied_stored_duration", contiguousActionGuarantee: false}
+}
+```
+
+Accepted published samples use the delivered analysis snapshot, matching their
+export even if the current analysis pointer changes. Other samples use their
+current bound analysis. The query returns no media URL or raw sensor storage ID.
+`witnessReceipt.ts` is unchanged; clients can render this companion query beside
+the existing receipt. Tests use synthetic evidence, not live inference claims.
+
+### Diversity terms and coverage
+
+`orders.createOrder` accepts optional `diversity`:
+
+```ts
+diversity?: {
+  maxPerContributor?: number; // Positive safe integer cap on accepted order samples
+  maxPerEnvironment?: number; // Requires an environment tag at acceptance
+  requiredVariants?: string[]; // Each label must appear at least once by fulfillment
+}
+```
+
+`submissions.create` adds optional `environment?: string`, `variant?: string`.
+These are contributor self-reports, not inferred facts. Labels are trimmed,
+case-sensitive, 1–120 characters, with no control characters. Required variants
+must be unique, at most 100, and no more than the requested quantity. Normalized
+diversity terms bind `termsHash`; changed tags or terms conflict with existing
+request replay. Old records and callers remain valid without the new fields.
+Each exported sample includes `diversity: {environment: string|null,
+variant: string|null, source: "contributor_self_reported"}`.
+
+`finance.acceptAndPublish` and the human-review acceptance path enforce these
+caps in the same transaction as delivery and accounting. Required variants
+reserve one remaining slot per missing label; additional variants are allowed
+while those slots remain available. A refusal returns
+`{ok:false, code:"diversity_quota_exceeded"}` and records `acceptance_refused`
+with the order ID and quota component (`maxPerContributor`, `maxPerEnvironment`,
+or `requiredVariants`) as evidence. It creates no delivery, payable or journal;
+the candidate is not silently discarded. A prior successful acceptance replays
+its original result. Concurrent accepts share the order/capacity transaction.
+
+`orders.diversityCoverage({demoIdentity, orderId})` is available to the order's
+buyer, organization controller, or finance agent. It reports:
+
+```ts
+{
+  orderId, diversity: {maxPerContributor?, maxPerEnvironment?, requiredVariants?} | null,
+  tagsSource: "contributor_self_reported", contributorKeySource: "order_scoped_sha256",
+  acceptedCount: string, remainingQuantity: string,
+  contributors: Array<{contributorKey: string, count: string}>,
+  environments: Array<{label: string, count: string}>,
+  variants: Array<{label: string, count: string}>,
+  untaggedEnvironmentCount: string, untaggedVariantCount: string,
+  requiredVariants: Array<{variant: string, covered: boolean}>, missingVariants: string[]
+}
+```
+
+Only accepted samples in the same organization/order count. Contributor keys
+are order-scoped hashes, not identity tokens. Declared coverage does not prove
+different physical environments or visual diversity. Deploy the optional schema
+fields and Convex functions, then the web route; no migration/backfill or new
+secret is needed. The existing dataset media secret remains required.
 
 ### Contributor earnings
 

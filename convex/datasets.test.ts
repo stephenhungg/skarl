@@ -10,6 +10,7 @@ import schema from "./schema";
 // Isolated synthetic storage/report/ledger records; no inference or chain transfer.
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
 const forOrder = makeFunctionReference<"query">("datasets:forOrder");
+const sampleQuality = makeFunctionReference<"query">("datasets:sampleQuality");
 const CONTRIBUTOR = "demo:skarl:contributor";
 const RECIPIENT = "0x1111111111111111111111111111111111111111";
 const SERVICE_SECRET = "synthetic-dataset-service-secret-32-characters";
@@ -93,6 +94,85 @@ async function paidEvidence(f: Fixture, sample: Awaited<ReturnType<typeof delive
 const args = (f: Fixture, demoIdentity = "buyer") => ({ demoIdentity, orderId: f.orderId });
 
 describe("buyer dataset delivery (synthetic evidence)", () => {
+  it("adds the frozen instruction and derived bounds to every licensed sample without inventing FPS", async () => {
+    const f = await setup(), sample = await delivered(f);
+    await f.t.run(ctx => ctx.db.patch(sample.submissionId, { environment: "kitchen-a", variant: "blue-coaster" }));
+    const result = await f.t.query(forOrder, args(f));
+    const rubric = await f.t.run(ctx => ctx.db.get(f.taskVersionId));
+    expect(result.task.languageInstruction).toBe(rubric!.taskPrompt);
+    expect(result.samples[0]).toMatchObject({ task: { languageInstruction: rubric!.taskPrompt },
+      usableStartMs: 500, usableEndMs: 2500, method: "skarl.quality.heuristic.v1",
+      qualityScore: 45, rawQualityScore: 45,
+      components: { allCriteriaSupported: { score: 25 }, duplicateClear: { score: 20 },
+        juryAgreement: { score: 0 }, livenessPassed: { score: 0 }, sensorSteadiness: { score: 0 }, attestationPresent: { score: 0 } },
+      diversity: { environment: "kitchen-a", variant: "blue-coaster", source: "contributor_self_reported" },
+      media: { fps: null, clientReportedFps: null } });
+    const score = await f.t.query(sampleQuality, { demoIdentity: "buyer", submissionId: sample.submissionId });
+    expect(score).toMatchObject({ evidenceBasis: "published_delivery", qualityScore: result.samples[0].qualityScore,
+      usableStartMs: result.samples[0].usableStartMs, usableEndMs: result.samples[0].usableEndMs });
+    expect(score.components).toEqual(result.samples[0].components);
+    expect(score).not.toHaveProperty("media");
+  });
+
+  it("does not turn human acceptance of needs_review or suspected duplicates into high training quality", async () => {
+    const f = await setup(), sample = await delivered(f, "human-risk", true);
+    await f.t.run(async ctx => {
+      const analysis = (await ctx.db.get(sample.analysisId))!;
+      const report = JSON.parse(analysis.reportJson!);
+      report.recommendation = "needs_review";
+      report.duplicate = { status: "suspected", matches: [{ submissionId: "synthetic-other", score: 0.99, overlapMs: 1000 }] };
+      const reportHash = digest(report);
+      await ctx.db.patch(sample.analysisId, { reportJson: canonical(report), reportHash, recommendation: "needs_review" });
+      await ctx.db.patch(sample.decisionId, { evidenceHash: reportHash });
+    });
+    const exported = (await f.t.query(forOrder, args(f))).samples[0];
+    const score = await f.t.query(sampleQuality, { demoIdentity: "contributor", submissionId: sample.submissionId });
+    for (const quality of [exported, score]) {
+      expect(quality.qualityScore).toBeLessThanOrEqual(49);
+      expect(quality.capReasons).toContain("completed_accept_inference_required");
+      expect(quality.capReasons).toContain("duplicate_clear_required");
+    }
+  });
+
+  it("scores the published evidence snapshot after a later analysis pointer changes", async () => {
+    const f = await setup(), sample = await delivered(f);
+    await f.t.run(ctx => ctx.db.patch(sample.submissionId, { currentAnalysisId: undefined }));
+    const score = await f.t.query(sampleQuality, { demoIdentity: "controller", submissionId: sample.submissionId });
+    expect(score).toMatchObject({ analysisId: sample.analysisId, evidenceBasis: "published_delivery", qualityScore: 45 });
+  });
+
+  it("fails closed on corrupt quality evidence rather than throwing or assigning report credit", async () => {
+    const f = await setup(), sample = await delivered(f);
+    await f.t.run(ctx => ctx.db.patch(sample.analysisId, { reportJson: "{invalid", observationsJson: "{invalid" }));
+    const score = await f.t.query(sampleQuality, { demoIdentity: "controller", submissionId: sample.submissionId });
+    expect(score).toMatchObject({ usableStartMs: null, usableEndMs: null, qualityScore: 0 });
+  });
+
+  it("does not borrow quality witnesses through another sample's analysis pointer", async () => {
+    const f = await setup(), sample = await delivered(f), other = await delivered(f, "other-source");
+    await f.t.run(ctx => ctx.db.patch(sample.submissionId, { status: "needs_review", currentAnalysisId: other.analysisId }));
+    const score = await f.t.query(sampleQuality, { demoIdentity: "controller", submissionId: sample.submissionId });
+    // Even same-tenant evidence must bind to these bytes and this task/sample.
+    expect(score).toMatchObject({ evidenceBasis: "current_analysis", analysisId: null, qualityScore: 0,
+      usableStartMs: null, usableEndMs: null });
+  });
+
+  it("keeps quality receipts scoped to the owner or controller even though they contain no media", async () => {
+    const f = await setup(), sample = await delivered(f);
+    await expect(f.t.query(sampleQuality, { demoIdentity: "finance-agent", submissionId: sample.submissionId })).rejects.toThrow("forbidden");
+    await f.t.run(async ctx => {
+      await ctx.db.patch(sample.submissionId, { contributorTokenIdentifier: "other-contributor" });
+      await ctx.db.patch(f.orderId, { buyerTokenIdentifier: "other-buyer" });
+    });
+    for (const demoIdentity of ["contributor", "buyer"]) await expect(f.t.query(sampleQuality,
+      { demoIdentity, submissionId: sample.submissionId })).rejects.toThrow("submission_not_owned");
+    await f.t.run(async ctx => {
+      const organizationId = await ctx.db.insert("organizations", { name: "Other tenant", createdByTokenIdentifier: "other", status: "active" });
+      await ctx.db.patch(sample.submissionId, { organizationId });
+    });
+    await expect(f.t.query(sampleQuality, { demoIdentity: "controller", submissionId: sample.submissionId })).rejects.toThrow("cross_organization_access");
+  });
+
   it("exports only delivered licensed originals and preserves exact payout amounts", async () => {
     const f = await setup(), sample = await delivered(f);
     const result = await f.t.query(forOrder, args(f));
@@ -109,6 +189,10 @@ describe("buyer dataset delivery (synthetic evidence)", () => {
       evidence: [{ modality: "video", startMs: 1000, endMs: 2000 }] });
     expect(result.samples[0].transcriptSegments).toEqual([{ startMs: 1000, endMs: 2000, text: "red cup" }]);
     expect(result.samples[0]).not.toHaveProperty("contributorTokenIdentifier");
+    expect(result.samples[0].provenance).toMatchObject({ schemaVersion: "skarl.provenance.v1",
+      sourceSha256: sample.sourceHash, sourceHashBasis: "verified_original",
+      revocation: { status: "not_requested" }, privacyReview: "not_checked" });
+    expect(JSON.stringify(result)).not.toContain(CONTRIBUTOR);
     expect(() => JSON.stringify(result)).not.toThrow();
     expect((await f.t.query(forOrder, args(f, "controller"))).samples).toHaveLength(1);
   });
@@ -286,6 +370,18 @@ describe("buyer dataset delivery (synthetic evidence)", () => {
 const originalMedia = makeFunctionReference<"query">("datasets:originalMedia");
 
 describe("expiring buyer original-media grants (synthetic storage)", () => {
+  it.each(["requested", "revoked"] as const)("refuses fresh exports and old grants after consent is %s without erasing earned obligations", async revocationStatus => {
+    const f = await setup(), sample = await delivered(f);
+    const exported = (await f.t.query(forOrder, args(f))).samples[0];
+    await f.t.run(ctx => ctx.db.patch(sample.consentRecordId, { revocationStatus }));
+    // A grant was valid when issued; serving must check consent again instead
+    // of treating its unexpired signature as permanent licensing authority.
+    expect((await f.t.query(forOrder, args(f))).samples).toEqual([]);
+    await expect(f.t.query(originalMedia, { ...args(f), serviceSecret: SERVICE_SECRET,
+      submissionId: sample.submissionId, binding: exported.media.binding })).rejects.toThrow("sample_not_available");
+    expect(await f.t.run(ctx => ctx.db.get(sample.payableId))).toMatchObject({ status: "accrued" });
+  });
+
   it("publishes a five-minute signed proxy URL instead of exposing a native storage bearer URL", async () => {
     const f = await setup(), sample = await delivered(f);
     const before = Date.now();

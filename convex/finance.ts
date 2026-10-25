@@ -9,6 +9,7 @@ import { actorFor, audit, digest, normalizeAddress, paymentBinding, recordJourna
 import { compareFrameHashes } from "./lib/copyDetection";
 import { createFulfillmentJournal } from "../packages/ledger/src/index";
 import { MAX_ATOMIC_USDC, PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
+import { diversityRefusal } from "./lib/diversity";
 
 export async function authorize(ctx: MutationCtx, identity: string, roles: DemoRole | readonly DemoRole[]) {
   try { return { principal: await requireRole(ctx, identity, roles), denied: undefined }; }
@@ -76,6 +77,13 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
     }
     if (!["funded", "collecting"].includes(order.status)) return refuse(ctx, principal, submission, "acceptance", "order_not_funded_or_open");
     if (order.quantityRequested <= 0n || order.acceptedCount < 0n || order.acceptedCount >= order.quantityRequested) return refuse(ctx, principal, submission, "acceptance", "quota_exhausted");
+    if (order.diversity) {
+      const accepted = (await ctx.db.query("submissions").withIndex("by_order_status", q =>
+        q.eq("orderId", order._id).eq("status", "accepted")).collect())
+        .filter(sample => sample.organizationId === order.organizationId);
+      const quota = diversityRefusal(order, accepted, submission);
+      if (quota) return refuse(ctx, principal, submission, "acceptance", "diversity_quota_exceeded", [order._id, quota]);
+    }
     if (Date.now() > order.deadlineAt) return refuse(ctx, principal, submission, "acceptance", "order_expired");
     if (order.pricePerSampleAtomic <= 0n || order.contributorRateAtomic <= 0n ||
       order.budgetAtomic !== order.quantityRequested * order.pricePerSampleAtomic || order.budgetAtomic > MAX_ATOMIC_USDC) {
@@ -109,6 +117,7 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
       consent.contributorTokenIdentifier !== submission.contributorTokenIdentifier || !consent.licenseVersion.trim() || !consent.scope.trim()) {
       return refuse(ctx, principal, submission, "acceptance", "licensed_media_required");
     }
+    if (consent.revocationStatus) return refuse(ctx, principal, submission, "acceptance", "consent_revocation_pending_or_revoked");
     const contributor = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
       q.eq("tokenIdentifier", submission.contributorTokenIdentifier)).unique();
     if (!contributor || contributor.organizationId !== submission.organizationId || contributor.status !== "active" ||
