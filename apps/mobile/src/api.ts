@@ -5,10 +5,11 @@ import { makeFunctionReference } from 'convex/server';
 export const identity = { demoIdentity: 'contributor' } as const;
 type Identity = typeof identity;
 export type Context = { orderId: string; network: string } | null;
+export type TaskSpec = { object: string; distractors: string[]; target: string; steps: string[]; narration?: string[] };
 export type Summary = {
   order: { _id: string; _creationTime: number; publicId: string; title: string; status: string; network: string; contributorRateAtomic: string;
-    quantityRequested: string; acceptedCount: string; deadlineAt?: number };
-  rubric: { version: number; contentHash: string; taskPrompt: string; criteria: { criterionId: string; description: string; modality: string }[] } | null;
+    quantityRequested: string; acceptedCount: string; deadlineAt?: number; taskSpec?: TaskSpec };
+  rubric: { version: number; contentHash: string; taskPrompt: string; taskSpec?: TaskSpec; criteria: { criterionId: string; description: string; modality: string }[] } | null;
 };
 export type LivenessChallenge = { challengeId: string; words: string[]; expiresAt: number };
 export type Report = {

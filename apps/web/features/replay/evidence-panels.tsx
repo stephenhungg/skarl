@@ -48,7 +48,7 @@ export function ReplayEvidencePanels({ submissionId, currentTimeMs, onSeek, demo
   const segments = media?.transcriptSegments ?? [];
   const durationMs: number = media?.clip?.durationMs ?? stored?.report?.source?.durationMs ?? 0;
   const audio = stored?.observations?.audio;
-  const audioModels = (stored?.report?.pipeline?.modelRuns ?? []).filter((run: { promptVersion?: string }) => run.promptVersion === "audio-only-events-v1").map((run: { model: string }) => run.model);
+  const audioModels = (stored?.report?.pipeline?.modelRuns ?? []).filter((run: { promptVersion?: string }) => ["audio-only-events-v1", "audio-only-events-v2"].includes(run.promptVersion ?? "")).map((run: { model: string }) => run.model);
   const liveness = checkSpokenLiveness(stored?.liveness, audio, durationMs);
   const livenessWitness = receipt?.witnesses.find(row => row.key === "spoken_liveness");
 

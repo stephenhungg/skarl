@@ -20,7 +20,7 @@ const CHIPS: Chip[] = ['Category', 'Pay', 'Time'];
 function TaskCard({ task, onPress, index }: { task: LiveTask; onPress(): void; index: number }) {
   return <Animated.View entering={enter(140 + index * 70, 420)} layout={LinearTransition}>
     <PressableScale accessibilityRole="button" accessibilityLabel={`${task.title}, ${money(task.rateAtomic)} USDC per video`} onPress={onPress} style={s.task}>
-      <TaskArt compact kind={artFor(task.title)} style={s.thumb} />
+      <TaskArt compact kind={artFor(task.title, task.taskSpec?.object)} style={s.thumb} />
       <View style={{ flex: 1, gap: 6 }}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
           <Text style={s.taskCategory}>{task.category}</Text>
@@ -47,7 +47,7 @@ export function TasksScreen({ navigation }: RootProps<'Tasks'>) {
   const categories = useMemo(() => [...new Set(tasks.map(item => item.category))].map(name => {
     const items = tasks.filter(item => item.category === name);
     const top = items.reduce((max, item) => BigInt(item.rateAtomic) > max ? BigInt(item.rateAtomic) : max, 0n);
-    return { name, title: items[0]?.title, count: items.filter(item => !item.closed).length, top };
+    return { name, title: items[0]?.title, taskSpec: items[0]?.taskSpec, count: items.filter(item => !item.closed).length, top };
   }), [tasks]);
   const visible = useMemo(() => {
     const list = tasks.filter(item => !category || item.category === category);
@@ -95,7 +95,7 @@ export function TasksScreen({ navigation }: RootProps<'Tasks'>) {
       {categories.map((item, index) => <Animated.View key={item.name} entering={enter(80 + index * 60, 420)} style={{ width: '100%' }}>
         <PressableScale accessibilityRole="button" onPress={() => setCategory(category === item.name ? null : item.name)}
           style={[s.categoryCard, category === item.name && { borderColor: c.ink }]}>
-          <TaskArt kind={artFor(item.title)} style={s.categoryArt} />
+          <TaskArt kind={artFor(item.title, item.taskSpec?.object)} style={s.categoryArt} />
           <View style={{ padding: 14, gap: 4 }}>
             <Text style={s.categoryName}>{item.name}</Text>
             <Text style={s.meta}>{item.count} open {item.count === 1 ? 'task' : 'tasks'} · up to {money(item.top)} USDC</Text>

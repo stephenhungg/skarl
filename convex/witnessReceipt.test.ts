@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import schema from "./schema";
 import { canonical, digest, recordJournal } from "./lib/finance";
 import { createFulfillmentJournal, createFundingJournal } from "../packages/ledger/src/index";
+import { CAN_TO_HAT_TASK_SPEC } from "./lib/taskSpec";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 
 // Synthetic stored evidence only: no inference, bank request, or chain transaction occurs here.
@@ -142,6 +143,43 @@ async function livenessFixture(audio: unknown, words = ["amber", "cedar", "river
 }
 
 describe("witness receipt: every claim preserves its independent evidence", () => {
+  it("corroborates a faithful bottle class using task-bound generic overlap instead of cup counts", async () => {
+    const f = await detectorFixture(null);
+    const id = await storeDetectorRun(f, [], Date.now(), 0);
+    await f.t.run(async ctx => {
+      const spec = { object: "bottle", distractors: [], target: "hat", steps: ["Pick up the bottle", "Place the bottle beside the hat"] };
+      await ctx.db.patch(f.orderId, { taskSpec: spec });
+      await ctx.db.patch(f.taskVersionId, { taskSpec: spec, criteria: [
+        { criterionId: "bottle-pickup", description: spec.steps[0]!, modality: "visual" },
+        { criterionId: "hat-placement", description: spec.steps[1]!, modality: "temporal" },
+      ] });
+      const observations = JSON.parse((await ctx.db.get(f.analysisId))!.observationsJson!);
+      for (const judge of observations.jury.judges) judge.report.criteria[0].criterionId = "bottle-pickup";
+      await ctx.db.patch(f.analysisId, { observationsJson: canonical(observations) });
+      await ctx.db.patch(id, { taskObject: "bottle", detectorClass: "bottle", objectInHandTimestampsMs: [2000],
+        summary: { kind: "objects", frames: 10, durationMs: 5000, objectInHandFrames: 1, cupInHandFrames: 0 } });
+    });
+    const result = await read(f);
+    expect(witness(result, "detector")).toMatchObject({ status: "agree", live: false });
+    expect(witness(result, "detector").detail).toContain("bottle");
+  });
+
+  it.each([null, [2000]])("marks a can detector witness not applicable even when legacy cup overlap exists: %s", async times => {
+    const f = await detectorFixture(times);
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.orderId, { taskSpec: CAN_TO_HAT_TASK_SPEC });
+      await ctx.db.patch(f.taskVersionId, { taskSpec: CAN_TO_HAT_TASK_SPEC, criteria: [
+        { criterionId: "can-pickup", description: "Pick up the can", modality: "visual" },
+        { criterionId: "hat-placement", description: "Place the can closer to the hat that is next to the lamp", modality: "temporal" },
+        { criterionId: "narration-alignment", description: "Narrate each action accurately", modality: "cross_modal" },
+      ] });
+    });
+    const result = await read(f);
+    expect(witness(result, "detector")).toMatchObject({ status: "not_applicable", live: false, evidenceUrl: null });
+    expect(witness(result, "detector").detail).toContain("can");
+    expect(result.recommendation).toBe("accept"); // Stored fixture unchanged; this witness has no verdict authority.
+  });
+
   it("reports a missing advisory detector witness when no objects run exists", async () => {
     const f = await detectorFixture(null);
     expect(witness(await read(f), "detector")).toMatchObject({ kind: "work", status: "missing", live: false, evidenceUrl: null });
@@ -154,7 +192,7 @@ describe("witness receipt: every claim preserves its independent evidence", () =
     expect(detector.evidenceUrl).toBeTruthy();
     expect(detector.detail).toContain("Synthetic object detector fixture-v1 (browser-wasm)");
     expect(detector.detail).toMatch(/advisory and client-computed/);
-    expect(detector.detail).toMatch(/does not establish cup color or grasp/);
+    expect(detector.detail).toMatch(/does not establish object identity, color or grasp/);
     expect(result.verdict).toBe("needs_review");
     expect(result.recommendation).toBe("accept");
   });

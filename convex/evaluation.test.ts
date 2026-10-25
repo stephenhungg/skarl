@@ -1,3 +1,4 @@
+import { RED_CUP_TASK_SPEC } from "./lib/taskSpec";
 // @vitest-environment node
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -116,7 +117,7 @@ describe("evaluation corpus isolation and advisory projection", () => {
   it("routes selected models into the action and records the same model for success or failure", async () => {
     const f = await setup(), item = await create(f, "selected-model", "selected-run", "gemini-3.8-flash");
     const stored = await finish(f, item);
-    expect(mocked.video).toHaveBeenCalledWith([], 12_000, "gemini-3.8-flash");
+    expect(mocked.video).toHaveBeenCalledWith([], 12_000, "gemini-3.8-flash", expect.objectContaining({ taskSpec: RED_CUP_TASK_SPEC }));
     expect(mocked.video).toHaveBeenCalledTimes(1);
     expect(stored.observations.jury).toBeUndefined();
     expect(stored.report.pipeline.modelRuns[0].model).toBe("gemini-3.8-flash");
@@ -205,7 +206,7 @@ describe("evaluation corpus isolation and advisory projection", () => {
     expect(evaluation.qualityReportHash).toBe(digest(evaluation.qualityReport));
     const rubric = await f.t.run(ctx => ctx.db.get(f.taskVersionId));
     for (const report of [stored.report, evaluation.qualityReport]) {
-      expect(validateVerificationReportForRubric(report, rubric!.criteria.map(c => c.criterionId)).valid).toBe(true);
+      expect(validateVerificationReportForRubric(report, rubric!.criteria.map(c => c.criterionId), RED_CUP_TASK_SPEC).valid).toBe(true);
       expect(report.source.sha256).toBe(item.job.sourceHash);
     }
     expect(evaluation.qualityReport.warnings).toEqual([]);
@@ -335,7 +336,7 @@ describe("evaluation corpus isolation and advisory projection", () => {
     expect(stored.report.warnings).toContain(VERIFICATION_ONLY_WARNING);
     for (const report of [stored.report, stored.observations.evaluation.qualityReport]) {
       expect(report.pipeline.version).toBe(pipelineVersion);
-      expect(validateVerificationReportForRubric(report, report.criteria.map((criterion: { criterionId: string }) => criterion.criterionId)).valid).toBe(true);
+      expect(validateVerificationReportForRubric(report, report.criteria.map((criterion: { criterionId: string }) => criterion.criterionId), RED_CUP_TASK_SPEC).valid).toBe(true);
     }
   });
 
@@ -352,7 +353,7 @@ describe("default two-model visual jury (mocked providers)", () => {
     expect(stored.observations.jury).toMatchObject({ advisoryOnly: true, agreementFraction: 1, disagreedCriteria: [] });
     expect(stored.observations.jury.judges).toHaveLength(2);
     for (const judge of stored.observations.jury.judges) {
-      expect(validateVerificationReportForRubric(judge.report, stored.report.criteria.map((c: {criterionId:string}) => c.criterionId)).valid).toBe(true);
+      expect(validateVerificationReportForRubric(judge.report, stored.report.criteria.map((c: {criterionId:string}) => c.criterionId), RED_CUP_TASK_SPEC).valid).toBe(true);
     }
   });
 
@@ -388,7 +389,7 @@ describe("default two-model visual jury (mocked providers)", () => {
   it("supports an explicit off switch without changing the single-model path", async () => {
     vi.stubEnv("VERIFIER_JURY", "off");
     const f = await setup(), stored = await finish(f, await create(f, "jury-off"));
-    expect(mocked.video).toHaveBeenCalledExactlyOnceWith([], 12_000, undefined);
+    expect(mocked.video).toHaveBeenCalledExactlyOnceWith([], 12_000, undefined, expect.objectContaining({ taskSpec: RED_CUP_TASK_SPEC }));
     expect(stored.report.recommendation).toBe("accept");
     expect(stored.report.pipeline.modelRuns).toHaveLength(2);
     expect(stored.observations.jury).toBeUndefined();

@@ -36,6 +36,9 @@ const atomic = string(19, "^(0|[1-9][0-9]{0,18})$");
 const scope = object({ orderId: id });
 const submission = object({ submissionId: id });
 const autoPayInput = object({ enabled: { type: "boolean" }, maxPerClipAtomic: atomic, requireAllChecks: { type: "boolean", const: true } });
+const taskSpecInput = object({ object: string(80, "^[a-z][a-z0-9_]*$"), distractors: { type: "array", maxItems: 16, items: string(80) },
+  target: string(80, "^[a-z][a-z0-9_]*$"), steps: { type: "array", minItems: 1, maxItems: 16, items: string(2000) },
+  narration: { type: "array", maxItems: 16, items: string(2000) } }, ["object", "distractors", "target", "steps"]);
 const createOrderProperties = {
   requestId: string(100, "^[a-zA-Z0-9_-]+$"), title: string(200),
   buyerWalletAddress: string(42, "^0x[0-9a-fA-F]{40}$"),
@@ -44,9 +47,9 @@ const createOrderProperties = {
   taskPrompt: string(10_000), criteria: { type: "array", minItems: 1, maxItems: 50,
     items: object({ criterionId: string(80, "^[a-zA-Z0-9_-]+$"), description: string(2000),
       modality: { type: "string", enum: ["visual", "audio", "cross_modal", "temporal"] } }) },
-  autoPay: autoPayInput,
+  autoPay: autoPayInput, taskSpec: taskSpecInput,
 } satisfies Record<string, JsonSchema>;
-const createOrderInput = object(createOrderProperties, Object.keys(createOrderProperties).filter(key => key !== "autoPay"));
+const createOrderInput = object(createOrderProperties, Object.keys(createOrderProperties).filter(key => key !== "autoPay" && key !== "taskSpec"));
 
 const tools = [
   { name: "skarl_about", role: "guest", readOnly: true,
@@ -223,6 +226,7 @@ async function execute(ctx: ActionCtx, identity: Identity, name: string, args: O
         quantityRequested: args.quantityRequested as string, pricePerSampleAtomic: args.pricePerSampleAtomic as string,
         contributorRateAtomic: args.contributorRateAtomic as string,
         ...(args.autoPay ? { autoPay: args.autoPay as { enabled: boolean; maxPerClipAtomic: string; requireAllChecks: true } } : {}), deadlineAt: args.deadlineAt as number,
+        ...(args.taskSpec ? { taskSpec: args.taskSpec as import("./lib/taskSpec").TaskSpec } : {}),
         taskPrompt: args.taskPrompt as string, criteria: args.criteria as { criterionId: string; description: string; modality: "visual" | "audio" | "cross_modal" | "temporal" }[] });
       return { ...result, amountAtomic: result.budgetAtomic, network: PAYMENT_NETWORK,
         fundingUrl: `https://skarl.vercel.app/api/orders/${encodeURIComponent(result.orderId)}/fund`,

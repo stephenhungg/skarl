@@ -9,6 +9,7 @@ import { attestationTables } from "./attestationsSchema";
 import { v } from "convex/values";
 import { sensorTrace } from "./sensorTraceValidators";
 import { annotationKind, annotationModel, annotationSummary } from "./annotationValidators";
+import { taskSpecValidator } from "./lib/taskSpec";
 import { diversityValidator } from "./lib/diversity";
 import { vWorkflowId } from "@convex-dev/workflow";
 import {
@@ -159,6 +160,7 @@ export default defineSchema({
     autoPay: v.optional(v.object({ enabled: v.boolean(), maxPerClipAtomic: amountAtomic,
       requireAllChecks: v.literal(true), setBy: tokenIdentifier, setAt: v.number() })),
     diversity: v.optional(diversityValidator),
+    taskSpec: v.optional(taskSpecValidator),
     status: orderStatus,
     taskVersionId: v.optional(v.id("rubricVersions")),
     quantityRequested: count,
@@ -180,6 +182,8 @@ export default defineSchema({
     orderId: v.id("orders"),
     version: v.number(),
     taskPrompt: v.string(),
+    taskSpec: v.optional(taskSpecValidator),
+    taskSpecHash: v.optional(v.string()),
     criteria: v.array(
       v.object({
         criterionId: v.string(),
@@ -259,6 +263,8 @@ export default defineSchema({
     createdAt: v.number(), advisory: v.literal(true),
     // Bounded, server-recomputed overlap witnesses; queries cannot read blob bytes.
     cupInHandTimestampsMs: v.optional(v.array(v.number())),
+    taskObject: v.optional(v.string()), detectorClass: v.optional(v.string()),
+    objectInHandTimestampsMs: v.optional(v.array(v.number())),
   }).index("by_submission", ["submissionId"]).index("by_storage", ["storageId"]),
 
   consentRecords: defineTable({

@@ -1,3 +1,4 @@
+import { resolveTaskSpec, detectorClassForObject } from "./lib/taskSpec";
 import { v } from "convex/values";
 import { query, type QueryCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
@@ -67,7 +68,7 @@ function workWitnesses(submission: Doc<"submissions">, analysis: Doc<"analysisRe
     // Jury opt-out still leaves a single visual model's report. Do not mistake
     // the audio model in modelRuns for a second independent visual judge.
     list(object(report.pipeline).modelRuns).map(object)
-      .filter(run => run.promptVersion === "timestamped-frames-visible-events-v1")
+      .filter(run => /^timestamped-frames-visible-events-v[12]$/.test(text(run.promptVersion)))
       .forEach((run, index) => rows.push(witness(`vision:${index}:${text(run.model) || "unknown"}`,
         `Vision model: ${text(run.model) || "unknown"}`, "work", reportStatus(report),
         `Stored single-model recommendation: ${text(report.recommendation) || "unavailable"}; no independent jury agreement is recorded.`)));
@@ -118,7 +119,7 @@ function workWitnesses(submission: Doc<"submissions">, analysis: Doc<"analysisRe
 
 type Interval = { startMs: number; endMs: number };
 /** Only source-bound, available jury reports can supply a supported pickup interval. */
-function juryPickupIntervals(submission: Doc<"submissions">, analysis: Doc<"analysisResults"> | null): Interval[][] {
+function juryPickupIntervals(submission: Doc<"submissions">, analysis: Doc<"analysisResults"> | null, pickupCriterionId: string): Interval[][] {
   if (!analysis || analysis.implementation !== "inference" || !["completed", "needs_review"].includes(analysis.pipelineStatus)) return [];
   const report = parsed(analysis.reportJson), durationMs = object(report.source).durationMs;
   if (typeof durationMs !== "number" || !Number.isSafeInteger(durationMs) || durationMs <= 0) return [];
@@ -131,7 +132,7 @@ function juryPickupIntervals(submission: Doc<"submissions">, analysis: Doc<"anal
     if (judge.failureCode || pipeline.implementation !== "inference" || !["completed", "needs_review"].includes(text(pipeline.status)) ||
       judgeReport.submissionId !== submission._id || judgeReport.taskVersionId !== submission.taskVersionId ||
       source.sha256 !== submission.sourceHash || source.durationMs !== durationMs || pipeline.version !== analysis.pipelineVersion) return [];
-    const findings = list(judgeReport.criteria).map(object).filter(row => row.criterionId === "red-cup-pickup");
+    const findings = list(judgeReport.criteria).map(object).filter(row => row.criterionId === pickupCriterionId);
     if (findings.length !== 1 || findings[0]!.status !== "supported") return [];
     const evidence = list(findings[0]!.evidence).slice(0, 64).map(object).filter(row => row.modality === "video" &&
       typeof row.startMs === "number" && Number.isSafeInteger(row.startMs) && row.startMs >= 0 &&
@@ -144,22 +145,32 @@ function juryPickupIntervals(submission: Doc<"submissions">, analysis: Doc<"anal
 }
 
 async function detectorWitness(ctx: QueryCtx, submission: Doc<"submissions">, analysis: Doc<"analysisResults"> | null): Promise<Witness> {
+  const rubric = await ctx.db.get(submission.taskVersionId);
+  const spec = rubric ? resolveTaskSpec(rubric) : undefined;
+  const detectorClass = spec ? detectorClassForObject(spec.object) : null;
+  if (detectorClass === null) return witness("detector", "Object detector (advisory, client-computed)", "work", "not_applicable",
+    `No faithful detector class exists for ${spec?.object ?? "the unresolved task object"}; no cup/bottle approximation is used.`);
+  const pickupCriterionId = rubric?.criteria.find(criterion => criterion.modality === "visual" && criterion.description === spec?.steps[0])?.criterionId;
   const runs = await ctx.db.query("derivedAnnotations").withIndex("by_submission", q => q.eq("submissionId", submission._id)).collect();
   if (runs.some(run => run.organizationId !== submission.organizationId)) throw new Error("annotation_reference_mismatch");
   const run = runs.filter(row => row.kind === "objects").sort((a, b) => b.createdAt - a.createdAt || b._creationTime - a._creationTime)[0];
   if (!run) return absent("detector", "Object detector (advisory, client-computed)", "work",
     "No stored browser-derived objects run. Advisory, client-computed detector evidence is missing.");
-  const intervals = juryPickupIntervals(submission, analysis);
+  const intervals = pickupCriterionId ? juryPickupIntervals(submission, analysis, pickupCriterionId) : [];
   // These timestamps are recomputed from validated uploaded frames by saveDerived,
   // not accepted from a client summary. A clip-wide count cannot establish overlap.
-  const matching = (run.cupInHandTimestampsMs ?? []).filter(tMs => Number.isFinite(tMs) && tMs >= 0 && intervals.length > 0 &&
+  const scoped = run.taskObject === spec?.object && run.detectorClass === detectorClass;
+  const legacyCup = detectorClass === "cup" && run.taskObject === undefined && run.detectorClass === undefined;
+  const timestamps = scoped ? run.objectInHandTimestampsMs ?? [] : legacyCup ? run.cupInHandTimestampsMs ?? [] : [];
+  const overlapFrames = scoped ? run.summary.objectInHandFrames ?? 0 : legacyCup ? run.summary.cupInHandFrames ?? 0 : 0;
+  const matching = timestamps.filter(tMs => Number.isFinite(tMs) && tMs >= 0 && intervals.length > 0 &&
     intervals.every(windows => windows.some(interval => tMs >= interval.startMs && tMs <= interval.endMs)));
-  const agrees = (run.summary.cupInHandFrames ?? 0) > 0 && matching.length > 0;
-  const comparison = agrees ? `${matching.length} cup/hand-overlap frames coincide with every available jury model's supported red-cup-pickup interval`
-    : intervals.length ? "No cup/hand-overlap frame coincides with every available jury model's supported red-cup-pickup interval"
-      : "No valid, source-bound supported red-cup-pickup interval is available from an independent jury; this run cannot corroborate it";
+  const agrees = overlapFrames > 0 && matching.length > 0;
+  const comparison = agrees ? `${matching.length} ${detectorClass}/hand-overlap frames coincide with every available jury model's supported task pickup interval`
+    : intervals.length ? `No ${detectorClass}/hand-overlap frame coincides with every available jury model's supported task pickup interval`
+      : "No valid, source-bound supported task pickup interval is available from an independent jury; this run cannot corroborate it";
   return witness("detector", "Object detector (advisory, client-computed)", "work", agrees ? "agree" : "disagree",
-    `${run.model.name} ${run.model.version} (${run.model.runtime}); advisory and client-computed. ${comparison}. Spatial cup/hand overlap is a heuristic, does not establish cup color or grasp, and never changes verdicts, acceptance, or payables.`,
+    `${run.model.name} ${run.model.version} (${run.model.runtime}); advisory and client-computed. ${comparison}. Spatial ${detectorClass}/hand overlap is a heuristic, does not establish object identity, color or grasp, and never changes verdicts, acceptance, or payables.`,
     await ctx.storage.getUrl(run.storageId));
 }
 

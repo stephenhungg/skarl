@@ -2,7 +2,7 @@ import { convexTest } from "convex-test";
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
-import { frameHasCupInHand, MAX_ANNOTATION_BYTES, summarizeAnnotations, validateAnnotationFile } from "./lib/derivedAnnotations";
+import { frameHasObjectInHand, frameHasCupInHand, MAX_ANNOTATION_BYTES, summarizeAnnotations, validateAnnotationFile } from "./lib/derivedAnnotations";
 import schema from "./schema";
 
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
@@ -73,6 +73,14 @@ describe("strict advisory annotation files", () => {
     expect(frameHasCupInHand({ tMs: 0, objects: [cup, { label: "hand", score: 0, box: [0, 0, 1, 1] }] })).toBe(false);
     expect(frameHasCupInHand({ tMs: 0, objects: [cup], hands: [{ handedness: "Left", score: 0.9, keypoints: keypoints() as [number, number, number][] }] })).toBe(true);
   });
+  it("matches only the requested faithful detector class, with hand evidence", () => {
+    const frame = validateAnnotationFile(file()).frames[0]!;
+    const bottle = { ...frame.objects![0]!, label: "bottle" };
+    expect(frameHasObjectInHand({ ...frame, objects: [bottle, frame.objects![1]!] }, "bottle")).toBe(true);
+    expect(frameHasObjectInHand(frame, "bottle")).toBe(false);
+    expect(frameHasObjectInHand({ ...frame, objects: [bottle] }, "bottle")).toBe(false);
+    expect(frameHasObjectInHand({ ...frame, objects: [bottle, frame.objects![1]!] }, "can")).toBe(false);
+  });
   it("rejects schema, kind, model, timing, count and unknown-field violations", () => {
     const valid = file();
     for (const input of [null, [], { ...valid, schema: "other" }, { ...valid, kind: "verdict" }, { ...valid, advisory: false },
@@ -108,6 +116,25 @@ describe("strict advisory annotation files", () => {
 });
 
 describe("private annotation storage boundary", () => {
+  it.each(["bottle", "can"])("binds recomputed object overlap to the frozen %s spec rather than the caller summary", async taskObject => {
+    const f = await setup();
+    const spec = { object: taskObject, distractors: [], target: "hat", steps: [`Pick up the ${taskObject}`, `Place the ${taskObject} beside the hat`] };
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.orderId, { taskSpec: spec });
+      await ctx.db.patch(f.taskVersionId, { taskSpec: spec });
+    });
+    const input = { ...f.input, frames: f.input.frames.map(frame => ({ ...frame,
+      objects: frame.objects.map(item => item.label === "cup" ? { ...item, label: "bottle" } : item) })) };
+    const annotationId = await f.t.mutation(api.annotations.saveDerived, { ...f.args, storageId: await f.store(input),
+      summary: { ...forgedSummary, objectInHandFrames: 9999 } });
+    const row = (await f.t.run(ctx => ctx.db.get(annotationId)))!;
+    expect(row.taskObject).toBe(taskObject);
+    expect(row.detectorClass).toBe(taskObject === "bottle" ? "bottle" : undefined);
+    expect(row.objectInHandTimestampsMs).toEqual(taskObject === "bottle" ? [0] : []);
+    expect(row.summary.objectInHandFrames).toBe(taskObject === "bottle" ? 1 : 0);
+    expect(row.summary.cupInHandFrames).toBe(0);
+  });
+
   it("reads blob bytes, ignores forged summary, retries idempotently and never changes decisions or money", async () => {
     const f = await setup();
     const before = await f.t.run(ctx => ctx.db.get(f.submissionId));

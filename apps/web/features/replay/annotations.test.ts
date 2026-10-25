@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { cupInHand, frameAt, summarize, type AnnotationFile } from "./annotations.ts";
+import { objectInHand, cupInHand, frameAt, summarize, type AnnotationFile } from "./annotations.ts";
 import { replayStorageUrl } from "./media-url.ts";
 
 test("cup overlap is geometric evidence, and requires both a cup and hand", () => {
@@ -41,4 +41,14 @@ test("downloaded annotation JSON cannot smuggle a different source or malformed 
   assert.throws(() => readAnnotationFile({...file,advisory:false},"s","a".repeat(64)));
   assert.throws(() => readAnnotationFile({...file,frames:[{tMs:0,objects:[{label:"cup",score:1,box:[Infinity,0,1,1]}]}]},"s","a".repeat(64)));
   assert.throws(() => readAnnotationFile({...file,frames:[{tMs:-1,objects:[]}]},"s","a".repeat(64)));
+});
+
+
+test("a can task never treats cup or bottle detections as its object witness", () => {
+  const hands = [{ handedness: "Left" as const, score: 0.9, keypoints: [[0.2,0.2,0.5],[0.6,0.6,0.5]] as [number,number,number][] }];
+  const detections = [{ label: "cup", score: 0.9, box: [0.4,0.4,0.2,0.2] as [number,number,number,number] },
+    { label: "bottle", score: 0.9, box: [0.4,0.4,0.2,0.2] as [number,number,number,number] }];
+  assert.equal(objectInHand(hands, detections, "can"), false);
+  assert.equal(objectInHand(hands, detections, "red_cup"), true);
+  assert.equal(objectInHand(hands, detections), false);
 });

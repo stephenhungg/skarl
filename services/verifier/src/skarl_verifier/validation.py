@@ -8,7 +8,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from .models import VerificationReport, validate_against_rubric
+from .models import TaskSpec, VerificationReport, validate_against_rubric, validate_against_task_spec
 
 SCHEMA_RELATIVE_PATH = Path("packages/contracts/schemas/verification-report.schema.json")
 
@@ -31,7 +31,7 @@ def canonical_schema_path(explicit_path: Path | None = None) -> Path:
 
 
 def validate_report_payload(
-    payload: dict[str, Any], schema_path: Path | None = None
+    payload: dict[str, Any], schema_path: Path | None = None, task_spec: TaskSpec | dict[str, Any] | None = None
 ) -> VerificationReport:
     report = VerificationReport.model_validate(payload)
     schema = json.loads(canonical_schema_path(schema_path).read_text(encoding="utf-8"))
@@ -46,16 +46,20 @@ def validate_report_payload(
             for error in errors
         )
         raise ValueError(f"canonical schema validation failed: {details}")
+    if task_spec is not None:
+        validate_against_task_spec(report, task_spec if isinstance(task_spec, TaskSpec) else TaskSpec.model_validate(task_spec))
     return report
 
 
 def load_report(
-    path: Path, schema_path: Path | None = None, rubric_criterion_ids: list[str] | None = None
+    path: Path, schema_path: Path | None = None, rubric_criterion_ids: list[str] | None = None,
+    task_spec: TaskSpec | dict[str, Any] | None = None,
 ) -> VerificationReport:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("a verification report must be a JSON object")
-    report = validate_report_payload(payload, schema_path)
+    report = validate_report_payload(payload, schema_path, task_spec)
     if rubric_criterion_ids is not None:
-        validate_against_rubric(report, rubric_criterion_ids)
+        validate_against_rubric(report, rubric_criterion_ids,
+            task_spec if isinstance(task_spec, TaskSpec) or task_spec is None else TaskSpec.model_validate(task_spec))
     return report

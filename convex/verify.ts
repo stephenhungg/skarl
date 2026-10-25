@@ -4,6 +4,7 @@ import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { createHash } from "node:crypto";
 import { prepareMedia, MediaPreparationError } from "./lib/media";
+import { resolveTaskSpec } from "./lib/taskSpec";
 import { GeminiFailure } from "./lib/gemini";
 import { observeEvidence, type VisualJury } from "./lib/visualJury";
 import { buildVerificationReports, EVALUATION_PROJECTION_VERSION, CONTENT_EVALUATION_PROJECTION_VERSION, type AudioObservation, type VideoObservation, type ModelRun } from "./lib/verificationReport";
@@ -17,6 +18,7 @@ export const run = internalAction({
     const claimed=await ctx.runMutation(internal.submissions.claim,args);
     if (!claimed) return {skipped:true};
     const {job,submission,rubric,asset,generation}=claimed;
+    const taskSpec=resolveTaskSpec(rubric);
     const started=Date.now(), runs:ModelRun[]=[], warnings:string[]=[];
     const evidenceFrames: { storageId: Id<"_storage">; timestampMs: number; contentHash: string; sizeBytes: number;
       kind: "visual" | "dhash"; sampleIndex: number; decodedFrameIndex?: number }[] = [];
@@ -30,6 +32,7 @@ export const run = internalAction({
       sourceHash=createHash("sha256").update(bytes).digest("hex");
       await ctx.runMutation(internal.submissions.facts,{jobId:job._id,generation,sourceHash,durationMs:0,mediaVerified:false});
       if (submission.expectedSourceHash && sourceHash !== submission.expectedSourceHash) throw new GeminiFailure("upload_hash_mismatch");
+      if (!taskSpec) throw new GeminiFailure("task_spec_unavailable");
       const media=await prepareMedia(bytes,asset.mimeType);
       durationMs=media.durationMs;
       warnings.push(...media.warnings);
@@ -48,7 +51,7 @@ export const run = internalAction({
       duplicate=await ctx.runQuery(internal.submissions.copies,{submissionId:submission._id});
 
       const observed=await observeEvidence(media,{submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,
-        criteria:rubric.criteria,liveness:submission.liveness,duplicate,warnings,reportId:`analysis:${job._id}:${generation}`},submission.evalVideoModel, submission.evalContentOnly ? {verificationOnly:true,evalRunId:submission.evalRunId!,evalContentOnly:true} : undefined);
+        taskSpec,criteria:rubric.criteria,liveness:submission.liveness,duplicate,warnings,reportId:`analysis:${job._id}:${generation}`},submission.evalVideoModel, submission.evalContentOnly ? {verificationOnly:true,evalRunId:submission.evalRunId!,evalContentOnly:true} : undefined);
       ({video,audio,failure,jury}=observed);
       runs.push(...observed.modelRuns); warnings.splice(0,warnings.length,...observed.warnings);
     } catch(error) {
@@ -61,13 +64,13 @@ export const run = internalAction({
       }
     }
     const scope={verificationOnly:submission.verificationOnly,evalRunId:submission.evalRunId,evalContentOnly:submission.evalContentOnly};
-    let reports=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,criteria:rubric.criteria,liveness:submission.liveness,
+    let reports=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,taskSpec,criteria:rubric.criteria,liveness:submission.liveness,
       video,audio,modelRuns:runs,duplicate,warnings,...(failure ? {failure} : {}),reportId:`analysis:${job._id}:${generation}`},scope);
     const validReports=()=>[reports.report,...(reports.qualityReport ? [reports.qualityReport] : [])]
-      .every(report=>validateVerificationReportForRubric(report,rubric.criteria.map(c=>c.criterionId)).valid);
+      .every(report=>validateVerificationReportForRubric(report,rubric.criteria.map(c=>c.criterionId),taskSpec).valid);
     if (!validReports()) {
       failure="report_validation_failed";
-      reports=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,criteria:rubric.criteria,liveness:submission.liveness,
+      reports=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,taskSpec,criteria:rubric.criteria,liveness:submission.liveness,
         modelRuns:runs,duplicate:{status:"not_checked",matches:[]},warnings,failure,reportId:`analysis:${job._id}:${generation}`},scope);
       if (!validReports()) throw new Error("fallback_report_invalid");
     }
@@ -96,14 +99,15 @@ export const interrupted = internalAction({
     const context=await ctx.runQuery(internal.submissions.interruptedContext,args);
     if(!context) return {skipped:true};
     const {job,submission,rubric,asset}=context;
+    const taskSpec=resolveTaskSpec(rubric);
     const {report,qualityReport}=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash:job.sourceHash,
-      durationMs:asset?.durationMs ?? 0,criteria:rubric.criteria,liveness:submission.liveness,modelRuns:[],duplicate:{status:"not_checked",matches:[]},
+      durationMs:asset?.durationMs ?? 0,taskSpec,criteria:rubric.criteria,liveness:submission.liveness,modelRuns:[],duplicate:{status:"not_checked",matches:[]},
       failure:"verification_interrupted",reportId:`analysis:${job._id}:${args.generation}`},
       {verificationOnly:submission.verificationOnly,evalRunId:submission.evalRunId,evalContentOnly:submission.evalContentOnly});
     report.pipeline.version=job.pipelineVersion;
     if(qualityReport) qualityReport.pipeline.version=job.pipelineVersion;
     if(![report,...(qualityReport ? [qualityReport] : [])].every(value=>
-      validateVerificationReportForRubric(value,rubric.criteria.map(c=>c.criterionId)).valid)) throw new Error("timeout_report_invalid");
+      validateVerificationReportForRubric(value,rubric.criteria.map(c=>c.criterionId),taskSpec).valid)) throw new Error("timeout_report_invalid");
     const evaluation=qualityReport ? {evaluationOnly:true,projectionVersion:submission.evalContentOnly ? CONTENT_EVALUATION_PROJECTION_VERSION : EVALUATION_PROJECTION_VERSION,
       ...(submission.evalContentOnly ? {contentOnly:true,livenessTested:false} : {}),
       qualityReport,qualityReportHash:digest(qualityReport)} : undefined;

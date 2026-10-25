@@ -252,6 +252,89 @@
         "minLength": 1,
         "pattern": "[^\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff\\x1c-\\x1f\\x85]"
       }
+    },
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "video": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "visibility": {
+              "enum": [
+                "clear",
+                "occluded",
+                "uncertain"
+              ]
+            },
+            "observations": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "$ref": "#/$defs/actionObservation"
+              }
+            }
+          },
+          "required": [
+            "visibility",
+            "observations"
+          ]
+        },
+        "audio": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "transcript": {
+              "type": "string",
+              "maxLength": 16000
+            },
+            "segments": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "startMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "endMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "[^\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff\\x1c-\\x1f\\x85]",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "startMs",
+                  "endMs",
+                  "text"
+                ]
+              }
+            },
+            "claims": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "$ref": "#/$defs/actionObservation"
+              }
+            }
+          },
+          "required": [
+            "transcript",
+            "segments",
+            "claims"
+          ]
+        }
+      }
     }
   },
   "required": [
@@ -423,6 +506,125 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "pipeline": {
+            "properties": {
+              "version": {
+                "const": "red-cup-evidence-1.2"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "observations": {
+            "properties": {
+              "video": {
+                "properties": {
+                  "observations": {
+                    "items": {
+                      "properties": {
+                        "object": {
+                          "enum": [
+                            "red_cup",
+                            "blue_cup",
+                            "unknown"
+                          ]
+                        },
+                        "target": {
+                          "enum": [
+                            "coaster",
+                            "other",
+                            "unknown"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "audio": {
+                "properties": {
+                  "claims": {
+                    "items": {
+                      "properties": {
+                        "object": {
+                          "enum": [
+                            "red_cup",
+                            "blue_cup",
+                            "unknown"
+                          ]
+                        },
+                        "target": {
+                          "enum": [
+                            "coaster",
+                            "other",
+                            "unknown"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
-  ]
+  ],
+  "$defs": {
+    "actionObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "pickup",
+            "place"
+          ]
+        },
+        "object": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "[^\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff\\x1c-\\x1f\\x85]",
+          "maxLength": 80
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "[^\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff\\x1c-\\x1f\\x85]",
+          "maxLength": 80
+        },
+        "startMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "endMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "[^\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff\\x1c-\\x1f\\x85]",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "action",
+        "object",
+        "target",
+        "startMs",
+        "endMs",
+        "description"
+      ]
+    }
+  }
 }

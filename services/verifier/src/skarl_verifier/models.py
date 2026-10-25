@@ -117,6 +117,55 @@ class DuplicateCheck(ContractModel):
         return self
 
 
+class TaskSpec(ContractModel):
+    """Trusted order metadata, supplied separately from model output."""
+    object: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,79}$")]
+    distractors: Annotated[list[Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,79}$")]], Field(max_length=16)]
+    target: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,79}$")]
+    steps: Annotated[list[Annotated[NonemptyString, Field(max_length=2000)]], Field(min_length=1, max_length=16)]
+    narration: Annotated[list[Annotated[NonemptyString, Field(max_length=2000)]], Field(max_length=16)] | None = None
+
+    @model_validator(mode="after")
+    def validate_labels(self) -> Self:
+        labels = [self.object, self.target, *self.distractors]
+        if any(label in {"other", "unknown"} for label in labels):
+            raise ValueError("task spec labels cannot use reserved fallbacks")
+        if len({self.object, *self.distractors}) != len(self.distractors) + 1 or self.target in self.distractors:
+            raise ValueError("task spec distractors must be distinct")
+        return self
+
+
+class ActionObservation(ContractModel):
+    action: Literal["pickup", "place"]
+    object: Annotated[NonemptyString, Field(max_length=80)]
+    target: Annotated[NonemptyString, Field(max_length=80)]
+    startMs: NonnegativeInt
+    endMs: NonnegativeInt
+    description: Annotated[NonemptyString, Field(max_length=2000)]
+
+
+class TranscriptSegment(ContractModel):
+    startMs: NonnegativeInt
+    endMs: NonnegativeInt
+    text: Annotated[NonemptyString, Field(max_length=2000)]
+
+
+class VideoObservation(ContractModel):
+    visibility: Literal["clear", "occluded", "uncertain"]
+    observations: Annotated[list[ActionObservation], Field(max_length=64)]
+
+
+class AudioObservation(ContractModel):
+    transcript: Annotated[str, Field(max_length=16000)]
+    segments: Annotated[list[TranscriptSegment], Field(max_length=256)]
+    claims: Annotated[list[ActionObservation], Field(max_length=64)]
+
+
+class Observations(ContractModel):
+    video: VideoObservation | None = None
+    audio: AudioObservation | None = None
+
+
 class VerificationReport(ContractModel):
     schemaVersion: Literal["1.0"]
     reportId: NonemptyString
@@ -128,6 +177,7 @@ class VerificationReport(ContractModel):
     duplicate: DuplicateCheck
     recommendation: Literal["accept", "request_correction", "needs_review"]
     warnings: list[NonemptyString] | None = None
+    observations: Observations | None = None
 
     @model_validator(mode="after")
     def validate_advisory_result(self) -> Self:
@@ -173,13 +223,52 @@ class VerificationReport(ContractModel):
             if match.overlapMs > self.source.durationMs:
                 raise ValueError("duplicate overlap must stay within the source duration")
 
+        actions = self.action_observations()
+        segments = self.observations.audio.segments if self.observations and self.observations.audio else []
+        for item in [*actions, *segments]:
+            if item.endMs <= item.startMs:
+                raise ValueError("observations require nonzero, ordered intervals")
+            if item.endMs > self.source.durationMs:
+                raise ValueError("observation exceeds source duration")
+        if self.pipeline.version == "red-cup-evidence-1.2":
+            for action in actions:
+                if action.object not in {"red_cup", "blue_cup", "unknown"} or action.target not in {"coaster", "other", "unknown"}:
+                    raise ValueError("legacy observation has an invalid label")
+
         return self
+
+    def action_observations(self) -> list[ActionObservation]:
+        if not self.observations:
+            return []
+        return [
+            *(self.observations.video.observations if self.observations.video else []),
+            *(self.observations.audio.claims if self.observations.audio else []),
+        ]
+
+
+def validate_against_task_spec(report: VerificationReport, task_spec: TaskSpec | None) -> VerificationReport:
+    """Validate labels using only the trusted order spec, never narration or report text."""
+    observations = report.action_observations()
+    if not observations or report.pipeline.version == "red-cup-evidence-1.2":
+        return report
+    if task_spec is None:
+        raise ValueError("task-scoped observations require the order task spec")
+    objects = {task_spec.object, *task_spec.distractors, "other", "unknown"}
+    targets = {task_spec.target, "other", "unknown"}
+    for observation in observations:
+        if observation.object not in objects:
+            raise ValueError(f"object is not in the task spec: {observation.object}")
+        if observation.target not in targets:
+            raise ValueError(f"target is not in the task spec: {observation.target}")
+    return report
 
 
 def validate_against_rubric(
-    report: VerificationReport, rubric_criterion_ids: Iterable[str]
+    report: VerificationReport, rubric_criterion_ids: Iterable[str], task_spec: TaskSpec | None = None
 ) -> VerificationReport:
     """Reject criteria the task never defined; model output can invent its own."""
+    if task_spec is not None or report.pipeline.version == "task-evidence-2.0":
+        validate_against_task_spec(report, task_spec)
     rubric = list(rubric_criterion_ids)
     if not rubric or len(set(rubric)) != len(rubric):
         raise ValueError("rubric criterion IDs must be nonempty and unique")

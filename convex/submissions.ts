@@ -1,3 +1,4 @@
+import { resolveTaskSpec } from "./lib/taskSpec";
 import { makeFunctionReference } from "convex/server";
 import { v, type Infer } from "convex/values";
 import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
@@ -315,7 +316,8 @@ export const getReport = query({
     if (analysis && (analysis.organizationId !== submission.organizationId || analysis.submissionId !== submission._id)) throw new Error("analysis_reference_mismatch");
     const decision = submission.currentDecisionId ? await ctx.db.get(submission.currentDecisionId) : null;
     if (decision && (decision.organizationId !== submission.organizationId || decision.submissionId !== submission._id)) throw new Error("decision_reference_mismatch");
-    return { status: submission.status, sourceHash: submission.sourceHash, perceptualHashSource: submission.perceptualHashSource,
+    const rubric = await ctx.db.get(submission.taskVersionId);
+    return { taskSpec: rubric ? resolveTaskSpec(rubric) ?? null : null, status: submission.status, sourceHash: submission.sourceHash, perceptualHashSource: submission.perceptualHashSource,
       capture: submission.sensorTrace ? { version: submission.sensorTrace.version ?? 1, device: submission.sensorTrace.device,
         context: submission.sensorTrace.context ?? null, segments: submission.sensorTrace.segments ?? [],
         unavailableSensors: submission.sensorTrace.unavailableSensors ?? [],

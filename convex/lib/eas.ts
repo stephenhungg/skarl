@@ -43,7 +43,7 @@ export function buildAttestationFields(input: {
   if (sha256Text(input.reportJson) !== input.reportHash || report.source?.sha256 !== input.sourceHash ||
     report.submissionId !== input.submissionId || report.taskVersionId !== input.taskVersionId ||
     report.pipeline?.version !== input.pipelineVersion) throw new Error("attestation_report_mismatch");
-  if (!/^red-cup-evidence-\d+\.\d+(?:\.\d+)?$/.test(input.pipelineVersion)) throw new Error("unapproved_pipeline_version");
+  if (input.pipelineVersion !== "task-evidence-2.0" && !/^red-cup-evidence-\d+\.\d+(?:\.\d+)?$/.test(input.pipelineVersion)) throw new Error("unapproved_pipeline_version");
   if (!["accept", "needs_review", "request_correction"].includes(report.recommendation) ||
     ((report.pipeline.implementation !== "inference" || report.pipeline.status !== "completed") && report.recommendation !== "needs_review")) {
     throw new Error("invalid_attestation_recommendation");

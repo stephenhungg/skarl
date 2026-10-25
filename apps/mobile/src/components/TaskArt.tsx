@@ -5,8 +5,8 @@ import { colors as c } from '../../theme';
 
 export type ArtKind = 'cup' | 'can';
 
-/** Picks the drawing whose props match the task, from its title. */
-export const artFor = (title?: string): ArtKind => title && /\bcan\b/i.test(title.replace(/-/g, ' ')) ? 'can' : 'cup';
+/** Prefer the frozen task object; titles support deployments that predate task specs. */
+export const artFor = (title?: string, object?: string): ArtKind => /\bcan\b/i.test((object ?? title ?? '').replace(/[_-]/g, ' ')) ? 'can' : 'cup';
 
 /** Drawing of a task's own props: red and blue cups with a coaster, or a can moved toward the hat beside a lamp. */
 export function TaskArt({ style, compact, kind = 'cup' }: { style?: StyleProp<ViewStyle>; compact?: boolean; kind?: ArtKind }) {

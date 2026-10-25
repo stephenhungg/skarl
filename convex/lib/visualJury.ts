@@ -1,4 +1,5 @@
 "use node";
+import { resolveTaskSpec } from "./taskSpec";
 import { observeVideo, observeAudio, GeminiFailure, videoModel, audioModel } from "./gemini";
 import { buildVerificationReport, buildVerificationReports, EVALUATION_VIDEO_MODELS, type BuildVerificationReportInput,
   type EvaluationVideoModel, type ModelRun, type VerificationReport } from "./verificationReport";
@@ -19,24 +20,26 @@ export async function observeEvidence(
   contentScope?: { verificationOnly: true; evalRunId: string; evalContentOnly: true },
 ) {
   // Only an explicit opt-out disables the panel. Evaluation overrides keep one model.
+  const taskSpec = input.taskSpec ?? resolveTaskSpec({ criteria: input.criteria });
+  if (!taskSpec) throw new GeminiFailure("task_spec_unavailable");
   const enabled = evaluationModel === undefined && process.env.VERIFIER_JURY !== "off";
   const models = enabled ? [...EVALUATION_VIDEO_MODELS] : [evaluationModel];
   const [visualOutcomes, audioOutcomes] = await Promise.all([
-    Promise.allSettled(models.map(model => observeVideo(media.videoFrames, input.durationMs, model))),
-    Promise.allSettled([media.audio ? observeAudio(media.audio, input.durationMs)
+    Promise.allSettled(models.map(model => observeVideo(media.videoFrames, input.durationMs, model, { taskSpec: taskSpec, criteria: input.criteria }))),
+    Promise.allSettled([media.audio ? observeAudio(media.audio, input.durationMs, { taskSpec: taskSpec, criteria: input.criteria })
       : Promise.reject(new GeminiFailure("audio_stream_missing"))]),
   ]);
   const judges = visualOutcomes.map((outcome, index) => outcome.status === "fulfilled"
     ? { observation: outcome.value.observation, run: outcome.value.run, failure: undefined }
     : { observation: undefined, run: { provider: "google", model: models[index] ?? videoModel(),
-      promptVersion: "timestamped-frames-visible-events-v1" } as ModelRun,
+      promptVersion: "timestamped-frames-visible-events-v2" } as ModelRun,
       failure: outcome.reason instanceof GeminiFailure ? outcome.reason.code : "video_unavailable" });
   const speech = audioOutcomes[0]!;
   const audio = speech.status === "fulfilled" ? speech.value.observation : undefined;
   const audioFailure = speech.status === "rejected"
     ? speech.reason instanceof GeminiFailure ? speech.reason.code : "audio_unavailable" : undefined;
   const audioRuns: ModelRun[] = speech.status === "fulfilled" ? [speech.value.run]
-    : media.audio ? [{ provider: "google", model: audioModel(), promptVersion: "audio-only-events-v1" }] : [];
+    : media.audio ? [{ provider: "google", model: audioModel(), promptVersion: "audio-only-events-v2" }] : [];
   const modelRuns = [...judges.map(judge => judge.run), ...audioRuns].slice(0, 16);
   const failure = audioFailure ?? judges.find(judge => judge.failure !== undefined)?.failure;
   const warnings = [...(input.warnings ?? [])];

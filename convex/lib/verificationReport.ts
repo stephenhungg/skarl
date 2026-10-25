@@ -1,13 +1,14 @@
+import { RED_CUP_TASK_SPEC, resolveTaskSpec, normalizeTaskSpec, type TaskSpec } from "./taskSpec.ts";
 import { checkSpokenLiveness, MISSING_LIVENESS_WARNING, instructionLike, type SpokenLivenessChallenge } from "./spokenLiveness.ts";
 
 /** Pure, advisory evidence comparison. No model, storage, or payment authority. */
-export const PIPELINE_VERSION = "red-cup-evidence-1.2";
+export const PIPELINE_VERSION = "task-evidence-2.0";
 /** Evaluation overrides are deliberately bounded and never change payment authority. */
 export const EVALUATION_VIDEO_MODELS = ["gemini-4-argon", "gemini-3.8-flash"] as const;
 export type EvaluationVideoModel = typeof EVALUATION_VIDEO_MODELS[number];
 export type Action = "pickup" | "place";
-export type ObservedObject = "red_cup" | "blue_cup" | "unknown";
-export type Target = "coaster" | "other" | "unknown";
+export type ObservedObject = string;
+export type Target = string;
 export type FindingStatus = "supported" | "contradicted" | "unobservable";
 export interface ActionObservation {
   action: Action;
@@ -58,6 +59,7 @@ export interface DuplicateResult {
   matches: { submissionId: string; score: number; overlapMs: number }[];
 }
 export interface VerificationReport {
+  observations?: { video?: VideoObservation; audio?: AudioObservation };
   schemaVersion: "1.0";
   reportId: string;
   submissionId: string;
@@ -79,6 +81,7 @@ export interface BuildVerificationReportInput {
   taskVersionId: string;
   sourceHash: string;
   durationMs: number;
+  taskSpec?: TaskSpec;
   criteria: RubricCriterion[];
   video?: VideoObservation;
   audio?: AudioObservation;
@@ -97,8 +100,8 @@ const MAX_TEXT_LENGTH = 16_000;
 const TEMPORAL_TOLERANCE_MS = 2_000;
 const actionProperties = {
   action: { type: "string", enum: ["pickup", "place"] },
-  object: { type: "string", enum: ["red_cup", "blue_cup", "unknown"] },
-  target: { type: "string", enum: ["coaster", "other", "unknown"] },
+  object: { type: "string", minLength: 1, maxLength: 80 },
+  target: { type: "string", minLength: 1, maxLength: 80 },
   startMs: { type: "integer", minimum: 0 },
   endMs: { type: "integer", minimum: 0 },
   description: { type: "string", minLength: 1, maxLength: 2_000 },
@@ -162,12 +165,12 @@ function interval(object: Record<string, unknown>, durationMs: number, label: st
   if (endMs <= startMs) throw new Error(`${label} requires a nonzero, ordered interval`);
   return { startMs, endMs };
 }
-function parseAction(value: unknown, durationMs: number, label: string): ActionObservation {
+function parseAction(value: unknown, durationMs: number, label: string, spec: TaskSpec): ActionObservation {
   const object = record(value, Object.keys(actionProperties), label);
   return {
     action: choice(object.action, ["pickup", "place"], `${label}.action`),
-    object: choice(object.object, ["red_cup", "blue_cup", "unknown"], `${label}.object`),
-    target: choice(object.target, ["coaster", "other", "unknown"], `${label}.target`),
+    object: choice(object.object, [spec.object, ...spec.distractors, "other", "unknown"], `${label}.object`),
+    target: choice(object.target, [spec.target, "other", "unknown"], `${label}.target`),
     ...interval(object, durationMs, label),
     description: text(object.description, `${label}.description`),
   };
@@ -186,12 +189,12 @@ function parseJson(raw: string): unknown {
   text(raw, "model response", MAX_RAW_LENGTH);
   try { return JSON.parse(raw) as unknown; } catch { throw new Error("model response is not strict JSON"); }
 }
-export function parseVideoResponse(raw: string, durationMs: number): VideoObservation {
+export function parseVideoResponse(raw: string, durationMs: number, spec: TaskSpec = RED_CUP_TASK_SPEC): VideoObservation {
   integer(durationMs, "durationMs");
   const object = record(parseJson(raw), ["visibility", "observations"], "video response");
   return {
     visibility: choice(object.visibility, ["clear", "occluded", "uncertain"], "visibility"),
-    observations: array(object.observations, MAX_ACTIONS, "observations").map((item, index) => parseAction(item, durationMs, `observations[${index}]`)),
+    observations: array(object.observations, MAX_ACTIONS, "observations").map((item, index) => parseAction(item, durationMs, `observations[${index}]`, spec)),
   };
 }
 
@@ -202,8 +205,13 @@ function overlaps(left: { startMs: number; endMs: number }, right: { startMs: nu
   return left.startMs <= right.endMs + tolerance && right.startMs <= left.endMs + tolerance;
 }
 
+function labelPattern(label: string): RegExp {
+  const words = label.replaceAll("_", " ").split(/\s+/).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`\\b${words.join("[ _-]+")}\\b`, "i");
+}
+
 /** Conservative English claim extraction; it never infers an action from the task prompt. */
-export function audioFromTranscriptSegments(input: TranscriptSegment[], durationMs: number): AudioObservation {
+export function audioFromTranscriptSegments(input: TranscriptSegment[], durationMs: number, spec: TaskSpec = RED_CUP_TASK_SPEC): AudioObservation {
   integer(durationMs, "durationMs");
   const segments = parseSegments(input, durationMs);
   const transcript = segments.map(segment => segment.text).join(" ");
@@ -235,16 +243,23 @@ export function audioFromTranscriptSegments(input: TranscriptSegment[], duration
     const startMs = included[0]!.segment.startMs;
     const endMs = included[included.length - 1]!.segment.endMs;
     const action: Action = /^(pick|lift|grasp)/i.test(match[0]) ? "pickup" : "place";
-    const red = /\bred(?:[ -]colou?red)?\s+(?:cup|mug)\b/i.test(clause);
-    const blue = /\bblue(?:[ -]colou?red)?\s+(?:cup|mug)\b/i.test(clause);
+    const named = [spec.object, ...spec.distractors].filter(label => labelPattern(label).test(clause));
     const uncertain = /\b(?:not|never|don't|didn't|cannot|can't|maybe|actually|instead|sorry)\b/i.test(`${nearbyPrefix} ${clause}`);
-    let object: ObservedObject = red !== blue ? (red ? "red_cup" : "blue_cup") : "unknown";
-    if (!red && !blue && /\b(?:it|that cup|this cup)\b/i.test(clause) && startMs - previousEndMs <= 4_000) object = previousObject;
+    let object: ObservedObject = named.length === 1 ? named[0]! : "unknown";
+    const noun = spec.object.split("_").at(-1)!;
+    const reference = new RegExp(`\\b(?:it|(?:that|this) (?:object|${noun}))\\b`, "i");
+    if (!named.length && reference.test(clause) && startMs - previousEndMs <= 4_000) object = previousObject;
     let target: Target = "unknown";
     if (action === "place") {
-      if (/\b(?:beside|next to|off|away from|near)\s+(?:the\s+)?(?:marked\s+)?coaster\b/i.test(clause)) target = "other";
-      else if (/\b(?:on|onto)\s+(?:the\s+)?(?:marked\s+)?coaster\b/i.test(clause)) target = "coaster";
-      else if (/\b(?:on|onto)\s+(?:the\s+)?(?:table|floor|shelf)\b/i.test(clause)) target = "other";
+      const destination = labelPattern(spec.target).source.slice(2, -2);
+      const relative = spec.steps.some(step => /\bcloser to\b/i.test(step));
+      const wrongRelation = new RegExp(`\\b(?:beside|next to|off|away from|near)\\s+(?:the\\s+)?(?:marked\\s+)?${destination}\\b`, "i");
+      const containment = spec.steps.some(step => /\b(?:in|into)\b/i.test(step));
+      const relation = relative ? "closer to" : containment ? "(?:in|into)" : "(?:on|onto)";
+      const correctRelation = new RegExp(`\\b${relation}\\s+(?:the\\s+)?(?:marked\\s+)?${destination}\\b`, "i");
+      if (wrongRelation.test(clause)) target = "other";
+      else if (correctRelation.test(clause)) target = spec.target;
+      else if (/\b(?:on|onto|in|into)\s+(?:the\s+)?(?:table|floor|shelf)\b/i.test(clause) || labelPattern(spec.target).test(clause)) target = "other";
     }
     if (uncertain) { object = "unknown"; target = "unknown"; }
     claims.push({ action, object, target, startMs, endMs, description: clause });
@@ -254,14 +269,14 @@ export function audioFromTranscriptSegments(input: TranscriptSegment[], duration
   return { transcript, segments, claims };
 }
 
-export function parseAudioResponse(raw: string, durationMs: number): AudioObservation {
+export function parseAudioResponse(raw: string, durationMs: number, spec: TaskSpec = RED_CUP_TASK_SPEC): AudioObservation {
   integer(durationMs, "durationMs");
   const object = record(parseJson(raw), ["transcript", "segments", "claims"], "audio response");
   const transcript = text(object.transcript, "transcript", MAX_TEXT_LENGTH, true);
   const segments = parseSegments(object.segments, durationMs);
   if (normalizedWords(transcript) !== normalizedWords(segments.map(segment => segment.text).join(" "))) throw new Error("transcript does not agree with its segments");
-  const claims = array(object.claims, MAX_ACTIONS, "claims").map((item, index) => parseAction(item, durationMs, `claims[${index}]`));
-  const derived = audioFromTranscriptSegments(segments, durationMs).claims;
+  const claims = array(object.claims, MAX_ACTIONS, "claims").map((item, index) => parseAction(item, durationMs, `claims[${index}]`, spec));
+  const derived = audioFromTranscriptSegments(segments, durationMs, spec).claims;
   for (const claim of claims) {
     if (!derived.some(item => item.action === claim.action && item.object === claim.object && (claim.action === "pickup" || item.target === claim.target) && overlaps(item, claim))) {
       throw new Error("audio claim is not grounded in its transcript segments");
@@ -275,41 +290,55 @@ export function parseAudioResponse(raw: string, durationMs: number): AudioObserv
   return { transcript, segments, claims };
 }
 
-const SEEDED_CRITERIA: Record<string, { description: string; modality: RubricCriterion["modality"] }> = {
-  "red-cup-pickup": { description: "Pick up the red cup, not the blue cup", modality: "visual" },
-  "coaster-placement": { description: "Place the red cup on the marked coaster", modality: "temporal" },
-  "narration-alignment": { description: "Narration agrees with visible actions and object", modality: "cross_modal" },
-};
+/** Only this decomposed two-action grammar is implemented. Extra semantics fail closed. */
+function criterionOperation(criterion: RubricCriterion, spec: TaskSpec): Action | "narration" | undefined {
+  if (spec.steps.length !== 2 || spec.narration?.some(item => normalizedWords(item) !== "narrate each action")) return undefined;
+  const object = spec.object.replaceAll("_", " "), target = spec.target.replaceAll("_", " ");
+  const pickup = normalizedWords(spec.steps[0]!), placement = normalizedWords(spec.steps[1]!);
+  const pickupForms = [`pick up the ${object}`, `pick up ${object}`,
+    ...spec.distractors.map(label => `pick up the ${object} not the ${label.replaceAll("_", " ")}`)];
+  const placements = ["on", "onto", "in", "into"].flatMap(relation =>
+    [`place the ${object} ${relation} the ${target}`, `place the ${object} ${relation} the marked ${target}`]);
+  const relativePrefix = `place the ${object} closer to the ${target} that is next to the `;
+  const relativeLandmark = placement.startsWith(relativePrefix) ? placement.slice(relativePrefix.length) : "";
+  // Extra verbs/requirements cannot silently become supported by matching a prefix.
+  const relative = /^[a-z0-9]+$/.test(relativeLandmark) && !/\b(and|then|before|after|while)\b/.test(relativeLandmark);
+  if (!pickupForms.includes(pickup) || (!placements.includes(placement) && !relative)) return undefined;
+  if (criterion.modality === "visual" && normalizedWords(criterion.description) === normalizedWords(spec.steps[0]!)) return "pickup";
+  if (criterion.modality === "temporal" && normalizedWords(criterion.description) === normalizedWords(spec.steps[1]!)) return "place";
+  if (criterion.modality === "cross_modal" && normalizedWords(criterion.description) === "narration agrees with visible actions and object") return "narration";
+  return undefined;
+}
 function evidence(modality: "video" | "audio", observation: ActionObservation): Evidence {
   return { modality, startMs: observation.startMs, endMs: observation.endMs, claim: observation.description };
 }
 function finding(criterionId: string, status: FindingStatus, reason: string, evidenceItems: Evidence[] = []): CriterionFinding {
   return { criterionId, status, reason, evidence: evidenceItems };
 }
-function comparePickup(video: VideoObservation | undefined, criterionId: string): CriterionFinding {
+function comparePickup(video: VideoObservation | undefined, criterionId: string, spec: TaskSpec): CriterionFinding {
   if (!video || video.visibility !== "clear") return finding(criterionId, "unobservable", "The pickup is not clearly observable.");
   const pickups = video.observations.filter(item => item.action === "pickup");
-  const wrong = pickups.find(item => item.object === "blue_cup");
-  if (wrong) return finding(criterionId, "contradicted", "The visible pickup uses the blue cup, contrary to the task.", [evidence("video", wrong)]);
+  const wrong = pickups.find(item => item.object !== spec.object && item.object !== "unknown");
+  if (wrong) return finding(criterionId, "contradicted", `The visible pickup uses ${wrong.object}, contrary to the required ${spec.object}.`, [evidence("video", wrong)]);
   if (pickups.some(item => item.object === "unknown")) return finding(criterionId, "unobservable", "A pickup has an unresolved object identity.");
-  const correct = pickups.find(item => item.object === "red_cup");
+  const correct = pickups.find(item => item.object === spec.object);
   return correct
-    ? finding(criterionId, "supported", "The red cup is visibly picked up.", [evidence("video", correct)])
-    : finding(criterionId, "unobservable", "No supported red-cup pickup interval was observed.");
+    ? finding(criterionId, "supported", `The ${spec.object} is visibly picked up.`, [evidence("video", correct)])
+    : finding(criterionId, "unobservable", `No supported ${spec.object} pickup interval was observed.`);
 }
-function comparePlacement(video: VideoObservation | undefined, criterionId: string): CriterionFinding {
+function comparePlacement(video: VideoObservation | undefined, criterionId: string, spec: TaskSpec): CriterionFinding {
   if (!video || video.visibility !== "clear") return finding(criterionId, "unobservable", "The placement sequence is not clearly observable.");
   const placements = video.observations.filter(item => item.action === "place");
-  const wrong = placements.find(item => item.object === "blue_cup" || (item.object === "red_cup" && item.target === "other"));
-  if (wrong) return finding(criterionId, "contradicted", "The observed placement uses the wrong cup or target.", [evidence("video", wrong)]);
+  const wrong = placements.find(item => item.object !== spec.object && item.object !== "unknown" || (item.object === spec.object && item.target === "other"));
+  if (wrong) return finding(criterionId, "contradicted", "The observed placement uses the wrong object or target.", [evidence("video", wrong)]);
   if (placements.some(item => item.object === "unknown" || item.target === "unknown")) return finding(criterionId, "unobservable", "The placed object or target is unresolved.");
-  const placement = placements.find(item => item.object === "red_cup" && item.target === "coaster");
-  const pickup = video.observations.find(item => item.action === "pickup" && item.object === "red_cup");
-  if (!placement || !pickup) return finding(criterionId, "unobservable", "Both the pickup and coaster placement must be observed.");
+  const placement = placements.find(item => item.object === spec.object && item.target === spec.target);
+  const pickup = video.observations.find(item => item.action === "pickup" && item.object === spec.object);
+  if (!placement || !pickup) return finding(criterionId, "unobservable", "Both the required pickup and destination placement must be observed.");
   const items = [evidence("video", pickup), evidence("video", placement)];
   if (placement.endMs <= pickup.startMs) return finding(criterionId, "contradicted", "The observed placement precedes the required pickup.", items);
   if (placement.startMs < pickup.endMs) return finding(criterionId, "unobservable", "The action intervals overlap, so their order is uncertain.", items);
-  return finding(criterionId, "supported", "The red cup is placed on the coaster after the pickup.", items);
+  return finding(criterionId, "supported", `The observed sequence satisfies: ${spec.steps.join("; ")}.`, items);
 }
 function compareNarration(video: VideoObservation | undefined, audio: AudioObservation | undefined, criterionId: string): CriterionFinding {
   if (!video || video.visibility !== "clear" || !audio || audio.claims.length === 0) return finding(criterionId, "unobservable", "Clear visual actions and timestamped narration are both required.");
@@ -321,7 +350,7 @@ function compareNarration(video: VideoObservation | undefined, audio: AudioObser
     if (candidates.length === 0) return finding(criterionId, "unobservable", "A narrated action has no visual evidence near its timestamp.", [evidence("audio", claim)]);
     if (candidates.some(item => item.object === "unknown" || (item.action === "place" && item.target === "unknown"))) return finding(criterionId, "unobservable", "Visual evidence near the narration has unresolved identity or target.");
     const matching = candidates.filter(item => item.object === claim.object && (claim.action === "pickup" || item.target === claim.target));
-    if (matching.length === 0) return finding(criterionId, "contradicted", "Narration and visible action disagree on the cup or placement target.", [evidence("audio", claim), ...candidates.map(item => evidence("video", item))]);
+    if (matching.length === 0) return finding(criterionId, "contradicted", "Narration and visible action disagree on the object or placement target.", [evidence("audio", claim), ...candidates.map(item => evidence("video", item))]);
     if (matching.length !== candidates.length) return finding(criterionId, "unobservable", "Several conflicting visual candidates occur near the narrated reference.");
     matched.add(claim.action);
     items.push(evidence("audio", claim), evidence("video", matching[0]!));
@@ -344,9 +373,10 @@ function buildScopedReport(input: BuildVerificationReportInput, contentOnly = fa
     if (criterionIds.has(criterion.criterionId)) throw new Error("rubric criterion IDs must be unique");
     criterionIds.add(criterion.criterionId);
   }
+  const spec = input.taskSpec ? normalizeTaskSpec(input.taskSpec) : resolveTaskSpec({ criteria: input.criteria });
   // Revalidate typed inputs at this boundary: TypeScript types do not protect runtime callers.
-  const video = input.failure === undefined && input.video ? parseVideoResponse(JSON.stringify(input.video), input.durationMs) : undefined;
-  const audio = input.failure === undefined && input.audio ? parseAudioResponse(JSON.stringify(input.audio), input.durationMs) : undefined;
+  const video = input.failure === undefined && input.video ? parseVideoResponse(JSON.stringify(input.video), input.durationMs, spec ?? RED_CUP_TASK_SPEC) : undefined;
+  const audio = input.failure === undefined && input.audio ? parseAudioResponse(JSON.stringify(input.audio), input.durationMs, spec ?? RED_CUP_TASK_SPEC) : undefined;
   const warnings = array(input.warnings ?? [], 32, "warnings").map((item, index) => text(item, `warnings[${index}]`));
   const runs = array(input.modelRuns, 16, "modelRuns").map((item, index): ModelRun => {
     const object = record(item, ["provider", "model", "promptVersion", "elapsedMs", "inputTokens", "outputTokens"], `modelRuns[${index}]`);
@@ -378,19 +408,19 @@ function buildScopedReport(input: BuildVerificationReportInput, contentOnly = fa
   }
   const criteria = input.criteria.map((criterion): CriterionFinding => {
     if (input.failure !== undefined || unsafeText) return finding(criterion.criterionId, "unobservable", "Analysis is failed or untrusted; this criterion requires human review.");
-    const supported = Object.hasOwn(SEEDED_CRITERIA, criterion.criterionId) ? SEEDED_CRITERIA[criterion.criterionId] : undefined;
-    if (!supported || supported.modality !== criterion.modality || normalizedWords(supported.description) !== normalizedWords(criterion.description)) {
+    const operation = spec && criterionOperation(criterion, spec);
+    if (!operation || !spec) {
       warnings.push(`Unsupported rubric semantics require review: ${criterion.criterionId}`);
-      return finding(criterion.criterionId, "unobservable", "This comparator only supports the frozen red-cup rubric semantics.");
+      return finding(criterion.criterionId, "unobservable", "This comparator requires a frozen, supported task spec matching this criterion.");
     }
-    if (criterion.criterionId === "red-cup-pickup") return comparePickup(video, criterion.criterionId);
-    if (criterion.criterionId === "coaster-placement") return comparePlacement(video, criterion.criterionId);
+    if (operation === "pickup") return comparePickup(video, criterion.criterionId, spec);
+    if (operation === "place") return comparePlacement(video, criterion.criterionId, spec);
     return compareNarration(video, audio, criterion.criterionId);
   });
   const liveness = contentOnly ? null : checkSpokenLiveness(input.liveness, audio, input.durationMs);
   if (liveness?.status === "passed") {
     // An extra evidence line preserves the frozen rubric and legacy report schema.
-    const narration = criteria.find(item => item.criterionId === "narration-alignment");
+    const narration = criteria.find(item => input.criteria.some(criterion => criterion.criterionId === item.criterionId && criterion.modality === "cross_modal"));
     if (narration) narration.evidence.push(liveness.evidence);
     else warnings.push("Spoken liveness matched, but the rubric has no narration evidence lane; human review required.");
   } else if (liveness) warnings.push(liveness.warning);
@@ -398,12 +428,13 @@ function buildScopedReport(input: BuildVerificationReportInput, contentOnly = fa
   const hasContradiction = criteria.some(item => item.status === "contradicted");
   const needsReview = warnings.length > 0 || hasUnobservable || !video || !audio || input.failure !== undefined;
   const recommendation = needsReview ? "needs_review" : hasContradiction ? "request_correction" : "accept";
-  const reportId = input.reportId ?? `${input.submissionId}:${input.taskVersionId}:${input.sourceHash.slice(0, 12)}:red-cup-v1`;
+  const reportId = input.reportId ?? `${input.submissionId}:${input.taskVersionId}:${input.sourceHash.slice(0, 12)}:task-v2`;
   text(reportId, "reportId", 2_000);
   return {
     schemaVersion: "1.0", reportId, submissionId: input.submissionId, taskVersionId: input.taskVersionId,
     source: { sha256: input.sourceHash, durationMs: input.durationMs },
     pipeline: { version: PIPELINE_VERSION, status: input.failure !== undefined ? "failed" : needsReview ? "needs_review" : "completed", implementation: "inference", modelRuns: runs },
+    ...(spec ? { observations: { ...(video ? { video } : {}), ...(audio ? { audio } : {}) } } : {}),
     criteria, duplicate: { status: duplicateStatus, matches }, recommendation,
     warnings: [...new Set(warnings)],
   };

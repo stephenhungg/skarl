@@ -7,6 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { setTimeout as sleep } from "node:timers/promises";
+import { resolveTaskSpec } from "../convex/lib/taskSpec.ts";
 import { validateVerificationReportForRubric } from "@skarl/contracts/verification";
 import { EVALUATION_VIDEO_MODELS, applyContentEvaluationGuard, CONTENT_EVALUATION_PROJECTION_VERSION } from "../convex/lib/verificationReport.ts";
 
@@ -15,6 +16,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCORER = join(ROOT, "evals/evaluate.py");
 export const RUNNER_VERSION = "real-clips-v3-content-scope";
 export const COMPARISON_VIDEO_MODELS = EVALUATION_VIDEO_MODELS;
+// Compatibility default for the original frozen evaluation manifests. New tasks set criterionIds.
 export const CRITERIA = ["red-cup-pickup", "coaster-placement", "narration-alignment"];
 export const LICENSING_WARNING = "Verification-only development upload; no training license, dataset sale, or payable may be created.";
 const MIME = { ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime" };
@@ -25,7 +27,8 @@ export function canonical(value) {
     .sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(",")}}`;
   return JSON.stringify(value);
 }
-const sameIds = values => Array.isArray(values) && values.length === CRITERIA.length && CRITERIA.every(id => values.includes(id));
+const sameIds = (values, expected = CRITERIA) => Array.isArray(values) && values.length === expected.length &&
+  new Set(values).size === values.length && expected.every(id => values.includes(id));
 const message = error => error instanceof Error ? error.message : String(error);
 
 async function python(args) {
@@ -39,12 +42,14 @@ export async function preflightManifest(manifestPath, split = "test") {
   const raw = await readFile(path, "utf8"), manifest = JSON.parse(raw);
   if (manifest.syntheticMetadata !== false) throw new Error("real-clip evaluation requires syntheticMetadata:false");
   await python(["--manifest", path, "--check-manifest"]);
+  const criterionIds = manifest.criterionIds ?? CRITERIA;
+  if (!Array.isArray(criterionIds) || !criterionIds.length || criterionIds.length > 64 || new Set(criterionIds).size !== criterionIds.length || criterionIds.some(id => typeof id !== "string" || !id.trim())) throw new Error("invalid manifest criterionIds");
   const samples = manifest.samples.filter(sample => sample.split === split);
   if (samples.length < 1 || samples.length > 100) throw new Error("selected split must contain 1–100 cases");
   const previous = new Set();
   const cases = [];
   for (const sample of samples) {
-    if (!sameIds(Object.keys(sample.expected.criteria))) throw new Error(`exact red-cup criterion IDs required: ${sample.sampleId}`);
+    if (!sameIds(Object.keys(sample.expected.criteria), criterionIds)) throw new Error(`exact frozen task criterion IDs required: ${sample.sampleId}`);
     if (sample.duplicateOf !== undefined && !previous.has(sample.duplicateOf)) throw new Error(`duplicateOf must name a prior selected case: ${sample.sampleId}`);
     if (!/^[a-f0-9]{64}$/.test(sample.contentSha256 ?? "")) throw new Error(`contentSha256 required: ${sample.sampleId}`);
     const mediaPath = resolve(dirname(path), sample.mediaPath), mimeType = MIME[extname(mediaPath).toLowerCase()];
@@ -56,22 +61,22 @@ export async function preflightManifest(manifestPath, split = "test") {
       ...(sample.duplicateOf ? { duplicateOf: sample.duplicateOf } : {}), expected: structuredClone(sample.expected) });
     previous.add(sample.sampleId);
   }
-  return { path, raw, manifest, manifestSha256: sha(raw), split, cases };
+  return { path, raw, manifest, manifestSha256: sha(raw), split, criterionIds, cases };
 }
 
-export function validateStoredReport(response, item, run, rubricIds = CRITERIA) {
+export function validateStoredReport(response, item, run, rubricIds = run.rubric?.criteria?.map(criterion => criterion.criterionId) ?? CRITERIA) {
   if (response.verificationOnly !== true || response.evalRunId !== run.evalRunId || response.evalVideoModel !== run.videoModel || !!response.evalContentOnly !== !!run.contentOnly) throw new Error("report evaluation scope mismatch");
   const evaluation = response.observations?.evaluation;
   if (evaluation?.evaluationOnly !== true || evaluation.projectionVersion !== (run.contentOnly ? CONTENT_EVALUATION_PROJECTION_VERSION : "prelicensing-advisory-v1") ||
     (run.contentOnly ? evaluation.contentOnly !== true || evaluation.livenessTested !== false : evaluation.contentOnly === true || evaluation.livenessTested === false)) throw new Error("missing advisory evaluation projection");
   const quality = evaluation.qualityReport;
-  const validation = validateVerificationReportForRubric(quality, rubricIds);
-  if (!validation.valid || !sameIds(quality?.criteria?.map(c => c.criterionId))) throw new Error(`invalid quality report: ${validation.errors.join("; ")}`);
+  const validation = validateVerificationReportForRubric(quality, rubricIds, run.taskSpec);
+  if (!validation.valid || !sameIds(quality?.criteria?.map(c => c.criterionId), rubricIds)) throw new Error(`invalid quality report: ${validation.errors.join("; ")}`);
   if (!/^[a-f0-9]{64}$/.test(evaluation.qualityReportHash ?? "") || sha(canonical(quality)) !== evaluation.qualityReportHash) throw new Error("quality report canonical hash mismatch");
   if (quality.submissionId !== item.submissionId || quality.taskVersionId !== run.taskVersionId || quality.source.sha256 !== item.contentSha256 ||
     (response.sourceHash !== undefined && response.sourceHash !== item.contentSha256)) throw new Error("quality report source/rubric mismatch");
   const operational = response.report;
-  if (!validateVerificationReportForRubric(operational, rubricIds).valid || operational.submissionId !== item.submissionId || operational.taskVersionId !== run.taskVersionId ||
+  if (!validateVerificationReportForRubric(operational, rubricIds, run.taskSpec).valid || operational.submissionId !== item.submissionId || operational.taskVersionId !== run.taskVersionId ||
     operational.source?.sha256 !== item.contentSha256 || operational.recommendation !== "needs_review" || operational.pipeline?.status === "completed") {
     throw new Error("verification-only operational report is not review-only");
   }
@@ -93,7 +98,7 @@ export function validateStoredReport(response, item, run, rubricIds = CRITERIA) 
     && typeof audio?.transcript === "string" && Array.isArray(audio?.segments) && Array.isArray(audio?.claims);
   const successfulAnalysis = !failureCode && twoObservations &&
     quality.pipeline.implementation === "inference" && ["completed", "needs_review"].includes(quality.pipeline.status);
-  const visualRuns = quality.pipeline.modelRuns.filter(model => model.promptVersion === "timestamped-frames-visible-events-v1");
+  const visualRuns = quality.pipeline.modelRuns.filter(model => ["timestamped-frames-visible-events-v1", "timestamped-frames-visible-events-v2"].includes(model.promptVersion));
   if (run.videoModel && (visualRuns.some(model => model.model !== run.videoModel) || (successfulAnalysis && visualRuns.length !== 1))) {
     throw new Error("stored video model differs from requested evaluation model");
   }
@@ -143,7 +148,7 @@ export function computeMetrics(cases, { contentOnly = false } = {}) {
   const client = cases.filter(item => item.qualityReport).map(item => item.clientTerminalReportMs);
   const backend = cases.filter(item => item.qualityReport).map(item => item.processingElapsedMs);
   const visual = cases.flatMap(item => item.qualityReport?.pipeline?.modelRuns ?? [])
-    .filter(model => model.promptVersion === "timestamped-frames-visible-events-v1").map(model => model.elapsedMs);
+    .filter(model => ["timestamped-frames-visible-events-v1", "timestamped-frames-visible-events-v2"].includes(model.promptVersion)).map(model => model.elapsedMs);
   const pairs = successful.flatMap(item => (item.qualityReport.criteria ?? []).map(criterion => [item.expected.criteria[criterion.criterionId], criterion.status]));
   const operationalReports = cases.map(item => item.rawResponse?.report).filter(Boolean);
   return { measurement: { scope: contentOnly ? "prerecorded_content_only" : "capture_quality_with_liveness",
@@ -285,18 +290,18 @@ export async function runEvaluation(options, injected = {}) {
     run.cloud.url = url; run.cloud.attempted = true; await save();
     const client = await (injected.createClient ?? defaultClient)(url);
     const identity = { demoIdentity: "contributor" };
-    const context = await client.query("dashboard:demoContext", identity);
+    const context = options.orderId ? { orderId: options.orderId } : await client.query("dashboard:demoContext", identity);
     if (!context?.orderId) throw new Error("seeded demo order required");
     const summary = await client.query("dashboard:orderSummary", { ...identity, orderId: context.orderId });
     const rubric = summary?.rubric;
-    if (!rubric || !Number.isFinite(rubric.frozenAt) || !/^[a-f0-9]{64}$/.test(rubric.contentHash ?? "") || !sameIds(rubric.criteria?.map(item => item.criterionId)) ||
-      rubric._id !== context.taskVersionId || rubric.orderId !== context.orderId) throw new Error("frozen red-cup rubric mismatch");
+    if (!rubric || !Number.isFinite(rubric.frozenAt) || !/^[a-f0-9]{64}$/.test(rubric.contentHash ?? "") || !sameIds(rubric.criteria?.map(item => item.criterionId), preflight.criterionIds) ||
+      (context.taskVersionId !== undefined && rubric._id !== context.taskVersionId) || rubric.orderId !== context.orderId) throw new Error("frozen task rubric mismatch");
     if ((preflight.manifest.expectedRubricContentHash !== undefined && preflight.manifest.expectedRubricContentHash !== rubric.contentHash) ||
       (options.frozenRubricContentHash && options.frozenRubricContentHash !== rubric.contentHash) ||
       (options.frozenTaskVersionId && options.frozenTaskVersionId !== rubric._id) || (options.frozenOrderId && options.frozenOrderId !== context.orderId)) throw new Error("expected rubric content hash mismatch");
     if ((run.orderId && run.orderId !== context.orderId) || (run.taskVersionId && run.taskVersionId !== rubric._id)) throw new Error("resume order/rubric differs");
     if (run.provenance.frozenRubric && run.provenance.frozenRubric.contentHash !== rubric.contentHash) throw new Error("resume rubric content hash differs");
-    run.orderId = context.orderId; run.taskVersionId = rubric._id; run.rubric = rubric;
+    run.orderId = context.orderId; run.taskVersionId = rubric._id; run.rubric = rubric; run.taskSpec = resolveTaskSpec(rubric);
     run.provenance.frozenRubric = { taskVersionId: rubric._id, contentHash: rubric.contentHash, frozenAt: rubric.frozenAt }; await save();
     const scope = async () => {
       const inventory = await client.query("submissions:evaluationRun", { ...identity, orderId: run.orderId, evalRunId: run.evalRunId });
@@ -444,16 +449,16 @@ async function main(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
-    if (["--resume", "--split", "--timeout-ms", "--video-model"].includes(arg)) {
+    if (["--resume", "--split", "--timeout-ms", "--video-model", "--order-id"].includes(arg)) {
       const value = argv[++index];
       if (!value) throw new Error(`missing ${arg} value`);
-      options[arg === "--timeout-ms" ? "timeoutMs" : arg === "--video-model" ? "videoModel" : arg.slice(2)] = arg === "--timeout-ms" ? Number(value) : value;
+      options[arg === "--timeout-ms" ? "timeoutMs" : arg === "--video-model" ? "videoModel" : arg === "--order-id" ? "orderId" : arg.slice(2)] = arg === "--timeout-ms" ? Number(value) : value;
     } else if (arg === "--compare-video-models") options.compareVideoModels = true;
     else if (arg === "--content-only") options.contentOnly = true;
     else if (!arg.startsWith("-") && !options.manifestPath) options.manifestPath = arg;
     else throw new Error(`unknown argument: ${arg}`);
   }
-  if (!options.manifestPath) throw new Error("usage: pnpm eval:clips <manifest.json> [--split test] [--resume results.json] [--timeout-ms 360000] [--video-model MODEL | --compare-video-models] [--content-only]");
+  if (!options.manifestPath) throw new Error("usage: pnpm eval:clips <manifest.json> [--split test] [--order-id ID] [--resume results.json] [--timeout-ms 360000] [--video-model MODEL | --compare-video-models] [--content-only]");
   const result = await (options.compareVideoModels ? runModelComparison : runEvaluation)(options);
   console.log(`${result.run.status}: ${result.resultPath}\n${JSON.stringify(result.run.metrics ?? result.run.models, null, 2)}`);
   return result.exitCode;

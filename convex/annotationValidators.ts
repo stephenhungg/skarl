@@ -6,6 +6,6 @@ export const annotationModel = v.object({
 });
 export const annotationSummary = v.object({
   kind: annotationKind, frames: v.number(), handsDetectedFrames: v.optional(v.number()), maxHands: v.optional(v.number()),
-  objectLabels: v.optional(v.record(v.string(), v.number())), cupInHandFrames: v.optional(v.number()),
+  objectLabels: v.optional(v.record(v.string(), v.number())), cupInHandFrames: v.optional(v.number()), objectInHandFrames: v.optional(v.number()),
   masks: v.optional(v.number()), durationMs: v.number(),
 });

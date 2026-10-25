@@ -9,7 +9,7 @@ const DAY = 24 * 60 * 60 * 1000;
 export type LiveTask = {
   orderId: string; title: string; prompt: string; category: string; rateAtomic: string; status: string; closed: boolean;
   openSpots: string; quantity: string; isNew: boolean; criteria: NonNullable<Summary['rubric']>['criteria'];
-  rubricVersion: number; rubricHash: string; network: string;
+  rubricVersion: number; rubricHash: string; network: string; taskSpec?: Summary['order']['taskSpec'];
 };
 
 /** Order titles name what is being collected; the category is that noun phrase, nothing more. */
@@ -32,7 +32,7 @@ function toTask(orderId: string, summary: Summary | undefined, network: string):
     category: categoryOf(order.title), rateAtomic: order.contributorRateAtomic, status: order.status,
     closed: CLOSED.includes(order.status), openSpots: (open < 0n ? 0n : open).toString(), quantity: order.quantityRequested,
     isNew: Date.now() - order._creationTime < 7 * DAY, criteria: rubric.criteria,
-    rubricVersion: rubric.version, rubricHash: rubric.contentHash, network: order.network ?? network,
+    rubricVersion: rubric.version, rubricHash: rubric.contentHash, network: order.network ?? network, taskSpec: rubric.taskSpec ?? order.taskSpec,
   };
 }
 

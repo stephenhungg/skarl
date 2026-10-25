@@ -98,19 +98,21 @@ export function validateAnnotationFile(value: unknown): AnnotationFile {
     sampleFps: finite(row.sampleFps, Number.MIN_VALUE, 60), videoWidth: integer(row.videoWidth, 1, 8192),
     videoHeight: integer(row.videoHeight, 1, 8192), advisory: true, frames };
 }
-/** Spatial overlap is a heuristic, not proof of grasp, cup color, action, or independent inference.
- * Require a positive-score cup plus a positive-score hand box overlapping it,
- * or an accompanying hand keypoint within the cup box. A person box alone is insufficient.
- */
-export function frameHasCupInHand(frame: AnnotationFrame): boolean {
-  const cups = (frame.objects ?? []).filter(item => /^(?:red[ _-]?)?cup$/i.test(item.label.trim()) && item.score > 0);
+/** Class-scoped spatial overlap is advisory evidence, never proof of grasp, color or action. */
+export function frameHasObjectInHand(frame: AnnotationFrame, detectorClass: string): boolean {
+  const objects = (frame.objects ?? []).filter(item => item.label.trim().toLowerCase() === detectorClass && item.score > 0);
   const hands = (frame.objects ?? []).filter(item => /^(?:(?:left|right)[ _-]?)?hand$/i.test(item.label.trim()) && item.score > 0);
-  return cups.some(({ box: [x, y, w, h] }) => w > 0 && h > 0 && (
+  return objects.some(({ box: [x, y, w, h] }) => w > 0 && h > 0 && (
     hands.some(({ box: [hx, hy, hw, hh] }) => hw > 0 && hh > 0 && Math.min(x + w, hx + hw) > Math.max(x, hx) && Math.min(y + h, hy + hh) > Math.max(y, hy)) ||
     (frame.hands ?? []).some(hand => hand.score > 0 && hand.keypoints.some(([px, py]) => px >= x && px <= x + w && py >= y && py <= y + h))
   ));
 }
-export function summarizeAnnotations(file: AnnotationFile) {
+/** Compatibility summary for old cup-only annotation records. */
+export function frameHasCupInHand(frame: AnnotationFrame): boolean {
+  return frameHasObjectInHand({ ...frame, objects: frame.objects?.map(item =>
+    /^(?:red[ _-]?)?cup$/i.test(item.label.trim()) ? { ...item, label: "cup" } : item) }, "cup");
+}
+export function summarizeAnnotations(file: AnnotationFile, detectorClass?: string | null) {
   const common = { kind: file.kind, frames: file.frames.length, durationMs: file.frames.at(-1)?.tMs ?? 0 };
   if (file.kind === "hands") return { ...common,
     handsDetectedFrames: file.frames.filter(frame => (frame.hands?.length ?? 0) > 0).length,
@@ -118,7 +120,8 @@ export function summarizeAnnotations(file: AnnotationFile) {
   if (file.kind === "objects") {
     const counts = new Map<string, number>();
     for (const frame of file.frames) for (const item of frame.objects ?? []) counts.set(item.label, (counts.get(item.label) ?? 0) + 1);
-    return { ...common, objectLabels: Object.fromEntries(counts), cupInHandFrames: file.frames.filter(frameHasCupInHand).length };
+    return { ...common, objectLabels: Object.fromEntries(counts), cupInHandFrames: file.frames.filter(frameHasCupInHand).length,
+      ...(detectorClass === undefined ? {} : { objectInHandFrames: detectorClass ? file.frames.filter(frame => frameHasObjectInHand(frame, detectorClass)).length : 0 }) };
   }
   return { ...common, masks: file.frames.reduce((sum, frame) => sum + (frame.masks?.length ?? 0), 0) };
 }

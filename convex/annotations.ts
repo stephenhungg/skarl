@@ -4,7 +4,8 @@ import type { Id } from "./_generated/dataModel";
 import { annotationSummary } from "./annotationValidators";
 import { hasOrderAuthority, isFinanceAgent, requireRole } from "./lib/demoAuth";
 import { requireTenant } from "./lib/finance";
-import { frameHasCupInHand, MAX_ANNOTATION_BYTES, summarizeAnnotations, validateAnnotationFile } from "./lib/derivedAnnotations";
+import { resolveTaskSpec, detectorClassForObject } from "./lib/taskSpec";
+import { frameHasObjectInHand, frameHasCupInHand, MAX_ANNOTATION_BYTES, summarizeAnnotations, validateAnnotationFile } from "./lib/derivedAnnotations";
 
 async function accessible(ctx: Pick<QueryCtx, "db" | "auth">, identity: string, submissionId: Id<"submissions">) {
   const principal = await requireRole(ctx, identity, ["buyer", "controller", "contributor"]);
@@ -51,11 +52,20 @@ export const saveDerived = mutation({
     if (!original || original.organizationId !== submission.organizationId || original.submissionId !== submission._id ||
       original.purpose !== "original" || original.contentHash !== file.sourceSha256) throw new Error("annotation_source_mismatch");
     if (original.durationMs !== undefined && file.frames.some(frame => frame.tMs > original.durationMs!)) throw new Error("annotation_timestamp_out_of_bounds");
+    const rubric = await ctx.db.get(submission.taskVersionId);
+    if (!rubric || rubric.organizationId !== submission.organizationId || rubric.orderId !== submission.orderId) throw new Error("task_rubric_mismatch");
+    const spec = resolveTaskSpec(rubric);
+    const detectorClass = spec ? detectorClassForObject(spec.object) : null;
     return ctx.db.insert("derivedAnnotations", {
       submissionId: submission._id, organizationId: submission.organizationId, kind: file.kind, model: file.model,
-      storageId: args.storageId, summary: summarizeAnnotations(file), createdBy: principal.tokenIdentifier,
+      storageId: args.storageId, summary: summarizeAnnotations(file, detectorClass), createdBy: principal.tokenIdentifier,
       createdAt: Date.now(), advisory: true,
-      ...(file.kind === "objects" ? { cupInHandTimestampsMs: file.frames.filter(frameHasCupInHand).map(frame => frame.tMs) } : {}),
+      ...(file.kind === "objects" ? {
+        ...(spec ? { taskObject: spec.object } : {}),
+        ...(detectorClass ? { detectorClass } : {}),
+        objectInHandTimestampsMs: detectorClass ? file.frames.filter(frame => frameHasObjectInHand(frame, detectorClass)).map(frame => frame.tMs) : [],
+        cupInHandTimestampsMs: file.frames.filter(frameHasCupInHand).map(frame => frame.tMs),
+      } : {}),
     });
   },
 });

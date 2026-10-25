@@ -1,6 +1,7 @@
 import { internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
+import { resolveTaskSpec } from "./lib/taskSpec";
 import { PAYMENT_NETWORK } from "../packages/contracts/src/chain";
 
 // Only the published demo and orders created by the fixed public demo path are
@@ -19,7 +20,7 @@ export const catalog = internalQuery({
       if (!rubric || rubric.orderId !== order._id || rubric.organizationId !== order.organizationId) return null;
       const remaining = order.quantityRequested - order.acceptedCount;
       return { orderId: order._id, title: order.title, status: order.status, network: order.network,
-        taskPrompt: rubric.taskPrompt, criteria: rubric.criteria,
+        taskPrompt: rubric.taskPrompt, criteria: rubric.criteria, taskSpec: resolveTaskSpec(rubric) ?? null,
         pricePerAcceptedClipAtomic: order.pricePerSampleAtomic.toString(), budgetAtomic: order.budgetAtomic.toString(),
         quantityRequested: order.quantityRequested.toString(), acceptedCount: order.acceptedCount.toString(),
         remainingQuota: (remaining > 0n ? remaining : 0n).toString(), deadlineAt: order.deadlineAt };

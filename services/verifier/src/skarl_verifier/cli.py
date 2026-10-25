@@ -50,6 +50,7 @@ def parser() -> argparse.ArgumentParser:
     validate = commands.add_parser("validate-report", help="Validate a report against typed and JSON contracts")
     validate.add_argument("report", type=Path)
     validate.add_argument("--schema", type=Path, help="Path to the canonical verification JSON Schema")
+    validate.add_argument("--task-spec", type=Path, help="Trusted order task spec JSON; never use model-generated metadata")
     validate.add_argument(
         "--criterion-id",
         action="append",
@@ -84,7 +85,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "validate-report":
-            report = load_report(args.report, args.schema, args.criterion_ids)
+            task_spec = json.loads(args.task_spec.read_text(encoding="utf-8")) if args.task_spec else None
+            report = load_report(args.report, args.schema, args.criterion_ids, task_spec)
             print(json.dumps({"valid": True, "reportId": report.reportId, "inferenceRan": False}))
             return 0
 

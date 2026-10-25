@@ -10,8 +10,9 @@ import { api, BUYER, type Id } from "@/features/dashboard/data";
 import { QueryBoundary } from "@/features/dashboard/ui";
 import { formatMs } from "@/features/dashboard/format";
 import { ReplayEvidencePanels } from "./evidence-panels";
-import { cupInHand, frameAt, readAnnotationFile, summarize, type AnnotationFile, type AnnotationFrame, type AnnotationModel, type AnnotationSummary, type LayerKind } from "./annotations";
+import { objectInHand, frameAt, readAnnotationFile, summarize, type AnnotationFile, type AnnotationFrame, type AnnotationModel, type AnnotationSummary, type LayerKind } from "./annotations";
 import { replayProxyUrl } from "./media-url";
+import { detectorClassForObject } from "../../../../convex/lib/taskSpec";
 import type { Hand, ObjectDetection, Mask } from "./models";
 
 // Explicit references let the web ship before this additive API is deployed.
@@ -33,6 +34,8 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
   const convex = useConvex();
   const media = useQuery(api.media.submissionEvidence, { demoIdentity: BUYER, submissionId });
   const report = useQuery(api.submissions.getReport, { demoIdentity: BUYER, submissionId });
+  const taskObject = media?.taskSpec?.object;
+  const detectorClass = taskObject ? detectorClassForObject(taskObject) : null;
   const video = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const adapters = useRef<Adapters>({});
@@ -52,7 +55,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
   const [reloadedFrames, setReloadedFrames] = useState<AnnotationFrame[]>([]);
   const reloaded = useRef<AnnotationFrame[]>([]);
   const latest = useRef<{ hands: Hand[]; objects: ObjectDetection[]; mask?: { tMs: number; mask: Mask; surface: HTMLCanvasElement } }>({ hands: [], objects: [] });
-  const [counts, setCounts] = useState({ hands: 0, objects: 0, cup: false });
+  const [counts, setCounts] = useState({ hands: 0, objects: 0, objectOverlap: false });
   const [maskInfo, setMaskInfo] = useState<Mask | null>(null);
   const lastRender = useRef(-1);
   const src = media?.clip?.url ? (proxied ? replayProxyUrl(media.clip.url) : media.clip.url) : undefined;
@@ -146,7 +149,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
     }
     if (layersRef.current.objects.enabled) for (const object of objects) {
       const [x,y,w,h] = object.box;
-      ctx.strokeStyle = object.label === "cup" ? warning : ink;
+      ctx.strokeStyle = object.label === detectorClass ? warning : ink;
       ctx.strokeRect(x * width, y * height, w * width, h * height);
       label(`${object.label} ${(object.score * 100).toFixed(0)}%`, x * width, y * height);
     }
@@ -164,7 +167,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
       }
       label(`Saved region · ${(savedMask.areaFrac * 100).toFixed(1)}% area`, x * width, y * height);
     }
-  }, []);
+  }, [detectorClass]);
 
   // Present the overlay at the decoded frame's media time, including after a seek.
   useEffect(() => {
@@ -178,15 +181,15 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
           if (layersRef.current.hands.enabled && adapters.current.hands) latest.current.hands = adapters.current.hands.detect(el, tMs);
           if (layersRef.current.objects.enabled && adapters.current.objects) latest.current.objects = adapters.current.objects.detect(el, tMs);
           lastRender.current = tMs;
-          setCounts({ hands: layersRef.current.hands.enabled ? latest.current.hands.length : 0, objects: layersRef.current.objects.enabled ? latest.current.objects.length : 0, cup: cupInHand(latest.current.hands, latest.current.objects) });
+          setCounts({ hands: layersRef.current.hands.enabled ? latest.current.hands.length : 0, objects: layersRef.current.objects.enabled ? latest.current.objects.length : 0, objectOverlap: objectInHand(latest.current.hands, latest.current.objects, taskObject) });
         } catch (error) { setNotice(`Overlay paused: ${friendlyError(error)}`); }
       }
       if (reloaded.current.length) {
         const sample = frameAt(reloaded.current, tMs);
         const hands = layersRef.current.hands.enabled ? sample?.hands ?? [] : [];
         const objects = layersRef.current.objects.enabled ? sample?.objects ?? [] : [];
-        const cup = cupInHand(hands, objects);
-        setCounts(previous => previous.hands === hands.length && previous.objects === objects.length && previous.cup === cup ? previous : { hands: hands.length, objects: objects.length, cup });
+        const objectOverlap = objectInHand(hands, objects, taskObject);
+        setCounts(previous => previous.hands === hands.length && previous.objects === objects.length && previous.objectOverlap === objectOverlap ? previous : { hands: hands.length, objects: objects.length, objectOverlap });
       }
       setNow(previous => Math.abs(previous - tMs) >= 100 ? tMs : previous); draw(tMs);
     };
@@ -199,7 +202,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
     else { const tick = () => { update(el.currentTime * 1000); fallback = requestAnimationFrame(tick); }; fallback = requestAnimationFrame(tick); }
     el.addEventListener("seeked", onSeek); el.addEventListener("loadeddata", onSeek);
     return () => { cancelled = true; if (handle) el.cancelVideoFrameCallback(handle); if (fallback) cancelAnimationFrame(fallback); el.removeEventListener("seeked", onSeek); el.removeEventListener("loadeddata", onSeek); };
-  }, [src, draw]);
+  }, [src, draw, taskObject]);
   useEffect(() => {
     lastRender.current = -1;
     const el = video.current;
@@ -210,10 +213,10 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
         if (layers.hands.enabled && adapters.current.hands) latest.current.hands = adapters.current.hands.detect(el, tMs);
         if (layers.objects.enabled && adapters.current.objects) latest.current.objects = adapters.current.objects.detect(el, tMs);
       }
-      setCounts({ hands: layers.hands.enabled ? latest.current.hands.length : 0, objects: layers.objects.enabled ? latest.current.objects.length : 0, cup: cupInHand(latest.current.hands, latest.current.objects) });
+      setCounts({ hands: layers.hands.enabled ? latest.current.hands.length : 0, objects: layers.objects.enabled ? latest.current.objects.length : 0, objectOverlap: objectInHand(latest.current.hands, latest.current.objects, taskObject) });
       draw(tMs);
     } catch (error) { setNotice(`Overlay unavailable: ${friendlyError(error)}`); }
-  }, [layers, draw, reloadedFrames]);
+  }, [layers, draw, reloadedFrames, taskObject]);
 
   const seek = (tMs: number) => { if (video.current) video.current.currentTime = Math.max(0, tMs / 1000); };
   const segment = async (prompt: { x: number; y: number }) => {
@@ -338,7 +341,7 @@ export default function ReplayStudio({ submissionId }: { submissionId: Id<"submi
             </div>)}
           </div>
           {layers.masks.enabled && <div className="mt-2 flex flex-wrap items-center gap-2"><p className="type-body-sm text-text-2">Pause, then click the region to inspect.</p><Button variant="secondary" size="sm" disabled={segmenting || saving || !src || layers.masks.loading} pending={segmenting} pendingLabel="Segmenting" onClick={() => void segment({ x: 0.5, y: 0.5 })}>Segment center</Button></div>}
-          <p className="mt-3 type-body-sm text-text-2">{counts.hands} hands · {counts.objects} objects{counts.cup && layers.hands.enabled && layers.objects.enabled ? " · Cup overlaps hand bounds (heuristic)" : ""}</p>
+          <p className="mt-3 type-body-sm text-text-2">{counts.hands} hands · {counts.objects} objects{counts.objectOverlap && layers.hands.enabled && layers.objects.enabled ? ` · ${taskObject?.replaceAll("_", " ")} overlaps hand bounds (heuristic)` : ""}{!detectorClass ? " · Task-object detector witness: not applicable (no faithful detector class)" : ""}</p>
           {maskInfo && <p className="mt-1 type-caption text-text-3">Selected at {formatMs(latest.current.mask?.tMs ?? 0)} · estimated mask area {(maskInfo.areaFrac * 100).toFixed(1)}% · normalized bounds {maskInfo.bbox.map(value => value.toFixed(3)).join(", ")}</p>}
         </div><div className="shell-foot flex flex-wrap items-center gap-3">
           <p className="me-auto type-caption text-text-3">Client computed. Model downloads start when enabled.</p>

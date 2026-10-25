@@ -1,3 +1,4 @@
+import { RED_CUP_TASK_SPEC } from "../../../../../convex/lib/taskSpec";
 import { authenticateConvexRequest } from "../../../lib/auth/server";
 import { createHmac, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 const terms = { demo: true, testnet: true, price: "1.000000", amountAtomic: DEMO_ORDER_BUDGET.toString(),
   currency: "USDC", network: PAYMENT_NETWORK, asset: PAYMENT_RAILS[PAYMENT_NETWORK].token,
-  task: "Pick up the red cup and place it on the marked coaster. Narrate each action.",
+  task: [...RED_CUP_TASK_SPEC.steps, ...(RED_CUP_TASK_SPEC.narration ?? [])].join(". ") + ".",
   autoPay: { enabled: true, maxPerClipAtomic: DEMO_ORDER_BUDGET.toString(), requireAllChecks: true },
   limits: { perIpPerHour: DEMO_ORDER_IP_LIMIT, globalPerHour: DEMO_ORDER_GLOBAL_LIMIT } };
 
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
           !("requireAllChecks" in rule) || rule.requireAllChecks !== true || parseAtomicUsdc(rule.maxPerClipAtomic) <= 0n) throw new Error();
         autoPay = { enabled: rule.enabled, maxPerClipAtomic: rule.maxPerClipAtomic, requireAllChecks: true };
       }
-    } catch { return paymentJson({ error: "invalid_order_body", message: "Send {} or a valid autoPay rule. Demo budget and red-cup task are fixed." }, 400); }
+    } catch { return paymentJson({ error: "invalid_order_body", message: "Send {} or a valid autoPay rule. Demo budget and task rubric are fixed." }, 400); }
   }
   try {
     const payTo = treasuryAddress();

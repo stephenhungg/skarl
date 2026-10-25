@@ -2,7 +2,7 @@
 import { useEffect, useRef } from "react";
 
 // Halftone field on a 10px module. Each cell's darkness picks a dot size (7 steps). Until a hands-only clip
-// of the red cup task exists, the source is a slow procedural field; swap `sample` for a video read later.
+// of a task recording exists, the source is a slow procedural field; swap `sample` for a video read later.
 // Every ~3s one column briefly fills with the accent, like a timeline marker.
 
 const CELL = 10;

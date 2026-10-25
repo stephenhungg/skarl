@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { hasOrderAuthority, requireRole, type DemoPrincipal } from "./lib/demoAuth";
 import { requireTenant } from "./lib/finance";
 import { alignFrameHashes } from "./lib/copyDetection";
+import { resolveTaskSpec } from "./lib/taskSpec";
 
 async function principal(ctx: QueryCtx, identity: string) {
   const member = await requireRole(ctx, identity, ["buyer", "controller", "contributor"]);
@@ -40,6 +41,9 @@ function transcript(observationsJson: string | undefined) {
 }
 
 async function evidence(ctx: QueryCtx, submission: Doc<"submissions">) {
+  const rubric = await ctx.db.get(submission.taskVersionId);
+  if (!rubric || rubric.organizationId !== submission.organizationId || rubric.orderId !== submission.orderId) throw new Error("task_rubric_mismatch");
+  const taskSpec = resolveTaskSpec(rubric);
   const analysis = submission.currentAnalysisId ? await ctx.db.get(submission.currentAnalysisId) : null;
   if (analysis && (analysis.organizationId !== submission.organizationId || analysis.submissionId !== submission._id ||
     analysis.taskVersionId !== submission.taskVersionId || analysis.sourceHash !== submission.sourceHash)) throw new Error("analysis_source_mismatch");
@@ -58,7 +62,7 @@ async function evidence(ctx: QueryCtx, submission: Doc<"submissions">) {
       url: await ctx.storage.getUrl(asset.storageId) });
   }
   frames.sort((a, b) => a.timestampMs - b.timestampMs || a.assetId.localeCompare(b.assetId));
-  return { submissionId: submission._id, analysisId: analysis?._id ?? null,
+  return { submissionId: submission._id, taskSpec, analysisId: analysis?._id ?? null,
     clip: original && original.status !== "quarantined" ? { assetId: original._id, mimeType: original.mimeType,
       status: original.status, durationMs: original.durationMs ?? null, url: await ctx.storage.getUrl(original.storageId) } : null,
     frames: frames.filter(frame => frame.kind !== "dhash"),

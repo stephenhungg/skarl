@@ -32,7 +32,7 @@ export default function NewOrderPage() {
     <section className="mx-auto mt-16 max-w-xl rounded-[20px] border border-haze bg-paper p-8">
       <p className="mono text-xs text-slate-700">Base Sepolia · test USDC only</p>
       <h1 className="cut-medium mt-3 text-3xl">Post a task</h1>
-      <p className="mt-4 leading-relaxed text-slate-700">This demo buys one red-cup demonstration for 1 USDC. The contributor picks up the cup, places it on the marked coaster and narrates each action.</p>
+      <p className="mt-4 leading-relaxed text-slate-700">This demo buys one narrated demonstration for 1 USDC using the fixed demo rubric. Contributors see its exact objects and ordered steps before recording.</p>
       {created ? <div className="mt-6" role="status">
         <p className="cut-medium">Order created. Funding is still required.</p>
         <p className="mono mt-2 break-all text-sm">{created.orderId}</p>

@@ -1,4 +1,5 @@
 import type { Hand, ObjectDetection } from "./models";
+import { detectorClassForObject } from "../../../../convex/lib/taskSpec";
 import { validateAnnotationFile, type AnnotationFile, type AnnotationFrame, type AnnotationKind } from "../../../../convex/lib/derivedAnnotations";
 
 export type { AnnotationFile, AnnotationFrame };
@@ -9,14 +10,21 @@ export type AnnotationSummary = {
   objectLabels?: Record<string, number>; cupInHandFrames?: number; masks?: number; durationMs: number;
 };
 
-export function cupInHand(hands: Hand[], objects: ObjectDetection[]): boolean {
-  return objects.some(object => object.label.toLowerCase() === "cup" && hands.some(hand => {
-    if (!hand.keypoints.length) return false;
+export function objectInHand(hands: Hand[], objects: ObjectDetection[], taskObject?: string): boolean {
+  const detectorClass = taskObject ? detectorClassForObject(taskObject) : null;
+  if (!detectorClass) return false;
+  return objects.some(object => object.score > 0 && object.label.toLowerCase() === detectorClass && hands.some(hand => {
+    if (hand.score <= 0 || !hand.keypoints.length) return false;
     const xs = hand.keypoints.map(point => point[0]), ys = hand.keypoints.map(point => point[1]);
     const [x, y, w, h] = object.box;
     return Math.max(x, Math.min(...xs)) < Math.min(x + w, Math.max(...xs)) &&
       Math.max(y, Math.min(...ys)) < Math.min(y + h, Math.max(...ys));
   }));
+}
+
+/** Legacy annotation summaries retain their historical cup-only field. */
+export function cupInHand(hands: Hand[], objects: ObjectDetection[]): boolean {
+  return objectInHand(hands, objects, "cup");
 }
 
 export function summarize(file: AnnotationFile, durationMs: number, pairedFrames?: AnnotationFrame[]): AnnotationSummary {

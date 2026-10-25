@@ -450,3 +450,16 @@ test("content-only validation refuses removed operational liveness, altered unre
   discarded.observations.evaluation.qualityReportHash = sha(canonical(discarded.observations.evaluation.qualityReport));
   assert.throws(() => validateStoredReport(discarded, item, run), /declared content-evaluation guards/);
 });
+
+
+test("a frozen can rubric can use its own criterion IDs without red-cup leakage", async t => {
+  const f = await fixture(t);
+  f.manifest.criterionIds = ["can-pickup", "hat-placement", "narration-alignment"];
+  f.manifest.samples[0].expected.criteria = Object.fromEntries(f.manifest.criterionIds.map(id => [id, "supported"]));
+  await f.save();
+  const preflight = await preflightManifest(f.manifestPath);
+  assert.deepEqual(preflight.criterionIds, f.manifest.criterionIds);
+  f.manifest.samples[0].expected.criteria = expected("accept").criteria;
+  await f.save();
+  await assert.rejects(preflightManifest(f.manifestPath), /frozen task criterion IDs/);
+});

@@ -9,6 +9,7 @@ import { requireBuyerOrder, actorFor, audit, digest, normalizeAddress, loadLedge
 import { MAX_ATOMIC_USDC, parseAtomicUsdc, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
 
 import { accountBalance, createRefundReservedJournal } from "../packages/ledger/src/index";
+import { normalizeTaskSpec, resolveTaskSpec, taskSpecValidator } from "./lib/taskSpec";
 import { diversityValidator, normalizeDiversity } from "./lib/diversity";
 
 const criterion = v.object({ criterionId: v.string(), description: v.string(),
@@ -18,7 +19,7 @@ const criterion = v.object({ criterionId: v.string(), description: v.string(),
 export const createOrder = mutation({
   args: { demoIdentity: v.string(), requestId: v.string(), title: v.string(), buyerWalletAddress: v.string(),
     quantityRequested: v.string(), pricePerSampleAtomic: v.string(), contributorRateAtomic: v.string(),
-    deadlineAt: v.number(), taskPrompt: v.string(), criteria: v.array(criterion), diversity: v.optional(diversityValidator),
+    deadlineAt: v.number(), taskPrompt: v.string(), taskSpec: v.optional(taskSpecValidator), criteria: v.array(criterion), diversity: v.optional(diversityValidator),
     autoPay: v.optional(v.object({ enabled: v.boolean(), maxPerClipAtomic: v.string(), requireAllChecks: v.literal(true) })) },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, "buyer");
@@ -37,7 +38,10 @@ export const createOrder = mutation({
     const diversity = normalizeDiversity(args.diversity, quantityRequested);
     const buyerWalletAddress = normalizeAddress(args.buyerWalletAddress);
     if (buyerWalletAddress === `0x${"0".repeat(40)}`) throw new Error("invalid_buyer_wallet");
-    const contentHash = digest({ version: 1, taskPrompt, criteria: args.criteria });
+    const taskSpec = args.taskSpec === undefined ? resolveTaskSpec({ criteria: args.criteria }) : normalizeTaskSpec(args.taskSpec);
+    // Preserve legacy request bindings when callers omit the optional structured spec.
+    const contentHash = digest({ version: 1, taskPrompt, criteria: args.criteria,
+      ...(args.taskSpec === undefined ? {} : { taskSpec }) });
     const termsHash = digest({ title, quantityRequested, pricePerSampleAtomic, contributorRateAtomic, budgetAtomic,
       deadlineAt: args.deadlineAt, buyerWalletAddress, contentHash, autoPay: policyTerms, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
       ...(diversity !== undefined ? { diversity } : {}) });
@@ -51,11 +55,12 @@ export const createOrder = mutation({
     const now = Date.now();
     const orderId = await ctx.db.insert("orders", { organizationId: principal.organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
       autoPay: { ...policyTerms, setBy: principal.tokenIdentifier, setAt: now },
+      ...(taskSpec ? { taskSpec } : {}),
       publicId, buyerTokenIdentifier: principal.tokenIdentifier, buyerWalletAddress, title, status: "awaiting_funding",
       ...(diversity !== undefined ? { diversity } : {}),
       quantityRequested, pricePerSampleAtomic, contributorRateAtomic, budgetAtomic, acceptedCount: 0n, deadlineAt: args.deadlineAt, termsHash, updatedAt: now });
     const taskVersionId = await ctx.db.insert("rubricVersions", { organizationId: principal.organizationId, orderId, version: 1,
-      taskPrompt, criteria: args.criteria, contentHash, createdByTokenIdentifier: principal.tokenIdentifier, frozenAt: now });
+      taskPrompt, criteria: args.criteria, contentHash, ...(taskSpec ? { taskSpec, taskSpecHash: digest({ contentHash, taskSpec }) } : {}), createdByTokenIdentifier: principal.tokenIdentifier, frozenAt: now });
     await ctx.db.patch(orderId, { taskVersionId });
     await audit(ctx, { organizationId: principal.organizationId, eventKey: `order_created:${orderId}`, actor: actorFor(principal),
       action: "order_created", entityType: "orders", entityId: orderId,

@@ -1,3 +1,4 @@
+import { RED_CUP_TASK_SPEC } from "./lib/taskSpec";
 import { convexTest, type TestConvex } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
@@ -69,7 +70,7 @@ async function completion(f: Fixture, item: Awaited<ReturnType<typeof create>>, 
     modelRuns: [{ provider: "mock", model: "synthetic-observations", promptVersion: "test-v1" }],
     duplicate: { status: "clear", matches: [] },
   });
-  expect(validateVerificationReportForRubric(report, rubric.criteria.map(c => c.criterionId))).toEqual({ valid: true, errors: [] });
+  expect(validateVerificationReportForRubric(report, rubric.criteria.map(c => c.criterionId), RED_CUP_TASK_SPEC)).toEqual({ valid: true, errors: [] });
   expect(report.recommendation).toBe("accept");
   const reportJson = canonical(report);
   const reportStorageId = await f.t.run(ctx => ctx.storage.store(new Blob([reportJson], { type: "application/json" })));
@@ -122,7 +123,7 @@ describe("submission lifecycle and evidence boundaries", () => {
     expect(state.consents[0]).toMatchObject({ submissionId: item.submissionId, licenseVersion: "demo-consent-v1" });
     expect(state.consents[0]?.receiptHash).toMatch(/^[a-f0-9]{64}$/);
     expect(state.jobs).toHaveLength(1);
-    expect(state.jobs[0]).toMatchObject({ status: "pending", attempt: 0, leaseGeneration: 0, pipelineVersion: "red-cup-evidence-1.2" });
+    expect(state.jobs[0]).toMatchObject({ status: "pending", attempt: 0, leaseGeneration: 0, pipelineVersion: "task-evidence-2.0" });
     expect(state.scheduled).toHaveLength(1);
     expect(state.scheduled[0]?.state.kind).toBe("pending");
     expect(state.order?.status).toBe("awaiting_funding");
@@ -259,7 +260,7 @@ describe("submission lifecycle and evidence boundaries", () => {
       journals: await ctx.db.query("journalEntries").collect(), audits: await ctx.db.query("auditEvents").collect() }));
     expect(state.analyses).toHaveLength(1);
     expect(state.analyses[0]).toMatchObject({ _id: analysisId, reportHash: digest(value.report), reportStorageId: value.args.reportStorageId,
-      pipelineVersion: "red-cup-evidence-1.2", pipelineStatus: "completed", recommendation: "accept", perceptualHashSource: "serverComputed" });
+      pipelineVersion: "task-evidence-2.0", pipelineStatus: "completed", recommendation: "accept", perceptualHashSource: "serverComputed" });
     expect(state.job?.status).toBe("completed");
     expect(state.submission).toMatchObject({ status: "needs_review", currentAnalysisId: analysisId });
     expect(state.audits.filter(event => event.action === "analysis_stored")).toHaveLength(1);
@@ -285,8 +286,8 @@ describe("submission lifecycle and evidence boundaries", () => {
     const f = await setup(), item = await create(f);
     await f.t.run(ctx => ctx.db.patch(item.job._id, { pipelineVersion: "red-cup-evidence-1.1" }));
     const claimed = await claimAndFacts(f, item);
-    expect(claimed.job.pipelineVersion).toBe("red-cup-evidence-1.2");
-    expect((await f.t.run(ctx => ctx.db.get(item.job._id)))?.pipelineVersion).toBe("red-cup-evidence-1.2");
+    expect(claimed.job.pipelineVersion).toBe("task-evidence-2.0");
+    expect((await f.t.run(ctx => ctx.db.get(item.job._id)))?.pipelineVersion).toBe("task-evidence-2.0");
     const value = await completion(f, item, claimed.generation);
     // Simulate a 1.1 action that was already leased before rollout: its report
     // remains valid even though it never collected the new optional challenge.
@@ -296,7 +297,7 @@ describe("submission lifecycle and evidence boundaries", () => {
     });
     const report = { ...value.report, pipeline: { ...value.report.pipeline, version: "red-cup-evidence-1.1" },
       criteria: value.report.criteria.map(criterion => ({ ...criterion, evidence: criterion.evidence.filter(evidence => !evidence.claim.startsWith("Spoken liveness matched")) })) };
-    expect(validateVerificationReportForRubric(report, report.criteria.map(criterion => criterion.criterionId)).valid).toBe(true);
+    expect(validateVerificationReportForRubric(report, report.criteria.map(criterion => criterion.criterionId), RED_CUP_TASK_SPEC).valid).toBe(true);
     expect(await f.t.mutation(internal.submissions.complete, { ...value.args, reportJson: canonical(report), reportHash: digest(report), observationsJson: "{}" })).toBeTruthy();
   });
 
@@ -322,7 +323,7 @@ describe("submission lifecycle and evidence boundaries", () => {
     expect(recovered.analysisId).toBeTruthy();
     const stored = await f.t.query(api.submissions.getReport, { demoIdentity:"controller",submissionId:item.submissionId });
     expect(stored.report).toMatchObject({recommendation:"needs_review",pipeline:{status:"failed",modelRuns:[]}});
-    expect(validateVerificationReportForRubric(stored.report,value.report.criteria.map(c=>c.criterionId)).valid).toBe(true);
+    expect(validateVerificationReportForRubric(stored.report,value.report.criteria.map(c=>c.criterionId), RED_CUP_TASK_SPEC).valid).toBe(true);
     await expect(f.t.mutation(internal.submissions.complete,value.args)).rejects.toThrow("analysis_replay_conflict");
     expect(await f.t.action(internal.verify.interrupted,{jobId:item.job._id,generation:1})).toEqual({skipped:true});
   });

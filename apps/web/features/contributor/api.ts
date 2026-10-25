@@ -19,6 +19,7 @@ export type OrderSummary = {
   order: {
     _id: string; title: string; status: string; quantityRequested: string; acceptedCount: string;
     pricePerSampleAtomic: string; contributorRateAtomic: string; deadlineAt: number; network: string;
+    taskSpec?: { object: string; distractors: string[]; target: string; steps: string[]; narration?: string[] };
   };
   rubric: Rubric | null;
   demoOnly: true;

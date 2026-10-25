@@ -3,7 +3,7 @@ import { mutation } from "./_generated/server";
 import { requireRole } from "./lib/demoAuth";
 
 export const CHALLENGE_TTL_MS = 2 * 60_000;
-// Fixed, pronounceable words; exclude the task's cup/coaster/action vocabulary.
+// Fixed, pronounceable words; independent of task object, destination and action vocabulary.
 export const LIVENESS_WORDS = [
   "apple", "apron", "arrow", "bacon", "badge", "basket", "beach", "bean",
   "bear", "bell", "berry", "bird", "blanket", "boat", "bone", "book",
