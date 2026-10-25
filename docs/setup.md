@@ -39,7 +39,7 @@ python -m skarl_verifier --help
 
 See [the verifier README](../services/verifier/README.md) for exact report-validation/scaffold commands and optional ML extras. Core tests require no GPU, model download, network calls or private videos. They validate contracts and failure behavior, not inference quality.
 
-The demo calls Gemini from a Convex action, so no Python inference stack is needed tonight. FFmpeg, model weights and the ASR/copy-model extras belong to the deferred worker. Do not install large GPU packages merely to make a placeholder worker start. Production Python dependencies should be locked once the live adapter and target hardware are chosen; the core editable scaffold install is not a reproducible ML deployment.
+The demo calls Gemini from a Node Convex action and uses external `ffmpeg-static` for media isolation/fingerprints, so no Python inference stack is needed tonight. Python model weights and ASR/copy-model extras belong to the deferred worker. Do not install large GPU packages merely to make a placeholder worker start. Production Python dependencies should be locked once the live adapter and target hardware are chosen; the core editable scaffold install is not a reproducible ML deployment.
 
 ## Shared Convex dev deployment
 
@@ -109,11 +109,39 @@ cash. Acceptance stays blocked until the upload/analysis, wallet verification
 and trusted funding integrations supply their real prerequisites. Convex tests
 supply explicitly synthetic fixtures for these boundaries.
 
+## Task 2 verification and local sample
+
+The Convex deployment holds `GEMINI_API_KEY` as a server-side secret. It is never
+read by the local sample script or browser. Configure model IDs on the deployment:
+
+```sh
+pnpm exec convex env set GEMINI_VIDEO_MODEL gemini-3.8-flash
+pnpm exec convex env set GEMINI_AUDIO_MODEL gemini-3.5-transcribe
+pnpm verify:sample /absolute/path/to/clip.mp4
+```
+
+These are the code defaults. The sample script uploads the supplied clip, creates
+an explicitly verification-only contribution, waits for its scheduled action and
+prints the stored report/observations. It does not grant training rights or
+request acceptance/payment. Do not commit media. See [AI verification](ai-verification.md)
+for MIME, frame-hash and report APIs; the browser recorder/dashboard remain their
+owners' integration work.
+
+On clean installs pnpm permits the pinned `ffmpeg-static` install script. Convex
+installs it as an external Node dependency; the action copies its binary into a
+private temporary directory and restores executable permission before use.
+Nothing under `node_modules` or temporary media belongs in Git. All new Convex
+functions use committed generated API types.
+
+Model listing does not prove inference quota. The key's Argon media probe
+returned HTTP 429 with zero free-tier daily requests; no billing upgrade was
+performed. Flash capacity/schema failures and ordinary timeouts produce stored
+review-only reports. Do not replace those with a fabricated successful result.
+
 ## Remaining integrations
 
-- Set `GEMINI_API_KEY` in the Convex deployment environment when implementing the
-  upcoming analysis action. The Railway/Python inference worker remains deferred.
-- Implement private upload/media and verified contributor-wallet provisioning.
+- The Railway/Python inference worker remains deferred; no GPU stack is needed.
+- Implement licensed private-media downloads and actual contributor-wallet verification.
 - The payment owner needs a server-only CDP key, controller Coinbase Wallet and
   Base Sepolia test USDC. Buyer funding requires no ETH; controller payout gas
   is a separate wallet concern. No server-side signing key is part of this design.

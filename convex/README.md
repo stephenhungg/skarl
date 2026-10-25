@@ -6,8 +6,11 @@ Dashboard: https://dashboard.convex.dev/d/keen-marmot-986.
 This backend implements the Task 1 demo finance path: internal idempotent seed,
 persisted role checks, atomic acceptance/delivery/payable/journal posting,
 outgoing payment proposals, independent approval and dashboard queries.
-It does not implement production auth, uploads, Gemini inference, wallet
-verification, funding confirmation, payout execution or chain reconciliation.
+Task 2 adds `submissions.ts`, scheduled Node `verify.ts`, byte hashing, isolated
+media, model observations and canonical report persistence. Provider failures
+remain review-only; see [measured state](../docs/status.md). Production auth,
+licensed media downloads, wallet verification, funding confirmation, payout
+execution and chain reconciliation remain unimplemented.
 
 ## Files and API
 
@@ -19,6 +22,8 @@ verification, funding confirmation, payout execution or chain reconciliation.
 - `finance.ts`: `acceptAndPublish`, `proposePayment`, `approve`.
 - `dashboard.ts`: `demoContext`, `orderSummary`, `submissions`, `payables`,
   `journal`, `auditEvents`. Financial JSON fields are decimal integer strings.
+- `verify.ts`, `submissions.ts`: scheduled verification, fenced completion and contributor report access.
+- `lib/media.ts`, `lib/gemini.ts`, `lib/verificationReport.ts`, `lib/copyDetection.ts`: media separation, provider calls and deterministic evidence/copy checks.
 - `finance.test.ts`: isolated `convex-test` regressions; synthetic data only.
 - `health.ts`: public capability metadata, `stage: "demo_backend"`.
 

@@ -1,77 +1,182 @@
-# AI verification architecture
+# AI Verification: Task 2
 
-Status: architecture and validation scaffold. No model has been benchmarked for Skarl, and no inference adapter is implemented yet.
+The shared Convex dev deployment now has a scheduled Node verification pipeline,
+private upload workflow, server-computed original SHA-256, separate visual/audio
+observations, deterministic red-cup comparison and canonical report validation.
+The measured live run and remaining limits are recorded below. Tests use mocked
+Gemini outputs except the separately identified cloud sample. No training-data
+quality benchmark or real human demonstration evaluation has been completed.
 
-**Demo pipeline (tonight):** a Convex action makes two independent Gemini calls (a silent-video call, then a separate audio call), aligns them, and validates the report against the shared schema. Duplicates are found with SHA-256 plus a sampled-frame perceptual hash. Anything invalid or unavailable routes to review. **Deferred:** FFmpeg normalization in a Python worker, faster-whisper, SSCD temporal matching and threshold calibration. Their design is kept below. The target is a bounded, narrated human-action recording, not generalized proof of real-world work.
+## Implemented pipeline
 
-## Product boundary
+1. A contributor obtains `submissions.generateUploadUrl`, uploads directly to
+   Convex storage, then calls `submissions.create`. The mutation checks persisted
+   demo membership, consent, frozen rubric, file metadata/size and an idempotent
+   client request ID; it creates the submission/job and schedules `verify.run`.
+2. The internal Node action claims one fenced generation, reads the stored Blob
+   and recomputes SHA-256 over its bytes. It compares with Convex's server storage
+   metadata hash; client claims cannot supply the authoritative source hash.
+3. `ffmpeg-static` runs as an external Node dependency. Cloud package files lost
+   executable permission (`EACCES` observed); each invocation copies the binary
+   into its own private temporary directory, applies mode 0700 and removes it
+   with all derived media in `finally`. Concurrent-request tests use distinct
+   copies. There is no shell interpolation or network-enabled demuxing.
+4. FFmpeg produces an H.264 MP4 with audio actually removed (`-an`) and a separate
+   mono 16 kHz PCM WAV. The visual call receives twelve JPEG frames extracted by accurate seeks
+   from original clip times, at <=320px and <=100KiB/frame. JPEGs cannot carry
+   the audio stream; only the separate WAV goes to speech. No transcript or
+   audio observation is supplied to the visual model. Frame times approximate
+   the requested point within one source-frame interval, not exact event times.
+5. The visual response schema caps events at eight (the local parser separately
+   enforces all shape/bounds rules); large constrained-output arrays stalled
+   during integration. Native-video requests also returned 503/timeouts, so
+   timestamped image input is the implemented visual path. Two independent logical Gemini stages run concurrently through the
+   Interactions API with `store: false`, no tools and one 90-second deadline per
+   stage. Transient 429/503 responses receive at most two bounded backoff retries
+   inside that deadline. Other errors fail immediately with sanitized codes.
+6. Visual event intervals must contain at least one actual sampled frame time;
+   otherwise the observation is invalid and routes to review. Video returns structured visible action/object/target intervals; it cannot
+   return an acceptance recommendation. The default audio model returns
+   structured verbatim word annotations. Deterministic English parsing turns
+   those into narrated action claims. Zero-duration quantized words are grouped
+   with adjacent provider-timed words while preserving transcript text and
+   provider interval endpoints; new word timing is not invented.
+7. Deterministic code compares red-cup pickup, coaster placement/order and
+   speech/action agreement (two-second alignment tolerance). Only the three
+   known seeded criteria, descriptions and modalities are supported. Unknown
+   rubric semantics, ambiguous objects, missing modalities, instruction-like
+   narration, duplicate candidates or failures route to review. A contradiction
+   may request correction. Model text never sets financial state.
+8. `validateVerificationReportForRubric` checks every report against the shared
+   JSON Schema, Unicode/timestamp constraints and rubric IDs before the Node
+   action stores it. The validator imports the schema statically so it works in
+   the bundled action; it no longer reads a local schema file at runtime.
+9. The internal completion mutation checks job generation, source/rubric/version,
+   report hash and current submission before atomically storing the immutable
+   report/projection and moving the submission to review/correction. It creates
+   no payable, acceptance decision or payment. A five-minute watchdog handles
+   interrupted jobs by exposing review rather than leaving a spinner.
 
-The first order asks a contributor to pick up a red cup, place it on a marked coaster, and narrate the action. Capture uses one fixed camera, two clearly distinguishable cups, one visible target, and a 10–30 second clip. The verifier recommends whether the recording satisfies a versioned task rubric. An authorized reviewer accepts the work; finance creates the payable from that acceptance. The verifier never approves or executes a payment.
+## Measured cloud run and live limitation
 
-The first three cases are a valid demonstration, an edited copy of a previous recording, and a mismatch between narration and visible action. Ambiguous footage produces `unobservable` findings and human review. It does not produce an invented successful event.
+The latest ten-second synthetic clip completed the cloud action in **8,942 ms**.
+Its real `gemini-3.5-transcribe` audio round trip was **1,262 ms** and the transcript
+was stored. Server hashing, actual FFmpeg processing and canonical failure-report
+persistence ran. The visual stage returned HTTP 503; the final report is failed /
+needs_review. Earlier native-video attempts and a minimal image probe also failed
+or timed out. A listed Argon model returned 429 with zero free-tier quota. **No
+successful live visual observation or real human-demo quality result is claimed.**
+See [current status](status.md#task-2-verification-and-actual-provider-state).
 
-## Evidence-producing pipeline
+## Models and configuration
 
-1. **Validate and preserve the upload.** Keep the original object private and immutable. Compute SHA-256, inspect duration, dimensions, streams, and codec with `ffprobe`, and enforce file and processing limits before model calls. Derive a normalized MP4 preview, sampled frames, and mono audio. Preserve presentation timestamps and the transform mapping; variable frame rate makes frame-index arithmetic unreliable.
-2. **Observe the silent video.** Remove the audio from the visual input. Ask for observed objects and actions, their order, and supporting intervals before exposing the narration. A person's spoken assertion must not become the visual observation.
-3. **Observe the audio independently.** Transcribe the audio with word timestamps. Extract spoken object references and action claims. Keep original text and timing; do not silently repair a transcript to match the expected task.
-4. **Compare against the rubric.** Evaluate each criterion as `supported`, `contradicted`, or `unobservable`. Compare the spoken object, observed object, action sequence, and target location. Retain references to both modalities when reporting a contradiction.
-5. **Reinspect uncertain intervals.** Read a short interval at higher frame density when an action is too fast or occluded. If the evidence remains inadequate, request another view or recording. Model-generated timestamps are hypotheses that must point to actual evidence.
-6. **Check for copies separately.** Exact file hashes find exact repeats. Copy-specific image descriptors plus temporal matching retrieve likely edited repeats. The output is a review candidate with matching segments, not a fraud verdict.
-7. **Persist the run.** Record the original media hash, rubric version, model/configuration, pipeline version, evidence, failures, and recommendation. An immutable report supports a separately recorded acceptance decision. Retries must not create new acceptance or financial events.
+Set these **on the Convex deployment**, never in browser code:
 
-Untrusted video, speech, and on-screen text are evidence. They are never system instructions. A spoken request to change a rate or approve a payment has no authority.
+```dotenv
+GEMINI_VIDEO_MODEL=gemini-3.8-flash
+GEMINI_AUDIO_MODEL=gemini-3.5-transcribe
+```
 
-## Initial model choices
+`GEMINI_API_KEY` is configured only as a Convex secret. No key belongs in Git,
+reports, logs or the sample script. The model IDs above are code defaults;
+`gemini-4-argon` is an available configurable alternative, not a silent fallback.
+If `GEMINI_AUDIO_MODEL` names a general Gemini model, the adapter requests strict
+JSON transcript/segments/claims and checks claims against the actual transcript.
+The Transcribe adapter uses its native structured `word_info` annotations,
+verbatim mode and word timestamps; it does not ask that ASR model to make a
+semantic acceptance decision. No third model call performs comparison.
 
-| Stage | Initial choice | Reason and constraint |
-| --- | --- | --- |
-| Video semantics | `gemini-3.8-flash` (configurable via `SKARL_GEMINI_MODEL`) through the Google GenAI SDK | Hosted video understanding avoids deploying a large VLM. Structured output is validated against the shared contract. It is a recommendation source, not accounting authority. |
-| Narration | Demo: a separate audio-only Gemini call. Deferred: `faster-whisper` `base.en` on CPU INT8 | Separate audio-only observations with timestamps. Not seeing the video keeps the audio evidence independent. |
-| Copy detection | Demo: SHA-256 + sampled-frame perceptual hash. Deferred: Meta SSCD `sscd_disc_mixup` | Catches exact and re-encoded copies cheaply; SSCD needs labeled calibration data that does not exist yet. |
-| Decoding and alignment (deferred worker) | FFmpeg/ffprobe, NumPy, optional PyAV/OpenCV | Preserve timestamps, derive evidence, and align frame sequences. |
-| Pointing support | Deferred: MediaPipe Hand Landmarker plus object proposals | The first task names an object explicitly. Unrestricted gesture reference resolution adds another failure surface and is not required to complete the first order. |
+Provider availability is operational: an actual Flash media request returned
+503/high demand during integration. Those errors are distinct from validation
+failures and cannot become successful reports. A valid JSON schema does not
+prove an observation is true or its timestamps are accurate.
 
-As checked on October 24, 2026, Google's model page lists `gemini-3.8-flash` as stable (on October 25 the models page also announces `gemini-4-argon`; switch only on measured latency), supporting text/image/video/audio/PDF input and structured output. It explicitly does not support the Live API. The worker analyzes completed clips asynchronously; a streaming conversation is a later feature.
+## Copy detection and provenance
 
-Google's default video sampling is 1 FPS and may miss fast events. Static processing permits custom FPS and clipping. Start with a controlled sampling experiment; do not assume a whole-clip summary observes a brief release or grasp. Use fixed processing limits and targeted denser windows rather than an unbounded model navigation loop.
+The original SHA-256 is computed server-side. Six grayscale 9×8 frames are sampled
+at relative positions `(i + 0.5) / 6`, for `i = 0..5`. Horizontal dHash yields 16
+lowercase hex characters per frame; the ordered fingerprint concatenates all six.
+Compare frame sequences using Hamming distances: mean <=6 bits/frame and no
+frame >10 bits. At least three informative frames are required for approximate
+matching; uniform all-zero/all-one hashes are not informative. These heuristic
+thresholds are not calibrated against real red-cup retakes or crops.
 
-Google currently lists introductory rates of $0.75 per million input tokens and $3.75 per million output tokens through December 31, 2026. For illustration only, 8,000 input and 2,000 output tokens cost $0.0135 for one request. Actual cost includes the chosen media processing, thinking/output usage, reinspection, transcription, worker compute, and retries. Persist measured usage and cost for every run. This is not a measured cost per accepted clip.
+Both analysis and `acceptAndPublish` check copy candidates. The finance mutation
+rechecks accepted work in the same transaction and organization, so a concurrent
+second copy cannot create another payable. Exact hash and legacy exact
+fingerprint checks remain; approximate frame matches can also block with a
+matching submission audit reference. The bounded demo corpus cap is 200 records;
+exceeding it routes analysis to review or blocks acceptance rather than silently
+skipping copy checks. No vector service is needed.
 
-### Hosted transcription alternative
+The chosen live path is **serverComputed** dHashes. The recorder may also provide
+`clientFrameDHashes: [{timestampMs, hash}]`, with 3–12 strictly increasing safe
+integer timestamps within 30 seconds and 16 lowercase hex characters per hash.
+If server media preparation fails, these may be retained as **clientReported**
+fallback evidence, explicitly warned and never sufficient for automatic
+acceptance. They are not proof of bytes, authenticity or uniqueness. The decoded
+original stays quarantined on such a failure.
 
-`gemini-3.5-transcribe` is a documented audio-only alternative using the same Google account and SDK. Its file-processing endpoint supports word annotations and limits timestamped requests to 30 minutes. Use verbatim mode: Smart transcription rewrites self-corrections and cannot be combined with word timestamps. Timestamping is also incompatible with custom vocabulary, and Google notes it can reduce transcription accuracy. The live transcription endpoint does not return word timestamps. API availability and accuracy on our recordings still need a credentialed spike; none was run for this scaffold. The demo uses a plain audio-only Gemini call instead; compare options after the event.
+A six-frame match is a candidate, not a fraud verdict or a localized temporal
+alignment. Approximate matches report no proven overlap interval. One synthetic
+benign re-encode test passes; crop resistance, speed edits and hard-negative
+independent retakes remain unmeasured. Payment/review decisions remain separate.
 
-## Near-duplicate implementation
+## Client and sample contract
 
-**Demo scope: SHA-256 plus sampled-frame perceptual hashes, tested on the staged re-encoded copy.** The SSCD design below is deferred. Keep exact identity, perceptual copying, and semantic similarity distinct:
+- `submissions.generateUploadUrl({demoIdentity:"contributor"})` returns the native
+  upload URL. POST binary video with its correct MIME type, then use `storageId`.
+- `submissions.create({demoIdentity,orderId,storageId,clientRequestId,
+  consentAcknowledged:true,clientFrameDHashes?,verificationOnly?})` queues once.
+  Request replay must use the same order/upload/purpose/frame facts.
+- `submissions.getReport({demoIdentity,submissionId})` returns state, authoritative
+  source hash, hash provenance, stored canonical report, parsed observations and
+  processing latency. Contributor sees own; controller/finance-agent are
+  organization-scoped. Dashboard submission queries also expose the projection.
+- `verificationOnly:true` grants only development verification rights and is
+  rejected by `acceptAndPublish`. The CLI always uses this mode. A normal
+  contribution still needs actual displayed license terms and consent.
 
-- SHA-256 finds identical bytes. It will not find a crop or re-encode.
-- Sampled frame perceptual hashes provide a cheap baseline.
-- SSCD creates copy-oriented frame descriptors. A temporal layer must establish an ordered matching sequence before flagging a video pair.
-- Two independent takes of the same red-cup task are deliberately similar. They are critical hard negatives, not automatic duplicates.
+```sh
+pnpm verify:sample /absolute/path/to/clip.mp4
+```
 
-A practical first implementation samples approximately two frames per second, L2-normalizes SSCD descriptors, shortlists previous clips, then compares shortlisted frame sequences. Start with a constant temporal-offset match; add constrained dynamic time warping only after speed edits are included in the evaluation. A candidate contains source submission ID, paired intervals, similarity statistics, and overlap duration.
+The development script reads only the Convex URL, uploads the given clip,
+schedules verification, polls the existing submission and prints the stored
+report (exit status 1 for a failed pipeline). It never reads the Gemini secret or commits media. A timeout does not
+resubmit the clip. Use only a clip you are authorized to send for analysis.
+The demo selectors are public/impersonable; production auth and private human
+collection remain out of scope. No media download URL is exposed by this task.
 
-For the hackathon corpus, brute-force NumPy matching is sufficient. A dedicated vector service is unnecessary. A pooled clip vector is a shortlist signal, not enough to reject a clip. Calibrate thresholds against edited copies and independent retakes from the same scene.
+## Limits and test evidence
 
-SSCD is an image-copy model. Robustness of the assembled video pipeline to crop, overlay, trimming, or speed change is a hypothesis to test. Meta's vPDQ/TMK implementations are alternative baselines if the initial approach fails.
+Inputs are capped at 25 MiB and 30 seconds with bounded dimensions/output sizes;
+subprocesses have timeouts and protocol restrictions. Missing audio, malformed
+JSON, unavailable models and ordinary request timeouts store review-only failed
+reports. A hard platform interruption triggers a separate watchdog Node action which
+validates and stores a canonical failed/review report; stale completion cannot
+replace it. A persistent storage/platform outage still requires operator inspection. There is no
+unbounded retry or hidden automatic payment.
 
-## Evidence contract and model boundaries
+Unit/integration tests cover strict structured output, malicious narration,
+missing/ambiguous evidence, unknown rubric semantics, timeout/malformed/provider
+failures, byte hashing, real local FFmpeg separation, re-encoding, concurrent
+temporary-file cleanup, role/consent checks, request replay and stale generations.
+Mocks are not model accuracy or latency measurements.
 
-`packages/contracts/schemas/verification-report.schema.json` is the cross-language contract. The Python package validates the report with strict typed models and with that JSON Schema. The schema defines the accepted field names; narrative examples in this document do not override it.
+## Implementation references
 
-Evidence should distinguish the media object, its modality, its interval, and the observed claim. A report must be tied to a specific submission, source hash, and task version. Findings are immutable; reviewer overrides are new events with reasons. A new rubric or model configuration produces a new run, not a silent edit of an earlier result.
+- [Convex Node runtimes](https://docs.convex.dev/functions/runtimes)
+- [Convex external package installation](https://docs.convex.dev/functions/bundling)
+- [Gemini inline image input](https://ai.google.dev/gemini-api/docs/image-understanding)
+- [Gemini structured JSON](https://ai.google.dev/gemini-api/docs/structured-output)
+- [Gemini native transcription annotations](https://ai.google.dev/gemini-api/docs/transcribe)
 
-The service must reject monetary fields in model output. It has no wallet key, no payout endpoint, no controller role, and no write access to financial postings. Skarl's payment integration is Base Sepolia only. The verifier does not implement a payment network.
+## Deferred research
 
-## Calibration and limits
-
-LLM self-reported confidence is not a calibrated probability. Use measured error/review rates on held-out recordings to select review thresholds. Report evidence coverage and observability explicitly. A consistent schema cannot guarantee a truthful observation.
-
-The pipeline cannot prove authorship, ownership, consent, that an upload depicts a unique real-world event, that content is free of synthetic manipulation, or that a buyer's model improves when trained on it. Contributor permission and licensing are separate records reviewed under the product's rules. A hash anchors a byte sequence; it does not establish those rights.
-
-Recent research reports audio–visual modality bias under conflicting evidence and video claims with misleading timestamp citations. These findings motivate separate observations and evidence checks; they do not prove that this design fixes every such error.
+The Railway/Python worker, faster-whisper, SSCD copy descriptors, constrained
+video alignment, learned acceptance heads and generalized action recognition
+are deferred. Their context follows; none is required by this live Node demo.
 
 ## Training scope
 

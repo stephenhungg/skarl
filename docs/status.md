@@ -1,13 +1,13 @@
 # Build Status
 
-Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 now runs on the shared Convex cloud dev deployment below; payment adapters are now implemented but no live transfer is confirmed. Update this file when another integration becomes demonstrable.
+Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 finance and Task 2 verification run on the shared Convex cloud dev deployment below. Audio inference succeeded; successful visual inference remains externally blocked as detailed below. Payment adapters are implemented but no live transfer is confirmed. Update this file when another integration becomes demonstrable.
 
 | Area | Implemented now | Remaining for the [demo path](workstreams.md) |
 | --- | --- | --- |
 | Web | Server-rendered Next.js shell and `/api/health` | Recorder page, controller dashboard, Convex wiring, HTTPS deployment |
 | Shared contracts | Base Sepolia chain constants (`chain.ts`), funding/payout status lists, JSON Schema, TS report validation, `parseAtomicUsdc` | Rubric-membership check wired into acceptance |
-| Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; dashboard queries; committed generated API | Upload/media APIs, Gemini action, verified wallets, trusted funding/settlement import, Workflow approval wait; production auth is out of demo scope |
-| Verifier | Python report models and validation CLI (scaffold, no inference) | Gemini runs in a Convex action for the demo; the Python worker is deferred |
+| Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads, verified wallets, trusted funding/settlement import, Workflow approval wait; production auth is out of demo scope |
+| Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; live audio measured | Successful live visual response blocked by Flash 503/timeouts and Argon zero quota; real demonstration quality/copy calibration unmeasured; Python worker deferred |
 | Evaluation | Scoring scaffolding | Deferred: no labeled corpus. Staged demo clips only |
 | Ledger | Audited pure helpers plus atomic Convex journal/line persistence, fulfillment accrual, event fingerprints and replay protection | Real funding/payout import and chain reconciliation |
 | Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | Deploy merged Convex backend; supply controller treasury address; complete Wallet MCP authentication; run real funding/payout. Live buyer balance verified at 20 USDC; no live transfer yet |
@@ -67,3 +67,52 @@ message signed or transaction approved during this preflight.
 `pnpm check` passed: typechecks, 74 package tests, 49 Convex tests, 24 payment
 tests, documentation checks and the production build. These tests use synthetic
 payment evidence and do not establish live settlement.
+
+## Task 2 verification and actual provider state
+
+Code is deployed to **https://keen-marmot-986.convex.cloud**. Upload creation
+schedules `verify.run`; it hashes original bytes, separates modalities, computes
+server frame hashes, makes independent provider requests and stores a canonical
+rubric-validated report. A five-minute watchdog stores a failed/review report
+for interrupted attempts; stale results cannot upgrade it. The sample CLI is
+`pnpm verify:sample <path-to-mp4>` and always marks the clip verification-only,
+which the finance acceptance mutation refuses.
+
+**What ran live:** a ten-second synthetic color-pattern video with machine
+speech (“This is a synthetic verification test. No human performs the red cup
+task.”) was uploaded and processed on the cloud deployment. Original bytes were
+SHA-256 hashed server-side; FFmpeg decoded and isolated media, produced twelve
+JPEGs/six dHashes, and the real Transcribe response was validated and persisted.
+The latest scheduled run's audio round trip was **1,262 ms**; total action time
+was **8,942 ms**, including failed visual requests. Its report is correctly
+`failed` / `needs_review`, not a successful multimodal acceptance. No human data,
+Gemini key, raw media or provider response is committed.
+
+**What did not succeed live:** Flash (`gemini-3.8-flash`) visual requests returned
+503/high demand or timed out for native video, twelve sampled JPEGs, and a
+minimal 32×32 PNG probe. Even a legacy video transport probe timed out. Structured
+text succeeded after reducing provider schema array limits. Argon
+(`gemini-4-argon`) returned HTTP 429 with **0 requests/day on Free Tier**. No
+billing/account upgrade was performed. Model listing is not inference quota.
+The cloud configuration was restored to the requested Flash + Transcribe
+model defaults. A working visual-provider response/quota is still required to
+claim a complete live multimodal verification demo.
+
+**Chosen duplicate approach:** server-computed original SHA-256 and six sampled
+64-bit dHashes, with bounded Hamming candidate checks repeated at acceptance.
+One benign synthetic re-encode is covered by real local FFmpeg tests; crop/speed
+robustness and legitimate-retake false positives are unmeasured. Client frame
+hashes have an explicit `clientReported` fallback label when server preparation
+fails, cause review and cannot qualify quarantined media for automatic payment.
+Failed provider attempts alone do not make a later retry a copy candidate.
+
+**Test scope:** Gemini responses are mocked in deterministic comparison,
+malicious-narration, malformed-output and timeout tests. Local media tests use
+actual FFmpeg. The separate cloud observations above are live integration
+measurements, not an accuracy benchmark. No onchain money moved.
+
+Latest measured submission: `mn76ffw1ds98w5s2n1rqgtjrp18gz13h`, pipeline
+`red-cup-evidence-1.1`, original SHA-256
+`8047a87afedc01a0a54ebcffd301d39970dfc965f657c407c6c08572f9a5a57d`.
+The report and observations can be read through `submissions.getReport` with the
+controller demo selector. Final Task 2 checks passed under Node 22.21.1: `pnpm check` (62 package + 88 Convex tests, typechecks, docs links/anchors and production build), cloud deploy/typecheck, and secret preflight. The 88 Convex tests include 62 added Task 2 cases on top of the 26 Task 1 cases. No source under `apps/web` or `packages/payments` changed; raw media stays ignored.

@@ -4,8 +4,9 @@
 
 Task 1 is deployed to **https://keen-marmot-986.convex.cloud** with an idempotent
 internal seed, persisted demo-role checks, server finance mutations and dashboard
-queries. The generated API/data-model files are committed. Production auth,
-uploads/private-media serving, Gemini inference, real funding confirmation,
+queries. The generated API/data-model files are committed. Task 2 adds upload creation/scheduling, isolated media, Gemini observations and validated
+report persistence (see [AI verification](ai-verification.md)). Production auth,
+private-media downloads, real funding confirmation,
 wallet verification and chain execution/reconciliation remain unimplemented.
 The seed creates an **unfunded** order; it performs no transfer or inference.
 
@@ -69,17 +70,17 @@ Acceptance requires an open funded order, remaining quota, verified original
 asset and contributor wallet record, consent, frozen matching rubric and a
 matching stored completed-inference `accept` projection. Alternatively it honors
 a recorded, evidence-bound decision by an active independent human controller.
-No public manual-decision recording endpoint is supplied in Task 1. Full model
-report validation/rubric membership belongs to the upcoming analysis action;
-this task consumes its trusted stored projection. It does not run inference.
+No public manual-decision recording endpoint is supplied in Task 1. Full model report validation/rubric membership now runs in Task 2 before
+analysis persistence. The finance mutation consumes its trusted stored projection;
+it does not itself call a model.
 
 Acceptance publishes an inline licensed manifest and records its hash together
 with delivery/payable/journal in one mutation. Media serving is still a separate
 integration. Matching SHA-256 or canonical perceptual-hash values against an
 already accepted submission in the same organization blocks a second payable,
-including across orders. Perceptual-hash **computation** is not implemented here;
-a producer must populate it from verified bytes. This is an equality gate, not
-a demonstrated robust copy-detection model.
+including across orders. Task 2 computes server-side six-frame dHashes and adds bounded Hamming candidate
+matching. Client-reported fallback evidence is labeled. This remains a heuristic
+copy gate, not a demonstrated robust copy-detection model. See the AI document.
 
 Refusals return `{ok:false,code}`. A duplicate also returns
 `matchingSubmissionId` and writes `acceptance_refused` with that ID as evidence.
