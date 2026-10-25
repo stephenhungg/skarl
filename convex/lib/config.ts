@@ -22,6 +22,8 @@ export const legacyDemoOrderPublicId = () => envString("SKARL_LEGACY_DEMO_ORDER_
 export const publicOrderPrefix = () => envString("SKARL_PUBLIC_ORDER_PREFIX", "skarl-outsider-demo-");
 export const fixtureOrderPrefixes = () => envList("SKARL_FIXTURE_ORDER_PREFIXES", ["scenario:", publicOrderPrefix(), "skarl-red-cup-demo-sol", legacyDemoOrderPublicId()]);
 export const demoOrganizationKey = () => envString("SKARL_DEMO_ORGANIZATION_KEY", "skarl-demo-v1");
+export const jiraProjectKey = () => envString("SKARL_JIRA_PROJECT_KEY", "SKARL");
+export const jiraProjectUrl = () => envString("SKARL_JIRA_PROJECT_URL", `https://one-atlas-hmeq.atlassian.net/jira/software/projects/${jiraProjectKey()}/boards`);
 export const verifierIdentity = () => envString("SKARL_VERIFIER_IDENTITY", "gemini-verifier");
 export const configuredVideoModel = () => envString("GEMINI_VIDEO_MODEL", "gemini-4-argon");
 export const configuredFinanceModel = () => envString("GEMINI_FINANCE_MODEL", "gemini-3.8-flash");

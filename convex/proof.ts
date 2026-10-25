@@ -5,6 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type * as bankWitness from "./bankWitness";
 import type * as attestationsApi from "./attestations";
 import { financeScope, orderRows } from "./lib/dashboardRead";
+import { jiraProjectKey, jiraProjectUrl } from "./lib/config";
 import { isFinanceAgent } from "./lib/demoAuth";
 import { requireBuyerOrder } from "./lib/finance";
 import { paymentRail, PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK } from "../packages/contracts/src/chain";
@@ -188,7 +189,7 @@ async function guardModel(ctx: QueryCtx, demoIdentity: string) {
     const payload: unknown = row.payloadJson ? JSON.parse(row.payloadJson) : [];
     if (Array.isArray(payload)) feedExceptionCount += payload.length;
   }
-  return { projectUrl: "https://one-atlas-hmeq.atlassian.net/jira/software/projects/SKARL/boards", projectKey: "SKARL",
+  return { projectUrl: jiraProjectUrl(), projectKey: jiraProjectKey(),
     note: "Agents cannot approve payments. Jira actions cannot grant financial authority.",
     feedExceptionCount: feedExceptionCount.toString(), feedExceptionSource: "scheduled reconciliation snapshots (eligible for feed; not confirmed Jira mirrors)",
     mirroredExceptionCount: null, lastSyncAt: null, uncertainWrites: null,
