@@ -335,6 +335,24 @@ describe("submission lifecycle and evidence boundaries", () => {
     expect(state.entries.filter(entry => entry.kind === "fulfillment")).toHaveLength(1);
     expect(state.order?.acceptedCount).toBe(1n); expect(state.copied?.status).toBe("needs_review");
   });
+
+  it("blocks a shifted trimmed copy from creating a second payable", async () => {
+    const f = await setup(); await fundSyntheticOrder(f);
+    const original = await create(f, "trim-origin");
+    const originalClaim = await claimAndFacts(f, original, [{timestampMs:0, hash:"aaaaaaaaaaaaaaaa"}, ...frames]);
+    await f.t.mutation(internal.submissions.complete, (await completion(f, original, originalClaim.generation)).args);
+    expect(await f.t.mutation(api.finance.acceptAndPublish, {demoIdentity:"controller", submissionId:original.submissionId}))
+      .toMatchObject({ok:true});
+    const trimmed = await create(f, "trim-copy");
+    const claim = await claimAndFacts(f, trimmed, frames.map(frame => ({...frame, timestampMs:frame.timestampMs - 1000})));
+    await f.t.mutation(internal.submissions.complete, (await completion(f, trimmed, claim.generation)).args);
+    expect(await f.t.query(internal.submissions.copies, {submissionId:trimmed.submissionId})).toMatchObject({status:"suspected",
+      matches:[{submissionId:original.submissionId, score:1, overlapMs:0}]});
+    expect(await f.t.mutation(api.finance.acceptAndPublish, {demoIdentity:"controller", submissionId:trimmed.submissionId}))
+      .toMatchObject({ok:false, code:"duplicate_submission", matchingSubmissionId:original.submissionId});
+    expect(await f.t.run(ctx => ctx.db.query("payables").collect())).toHaveLength(1);
+    expect(await f.t.run(ctx => ctx.db.query("deliveries").collect())).toHaveLength(1);
+  });
 });
 
 it("accepts a browser MediaRecorder MIME value with codec parameters",async()=>{

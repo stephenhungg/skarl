@@ -91,4 +91,22 @@ describe("private evidence queries (synthetic storage only)", () => {
     await f.t.run(ctx => ctx.db.patch(f.analysisId, { submissionId: f.matchingSubmissionId }));
     await expect(f.t.query(submissionEvidence, args)).rejects.toThrow("analysis_source_mismatch");
   });
+
+  it("returns actual aligned indices and frame assets for a trimmed candidate", async () => {
+    const f = await setup();
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.submissionId, {frameDHashes:["aaaaaaaaaaaaaaaa", ...hashes]
+        .map((hash, index) => ({hash, timestampMs:index * 1000}))});
+      // The stored 1s frame is the first shared image, not the unmatched 0s frame.
+      await ctx.db.patch(f.frameId, {frameKind:"dhash", sampleIndex:1});
+      await ctx.db.patch(f.matchingSubmissionId, {frameDHashes:hashes.map((hash, index) => ({hash, timestampMs:index * 1000}))});
+    });
+    const result = await f.t.query(duplicatePair, {demoIdentity:"controller", submissionId:f.submissionId,
+      matchingSubmissionId:f.matchingSubmissionId});
+    expect(result.score).toBe(1);
+    expect(result.matchedFrames.map((pair: {leftSampleIndex:number;rightSampleIndex:number}) =>
+      [pair.leftSampleIndex,pair.rightSampleIndex])).toEqual([[1,0],[2,1],[3,2]]);
+    expect(result.matchedFrames[0]).toMatchObject({sampleIndex:1, leftTimestampMs:1000, rightTimestampMs:0,
+      distance:0, leftFrame:{assetId:f.frameId, sampleIndex:1}});
+  });
 });
