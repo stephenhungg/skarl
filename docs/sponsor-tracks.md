@@ -15,7 +15,7 @@ Demonstrated funding uses **Base Sepolia test USDC** and optional **Solana Devne
 | [MLH] Best Use of Gemini API | Two independent Gemini calls (silent video, audio) producing schema-validated, timestamped evidence |
 | Capital One (Nessie) | Live Nessie bank as the fourth reconciliation witness: on October 25 at 04:11 PDT, order, ledger, chain and bank all `match` for a 10 USDC order (mock bank, no fiat moved) |
 | Anthropic (Claude) | Live Claude finance agent (`claude-sonnet-5-5`, 3 read-only tool calls, about 7 s, cannot approve) and a Claude contributor coach whose output is validated server-side and cannot change verdicts |
-| [Atlassian] Best Security Solution for Agents | [Skarl Guard for Jira](../integrations/jira-forge/README.md), Agentic Workforce Challenge Track 2: deterministic injection guard, constrained Claude triage, audited refusals and selective rollback; **deployment and live Jira/Claude evidence pending** |
+| [Atlassian] Best Security Solution for Agents | [Skarl Guard for Jira](../integrations/jira-forge/README.md), Agentic Workforce Challenge Track 2: deterministic injection guard, constrained Claude triage, audited refusals and selective rollback; **live on a Jira Cloud demo site (Oct 25, 04:53 PDT):** authenticated feed sync created SKARL-1..5 (0 errors); Claude triaged SKARL-5 within policy (labels, priority) with per-action audit and revert; the bulk-change test refused a six-issue batch with no Jira change. One agent comment write returned `uncertain` and was not replayed, by design. Injection-in-issue demo still to record |
 
 ## Hyphenate
 
