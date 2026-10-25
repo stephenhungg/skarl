@@ -50,6 +50,18 @@ const analysisContext = {
   perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))),
 };
 export default defineSchema({
+  // CDP is an advisory witness. These records never authorize or post money.
+  cdpWebhookReceipts: defineTable({
+    ...tenant, treasury: v.string(), eventId: v.string(), transferKey: v.string(),
+    txHash: v.string(), logIndex: v.number(), fromAddress: v.string(), toAddress: v.string(),
+    amountAtomic: v.string(), status: v.union(v.literal("pending"), v.literal("processed"), v.literal("unknown_transfer")),
+    receivedAt: v.number(), updatedAt: v.number(),
+  }).index("by_event", ["eventId"]).index("by_transfer", ["transferKey"])
+    .index("by_treasury", ["organizationId", "treasury"]),
+  cdpWitnessSnapshots: defineTable({
+    ...tenant, orderId: v.id("orders"), treasury: v.string(), resultJson: v.string(), fetchedAt: v.number(),
+  }).index("by_order", ["orderId"]),
+  cdpQueryGate: defineTable({ key: v.string(), nextAt: v.number() }).index("by_key", ["key"]),
   reconciliationDispositions: defineTable({
     ...tenant, orderId: v.id("orders"), exceptionKey: v.string(), snapshotJson: v.string(),
     status: v.union(v.literal("acknowledged"), v.literal("resolved")), reason: v.string(),
