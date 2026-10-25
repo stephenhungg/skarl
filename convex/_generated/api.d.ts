@@ -11,6 +11,7 @@
 import type * as activity from "../activity.js";
 import type * as agentChat from "../agentChat.js";
 import type * as agentChatData from "../agentChatData.js";
+import type * as agentWallet from "../agentWallet.js";
 import type * as analytics from "../analytics.js";
 import type * as approvalWorkflow from "../approvalWorkflow.js";
 import type * as dashboard from "../dashboard.js";
@@ -19,6 +20,7 @@ import type * as finance from "../finance.js";
 import type * as financeAgent from "../financeAgent.js";
 import type * as financeAgentData from "../financeAgentData.js";
 import type * as health from "../health.js";
+import type * as lib_cdpWallet from "../lib/cdpWallet.js";
 import type * as lib_copyDetection from "../lib/copyDetection.js";
 import type * as lib_dashboardRead from "../lib/dashboardRead.js";
 import type * as lib_demoAuth from "../lib/demoAuth.js";
@@ -47,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   activity: typeof activity;
   agentChat: typeof agentChat;
   agentChatData: typeof agentChatData;
+  agentWallet: typeof agentWallet;
   analytics: typeof analytics;
   approvalWorkflow: typeof approvalWorkflow;
   dashboard: typeof dashboard;
@@ -55,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   financeAgent: typeof financeAgent;
   financeAgentData: typeof financeAgentData;
   health: typeof health;
+  "lib/cdpWallet": typeof lib_cdpWallet;
   "lib/copyDetection": typeof lib_copyDetection;
   "lib/dashboardRead": typeof lib_dashboardRead;
   "lib/demoAuth": typeof lib_demoAuth;
