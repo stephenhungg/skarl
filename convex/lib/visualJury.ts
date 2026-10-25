@@ -1,6 +1,6 @@
 "use node";
 import { observeVideo, observeAudio, GeminiFailure, videoModel, audioModel } from "./gemini";
-import { buildVerificationReport, EVALUATION_VIDEO_MODELS, type BuildVerificationReportInput,
+import { buildVerificationReport, buildVerificationReports, EVALUATION_VIDEO_MODELS, type BuildVerificationReportInput,
   type EvaluationVideoModel, type ModelRun, type VerificationReport } from "./verificationReport";
 
 export interface VisualJury {
@@ -16,6 +16,7 @@ export async function observeEvidence(
   media: { videoFrames: Parameters<typeof observeVideo>[0]; audio?: Uint8Array | null },
   input: ReportContext,
   evaluationModel?: EvaluationVideoModel,
+  contentScope?: { verificationOnly: true; evalRunId: string; evalContentOnly: true },
 ) {
   // Only an explicit opt-out disables the panel. Evaluation overrides keep one model.
   const enabled = evaluationModel === undefined && process.env.VERIFIER_JURY !== "off";
@@ -41,12 +42,14 @@ export async function observeEvidence(
   const warnings = [...(input.warnings ?? [])];
   let jury: VisualJury | undefined;
   if (enabled) {
-    const reports = judges.map(judge => ({ model: judge.run.model,
-      ...(judge.failure ? { failureCode: judge.failure } : {}),
-      report: buildVerificationReport({ ...input, video: judge.observation, audio,
+    const reports = judges.map(judge => {
+      const judgeInput: BuildVerificationReportInput = { ...input, video: judge.observation, audio,
         modelRuns: [judge.run, ...audioRuns].slice(0, 16), failure: audioFailure ?? judge.failure,
-        reportId: `${input.reportId ?? input.submissionId}:visual:${judge.run.model}` }),
-    }));
+        reportId: `${input.reportId ?? input.submissionId}:visual:${judge.run.model}` };
+      const report = contentScope ? buildVerificationReports(judgeInput, contentScope).qualityReport : buildVerificationReport(judgeInput);
+      if (!report) throw new GeminiFailure("evaluation_projection_unavailable");
+      return { model: judge.run.model, ...(judge.failure ? { failureCode: judge.failure } : {}), report };
+    });
     const unavailable = judges.some(judge => judge.failure !== undefined);
     const disagreedCriteria = input.criteria.filter(criterion => unavailable ||
       reports[0]!.report.criteria.find(item => item.criterionId === criterion.criterionId)?.status !==

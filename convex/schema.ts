@@ -223,6 +223,7 @@ export default defineSchema({
     verificationOnly: v.optional(v.boolean()),
     evalRunId: v.optional(v.string()),
     evalVideoModel: v.optional(evaluationVideoModel),
+    evalContentOnly: v.optional(v.literal(true)),
     currentAnalysisId: v.optional(v.id("analysisResults")),
     currentDecisionId: v.optional(v.id("reviewDecisions")),
     supersedesSubmissionId: v.optional(v.id("submissions")),

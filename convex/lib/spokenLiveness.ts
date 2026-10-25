@@ -20,6 +20,8 @@ function tokens(value: string): string[] {
   return value.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
+export const MISSING_LIVENESS_WARNING = "Spoken liveness: no per-take challenge was supplied; human review required.";
+
 /** Match whole words in chronological transcript order; no model-provided pass flag is read.
  * Timestamps remain the containing ASR segment bounds, not invented word timings.
  */
@@ -28,7 +30,7 @@ export function checkSpokenLiveness(
   audio: AudioTranscript | undefined,
   durationMs: number,
 ): SpokenLivenessResult {
-  if (!challenge) return { status: "missing_challenge", warning: "Spoken liveness: no per-take challenge was supplied; human review required." };
+  if (!challenge) return { status: "missing_challenge", warning: MISSING_LIVENESS_WARNING };
   if (!Array.isArray(challenge.words) || challenge.words.length !== 3 ||
     challenge.words.some(word => typeof word !== "string" || !/^[a-z]+$/.test(word)) ||
     !Number.isSafeInteger(challenge.issuedAt) || challenge.issuedAt < 0 ||

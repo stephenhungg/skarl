@@ -1,4 +1,4 @@
-import { checkSpokenLiveness, instructionLike, type SpokenLivenessChallenge } from "./spokenLiveness.ts";
+import { checkSpokenLiveness, MISSING_LIVENESS_WARNING, instructionLike, type SpokenLivenessChallenge } from "./spokenLiveness.ts";
 
 /** Pure, advisory evidence comparison. No model, storage, or payment authority. */
 export const PIPELINE_VERSION = "red-cup-evidence-1.2";
@@ -330,7 +330,7 @@ function compareNarration(video: VideoObservation | undefined, audio: AudioObser
   return finding(criterionId, "supported", "Narration agrees with observed objects, actions, targets, and nearby timestamps.", items);
 }
 
-export function buildVerificationReport(input: BuildVerificationReportInput): VerificationReport {
+function buildScopedReport(input: BuildVerificationReportInput, contentOnly = false): VerificationReport {
   text(input.submissionId, "submissionId", 512);
   text(input.taskVersionId, "taskVersionId", 512);
   if (!/^[0-9a-f]{64}$/.test(input.sourceHash)) throw new Error("sourceHash must be a lowercase SHA-256");
@@ -387,13 +387,13 @@ export function buildVerificationReport(input: BuildVerificationReportInput): Ve
     if (criterion.criterionId === "coaster-placement") return comparePlacement(video, criterion.criterionId);
     return compareNarration(video, audio, criterion.criterionId);
   });
-  const liveness = checkSpokenLiveness(input.liveness, audio, input.durationMs);
-  if (liveness.status === "passed") {
+  const liveness = contentOnly ? null : checkSpokenLiveness(input.liveness, audio, input.durationMs);
+  if (liveness?.status === "passed") {
     // An extra evidence line preserves the frozen rubric and legacy report schema.
     const narration = criteria.find(item => item.criterionId === "narration-alignment");
     if (narration) narration.evidence.push(liveness.evidence);
     else warnings.push("Spoken liveness matched, but the rubric has no narration evidence lane; human review required.");
-  } else warnings.push(liveness.warning);
+  } else if (liveness) warnings.push(liveness.warning);
   const hasUnobservable = criteria.some(item => item.status === "unobservable");
   const hasContradiction = criteria.some(item => item.status === "contradicted");
   const needsReview = warnings.length > 0 || hasUnobservable || !video || !audio || input.failure !== undefined;
@@ -409,7 +409,13 @@ export function buildVerificationReport(input: BuildVerificationReportInput): Ve
   };
 }
 
+/** Ordinary callers always measure the actual capture/liveness gate. */
+export function buildVerificationReport(input: BuildVerificationReportInput): VerificationReport {
+  return buildScopedReport(input);
+}
+
 export const EVALUATION_PROJECTION_VERSION = "prelicensing-advisory-v1";
+export const CONTENT_EVALUATION_PROJECTION_VERSION = "content-only-no-liveness-v1";
 export const VERIFICATION_ONLY_WARNING = "Verification-only development upload; no training license, dataset sale, or payable may be created.";
 
 /** Evaluation scope is immutable submission metadata, never a model instruction. */
@@ -425,11 +431,26 @@ export function applyVerificationOnlyGuard(report: VerificationReport): Verifica
     recommendation: "needs_review", warnings: [...new Set([...report.warnings, VERIFICATION_ONLY_WARNING])] };
 }
 
-export function buildVerificationReports(input: BuildVerificationReportInput, scope: { verificationOnly?: boolean; evalRunId?: string }): {
-  report: VerificationReport; qualityReport?: VerificationReport;
-} {
+/** Narrow, auditable difference for prerecorded content evaluation: add only
+ * the genuine untested-liveness warning and verification-only licensing guard.
+ * No other warning, criterion, evidence, model run or source binding changes.
+ */
+export function applyContentEvaluationGuard(report: VerificationReport): VerificationReport {
+  return applyVerificationOnlyGuard({ ...report, warnings: [...new Set([...report.warnings, MISSING_LIVENESS_WARNING])] });
+}
+
+export function buildVerificationReports(input: BuildVerificationReportInput, scope: {
+  verificationOnly?: boolean; evalRunId?: string; evalContentOnly?: true;
+}): { report: VerificationReport; qualityReport?: VerificationReport } {
   validateEvaluationScope(scope.verificationOnly, scope.evalRunId);
-  const qualityReport = buildVerificationReport(input);
-  return { report: scope.verificationOnly ? applyVerificationOnlyGuard(qualityReport) : qualityReport,
+  if (scope.evalContentOnly && (!scope.verificationOnly || scope.evalRunId === undefined || input.liveness !== undefined)) {
+    throw new Error("content_evaluation_requires_unissued_scoped_verification");
+  }
+  // The quality report intentionally measures only visible/narrated content in
+  // this explicit scope. Independently build the full operational report so its
+  // actual liveness failure remains visible and cannot become acceptance.
+  const qualityReport = buildScopedReport(input, scope.evalContentOnly === true);
+  const operationalReport = scope.evalContentOnly ? buildVerificationReport(input) : qualityReport;
+  return { report: scope.verificationOnly ? applyVerificationOnlyGuard(operationalReport) : operationalReport,
     ...(scope.verificationOnly && scope.evalRunId !== undefined ? { qualityReport } : {}) };
 }

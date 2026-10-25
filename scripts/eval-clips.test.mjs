@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { applyContentEvaluationGuard, CONTENT_EVALUATION_PROJECTION_VERSION } from "../convex/lib/verificationReport.ts";
 import { canonical, computeMetrics, criterionAgreement, riskCoverage, wilson, CRITERIA, LICENSING_WARNING, preflightManifest, runEvaluation, runModelComparison, COMPARISON_VIDEO_MODELS, validateStoredReport } from "./eval-clips.mjs";
 
 const sha = value => createHash("sha256").update(value).digest("hex");
@@ -43,9 +44,10 @@ function storedResponse(row, options = {}) {
     warnings: failed ? ["Analysis did not complete; inspect the job error code before review."] : [] };
   const observations = { ...(failed ? { failureCode: "provider_unavailable" } : {
     video: { visibility: "clear", observations: [] }, audio: { transcript: "synthetic narration", segments: [], claims: [] } }),
-    evaluation: { evaluationOnly: true, projectionVersion: "prelicensing-advisory-v1", qualityReport: quality, qualityReportHash: sha(canonical(quality)) } };
-  return { verificationOnly: true, evalRunId: row.evalRunId, ...(row.evalVideoModel ? { evalVideoModel: row.evalVideoModel } : {}), sourceHash: row.sourceHash, processingElapsedMs: 80,
-    observations, report: { ...quality, pipeline: { ...quality.pipeline, status: failed ? "failed" : "needs_review" },
+    evaluation: { evaluationOnly: true, projectionVersion: row.evalContentOnly ? CONTENT_EVALUATION_PROJECTION_VERSION : "prelicensing-advisory-v1",
+      ...(row.evalContentOnly ? { contentOnly: true, livenessTested: false } : {}), qualityReport: quality, qualityReportHash: sha(canonical(quality)) } };
+  return { verificationOnly: true, evalRunId: row.evalRunId, ...(row.evalVideoModel ? { evalVideoModel: row.evalVideoModel } : {}), ...(row.evalContentOnly ? { evalContentOnly: true } : {}), sourceHash: row.sourceHash, processingElapsedMs: 80,
+    observations, report: row.evalContentOnly ? applyContentEvaluationGuard(quality) : { ...quality, pipeline: { ...quality.pipeline, status: failed ? "failed" : "needs_review" },
       recommendation: "needs_review", warnings: [...quality.warnings, LICENSING_WARNING] } };
 }
 
@@ -71,7 +73,7 @@ function transport(f, options = {}) {
       if (name === "submissions:create") {
         const source = f.manifest.samples[rows.length % f.manifest.samples.length];
         const row = { _id: `submission-${rows.length}`, clientRequestId: args.clientRequestId,
-          sourceHash: source.contentSha256, evalRunId: args.evalRunId, ...(args.evalVideoModel ? { evalVideoModel: args.evalVideoModel } : {}) };
+          sourceHash: source.contentSha256, evalRunId: args.evalRunId, ...(args.evalVideoModel ? { evalVideoModel: args.evalVideoModel } : {}), ...(args.evalContentOnly ? { evalContentOnly: true } : {}) };
         rows.push(row);
         return { submissionId: row._id };
       }
@@ -384,4 +386,67 @@ test("a failed model arm earns no accuracy credit while the other arm still runs
   assert.equal(result.run.models[0].metrics.successfulAnalysisCoverage, 0);
   assert.equal(result.run.models[1].metrics.failureAdjustedDecisionAccuracy, 1);
   assert.equal(mock.uploads.length, 2);
+});
+
+
+test("explicit content-only mode freezes its scope, reports content accuracy, and counts all operational results as ineligible reviews", async t => {
+  const f = await fixture(t), mock = transport(f);
+  const result = await runEvaluation({ ...f.options, contentOnly: true }, { createClient: mock.createClient });
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.run.contentOnly, true);
+  assert.deepEqual(result.run.metrics.measurement, { scope: "prerecorded_content_only", liveness: "not_tested", payoutAccuracyMeasured: false });
+  assert.equal(result.run.metrics.failureAdjustedDecisionAccuracy, 1);
+  assert.deepEqual(result.run.metrics.operational, { verificationOnly: true, acceptanceEligibleCount: 0, storedReportCount: 1, reviewCount: 1, failedCount: 0 });
+  const create = mock.calls.find(x => x.name === "submissions:create");
+  assert.equal(create.args.evalContentOnly, true); assert.equal(create.args.verificationOnly, true);
+  assert.equal(create.args.livenessChallengeId, undefined);
+  assert.match(await readFile(result.resultPath.replace(/\.json$/, ".md"), "utf8"), /CONTENT QUALITY ONLY — liveness not tested/);
+  let connected = false;
+  await assert.rejects(runEvaluation({ ...f.options, resume: result.resultPath }, { createClient: async () => { connected = true; } }), /content mode/);
+  assert.equal(connected, false);
+});
+
+test("content-only paired arms preserve the same labels and mode through interruption and resume", async t => {
+  const f = await fixture(t), flags = { pendingModel: "gemini-3.8-flash" }, mock = transport(f, flags);
+  let clock = Date.UTC(2026, 9, 25);
+  const injected = { createClient: mock.createClient, now: () => clock, sleep: async ms => { clock += ms; } };
+  const first = await runModelComparison({ ...f.options, contentOnly: true }, injected);
+  assert.equal(first.exitCode, 1);
+  assert.equal(first.run.contentOnly, true);
+  flags.pendingModel = undefined;
+  const resumed = await runModelComparison({ ...f.options, contentOnly: true, resume: first.resultPath }, injected);
+  assert.equal(resumed.exitCode, 0); assert.equal(mock.uploads.length, 2);
+  for (const arm of resumed.run.models) {
+    assert.equal(arm.metrics.measurement.liveness, "not_tested");
+    assert.equal(arm.metrics.operational.acceptanceEligibleCount, 0);
+    assert.equal(arm.metrics.operational.reviewCount, 1);
+  }
+  let connected = false;
+  await assert.rejects(runModelComparison({ ...f.options, resume: first.resultPath }, { createClient: async () => { connected = true; } }), /content mode/);
+  assert.equal(connected, false);
+  const markdown = await readFile(first.resultPath.replace(/\.json$/, ".md"), "utf8");
+  assert.match(markdown, /Operational reviews \/ stored \(eligible: 0\)/);
+});
+
+test("content-only validation refuses removed operational liveness, altered unrelated warnings, or false liveness labels", () => {
+  const row = { _id: "content-submission", sourceHash: "a".repeat(64), evalRunId: "content-run", evalContentOnly: true };
+  const item = { submissionId: row._id, contentSha256: row.sourceHash };
+  const run = { evalRunId: row.evalRunId, taskVersionId: "frozen-rubric", contentOnly: true };
+  const response = storedResponse(row);
+  assert.equal(validateStoredReport(response, item, run).successfulAnalysis, true);
+  for (const patch of [
+    r => { r.report.warnings = [LICENSING_WARNING]; },
+    r => { r.observations.evaluation.livenessTested = true; },
+    r => { r.evalContentOnly = undefined; },
+    r => { r.report.warnings.push("unmatched unrelated warning"); },
+  ]) {
+    const altered = structuredClone(response); patch(altered);
+    assert.throws(() => validateStoredReport(altered, item, run));
+  }
+  const warned = storedResponse(row, { failed: true });
+  assert.equal(validateStoredReport(warned, item, run).successfulAnalysis, false);
+  const discarded = structuredClone(warned);
+  discarded.observations.evaluation.qualityReport.warnings = [];
+  discarded.observations.evaluation.qualityReportHash = sha(canonical(discarded.observations.evaluation.qualityReport));
+  assert.throws(() => validateStoredReport(discarded, item, run), /declared content-evaluation guards/);
 });
