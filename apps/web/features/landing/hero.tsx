@@ -26,15 +26,15 @@ export function Hero() {
         animate={{ opacity: 1 }}
         transition={{ delay: 0.25, duration: 0.65, ease: SETTLE }}
         style={{
-          filter: "blur(3px)",
-          WebkitMaskImage: "linear-gradient(180deg, #000 0%, #000 55%, transparent 88%)",
-          maskImage: "linear-gradient(180deg, #000 0%, #000 55%, transparent 88%)",
+          filter: "blur(1.5px)",
+          WebkitMaskImage: "linear-gradient(180deg, #000 0%, #000 68%, transparent 97%)",
+          maskImage: "linear-gradient(180deg, #000 0%, #000 68%, transparent 97%)",
         }}
       >
         <SpectralDrape className="h-full w-full" colors={["#c7f18e", "#8fe3b4", "#5f7d6a", "#e9f9cf"]} backgroundColor="#10120e" />
       </motion.div>
 
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(60% 40% at 50% 45%, rgb(var(--ink) / .55), transparent 75%)" }} />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(60% 40% at 50% 45%, rgb(var(--ink) / .4), transparent 75%)" }} />
 
       <div className="pointer-events-none relative z-10 flex w-full max-w-[800px] flex-col items-center px-[18px] text-center [&_a]:pointer-events-auto">
         <Rise delay={0.25} duration={0.6}>
