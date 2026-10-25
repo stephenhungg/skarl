@@ -84,7 +84,10 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
           {parsed && <span>AI recommends {humanize(parsed.recommendation)}</span>}
           {parsed?.pipeline.modelRuns.map(run => <span key={run.model} className="text-text-3">{run.model}{run.elapsedMs ? ` ${formatMs(run.elapsedMs)}` : ""}</span>)}
         </span>}
-        actions={<Link href="/dashboard/submissions" className="type-label text-text-2 underline underline-offset-4">All submissions</Link>} />
+        actions={<>
+          <Link href={`/dashboard/submissions/${submissionId}/receipt`} className="type-label text-text-2 underline underline-offset-4">Receipt</Link>
+          <Link href="/dashboard/submissions" className="type-label text-text-2 underline underline-offset-4">All submissions</Link>
+        </>} />
 
       {parsed?.duplicate.status === "suspected" && <DuplicateCompare submissionId={submissionId} matches={parsed.duplicate.matches} />}
 

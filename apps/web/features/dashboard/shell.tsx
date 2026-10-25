@@ -29,7 +29,7 @@ const NAV: { group?: string; items: NavItem[] }[] = [
   ] },
 ];
 const MOBILE: NavItem[] = [NAV[0]!.items[0]!, NAV[0]!.items[1]!, NAV[1]!.items[0]!, NAV[1]!.items[1]!];
-const TITLES: Record<string, string> = { inbox: "Needs you", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log" };
+const TITLES: Record<string, string> = { receipt: "Receipt", inbox: "Needs you", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log" };
 const STORE = "skarl:dashboard:sidebar";
 
 const isActive = (pathname: string, href: string) => href === "/dashboard" ? pathname === href : pathname.startsWith(href);
