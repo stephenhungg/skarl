@@ -32,7 +32,7 @@ Labelling rule for every surface: testnet and simulated data carry a visible bad
 - **Policy engine**: agent wallet card with address, policy ID, per-payout cap, and the two live `policy_violation` rejections (static evidence from `docs/agent-wallet.md` + status).
 - Payout executor badge: `controller_wallet` vs `cdp_agent`, with the payout tx link. `payments.payoutAttempt`, `activity.payoutHistory`.
 - **Earn**: evidence-sale (x402 Bazaar) count and receipts once live (`/api/samples/[id]/evidence`).
-- **Agent-native**: "Connect your agent" panel with the MCP URL, A2A card and Wallet MCP flow (pending deploy, see [agents](agents.md) / [MCP](mcp.md)).
+- **Agent-native**: "Connect your agent" panel with the MCP URL, A2A card and Wallet MCP flow (pending deploy, see `docs/agents.md` and `docs/mcp.md` once merged).
 - Builder feedback link (`docs/coinbase-submission.md`).
 
 ### Convex
