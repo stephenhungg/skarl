@@ -51,8 +51,7 @@ function RowArrow({ dir }: { dir: "right" | "left" }) {
   );
 }
 
-// The four steps as a two by two flowchart: Record to Check, down to Approve, across to Pay,
-// with a loop from Check back to Record for clips that fail the check.
+// The four steps as a two by two flowchart: Record to Check, down to Approve, across to Pay.
 export function HowItWorks() {
   return (
     <section id="how-it-works" aria-labelledby="how-it-works-title" className="py-[72px] xl:py-[108px]">
@@ -65,21 +64,7 @@ export function HowItWorks() {
       <div className="frame">
         <SectionHeader id="how-it-works-title" eyebrow="How Skarl works" title="From task to payout" />
 
-        <div className="hw-chart relative mx-auto mt-16 max-w-[900px]">
-          {/* loop back from Check to Record, arcing over the top row */}
-          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-10 hidden h-10 min-[810px]:block">
-            <div
-              className="absolute bottom-0 h-7 rounded-t-[12px] border-x border-t border-dashed border-slate-300"
-              style={{ left: "calc(var(--panel-w) / 2)", width: `calc(var(--panel-w) + ${GAP}px)` }}
-            />
-            <svg viewBox="0 0 12 10" width="12" height="10" fill="none" className="absolute -bottom-[3px]" style={{ left: "calc(var(--panel-w) / 2 - 6px)" }}>
-              <path d="M1 2 L6 8 L11 2" stroke="rgb(var(--slate-500))" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span className="cut-book absolute top-[3px] -translate-x-1/2 bg-paper px-3 text-[13px] leading-none text-slate-500" style={{ left: "50%" }}>
-              Doesn&apos;t match, record again
-            </span>
-          </div>
-
+        <div className="hw-chart relative mx-auto mt-8 max-w-[900px]">
           <div className="grid grid-cols-1 gap-y-8 min-[810px]:gap-y-0" style={{ gridTemplateColumns: undefined }}>
             <div className="relative grid grid-cols-1 gap-8 min-[810px]:grid-cols-[1fr_88px_1fr] min-[810px]:gap-0">
               <Panel step={RECORD} />
