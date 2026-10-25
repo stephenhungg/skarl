@@ -40,6 +40,7 @@ export const membershipRole = v.union(
   v.literal("buyer"),
   v.literal("contributor"),
   v.literal("controller"),
+  v.literal("finance-agent"),
 );
 
 export const orderStatus = literalUnion(orderStatuses);

@@ -14,14 +14,19 @@
     "check:docs": "python3 scripts/check_docs.py",
     "check": "pnpm typecheck && pnpm test && pnpm check:docs && pnpm build",
     "convex:dev": "convex dev",
-    "check:convex": "CONVEX_AGENT_MODE=anonymous convex dev --once --typecheck enable"
+    "check:convex": "CONVEX_AGENT_MODE=anonymous convex dev --once --typecheck enable",
+    "seed": "convex run seed:demo"
   },
   "dependencies": {
+    "@noble/hashes": "2.4.0",
     "@skarl/contracts": "workspace:*",
     "convex": "1.48.0"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
     "@types/node": "^22.0.0",
-    "typescript": "~7.0.2"
+    "convex-test": "0.0.65",
+    "typescript": "~7.0.2",
+    "vitest": "5.0.5"
   }
 }

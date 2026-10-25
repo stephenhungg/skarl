@@ -8,7 +8,6 @@ __pycache__/
 .pytest_cache/
 *.pyc
 *.tsbuildinfo
-convex/_generated/
 .DS_Store
 work/
 services/verifier/.cache/

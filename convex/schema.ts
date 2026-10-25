@@ -24,7 +24,7 @@ import {
 const tenant = { organizationId: v.id("organizations") };
 const asset = { network, tokenAddress: usdcToken };
 
-// This is a storage scaffold, not an implemented financial workflow.
+// Demo finance mutations enforce atomic posting and role checks; remaining tables are design scaffolding.
 // Indexes below are lookup indexes, NOT unique constraints. Future mutations
 // must perform idempotency reads and dependent writes in one transaction.
 // Identities are stored as Convex `tokenIdentifier` (issuer + subject) so that
@@ -47,9 +47,10 @@ const analysisContext = {
 export default defineSchema({
   organizations: defineTable({
     name: v.string(),
+    demoKey: v.optional(v.string()),
     createdByTokenIdentifier: tokenIdentifier,
     status: v.union(v.literal("active"), v.literal("disabled")),
-  }),
+  }).index("by_demo_key", ["demoKey"]),
 
   memberships: defineTable({
     ...tenant,
@@ -136,6 +137,7 @@ export default defineSchema({
     consentRecordId: v.optional(v.id("consentRecords")),
     expectedSourceHash: v.optional(v.string()),
     sourceHash: v.optional(v.string()),
+    perceptualHash: v.optional(v.string()),
     currentAnalysisId: v.optional(v.id("analysisResults")),
     currentDecisionId: v.optional(v.id("reviewDecisions")),
     supersedesSubmissionId: v.optional(v.id("submissions")),
@@ -149,7 +151,8 @@ export default defineSchema({
       "contributorTokenIdentifier",
       "clientRequestId",
     ])
-    .index("by_source_hash", ["organizationId", "sourceHash"]),
+    .index("by_source_hash", ["organizationId", "sourceHash"])
+    .index("by_perceptual_hash", ["organizationId", "perceptualHash"]),
 
   consentRecords: defineTable({
     ...tenant,
@@ -236,7 +239,7 @@ export default defineSchema({
   reviewDecisions: defineTable({
     ...tenant,
     submissionId: v.id("submissions"),
-    analysisResultId: v.id("analysisResults"),
+    analysisResultId: v.optional(v.id("analysisResults")),
     taskVersionId: v.id("rubricVersions"),
     decisionKey: v.string(),
     decision: v.union(
@@ -257,7 +260,18 @@ export default defineSchema({
     orderId: v.id("orders"),
     submissionId: v.id("submissions"),
     decisionId: v.id("reviewDecisions"),
-    manifestStorageId: v.id("_storage"),
+    manifestStorageId: v.optional(v.id("_storage")),
+    // Atomically available licensed manifest; originals remain behind authorized access.
+    manifest: v.optional(v.object({
+      schemaVersion: v.literal("1.0"),
+      originalAssetId: v.id("mediaAssets"),
+      sourceHash: v.string(),
+      taskVersionId: v.id("rubricVersions"),
+      consentRecordId: v.id("consentRecords"),
+      licenseVersion: v.string(),
+      decisionId: v.id("reviewDecisions"),
+      analysisResultId: v.optional(v.id("analysisResults")),
+    })),
     manifestHash: v.string(),
     termsHash: v.string(),
     eventKey: v.string(),
@@ -284,24 +298,45 @@ export default defineSchema({
     .index("by_order", ["orderId"])
     .index("by_org_status", ["organizationId", "status"]),
 
-  paymentIntents: defineTable({
-    ...tenant,
-    ...asset,
-    orderId: v.id("orders"),
-    intentId: v.string(),
-    buyerWalletAddress: evmAddress,
-    recipientAddress: evmAddress,
-    amountAtomic,
-    termsHash: v.string(),
-    resourcePath: v.string(),
-    x402Version: v.literal(2),
-    paymentIdentifier: v.string(),
-    expiresAt: v.number(),
-    status: fundingStatus,
-    updatedAt: v.number(),
-  })
+  // Funding keeps its existing shape; outgoing proposals are a discriminated
+  // variant linked 1:1 to paymentCommands for independent approval/dispatch.
+  paymentIntents: defineTable(v.union(
+    v.object({
+      ...tenant, ...asset,
+      kind: v.optional(v.literal("funding")),
+      orderId: v.id("orders"),
+      intentId: v.string(),
+      buyerWalletAddress: evmAddress,
+      recipientAddress: evmAddress,
+      amountAtomic,
+      termsHash: v.string(),
+      resourcePath: v.string(),
+      x402Version: v.literal(2),
+      paymentIdentifier: v.string(),
+      expiresAt: v.number(),
+      status: fundingStatus,
+      updatedAt: v.number(),
+    }),
+    v.object({
+      ...tenant, ...asset,
+      kind: v.literal("contributor_payout"),
+      orderId: v.id("orders"),
+      intentId: v.string(),
+      payableId: v.id("payables"),
+      paymentCommandId: v.id("paymentCommands"),
+      requesterTokenIdentifier: tokenIdentifier,
+      recipientAddress: evmAddress,
+      amountAtomic,
+      bindingHash: v.string(),
+      sourceVersion: v.string(),
+      expiresAt: v.number(),
+      status: payoutStatus,
+      updatedAt: v.number(),
+    }),
+  ))
     .index("by_intent_id", ["intentId"])
     .index("by_payment_identifier", ["organizationId", "paymentIdentifier"])
+    .index("by_payable", ["payableId"])
     .index("by_order", ["orderId"]),
 
   approvals: defineTable({
@@ -331,6 +366,7 @@ export default defineSchema({
     commandId: v.string(),
     kind: v.union(v.literal("contributor_payout"), v.literal("buyer_refund")),
     requestedBy: actor,
+    requesterTokenIdentifier: tokenIdentifier,
     recipientAddress: evmAddress,
     amountAtomic,
     bindingHash: v.string(),
@@ -411,12 +447,16 @@ export default defineSchema({
     status: v.literal("posted"),
     memo: v.string(),
     sourceReference: v.string(),
+    contributorTokenIdentifier: v.optional(tokenIdentifier),
+    reference: v.optional(v.string()),
+    fingerprint: v.optional(v.string()),
     effectiveAt: v.number(),
     recordedAt: v.number(),
     reversalOf: v.optional(v.id("journalEntries")),
   })
     .index("by_event_key", ["organizationId", "eventKey"])
     .index("by_order", ["orderId"])
+    .index("by_org", ["organizationId"])
     .index("by_reversal_of", ["reversalOf"]),
 
   journalLines: defineTable({
@@ -444,6 +484,7 @@ export default defineSchema({
     occurredAt: v.number(),
   })
     .index("by_event_key", ["organizationId", "eventKey"])
+    .index("by_org_time", ["organizationId", "occurredAt"])
     .index("by_entity", ["organizationId", "entityType", "entityId"]),
 
   outboxEvents: defineTable({
