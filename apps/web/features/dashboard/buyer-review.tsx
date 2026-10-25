@@ -15,7 +15,7 @@ export function BuyerReview() {
   const { summary, submissions, payables } = useOrderData(orderId);
   const exceptions = useExceptions(orderId);
   if (orderId === null) return <Unavailable title="No order to review" description="Post a task and fund it to begin collecting demonstrations." />;
-  if (!orderId || !summary || exceptions === undefined) return <><PageHeader title="Review" /><Loading rows={4} /></>;
+  if (!orderId || !summary || exceptions === undefined) return <><PageHeader title="Exceptions" /><Loading rows={4} /></>;
   const open = exceptions.filter(item => item.disposition?.status !== "resolved");
   const queuedSubmissions = new Set(open.map(item => (item.exception as ReviewEvidence).submissionId).filter(Boolean));
   const queuedIntents = new Set(open.map(item => (item.exception as ReviewEvidence).intentId).filter(Boolean));
@@ -23,7 +23,7 @@ export function BuyerReview() {
   const legacyPayables = (payables ?? []).filter(row => !summary.order.autoPay?.enabled && row.intent?.status === "proposed" && !row.approval && !queuedIntents.has(row.intent._id));
   const count = open.length + legacySubmissions.length + legacyPayables.length;
   return <>
-    <PageHeader title="Review" description="Only exceptions need you. Agents propose; the rule you signed approves. The AI never approves itself."
+    <PageHeader title="Exceptions"
       actions={<Link href="/orders/new" className="type-label underline underline-offset-4">Post a task</Link>} />
     <PolicyEditor key={`${orderId}:${summary.order.autoPay?.setAt ?? 0}`} orderId={orderId}
       enabled={summary.order.autoPay?.enabled ?? false}
