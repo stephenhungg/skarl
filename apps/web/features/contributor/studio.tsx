@@ -66,9 +66,7 @@ export function Studio(props: StudioProps) {
   const earned = (payables ?? []).reduce((sum, p) => sum + BigInt(p.amountAtomic), 0n);
   const paid = (payables ?? []).filter(p => p.status === "paid").reduce((sum, p) => sum + BigInt(p.amountAtomic), 0n);
   return (
-    <div className="glaze min-h-dvh bg-page font-sans text-text-1"
-      style={{ ["--font-sans" as string]: "var(--font-dashboard-sans), ui-sans-serif, system-ui, sans-serif",
-        ["--font-mono" as string]: "var(--font-dashboard-mono), ui-monospace, monospace" }}>
+    <div className="glaze skarl-theme min-h-dvh bg-page font-sans text-text-1">
       <GlazePortalProvider>
         <header className="sticky top-0 z-(--z-sticky) border-b border-line-faint bg-page">
           <div className="mx-auto flex h-12 max-w-6xl items-center gap-3 px-4 md:px-6">

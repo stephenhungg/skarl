@@ -87,9 +87,7 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
     })))];
 
   return (
-    <div className="glaze min-h-dvh bg-page font-sans text-text-1"
-      style={{ ["--font-sans" as string]: "var(--font-dashboard-sans), ui-sans-serif, system-ui, sans-serif",
-        ["--font-mono" as string]: "var(--font-dashboard-mono), ui-monospace, monospace" }}>
+    <div className="glaze skarl-theme min-h-dvh bg-page font-sans text-text-1">
       <GlazePortalProvider>
         <TooltipProvider>
           <div className={cn("grid min-h-dvh md:grid-cols-[var(--sidebar)_1fr]")} style={{ ["--sidebar" as string]: collapsed ? "52px" : "240px" }}>
@@ -139,7 +137,7 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
             <div className="flex min-w-0 flex-col pb-16 md:pb-0">
               <header className="sticky top-0 z-(--z-sticky) flex h-12 items-center gap-3 border-b border-line-faint bg-page px-4 md:px-6">
                 <BreadcrumbTrail items={crumbs} renderLink={href => <Link href={href} />} className="min-w-0 flex-1" />
-                <span className="hidden type-label-sm text-text-3 sm:inline">Live from Convex</span>
+                <span className="hidden rounded-pill bg-[rgb(199_241_142)] px-2 py-0.5 type-label-sm text-[rgb(22_32_12)] sm:inline">Live</span>
               </header>
               <main className="mx-auto w-full max-w-[1200px] flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
             </div>

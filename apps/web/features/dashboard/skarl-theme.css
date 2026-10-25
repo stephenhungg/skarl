@@ -1,0 +1,45 @@
+/* Glaze components, Skarl's look. Glaze keeps its structure, states and spacing; the colours and type come from
+   the landing page (app/globals.css): paper, landing ink, sage neutrals, Montreal, and the lime accent on the one
+   primary action. Scoped to .glaze.skarl-theme so it beats Glaze's own .glaze tokens and touches nothing else. */
+.glaze.skarl-theme {
+  --font-sans: var(--font-skarl-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-dashboard-mono), ui-monospace, monospace;
+
+  /* Surfaces: landing paper as the page, sage mist as the card shell. */
+  --page: rgb(253 253 250);
+  --paper: #ffffff;
+  --shell: rgb(239 241 237);
+  --field: rgb(232 235 229);
+  --hover: rgb(16 18 14 / 0.05);
+  --hover-row: rgb(16 18 14 / 0.03);
+  --pressed: rgb(16 18 14 / 0.08);
+  --flat-hover: rgb(247 248 245);
+
+  /* Ink is the landing ink (16 18 14), so every grey leans sage instead of neutral. */
+  --ink: rgb(16 18 14);
+  --ink-80: rgb(16 18 14 / 0.86);
+  --ink-60: rgb(16 18 14 / 0.62);
+  --ink-45: rgb(16 18 14 / 0.46);
+  --ink-32: rgb(16 18 14 / 0.32);
+  --ink-15: rgb(16 18 14 / 0.15);
+  --ink-10: rgb(16 18 14 / 0.10);
+  --ink-06: rgb(16 18 14 / 0.07);
+  --ink-03: rgb(16 18 14 / 0.03);
+  --text-1: rgb(16 18 14 / 0.90);
+  --text-2: rgb(80 90 76);
+  --text-3: rgb(115 124 110);
+  --text-disabled: rgb(150 158 143);
+  --line-faint: rgb(220 224 217 / 0.9);
+  --line: rgb(16 18 14 / 0.10);
+  --line-control: rgb(16 18 14 / 0.15);
+  --line-focus: rgb(16 18 14 / 0.32);
+  --line-strong: rgb(16 18 14 / 0.45);
+  --focus: rgb(16 18 14 / 0.86);
+
+  /* The primary button is lime, the landing's accent for the one action that matters. */
+  --glass-ink-base: rgb(199 241 142 / 0.96);
+  --glass-ink-text: rgb(22 32 12);
+  --glass-ink-ring: rgb(120 158 74 / 0.55);
+  --glass-core: 0.06;
+  --glass-core-held: 0.14;
+}
