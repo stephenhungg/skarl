@@ -24,6 +24,8 @@ The rule is on by default with a cap equal to the order’s per-clip price; buye
 
 **The moment:** duplicate caught → second payable blocked → agent self-approval refused → buyer-signed policy approves eligible work → independent CDP cap → chain + ledger agree. The complete sequence is **pending live proof**. The demo labels isolated control tests as **SIMULATED — NO TRANSFER** and recorded provider operations as **RECORDED LIVE TESTNET**. The bank comparison is a dated live Nessie API observation (October 25, 2026, 04:11 PDT: four funding deposits observed; order, ledger, chain and bank all `match` for the 10 USDC order), still labeled a **mock bank**.
 
+The implemented advisory finance analyst adds cited review recommendations, payout narration that distinguishes approval from observed settlement, and organization close notes; deployment and live analyst inference remain unverified, and it has zero payment authority.
+
 ## How we're different
 
 Existing human-data marketplaces such as [Kled AI](https://www.kled.ai/) proved people will sell real-world data at scale (500k+ contributors by Kled's own count) and already record consent and provenance receipts on-chain. What they publish about quality is a closed fraud score and a self-reported accuracy figure, and public App Store reviews complain about opaque, tiny per-item payouts. Skarl competes on proof, not scale:

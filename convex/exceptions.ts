@@ -19,6 +19,7 @@ const exceptionKey = (exception: ReconciliationException) => digest(exception);
 type QueueItem = {
   exceptionKey: string; exception: ReconciliationException; stillDetected: boolean;
   disposition: Doc<"reconciliationDispositions"> | null;
+  analystNotes: Omit<Doc<"analystNotes">, "transcriptJson" | "factsJson">[];
 };
 
 /** Dispositions annotate reconciliation evidence; even resolved discrepancies remain visible while detected. */
@@ -35,12 +36,16 @@ export const list = query({
     const dispositions = await ctx.db.query("reconciliationDispositions").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
     for (const row of dispositions) requireTenant(principal, row);
     const current = new Map(result.exceptions.map(exception => [exceptionKey(exception), exception]));
+    const notes = (await ctx.db.query("analystNotes").withIndex("by_order", q => q.eq("orderId", order._id)).order("desc").take(200))
+      .filter(note => note.organizationId === order.organizationId && note.kind === "exception")
+      .map(({ transcriptJson: _transcript, factsJson: _facts, ...note }) => note);
     return [
       ...[...current].map(([key, exception]) => ({ exceptionKey: key, exception, stillDetected: true,
         disposition: dispositions.find(row => row.exceptionKey === key) ?? null })),
       ...dispositions.filter(row => !current.has(row.exceptionKey)).map(row => ({ exceptionKey: row.exceptionKey,
         exception: JSON.parse(row.snapshotJson) as ReconciliationException, stillDetected: ["policy_review", "info_return_needed"].includes(JSON.parse(row.snapshotJson).code) && row.status !== "resolved", disposition: row })),
-    ];
+    ].map(item => ({ ...item, analystNotes: notes.filter(note => note.exceptionKey === item.exceptionKey ||
+      ("submissionId" in item.exception && note.itemKey === `submission:${item.exception.submissionId}`)) }));
   },
 });
 

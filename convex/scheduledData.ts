@@ -1,3 +1,4 @@
+import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 import { internalMutation, internalQuery, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { api } from "./_generated/api";
@@ -149,6 +150,7 @@ export const saveReconciliation = internalMutation({
       eventKey: `scheduled_reconciliation:${order._id}:${fingerprint}`, actor: { kind: "service", identity: "scheduled-reconciler" },
       action: "scheduled_reconciliation_changed", entityType: "orders", entityId: order._id,
       reason: `${exceptions.length} current unmatched, late or other reconciliation exceptions; observation only, no resend.`, evidenceReferences: [fingerprint] });
+    await ctx.scheduler.runAfter(0, makeFunctionReference<"mutation">("financeAnalystData:scanOrder"), { orderId: order._id });
     return { changed: true };
   },
 });

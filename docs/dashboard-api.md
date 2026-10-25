@@ -721,6 +721,61 @@ visible with `stillDetected:true`. These functions never change ledger, intent,
 attempt or chain-observation history. Reconciliation covers imported observations,
 not a scan of every treasury transfer.
 
+### Advisory finance analyst
+
+**Source implementation; deployment and live analyst inference unverified.** The
+analyst adds visible finance work without approval, rejection, payable, intent,
+journal or transfer authority. Its notes are advisory evidence for buyer review.
+The existing payment and deterministic policy paths remain authoritative.
+
+| Query | Arguments | Result |
+| --- | --- | --- |
+| `financeAnalyst.notesFor` | `{demoIdentity,orderId}` | Stored exception and payout notes for the authorized order. |
+| `financeAnalyst.latestClose` | `{demoIdentity,orderId}` | Latest close note visible through the authorized order, or `null`. |
+
+These queries require owning-organization buyer or finance-agent authority;
+legacy controller compatibility remains. `exceptions.list` adds `analystNotes`
+to each review item without changing its existing fields;
+`dashboard.submissions` also includes notes for held clips. Each note carries
+`summary`, `evidenceCited`, `recommendation: "approve" | "reject" | "needs_info"`,
+`confidence`, `provider`, `model`, `promptVersion` and execution `status`. Display
+provider/model and completed status for a Claude badge only when that note
+actually records Claude inference.
+A recommendation is never an executed review decision.
+
+Exception analysis reads stored evidence through scoped read-only finance tools.
+Payout narration distinguishes policy approval from chain observation; approval
+alone must display as approved/pending, never paid. Render cited witness IDs and
+`settlement`, `txUrl` and `checksPassed` fields on payout notes. Approval and
+observed settlement are separate milestones; each milestone/prompt version runs
+once. Payout prose is rendered from stored facts so model wording cannot invent
+settlement, amounts or recipients. The organization close summarizes the trial
+balance, unreconciled items, open exceptions and upcoming flags. It does not close
+an accounting period or post entries. Close facts include simulated scenario
+orders in that organization and explicitly flag their IDs; this is not a
+real-only cash statement. Reconciliation snapshot gaps/age are also flagged.
+
+Durable item/prompt-version keys suppress duplicate runs; concurrency and hourly
+budget guards bound provider work. `FINANCE_ANALYST_MAX_RUNS_PER_HOUR` defaults
+to 30, `FINANCE_ANALYST_MAX_CONCURRENCY` to 2, and
+`FINANCE_ANALYST_CLOSE_MINUTES` to 60. Claude is the analyst provider
+(`ANTHROPIC_API_KEY`; `ANTHROPIC_FINANCE_MODEL` or `ANTHROPIC_MODEL`, default
+`claude-sonnet-5-5`). Zero limits disable work; invalid limits fail closed. Queued
+work resumes through the minute sweep. The existing
+`FINANCE_AGENT_BACKGROUND_ENABLED=false` and `SKARL_SCHEDULED_JOBS_DISABLED=true`
+switches also disable analyst work.
+Provider failures receive one automatic retry, with Gemini fallback when
+configured (`GEMINI_API_KEY`, optional `GEMINI_FINANCE_MODEL`); exhausted failures
+persist as `provider_error` with an explicit
+“no action was taken” explanation. A failed note is not a successful inference.
+Narration, transcripts and model output remain untrusted data and cannot change
+the server's recommendation constraints or grant money authority.
+
+The deployment operator must deploy merged backend/schema/API changes and verify
+credentials and desired limits. This implementation changes no environment or
+deployment. Existing live finance-loop evidence does not prove the new analyst,
+narrator or close ran live.
+
 ### Media and duplicate evidence
 
 | Query | Arguments | Return |

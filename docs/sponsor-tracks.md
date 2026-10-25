@@ -32,6 +32,8 @@ The [official brief](https://docs.google.com/document/d/1u4iN8R97ILY3kfHTPKC82zd
 
 Judges may inject a scenario.
 
+The advisory finance analyst adds cited exception recommendations, approval/chain-aware payout narration and organization close notes with zero money authority; backend rollout and live analyst evidence remain pending ([API](dashboard-api.md#advisory-finance-analyst)).
+
 The planned moment is the [demo](demo.md) opening; this full live sequence remains unverified:
 
 1. A re-encoded duplicate clip arrives.
@@ -147,6 +149,7 @@ planted-injection sequence. [Code and local checks](../integrations/jira-forge/R
 
 - **Auth0:** Cal Hacks 13.0 has no Auth0 prize. Optional Convex Auth/Google sign-in and membership checks are implemented; provider configuration and deployed behavior need verification. Impersonable seeded demo selectors remain available when demo mode is enabled and are not production authentication.
 - **Cartesia:** no live evidence in the current status snapshot; exclude it as a working witness.
+- **Anthropic:** Claude-default exception, payout and close notes persist provider/model metadata and remain advisory; the new analyst path requires backend deployment and live verification ([API](dashboard-api.md#advisory-finance-analyst)).
 - **Anthropic / Capital One:** stored live Claude finance and hosted Nessie mock-bank funding evidence now support the [Devpost mapping](devpost.md#prize-specific-evidence). See the [04:40 refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt); no measured community impact or real bank settlement is claimed.
 
 ## Submission package

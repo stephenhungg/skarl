@@ -39,6 +39,10 @@ export const submissions = query({
     const all = await ctx.db.query("submissions").withIndex("by_order_status", q => q.eq("orderId", order._id)).collect();
     const orderView = hasOrderAuthority(principal, order) || isFinanceAgent(principal);
     const visible = all.filter(submission => orderView || submission.contributorTokenIdentifier === principal.tokenIdentifier);
+    const analystNotes = (await ctx.db.query("analystNotes").withIndex("by_order", q => q.eq("orderId", order._id)).order("desc").take(200))
+      .filter(note => orderView && note.organizationId === order.organizationId && note.kind === "exception")
+      .map(({ transcriptJson: _transcript, factsJson: _facts, ...note }) => note);
+    const dispositions = await ctx.db.query("reconciliationDispositions").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
     return Promise.all(visible.map(async submission => {
       const analysis = submission.currentAnalysisId ? await ctx.db.get(submission.currentAnalysisId) : null;
       const decision = submission.currentDecisionId ? await ctx.db.get(submission.currentDecisionId) : null;
@@ -47,7 +51,8 @@ export const submissions = query({
         if (reference && reference.organizationId !== order.organizationId) throw new Error("cross_organization_reference");
       }
       if ((analysis && analysis.submissionId !== submission._id) || (decision && decision.submissionId !== submission._id)) throw new Error("submission_reference_mismatch");
-      return { ...submission, analysis, decision, delivery };
+      const exceptionKeys = dispositions.filter(row => JSON.parse(row.snapshotJson).submissionId === submission._id).map(row => row.exceptionKey);
+      return { ...submission, analysis, decision, delivery, analystNotes: analystNotes.filter(note => note.itemKey === `submission:${submission._id}` || exceptionKeys.includes(note.exceptionKey ?? "")) };
     }));
   },
 });

@@ -1,3 +1,4 @@
+import { makeFunctionReference } from "convex/server";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { audit, digest } from "./finance";
@@ -27,6 +28,7 @@ export async function queuePolicyReview(ctx: MutationCtx, input: { organizationI
     actor: { kind: "service", identity: POLICY_TOKEN }, action: "policy_review_required",
     entityType: input.intentId ? "paymentIntents" : "submissions", entityId, reason: exception.message,
     evidenceReferences: [exceptionKey, input.orderId] });
+  await ctx.scheduler.runAfter(0, makeFunctionReference<"mutation">("financeAnalystData:enqueue"), { orderId: input.orderId, kind: "exception", itemKey: exceptionKey, exceptionKey });
   return { ok: false as const, code: input.failures[0]!, failures: exception.failures };
 }
 

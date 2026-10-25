@@ -295,6 +295,7 @@ export async function approveFor(ctx: MutationCtx, args: {demoIdentity: string; 
       action: "payment_approved", entityType: "paymentIntents", entityId: intent._id,
       reason: reviewReason ?? "Independent approval recorded; wallet execution and chain reconciliation remain separate.", evidenceReferences: [approvalId, command._id] });
     await resolvePolicyReview(ctx, order._id, intent._id, principal.tokenIdentifier, "Payout approved with exact stored terms.");
+    await ctx.scheduler.runAfter(0, makeFunctionReference<"mutation">("financeAnalystData:scanOrder"), { orderId: order._id });
     return { ok: true as const, approvalId, paymentCommandId: command._id, replayed: false };
 }
 export const approve = mutation({

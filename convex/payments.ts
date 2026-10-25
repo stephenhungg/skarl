@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { makeFunctionReference } from "convex/server";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { fundingNetwork } from "./validators";
@@ -368,6 +369,7 @@ export const recordPayoutObservation = mutation({
     await ctx.db.patch(journal, { sourceReference: chainIdentity(args.observation) });
     await ctx.db.patch(intent._id, { status: "confirmed", updatedAt: Date.now() });
     await ctx.db.patch(command._id, { status: "confirmed", updatedAt: Date.now() });
+    await ctx.scheduler.runAfter(0, makeFunctionReference<"mutation">("financeAnalystData:scanOrder"), { orderId: intent.orderId });
     await ctx.db.patch(payable._id, { status: "paid" });
     return result;
   },
