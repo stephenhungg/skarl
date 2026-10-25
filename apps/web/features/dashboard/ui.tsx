@@ -2,6 +2,7 @@
 import { Component, type ReactNode } from "react";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/glaze/ui/empty-state";
 import { Skeleton } from "@/components/glaze/ui/skeleton";
+import { Dialog, DialogAction, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/glaze/ui/dialog";
 import { useConvexConfig } from "@/components/convex-provider";
 import { cn } from "@/lib/glaze/utils";
 import { formatUsdc, humanize } from "./format";
@@ -76,4 +77,29 @@ export class QueryBoundary extends Component<{ children: ReactNode }, { error: E
       </div>
     );
   }
+}
+
+/**
+ * A blocking confirm for actions that move money or bind a decision. onConfirm throws to keep the dialog open
+ * with its error above the footer; it resolves to close.
+ */
+export function ConfirmDialog({ open, onOpenChange, title, description, actionLabel, onConfirm, children }: {
+  open: boolean; onOpenChange: (open: boolean) => void; title: string; description: ReactNode; actionLabel: string;
+  onConfirm: () => Promise<void>; children?: ReactNode;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        {children && <DialogBody>{children}</DialogBody>}
+        <DialogFooter>
+          <DialogClose>Cancel</DialogClose>
+          <DialogAction onAction={onConfirm}>{actionLabel}</DialogAction>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }

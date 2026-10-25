@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/glaze/ui/button";
 import { Status } from "@/components/glaze/ui/status";
 import { Textarea } from "@/components/glaze/ui/textarea";
+import { toast } from "@/components/glaze/ui/toast";
 import { api, CONTROLLER, useOrderId, useRuns, type AgentRun, type Id } from "./data";
 import { formatTime, humanize } from "./format";
 import { Amount, Loading, PageHeader, QueryBoundary, Section, Unavailable } from "./ui";
@@ -25,7 +26,8 @@ export function Agent() {
     setBusy(true); setError(null);
     try {
       // One stable id per deliberate request, so a retry replays instead of running twice.
-      await run({ demoIdentity: CONTROLLER, orderId, requestId: `ui-${crypto.randomUUID()}`, prompt: prompt.trim() });
+      await toast.promise(run({ demoIdentity: CONTROLLER, orderId, requestId: `ui-${crypto.randomUUID()}`, prompt: prompt.trim() }), {
+        loading: "Finance agent running", success: "Agent run recorded. Check its status below.", fail: "The agent could not start" });
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "The agent could not start.");
     } finally { setBusy(false); }

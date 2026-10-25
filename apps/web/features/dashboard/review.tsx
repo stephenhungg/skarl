@@ -12,7 +12,8 @@ import { cn } from "@/lib/glaze/utils";
 import { api, CONTROLLER, useOrderData, useOrderId, type Id } from "./data";
 import { formatMs, humanize, shortHash } from "./format";
 import { SubmissionStatus } from "./submissions";
-import { Loading, PageHeader, Unavailable } from "./ui";
+import { ConfirmDialog, Loading, PageHeader, Unavailable } from "./ui";
+import { toast } from "@/components/glaze/ui/toast";
 
 type Evidence = { modality: "video" | "audio" | "text"; startMs: number; endMs: number; claim: string };
 type Finding = { criterionId: string; status: "supported" | "contradicted" | "unobservable"; evidence: Evidence[]; reason: string };
@@ -237,18 +238,29 @@ function Decision({ submissionId, status, report, verificationOnly }: { submissi
     : report.duplicate.status === "suspected" ? "A suspected copy blocks acceptance until it is resolved."
     : null;
 
+  const [confirming, setConfirming] = useState(false);
+
+  /** Sends one decision. Throws on refusal so a confirm dialog can stay open with the reason. */
+  async function send(decision: keyof typeof REASON) {
+    const response = await review({ demoIdentity: CONTROLLER, submissionId, decision, reasonCode: REASON[decision], note: note.trim() });
+    if (!response.ok) {
+      const text = `Refused: ${humanize(response.code)}.`;
+      setResult({ ok: false, text });
+      toast.fail("Decision refused", { description: humanize(response.code) });
+      throw new Error(text);
+    }
+    const text = decision === "accept"
+      ? ("payableId" in response && response.payableId ? "Accepted. A payable and a balanced journal entry were posted." : "Accepted and recorded.")
+      : decision === "reject" ? "Rejected. No payable was created." : "Retake requested. No payable was created.";
+    setResult({ ok: true, text });
+    toast.success(decision === "accept" ? "Clip accepted" : decision === "reject" ? "Clip rejected" : "Retake requested", { description: text });
+  }
+
   async function decide(decision: keyof typeof REASON) {
-    if (!note.trim()) { setResult({ ok: false, text: "Write a note first. Every decision is stored with its reason." }); return; }
+    if (!note.trim()) { setResult({ ok: false, text: "Write a note first. Every decision is stored with its reason." }); document.getElementById("decision-note")?.focus(); return; }
+    if (decision === "accept") { setConfirming(true); return; }
     setBusy(decision); setResult(null);
-    try {
-      const response = await review({ demoIdentity: CONTROLLER, submissionId, decision, reasonCode: REASON[decision], note: note.trim() });
-      if (!response.ok) setResult({ ok: false, text: `Refused: ${humanize(response.code)}.` });
-      else setResult({ ok: true, text: decision === "accept"
-        ? `Accepted. ${"payableId" in response && response.payableId ? "A payable and balanced journal were posted." : "Recorded."}`
-        : decision === "reject" ? "Rejected. No payable was created." : "Correction requested. No payable was created." });
-    } catch (error) {
-      setResult({ ok: false, text: error instanceof Error ? error.message : "The decision could not be sent." });
-    } finally { setBusy(null); }
+    try { await send(decision); } catch { /* shown inline and as a toast */ } finally { setBusy(null); }
   }
 
   useEffect(() => {
@@ -272,8 +284,13 @@ function Decision({ submissionId, status, report, verificationOnly }: { submissi
       <div className="shell-foot flex flex-wrap items-center gap-2">
         <Button variant="secondary" size="sm" className="me-auto" disabled={!!busy} onClick={() => decide("reject")}>Reject</Button>
         <Button variant="secondary" size="sm" disabled={!!busy} onClick={() => decide("request_correction")}>Request correction</Button>
-        <Button size="sm" disabled={!!busy || !!acceptBlock} onClick={() => decide("accept")}>{busy === "accept" ? "Accepting" : "Accept"}</Button>
+        <Button size="sm" disabled={!!busy || !!acceptBlock} onClick={() => decide("accept")}>Accept</Button>
       </div>
+      <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Accept this clip?" actionLabel="Accept and create payable"
+        description="This records your decision, delivers the sample to the buyer and accrues what the contributor is owed. It cannot be silently undone; a correction is a new, audited entry."
+        onConfirm={() => send("accept")}>
+        <p className="type-body-sm text-text-2">Your note: <span className="text-text-1">{note.trim()}</span></p>
+      </ConfirmDialog>
     </div>
   );
 }

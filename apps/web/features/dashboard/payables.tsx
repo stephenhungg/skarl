@@ -13,7 +13,8 @@ import { api, CONTROLLER, FINANCE_AGENT, useAudit, useOrderData, useOrderId, use
 import { basescanAddress, basescanTx, formatTime, humanize, parseChainIdentity, shortHash } from "./format";
 import { ReceiptRule } from "@/components/ui/payment-receipt-printer";
 import { Receipt } from "./receipt";
-import { Amount, Loading, PageHeader, Unavailable } from "./ui";
+import { Amount, ConfirmDialog, Loading, PageHeader, Unavailable } from "./ui";
+import { toast } from "@/components/glaze/ui/toast";
 
 const STEPS = ["Accrued", "Proposed", "Approved", "Submitted", "Paid"] as const;
 
@@ -114,13 +115,19 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function act(run: () => Promise<{ ok: boolean; code?: string }>, success: string) {
+  const [confirming, setConfirming] = useState(false);
+
+  async function act(run: () => Promise<{ ok: boolean; code?: string }>, success: string, refusedTitle = "Refused") {
     setBusy(true); setMessage(null);
     try {
       const result = await run();
-      setMessage(result.ok ? { ok: true, text: success } : { ok: false, text: `Refused: ${humanize(result.code ?? "refused")}.` });
+      if (result.ok) { setMessage({ ok: true, text: success }); toast.success(success); }
+      else { setMessage({ ok: false, text: `Refused: ${humanize(result.code ?? "refused")}.` }); toast.fail(refusedTitle, { description: humanize(result.code ?? "refused") }); }
+      return result;
     } catch (error) {
-      setMessage({ ok: false, text: error instanceof Error ? error.message : "Request failed." });
+      const text = error instanceof Error ? error.message : "Request failed.";
+      setMessage({ ok: false, text }); toast.fail("Request failed", { description: text });
+      return { ok: false, code: text };
     } finally { setBusy(false); }
   }
 
@@ -133,8 +140,20 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   </>;
   else if (step === 1 && intentId) buttons = <>
     <Button variant="secondary" size="sm" className="me-auto" disabled={busy}
-      onClick={() => act(() => approve({ demoIdentity: FINANCE_AGENT, intentId }), "Unexpected: the agent approval went through.")}>Let the agent approve</Button>
-    <Button size="sm" disabled={busy} onClick={() => act(() => approve({ demoIdentity: CONTROLLER, intentId }), "Approved. Waiting for the workflow to release it for signing.")}>Approve payout</Button>
+      onClick={() => act(() => approve({ demoIdentity: FINANCE_AGENT, intentId }), "Unexpected: the agent approval went through.", "Agent approval refused")}>Let the agent approve</Button>
+    <Button size="sm" disabled={busy} onClick={() => setConfirming(true)}>Approve payout</Button>
+    <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Approve this payout?" actionLabel="Approve payout"
+      description="Your approval binds this exact amount, recipient and network. Any change voids it. Signing in the wallet is a separate step."
+      onConfirm={async () => {
+        const result = await act(() => approve({ demoIdentity: CONTROLLER, intentId }), "Approved. Waiting for the workflow to release it for signing.", "Approval refused");
+        if (!result.ok) throw new Error(`Refused: ${humanize(result.code ?? "refused")}.`);
+      }}>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 type-body-sm">
+        <dt className="text-text-2">Amount</dt><dd><Amount value={payable.amountAtomic} /></dd>
+        <dt className="text-text-2">Recipient</dt><dd className="mono break-all">{payable.recipientAddress}</dd>
+        <dt className="text-text-2">Network</dt><dd>Base Sepolia, test USDC</dd>
+      </dl>
+    </ConfirmDialog>
   </>;
   else if (step === 2 && payable.intent) buttons = <>
     <span className="me-auto type-label-sm text-text-3">{payable.dispatchReady ? (provider ? "Ready. Your wallet will show the same amount and recipient." : "Connect Coinbase Wallet in this browser to sign.") : "Approved. Waiting for the workflow to release it."}</span>
