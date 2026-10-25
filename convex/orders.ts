@@ -1,9 +1,13 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
+import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { requireRole } from "./lib/demoAuth";
-import { actorFor, audit, digest, normalizeAddress } from "./lib/finance";
+import { actorFor, audit, digest, normalizeAddress, loadLedger, paymentBinding, recordJournal, requireTenant } from "./lib/finance";
 import { MAX_ATOMIC_USDC, parseAtomicUsdc, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
+
+import { accountBalance, createRefundReservedJournal } from "../packages/ledger/src/index";
 
 const criterion = v.object({ criterionId: v.string(), description: v.string(),
   modality: v.union(v.literal("visual"), v.literal("audio"), v.literal("cross_modal"), v.literal("temporal")) });
@@ -64,5 +68,68 @@ export const listOrders = query({
       acceptedCount: order.acceptedCount.toString(), pricePerSampleAtomic: order.pricePerSampleAtomic.toString(),
       contributorRateAtomic: order.contributorRateAtomic.toString(), budgetAtomic: order.budgetAtomic.toString(),
       remainingQuantity: (order.quantityRequested - order.acceptedCount).toString() })) };
+  },
+});
+
+/** Reservation/proposal only. The payment adapter does not yet execute buyer-refund commands. */
+export const cancelRemainder = mutation({
+  args: { demoIdentity: v.string(), orderId: v.id("orders"), reason: v.string() },
+  handler: async (ctx, args): Promise<{ ok: true; paymentCommandId: Id<"paymentCommands">;
+    fundingIntentId: Id<"paymentIntents">; journalEntryId: Id<"journalEntries">; amountAtomic: string;
+    controllerApprovalRequired: true; executionAvailable: false; replayed: boolean }> => {
+    const principal = await requireRole(ctx, args.demoIdentity, "buyer");
+    if (principal.roles.includes("finance-agent")) throw new Error("human_buyer_required");
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_found");
+    requireTenant(principal, order);
+    const reason = args.reason.trim();
+    if (!reason || reason.length > 2000) throw new Error("invalid_cancellation_reason");
+    const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
+    const fundingRows = intents.filter(intent => intent.kind === undefined || intent.kind === "funding");
+    const funding = fundingRows[0];
+    if (fundingRows.length !== 1 || !funding || funding.kind === "contributor_payout" || funding.organizationId !== order.organizationId ||
+      funding.status !== "confirmed" || funding.amountAtomic !== order.budgetAtomic || funding.termsHash !== order.termsHash ||
+      funding.network !== PAYMENT_NETWORK || funding.tokenAddress !== USDC_ADDRESS || order.network !== PAYMENT_NETWORK || order.tokenAddress !== USDC_ADDRESS ||
+      normalizeAddress(funding.buyerWalletAddress) !== normalizeAddress(order.buyerWalletAddress)) throw new Error("confirmed_funding_required");
+    const remaining = order.quantityRequested - order.acceptedCount;
+    const amountAtomic = remaining * order.pricePerSampleAtomic;
+    if (remaining <= 0n || order.acceptedCount < 0n || order.pricePerSampleAtomic <= 0n ||
+      order.budgetAtomic !== order.quantityRequested * order.pricePerSampleAtomic || amountAtomic <= 0n || amountAtomic > MAX_ATOMIC_USDC) throw new Error("no_refundable_remainder");
+    const recipientAddress = normalizeAddress(funding.buyerWalletAddress);
+    const sourceVersion = digest({ kind: "buyer_refund", status: "cancelling", orderId: order._id, termsHash: order.termsHash,
+      quantityRequested: order.quantityRequested, acceptedCount: order.acceptedCount, pricePerSampleAtomic: order.pricePerSampleAtomic,
+      budgetAtomic: order.budgetAtomic, fundingIntentId: funding._id, recipientAddress, amountAtomic, reason });
+    const binding = { organizationId: order.organizationId, orderId: order._id, network: PAYMENT_NETWORK,
+      tokenAddress: USDC_ADDRESS, recipientAddress, amountAtomic, sourceVersion, requesterTokenIdentifier: principal.tokenIdentifier };
+    const bindingHash = paymentBinding(binding);
+    const previous = await ctx.db.query("paymentCommands").withIndex("by_order_kind", q => q.eq("orderId", order._id).eq("kind", "buyer_refund")).unique();
+    const journal = createRefundReservedJournal({ eventId: `refund_reserved:${order._id}`, orderId: order._id, amountMicroUsdc: amountAtomic });
+    const ledger = await loadLedger(ctx, order.organizationId);
+    if (previous) {
+      const reserved = await ctx.db.query("journalEntries").withIndex("by_event_key", q =>
+        q.eq("organizationId", order.organizationId).eq("eventKey", journal.eventId)).unique();
+      if (order.status !== "cancelling" || funding.refundPaymentCommandId !== previous._id || previous.organizationId !== order.organizationId ||
+        previous.payableId !== undefined || previous.sourceVersion !== sourceVersion || previous.bindingHash !== bindingHash ||
+        paymentBinding(previous) !== bindingHash || previous.requestedBy.identity !== principal.tokenIdentifier ||
+        !reserved || reserved.fingerprint !== digest(journal)) throw new Error("refund_proposal_changed");
+      return { ok: true, paymentCommandId: previous._id, fundingIntentId: funding._id, journalEntryId: reserved._id,
+        amountAtomic: amountAtomic.toString(), controllerApprovalRequired: true, executionAvailable: false, replayed: true };
+    }
+    if (!["funded", "collecting"].includes(order.status) || funding.refundPaymentCommandId) throw new Error("order_not_cancellable");
+    const reconciled = await ctx.runQuery(api.payments.reconciliation, { demoIdentity: args.demoIdentity, orderId: order._id });
+    if (!reconciled.matches.some(match => match.eventKey === funding.intentId)) throw new Error("funding_requires_reconciliation");
+    if (accountBalance(ledger, "liability:customer_prepayments", { orderId: order._id }) !== amountAtomic ||
+      accountBalance(ledger, "liability:customer_refunds", { orderId: order._id }) !== 0n) throw new Error("refund_balance_mismatch");
+    const journalEntryId = await recordJournal(ctx, order.organizationId, journal);
+    const paymentCommandId = await ctx.db.insert("paymentCommands", { ...binding, kind: "buyer_refund", commandId: `refund:${order._id}`,
+      requestedBy: actorFor(principal), bindingHash, status: "proposed", attemptCount: 0, leaseGeneration: 0, updatedAt: Date.now() });
+    await ctx.db.patch(funding._id, { refundPaymentCommandId: paymentCommandId });
+    // Conflicts with acceptance on this order record: a unit cannot be fulfilled and refunded concurrently.
+    await ctx.db.patch(order._id, { status: "cancelling", updatedAt: Date.now() });
+    await audit(ctx, { organizationId: order.organizationId, eventKey: `refund_proposed:${order._id}`, actor: actorFor(principal),
+      action: "buyer_refund_proposed", entityType: "orders", entityId: order._id, reason,
+      evidenceReferences: [funding._id, paymentCommandId, journalEntryId] });
+    return { ok: true, paymentCommandId, fundingIntentId: funding._id, journalEntryId, amountAtomic: amountAtomic.toString(),
+      controllerApprovalRequired: true, executionAvailable: false, replayed: false };
   },
 });

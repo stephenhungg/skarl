@@ -326,6 +326,7 @@ export default defineSchema({
     v.object({
       ...tenant, ...asset,
       kind: v.optional(v.literal("funding")),
+      refundPaymentCommandId: v.optional(v.id("paymentCommands")),
       orderId: v.id("orders"),
       intentId: v.string(),
       buyerWalletAddress: evmAddress,
