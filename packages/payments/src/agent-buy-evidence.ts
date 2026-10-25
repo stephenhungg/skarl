@@ -1,4 +1,5 @@
 /** Discover the public x402 challenge, inspect its Bazaar declaration, then buy. */
+import { evidencePayTo } from "./evidence-payee.ts";
 import { pathToFileURL } from "node:url";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { validateVerificationReport } from "@skarl/contracts/verification";
@@ -22,14 +23,14 @@ export async function buyEvidence(args = process.argv.slice(2)) {
   const challenge = decodePaymentRequiredHeader(encoded);
   const bazaar = challenge.extensions?.bazaar;
   if (!isRecord(bazaar) || !isRecord(bazaar.info) || !isRecord(bazaar.schema)) throw new CdpBuyerError("Evidence endpoint did not declare Bazaar discovery metadata.");
-  const treasury = process.env.SKARL_TREASURY_ADDRESS?.toLowerCase();
+  const revenueAddress = evidencePayTo();
   if (challenge.x402Version !== 2 || !challenge.accepts.some(requirement => requirement.scheme === "exact" &&
     requirement.network === PAYMENT_NETWORK && requirement.asset.toLowerCase() === USDC_ADDRESS.toLowerCase() &&
-    requirement.amount === EVIDENCE_PRICE_ATOMIC.toString() && requirement.payTo.toLowerCase() === treasury)) {
-    throw new CdpBuyerError("Evidence quote must be exactly 0.25 canonical USDC on Base Sepolia to the approved treasury.");
+    requirement.amount === EVIDENCE_PRICE_ATOMIC.toString() && requirement.payTo.toLowerCase() === revenueAddress)) {
+    throw new CdpBuyerError("Evidence quote must be exactly 0.25 canonical USDC on Base Sepolia to the approved evidence revenue wallet.");
   }
   console.log("Discovered endpoint Bazaar declaration; catalog indexing is not established by this probe.");
-  const response = await payWithCdp(resource, EVIDENCE_PRICE_ATOMIC, { method: "GET" });
+  const response = await payWithCdp(resource, EVIDENCE_PRICE_ATOMIC, { method: "GET" }, revenueAddress);
   const result = await buyerJson(response);
   if (response.status === 202) {
     console.log("Evidence settlement is pending reconciliation; no delivery or new charge inferred."); return;
@@ -52,7 +53,7 @@ export function validateEvidenceResult(result: Record<string, unknown>, resource
     !Number.isSafeInteger(result.media.expiresAt) || result.media.expiresAt <= Date.now()) throw new CdpBuyerError("Paid evidence response failed sample/report/media validation; do not pay again.");
   if (!isRecord(result.settlement) || result.settlement.status !== "confirmed" || typeof result.settlement.txHash !== "string" ||
     !/^0x[0-9a-fA-F]{64}$/.test(result.settlement.txHash) || !["cdp", "x402.org", "custom"].includes(String(result.settlement.facilitator)) ||
-    result.accountingTreatment !== "funding_like_inflow") throw new CdpBuyerError("Paid evidence lacks confirmed settlement identity; reconcile before paying again.");
+    result.accountingTreatment !== "evidence_sale_inflow") throw new CdpBuyerError("Paid evidence lacks confirmed settlement identity; reconcile before paying again.");
   const media = new URL(result.media.url, resource);
   if (media.origin !== resource.origin || media.pathname !== `/api/samples/${sampleId}/media` || media.username || media.password ||
     !media.searchParams.get("token") || result.media.expiresAt > Date.now() + 5 * 60_000 + 10_000) throw new CdpBuyerError("Evidence media URL must be a short-lived same-origin gateway URL.");

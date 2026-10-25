@@ -97,8 +97,8 @@ export function existingAttempt(resource: URL): Record<string, unknown> | null {
   return saved;
 }
 
-export async function payWithCdp(resource: URL, amount: bigint, init: RequestInit): Promise<Response> {
-  const treasury = process.env.SKARL_TREASURY_ADDRESS ?? "";
+export async function payWithCdp(resource: URL, amount: bigint, init: RequestInit, payTo = process.env.SKARL_TREASURY_ADDRESS ?? ""): Promise<Response> {
+  const treasury = payTo;
   const config = buyerClientConfig(treasury, amount, new FileSpendStore(join(directory(), "cdp-spend.jsonl")));
   for (const name of ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET", "CDP_WALLET_SECRET"]) {
     if (!process.env[name]) throw new CdpBuyerError(`Set ${name} privately before running the CDP buyer.`);

@@ -138,6 +138,9 @@ export const MONEY_SEATS = "A finance agent prepares payouts and refunds, and a 
 
 export const MONEY_ACCOUNT_LABEL: Record<Account, string> = {
   "asset:usdc": "USDC cash",
+  "asset:evidence_usdc": "Evidence revenue wallet USDC",
+  "liability:evidence_receipts": "Undelivered evidence receipts",
+  "revenue:evidence_sales": "Evidence sales revenue",
   "liability:customer_prepayments": "Customer prepayments",
   "liability:contributor_payables": "Contributor payables",
   "liability:customer_refunds": "Refunds payable",

@@ -4,6 +4,9 @@ export const MAX_MICRO_USDC = (1n << 63n) - 1n;
 
 export const ACCOUNTS = Object.freeze({
   "asset:usdc": "debit",
+  "asset:evidence_usdc": "debit",
+  "liability:evidence_receipts": "credit",
+  "revenue:evidence_sales": "credit",
   "liability:customer_prepayments": "credit",
   "liability:contributor_payables": "credit",
   "liability:customer_refunds": "credit",
@@ -12,7 +15,7 @@ export const ACCOUNTS = Object.freeze({
 } as const);
 
 export type Account = keyof typeof ACCOUNTS;
-export type JournalKind = "funding" | "fulfillment" | "payout" | "refund_reserved" | "refund_paid" | "reversal";
+export type JournalKind = "evidence_sale" | "evidence_sale_deferred" | "funding" | "fulfillment" | "payout" | "refund_reserved" | "refund_paid" | "reversal";
 export type JournalLine = Readonly<{ account: Account; debit: bigint; credit: bigint }>;
 /** Chain evidence that an outgoing transfer did not and cannot settle. A timeout or reason text is not evidence. */
 export type TransferFailureEvidence = Readonly<
@@ -25,6 +28,7 @@ export type Journal = Readonly<{
   kind: JournalKind;
   description: string;
   contributorId?: string;
+  recipientAddress?: string;
   reference?: string;
   reversesEventId?: string;
   failureEvidence?: TransferFailureEvidence;
@@ -43,6 +47,8 @@ export const EMPTY_LEDGER: LedgerState = Object.freeze({ journals: Object.freeze
  * enough: a balanced "funding" journal could otherwise book a prepayment straight to revenue.
  */
 const LAYOUTS: Readonly<Record<Exclude<JournalKind, "reversal">, readonly (readonly [Account, Account])[]>> = Object.freeze({
+  evidence_sale: [["asset:evidence_usdc", "revenue:evidence_sales"]],
+  evidence_sale_deferred: [["asset:evidence_usdc", "liability:evidence_receipts"]],
   funding: [["asset:usdc", "liability:customer_prepayments"]],
   fulfillment: [["liability:customer_prepayments", "revenue:dataset_sales"], ["expense:contributor_acquisition", "liability:contributor_payables"]],
   payout: [["liability:contributor_payables", "asset:usdc"]],
@@ -94,6 +100,29 @@ export function createFundingJournal(input: AmountInput): Journal {
     eventId: input.eventId, orderId: input.orderId, kind: "funding",
     description: "Confirmed buyer prepayment; no revenue recognized",
     lines: [line("asset:usdc", "debit", input.amountMicroUsdc), line("liability:customer_prepayments", "credit", input.amountMicroUsdc)],
+  };
+}
+
+/** Confirmed receipt into the operator revenue wallet, separately from order funding.
+ * delivered means the licensed evidence is available to its buyer at confirmation;
+ * a quarantined/unavailable resource remains a sale-specific liability.
+ */
+export function createEvidenceSaleJournal(input: AmountInput & {
+  sampleId: string; recipientAddress: string; delivered: boolean;
+}): Journal {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(input.recipientAddress) || /^0x0{40}$/i.test(input.recipientAddress)) {
+    throw new Error("Evidence sale requires a nonzero receiving wallet");
+  }
+  assertId(input.sampleId, "Sample ID");
+  return {
+    eventId: input.eventId, orderId: input.orderId,
+    kind: input.delivered ? "evidence_sale" : "evidence_sale_deferred",
+    reference: input.sampleId, recipientAddress: input.recipientAddress.toLowerCase(),
+    description: input.delivered
+      ? "Evidence sale received in operator revenue wallet; licensed evidence available"
+      : "Evidence-sale inflow in operator revenue wallet; content unavailable, obligation retained",
+    lines: [line("asset:evidence_usdc", "debit", input.amountMicroUsdc),
+      line(input.delivered ? "revenue:evidence_sales" : "liability:evidence_receipts", "credit", input.amountMicroUsdc)],
   };
 }
 
@@ -172,6 +201,10 @@ function assertFailureEvidence(evidence: TransferFailureEvidence | undefined): v
 
 function assertLayout(journal: Journal): void {
   if (journal.kind === "reversal") return;
+  if ((journal.kind === "evidence_sale" || journal.kind === "evidence_sale_deferred") &&
+    (!journal.reference || !journal.recipientAddress || !/^0x[0-9a-f]{40}$/.test(journal.recipientAddress) || /^0x0{40}$/.test(journal.recipientAddress))) {
+    throw new Error("Evidence sale requires sample and receiving wallet references");
+  }
   const layout = LAYOUTS[journal.kind];
   if (!layout) throw new Error("Unknown journal kind");
   if (journal.lines.length !== layout.length * 2) throw new Error(`Journal lines do not match the ${journal.kind} layout`);
@@ -224,7 +257,7 @@ function fingerprint(journal: Journal): string {
   const evidence = journal.failureEvidence;
   return JSON.stringify([
     journal.eventId, journal.orderId, journal.kind, journal.description, journal.contributorId ?? null,
-    journal.reference ?? null, journal.reversesEventId ?? null,
+    journal.reference ?? null, journal.reversesEventId ?? null, journal.recipientAddress ?? null,
     evidence === undefined ? null : Object.entries(evidence).map(([key, value]) => [key, String(value)]),
     journal.lines.map(entry => [entry.account, entry.debit.toString(), entry.credit.toString()]),
   ]);
@@ -294,7 +327,7 @@ export function postJournal(state: LedgerState, journal: Journal): LedgerState {
   }
   const saved: Journal = Object.freeze({ ...journal, lines: Object.freeze(journal.lines.map(entry => Object.freeze({ ...entry }))) });
   const next: LedgerState = Object.freeze({ journals: Object.freeze([...state.journals, saved]) });
-  for (const account of ["asset:usdc", "liability:customer_prepayments", "liability:contributor_payables", "liability:customer_refunds"] as const) {
+  for (const account of ["asset:usdc", "asset:evidence_usdc", "liability:evidence_receipts", "liability:customer_prepayments", "liability:contributor_payables", "liability:customer_refunds"] as const) {
     if (accountBalance(next, account, { orderId: journal.orderId }) < 0n) throw new Error(`Insufficient order balance for ${account}`);
   }
   if (journal.contributorId && accountBalance(next, "liability:contributor_payables", { orderId: journal.orderId, contributorId: journal.contributorId }) < 0n) {

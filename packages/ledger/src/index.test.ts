@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ACCOUNTS, EMPTY_LEDGER, MAX_MICRO_USDC, accountBalance, assertBalanced, createFulfillmentJournal,
-  createFundingJournal, createPayoutJournal, createRefundPaidJournal, createRefundReservedJournal,
+  createFundingJournal, createEvidenceSaleJournal, createPayoutJournal, createRefundPaidJournal, createRefundReservedJournal,
   formatUsdc, parseUsdc, postJournal, reverseJournal,
 } from "./index.ts";
 
@@ -166,4 +166,36 @@ test("identifiers are exact and cannot be padded into a second event", () => {
 test("account normal sides cannot be mutated at runtime", () => {
   assert.throws(() => { (ACCOUNTS as Record<string, string>)["asset:usdc"] = "credit"; });
   assert.equal(ACCOUNTS["asset:usdc"], "debit");
+});
+
+test("evidence-sale cash and revenue stay separate from funding, refunds and contributor obligations", () => {
+  const recipientAddress = `0x${"33".repeat(20)}`;
+  const sale = createEvidenceSaleJournal({ eventId: "sale-1", orderId, sampleId: "sample-1",
+    recipientAddress, delivered: true, amountMicroUsdc: 250_000n });
+  let state = postJournal(funded(), sale);
+  assert.equal(accountBalance(state, "asset:usdc"), 100_000_000n);
+  assert.equal(accountBalance(state, "asset:evidence_usdc"), 250_000n);
+  assert.equal(accountBalance(state, "revenue:evidence_sales"), 250_000n);
+  assert.equal(accountBalance(state, "liability:customer_prepayments"), 100_000_000n);
+  assert.equal(accountBalance(state, "liability:contributor_payables"), 0n);
+  assert.equal(postJournal(state, sale), state);
+  assert.throws(() => postJournal(state, { ...sale, recipientAddress: `0x${"44".repeat(20)}` }), /Event ID conflict/);
+  state = postJournal(state, createRefundReservedJournal({ eventId: "cancel", orderId, amountMicroUsdc: 100_000_000n }));
+  state = postJournal(state, createRefundPaidJournal({ eventId: "refund", orderId, amountMicroUsdc: 100_000_000n }));
+  assert.equal(accountBalance(state, "asset:usdc"), 0n);
+  assert.equal(accountBalance(state, "asset:evidence_usdc"), 250_000n);
+  assert.throws(() => postJournal(state, createRefundReservedJournal({ eventId: "over-refund", orderId, amountMicroUsdc: 1n })), /Insufficient order balance/);
+});
+
+test("unavailable evidence receipt is a separate liability, never sale revenue", () => {
+  const sale = createEvidenceSaleJournal({ eventId: "sale-unavailable", orderId, sampleId: "sample-1",
+    recipientAddress: `0x${"33".repeat(20)}`, delivered: false, amountMicroUsdc: 250_000n });
+  const state = postJournal(EMPTY_LEDGER, sale);
+  assert.equal(sale.kind, "evidence_sale_deferred");
+  assert.equal(accountBalance(state, "asset:evidence_usdc"), 250_000n);
+  assert.equal(accountBalance(state, "liability:evidence_receipts"), 250_000n);
+  assert.equal(accountBalance(state, "revenue:evidence_sales"), 0n);
+  assert.equal(accountBalance(state, "liability:customer_prepayments"), 0n);
+  assert.throws(() => assertBalanced({ ...sale, recipientAddress: undefined }), /receiving wallet/);
+  assert.throws(() => assertBalanced({ ...sale, kind: "funding" }), /funding layout/);
 });

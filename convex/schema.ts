@@ -498,6 +498,8 @@ export default defineSchema({
     kind: v.union(
       v.literal("funding"),
       v.literal("fulfillment"),
+      v.literal("evidence_sale"),
+      v.literal("evidence_sale_deferred"),
       v.literal("payout"),
       v.literal("refund_reserved"),
       v.literal("refund_paid"),
@@ -506,6 +508,7 @@ export default defineSchema({
     status: v.literal("posted"),
     memo: v.string(),
     sourceReference: v.string(),
+    recipientAddress: v.optional(evmAddress),
     contributorTokenIdentifier: v.optional(tokenIdentifier),
     reference: v.optional(v.string()),
     fingerprint: v.optional(v.string()),

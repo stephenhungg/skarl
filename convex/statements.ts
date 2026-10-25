@@ -33,11 +33,16 @@ export const forOrder = query({
     // This rejects each unbalanced entry, even if two corrupt entries cancel in aggregate.
     const balance = trialBalance(journals);
     const netDebit = (account: string) => BigInt(balance.accounts.find(row => row.account === account)?.netDebitAtomic ?? "0");
-    const revenue = -netDebit("revenue:dataset_sales"), contributorExpense = netDebit("expense:contributor_acquisition");
+    const evidenceRevenue = -netDebit("revenue:evidence_sales");
+    const revenue = -netDebit("revenue:dataset_sales") + evidenceRevenue, contributorExpense = netDebit("expense:contributor_acquisition");
     return {
       orderId: order._id, currency: "USDC" as const, network: order.network, tokenAddress: order.tokenAddress,
       trialBalance: balance,
+      // cashAtomic remains treasury cash: evidence receipts cannot fund order payouts.
       cashAtomic: netDebit("asset:usdc").toString(),
+      evidenceCashAtomic: netDebit("asset:evidence_usdc").toString(),
+      evidenceRevenueAtomic: evidenceRevenue.toString(),
+      evidenceDeferredAtomic: (-netDebit("liability:evidence_receipts")).toString(),
       deferredRevenueAtomic: (-netDebit("liability:customer_prepayments")).toString(),
       revenueAtomic: revenue.toString(), contributorExpenseAtomic: contributorExpense.toString(),
       // This prototype has only contributor expense postings; inference, fees and tax are excluded.

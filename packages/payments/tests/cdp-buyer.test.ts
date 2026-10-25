@@ -73,7 +73,7 @@ describe("CDP buyer spend controls (simulated signer)", () => {
 describe("evidence buyer output boundaries", () => {
   const validResult = () => ({ sampleId: "sample-abc", report: { ...structuredClone(verificationCases.bases.accept), submissionId: "abc" },
     media: { url: "https://skarl.example/api/samples/sample-abc/media?token=fixture-only", expiresAt: Date.now() + 300_000, mimeType: "video/webm" },
-    settlement: { status: "confirmed", txHash: `0x${"aa".repeat(32)}`, facilitator: "cdp" }, accountingTreatment: "funding_like_inflow" });
+    settlement: { status: "confirmed", txHash: `0x${"aa".repeat(32)}`, facilitator: "cdp" }, accountingTreatment: "evidence_sale_inflow" });
   const resource = new URL("https://skarl.example/api/samples/sample-abc/evidence");
   it("accepts bound completed fixture evidence with a short-lived gateway and known settlement", () => {
     expect(() => validateEvidenceResult(validResult(), resource)).not.toThrow();

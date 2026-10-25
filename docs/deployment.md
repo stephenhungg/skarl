@@ -42,6 +42,7 @@ an older worktree: the backend deployment owner deploys merged `origin/main`.
 | --- | --- |
 | `NEXT_PUBLIC_CONVEX_URL` | Public browser/backend URL: `https://keen-marmot-986.convex.cloud` |
 | `SKARL_TREASURY_ADDRESS` | Controller receiving address: `0x8408a922ea400af33d7c2080a9edd5d3495b695f` |
+| `SKARL_EVIDENCE_PAYTO` | Separate evidence revenue recipient: `0x0A9EfDF66c58543538824906aE267B969Ed651c5`; also set in Convex |
 | `SKARL_PAYMENTS_SERVICE_SECRET` | Private service authentication; must match Convex |
 | `BASE_SEPOLIA_RPC_URL` | Receipt verification; public default `https://sepolia.base.org` |
 | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` | Server-side CDP facilitator authentication when both configured |

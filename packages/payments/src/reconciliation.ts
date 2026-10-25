@@ -50,14 +50,15 @@ export function validateTransfer(observation: TransferObservation, expected: Exp
 export type PaymentObligation = ExpectedTransfer & Readonly<{
   eventKey: string;
   orderId: string;
-  kind: "funding" | "payout";
+  kind: "funding" | "payout" | "evidence_sale";
   deadlineAt?: number;
   transfer?: TransferIdentity;
 }>;
 export type PaymentJournal = Readonly<{
   eventKey: string;
   orderId: string;
-  kind: "funding" | "payout";
+  kind: "funding" | "payout" | "evidence_sale" | "evidence_sale_deferred";
+  recipientAddress?: string;
   network: string;
   tokenAddress: string;
   transfer?: TransferIdentity;
@@ -82,8 +83,13 @@ function identityOrUndefined(value: TransferIdentity | undefined): string | unde
 function correctJournal(journal: PaymentJournal, obligation: PaymentObligation, identity: string): boolean {
   const accounts = obligation.kind === "funding"
     ? { debit: "asset:usdc", credit: "liability:customer_prepayments" }
-    : { debit: "liability:contributor_payables", credit: "asset:usdc" };
-  return journal.orderId === obligation.orderId && journal.kind === obligation.kind &&
+    : obligation.kind === "evidence_sale"
+      ? { debit: "asset:evidence_usdc", credit: journal.kind === "evidence_sale_deferred" ? "liability:evidence_receipts" : "revenue:evidence_sales" }
+      : { debit: "liability:contributor_payables", credit: "asset:usdc" };
+  const matchingKind = journal.kind === obligation.kind ||
+    (obligation.kind === "evidence_sale" && journal.kind === "evidence_sale_deferred");
+  return journal.orderId === obligation.orderId && matchingKind &&
+    (obligation.kind !== "evidence_sale" || (journal.network === PAYMENT_NETWORK && journal.recipientAddress?.toLowerCase() === obligation.toAddress.toLowerCase())) &&
     journal.network === (obligation.network ?? PAYMENT_NETWORK) &&
     (journal.network === SOLANA_PAYMENT_NETWORK ? journal.tokenAddress === paymentRail(journal.network).token :
       journal.tokenAddress.toLowerCase() === USDC_ADDRESS.toLowerCase()) &&

@@ -109,3 +109,36 @@ bindings are checked, and contributor-payable lines require contributor
 attribution. A broken invariant raises an error rather than displaying a false
 balanced statement. The finance agent's `getTrialBalance` tool reads this same
 query. No statement query posts, adjusts or reverses a journal.
+
+## Standalone evidence sales to the operator revenue wallet
+
+Evidence purchases use `SKARL_EVIDENCE_PAYTO`, separate from the controller treasury
+used for collection-order funding. A receipt does not increase the original
+order's funded quota, customer prepayment balance, or contributor payable.
+The sale retains its source order/sample for traceability, and the journal stores
+the actual receiving address. These entries debit `asset:evidence_usdc`, not the
+treasury's `asset:usdc`; the dashboard trial balance therefore does not suggest
+these funds are available for browser-signed treasury payouts.
+
+When the licensed evidence remains available at receipt confirmation, the
+`evidence_sale` journal credits `revenue:evidence_sales`. If the resource has
+become unavailable or its licensed binding changed after the claim,
+`evidence_sale_deferred` credits `liability:evidence_receipts` instead. Receiving
+cash does not justify recognizing unavailable content as earned revenue. The
+service must obtain a confirmed, matching chain receipt before either posting.
+This is the prototype's availability-based fulfillment assumption, not proof the
+buyer downloaded the response. Automatic redelivery, deferred-sale release and
+sale refunds remain unimplemented and require operator reconciliation.
+
+`statements.forOrder` reports `evidenceCashAtomic`, `evidenceRevenueAtomic` and
+`evidenceDeferredAtomic` separately. `cashAtomic` continues to mean treasury
+cash; `revenueAtomic` and `netIncomeAtomic` include earned evidence revenue.
+The original order cancellation can refund only its remaining customer
+prepayments. Reconciliation also compares each durable evidence-sale claim,
+its identified transfer, the wallet-attributed journal and exact accounts;
+it does not treat these receipts as funding or silently omit them.
+
+The new journal kinds, accounts and optional receiving-address field require a
+Convex backend/schema deployment by the deployment owner. Tests use synthetic
+receipts and do not prove a live sale. No Convex deployment is performed by this
+implementation task.

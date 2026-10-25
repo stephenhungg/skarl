@@ -23,7 +23,11 @@ const confirm = makeFunctionReference<"mutation", FunctionArgs<EvidenceApi["conf
 const SERVICE = "synthetic-only-evidence-service-secret-not-a-credential";
 const PAYER = `0x${"11".repeat(20)}`, TREASURY = `0x${"22".repeat(20)}`;
 const NONCE = `0x${"aa".repeat(32)}`, HASH = `0x${"bb".repeat(32)}`;
-beforeEach(() => vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", SERVICE));
+beforeEach(() => {
+  vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", SERVICE);
+  vi.stubEnv("SKARL_EVIDENCE_PAYTO", TREASURY);
+  vi.stubEnv("SKARL_TREASURY_ADDRESS", `0x${"44".repeat(20)}`);
+});
 afterEach(() => vi.unstubAllEnvs());
 
 async function setup() {
@@ -151,7 +155,7 @@ describe("evidence sales transactional boundary", () => {
       .rejects.toThrow("authorization_already_claimed");
   });
 
-  it("posts one balanced funding-like inflow after receipt checks without altering order/payables", async () => {
+  it("posts one balanced evidence-sale inflow after receipt checks without altering order/payables", async () => {
     const f = await setup();
     const attempt = await f.t.mutation(claim, f.authorization);
     const args = { serviceSecret: SERVICE, attemptId: attempt.attemptId, authorizationNonce: NONCE, observation: f.observation };
@@ -171,10 +175,13 @@ describe("evidence sales transactional boundary", () => {
     expect(state.payables).toHaveLength(0);
     expect(state.intents).toHaveLength(0);
     expect(state.journals).toHaveLength(1);
-    expect(state.journals[0]).toMatchObject({ kind: "funding", sourceReference: `${PAYMENT_NETWORK}:${HASH}:1` });
+    expect(state.journals[0]).toMatchObject({ kind: "evidence_sale", recipientAddress: TREASURY, sourceReference: `${PAYMENT_NETWORK}:${HASH}:1` });
     expect(state.lines.map(line => [line.account, line.side, line.amountAtomic])).toEqual([
-      ["asset:usdc", "debit", 250_000n], ["liability:customer_prepayments", "credit", 250_000n] ]);
+      ["asset:evidence_usdc", "debit", 250_000n], ["revenue:evidence_sales", "credit", 250_000n] ]);
     expect(state.observations).toHaveLength(1);
+    const reconciliation = await f.t.query(api.payments.reconciliation, { demoIdentity: "controller", orderId: f.orderId });
+    expect(reconciliation.exceptions).toEqual([]);
+    expect(reconciliation.matches).toHaveLength(1);
     const second = await f.t.mutation(claim, { ...f.authorization, authorizationNonce: `0x${"cc".repeat(32)}` });
     await expect(f.t.mutation(confirm, { ...args, attemptId: second.attemptId, authorizationNonce: `0x${"cc".repeat(32)}` }))
       .rejects.toThrow("transfer_already_claimed_or_changed");
@@ -186,5 +193,16 @@ describe("evidence sales transactional boundary", () => {
     await f.t.run(ctx => ctx.db.patch(f.originalAssetId, { status: "quarantined" }));
     expect((await f.t.mutation(confirm, { serviceSecret: SERVICE, attemptId: attempt.attemptId, authorizationNonce: NONCE, observation: f.observation })).replayed).toBe(false);
     await expect(f.t.query(sample, { serviceSecret: SERVICE, sampleId: f.sampleId })).rejects.toThrow("sample_not_available");
+    const journals = await f.t.run(ctx => ctx.db.query("journalEntries").collect());
+    const lines = await f.t.run(ctx => ctx.db.query("journalLines").collect());
+    expect(journals[0]?.kind).toBe("evidence_sale_deferred");
+    expect(lines.map(l => l.account)).toEqual(["asset:evidence_usdc", "liability:evidence_receipts"]);
+  });
+
+  it("refuses an unapproved payee or self-transfer before claiming an intent", async () => {
+    const f = await setup();
+    await expect(f.t.mutation(claim, { ...f.authorization, recipientAddress: `0x${"55".repeat(20)}` })).rejects.toThrow("quote_changed");
+    await expect(f.t.mutation(claim, { ...f.authorization, payerAddress: TREASURY })).rejects.toThrow("quote_changed");
+    expect(await f.t.run(ctx => ctx.db.query("paymentAttempts").collect())).toHaveLength(0);
   });
 });

@@ -267,14 +267,37 @@ export const reconciliation = query({
         toAddress: intent.recipientAddress, amountAtomic: intent.kind === "contributor_payout" ? intent.amountAtomic : order.budgetAtomic,
         deadlineAt: intent.expiresAt, ...(seen[0] ? { transfer: seen[0] } : {}) });
     }
+    // Standalone evidence sales bind a durable business intent in their audit row,
+    // not in order funding intents. Reconcile them without changing funded quota.
+    const saleClaims = await ctx.db.query("auditEvents").withIndex("by_org_time", q => q.eq("organizationId", order.organizationId)).collect();
+    for (const claim of saleClaims) {
+      if (claim.action !== "evidence_sale_claimed") continue;
+      const terms = JSON.parse(claim.reason) as { version: number; orderId: string; payerAddress: string;
+        recipientAddress: string; amountAtomic: string; authorizationNonce: string; validBefore: number };
+      if (terms.orderId !== order._id) continue;
+      const id = ctx.db.normalizeId("paymentAttempts", claim.entityId);
+      const attempt = id ? await ctx.db.get(id) : null;
+      if (!attempt || attempt.organizationId !== order.organizationId || attempt.paymentIntentId || attempt.paymentCommandId ||
+        claim.eventKey !== `evidence-sale:${attempt._id}` || terms.version !== 1 ||
+        terms.payerAddress !== attempt.payerAddress || terms.authorizationNonce !== attempt.authorizationNonce ||
+        terms.amountAtomic !== attempt.amountAtomic.toString() || attempt.network !== order.network || attempt.tokenAddress !== order.tokenAddress) {
+        throw new Error("evidence_sale_binding_changed");
+      }
+      const eventKey = `evidence:${attempt._id}`;
+      const seen = await ctx.db.query("chainObservations").withIndex("by_attempt", q => q.eq("paymentAttemptId", attempt._id)).collect();
+      for (const observation of seen) observations.push({ ...observation, eventKey, orderId: order._id });
+      obligations.push({ eventKey, orderId: order._id, kind: "evidence_sale", fromAddress: terms.payerAddress,
+        toAddress: terms.recipientAddress, amountAtomic: attempt.amountAtomic,
+        deadlineAt: terms.validBefore, ...(seen[0] ? { transfer: seen[0] } : {}) });
+    }
     const entries = await ctx.db.query("journalEntries").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
     const journals: PaymentJournal[] = [];
     for (const entry of entries) {
-      if (entry.kind !== "funding" && entry.kind !== "payout") continue;
+      if (entry.kind !== "funding" && entry.kind !== "payout" && entry.kind !== "evidence_sale" && entry.kind !== "evidence_sale_deferred") continue;
       const lines = await ctx.db.query("journalLines").withIndex("by_entry", q => q.eq("journalEntryId", entry._id)).collect();
       const linked = observations.find(o => chainIdentity(o) === entry.sourceReference);
       journals.push({ eventKey: entry.eventKey, orderId: order._id, kind: entry.kind, network: entry.network,
-        tokenAddress: entry.tokenAddress, lines, ...(linked ? { transfer: linked } : {}) });
+        tokenAddress: entry.tokenAddress, recipientAddress: entry.recipientAddress, lines, ...(linked ? { transfer: linked } : {}) });
     }
     return reconcilePayments({ obligations, journals, observations, now: Date.now() });
   },

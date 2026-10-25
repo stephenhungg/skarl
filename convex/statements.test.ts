@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { recordJournal } from "./lib/finance";
-import { createFundingJournal, createFulfillmentJournal, createPayoutJournal, type Journal } from "../packages/ledger/src/index";
+import { createEvidenceSaleJournal, createFundingJournal, createFulfillmentJournal, createPayoutJournal, type Journal } from "../packages/ledger/src/index";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
@@ -74,6 +74,21 @@ describe("ledger-derived order statements", () => {
     const liability = result.trialBalance.accounts.find(row => row.account === "liability:contributor_payables");
     expect(liability?.netDebitAtomic).toBe("-20000000");
     expect((await statements(f, "controller", f.defaultOrderId)).payablesByContributor).toEqual([{ contributorTokenIdentifier: "fixture:contributor:outsider", amountAtomic: "700000000" }]);
+  });
+
+  it("shows operator evidence cash separately and excludes undeliverable receipts from earned revenue", async () => {
+    const f = await setup();
+    await funding(f);
+    for (const delivered of [true, false]) await post(f, createEvidenceSaleJournal({
+      eventId: `sale-${delivered}`, orderId: f.orderId, sampleId: "sample-evidence",
+      recipientAddress: `0x${"33".repeat(20)}`, delivered, amountMicroUsdc: 250_000n,
+    }));
+    expect(await statements(f)).toMatchObject({ cashAtomic: "100000000", deferredRevenueAtomic: "100000000",
+      evidenceCashAtomic: "500000", evidenceRevenueAtomic: "250000", evidenceDeferredAtomic: "250000",
+      revenueAtomic: "250000", netIncomeAtomic: "250000", contributorExpenseAtomic: "0", payablesByContributor: [] });
+    const entries = await f.t.run(ctx => ctx.db.query("journalEntries").collect());
+    expect(entries.filter(entry => entry.kind.startsWith("evidence_sale")).map(entry => entry.recipientAddress))
+      .toEqual([`0x${"33".repeat(20)}`, `0x${"33".repeat(20)}`]);
   });
 
   it("preserves valid Int64 amounts above Number.MAX_SAFE_INTEGER throughout the lifecycle", async () => {

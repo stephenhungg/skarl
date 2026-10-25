@@ -76,6 +76,9 @@ export const attemptStatus = v.union(
 
 export const ledgerAccount = v.union(
   v.literal("asset:usdc"),
+  v.literal("asset:evidence_usdc"),
+  v.literal("liability:evidence_receipts"),
+  v.literal("revenue:evidence_sales"),
   v.literal("liability:customer_prepayments"),
   v.literal("liability:contributor_payables"),
   v.literal("liability:customer_refunds"),

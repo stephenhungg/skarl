@@ -2,6 +2,8 @@
 
 This directory contains a reusable [Skarl Wallet MCP plugin](skarl.md) for funding orders and purchasing verification evidence. It is a custom instruction file, not an installed or Coinbase-approved marketplace integration.
 
+The evidence revenue address is `0x0A9EfDF66c58543538824906aE267B969Ed651c5`, read from live Convex `CDP_AGENT_ADDRESS`. For the live buyer-to-agent demonstration, use the [Wallet MCP demo runbook](../wallet-mcp-demo.md). Evidence purchases pay the separate `skarl-finance-agent` revenue account through `SKARL_EVIDENCE_PAYTO`; order funding continues to pay the human treasury. Search must explicitly select `network: "base-sepolia"`, because Wallet MCP discovery defaults to Base mainnet.
+
 ## Three steps
 
 1. Connect [Coinbase Wallet MCP](https://docs.cdp.coinbase.com/coinbase-for-agents/wallet-mcp/references/install) to your agent. For Claude Code, run `claude mcp add --transport http base-mcp https://wallet-mcp.coinbase.com`. For Codex, run `codex mcp add base-mcp --url https://wallet-mcp.coinbase.com/`. Authorize the connection and have Base Sepolia test USDC in the connected wallet.
