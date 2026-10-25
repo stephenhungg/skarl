@@ -64,7 +64,7 @@ The core path above is the floor, not the product. Cuts below remove infrastruct
 | --- | --- | --- |
 | Polished, consistent UI (shadcn + motion, dark/light, responsive, real loading/empty/error states) across buyer, contributor and controller views | silaswu4 + MatthewKim323 | Judges score what they see first |
 | Evidence player: click any criterion or duplicate match and the video seeks to that timestamp, with the narration transcript aligned underneath | MatthewKim323 | Makes the multimodal AI visible, not a JSON blob |
-| Server-side perceptual duplicate detection on sampled frames (re-encode/crop survives), with a side-by-side frame comparison in the UI | Stephen | The demo moment must be real, not a hash of the same file |
+| Server-side perceptual duplicate detection on sampled frames (re-encode and trim candidates; dHash does not cover crops), with a side-by-side frame comparison in the UI | Stephen | The demo moment must be real, not a hash of the same file |
 | Finance agent as a real tool-calling loop over typed Convex tools: explains obligations, proposes payout batches, flags exceptions, and is visibly refused when it tries to approve | Stephen | Hyphenate's "autonomous finance" ask, with separation of duties on screen |
 | Three-way reconciliation: order contract vs. ledger vs. chain (BaseScan), with an exceptions queue for mismatches (wrong amount, unknown transfer, late settlement) | Stephen (Codex) + Stephen | Hyphenate brief: "sources that disagree" |
 | Live financial statements from journals: payables, cash, revenue, a trial balance that always balances | Stephen | Proves the books are real double-entry, not a dashboard total |

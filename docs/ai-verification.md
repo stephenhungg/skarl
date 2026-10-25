@@ -7,6 +7,16 @@ The measured live run and remaining limits are recorded below. Tests use mocked
 Gemini outputs except the separately identified cloud sample. No training-data
 quality benchmark or real human demonstration evaluation has been completed.
 
+## Why these choices
+
+Skarl treats the VLM as a sensor, not a judge. VL-RewardBench (CVPR 2025, [arXiv:2411.17451](https://arxiv.org/abs/2411.17451)) and MLLM-as-a-Judge (ICML 2024, [arXiv:2402.04788](https://arxiv.org/abs/2402.04788)) report that multimodal judges fail mostly at perception and drift on holistic scoring, so Gemini emits only structured, timestamped observations from silent frames, a separate model transcribes audio, and deterministic code applies a decomposed rubric mirroring the wrong-object / wrong-order / missing-step taxonomy of procedural mistake detection (Assembly101, CaptainCook4D, Ego-Exo4D). Every event must cite a sampled frame; the audio and video channels are independent and must agree; a two-model panel (after PoLL, [arXiv:2404.18796](https://arxiv.org/abs/2404.18796)) routes any disagreement to human review; nothing auto-accepts on failure. We report false-acceptance with Wilson 95% intervals and a risk-coverage operating point (selective prediction) instead of bare accuracy. Conformal abstention guarantees and SSCD/VSC-style copy detection are next.
+
+The panel uses two Gemini models, not disjoint model families; agreement is not
+proof of correctness or statistical independence. The jury, intervals and trim
+alignment are implemented and locally tested, with deployment and a labeled
+human corpus run still required. The research motivates the design; it does not
+establish Skarl accuracy.
+
 ## Implemented pipeline
 
 1. A contributor obtains `submissions.generateUploadUrl`, uploads directly to
@@ -30,8 +40,9 @@ quality benchmark or real human demonstration evaluation has been completed.
 5. The visual response schema caps events at eight (the local parser separately
    enforces all shape/bounds rules); large constrained-output arrays stalled
    during integration. Native-video requests also returned 503/timeouts, so
-   timestamped image input is the implemented visual path. Two independent logical Gemini stages run concurrently through the
-   Interactions API with `store: false`, no tools and one 30-second whole-request
+   timestamped image input is the implemented visual path. By default, two silent
+   visual requests (Argon and Flash) and one separate audio request run concurrently
+   through the Interactions API with `store: false`, no tools and one 30-second whole-request
    deadline per stage. The shared transport allows at most three total transient
    attempts; all attempts, response reads and backoff share that same deadline,
    rather than receiving 30 seconds each. Other errors fail immediately with sanitized codes.
@@ -99,21 +110,38 @@ See [current status](status.md#task-2-verification-and-actual-provider-state).
 Set these **on the Convex deployment**, never in browser code:
 
 ```dotenv
+VERIFIER_JURY=on
 GEMINI_VIDEO_MODEL=gemini-4-argon
 GEMINI_AUDIO_MODEL=gemini-3.5-transcribe
 GEMINI_FINANCE_MODEL=gemini-3.8-flash
 ```
 
 `GEMINI_API_KEY` is configured only as a Convex secret. No key belongs in Git,
-reports, logs or the sample script. The model IDs above are the current code
-defaults and remain configurable through their environment variables. Historical
+reports, logs or the sample script. `VERIFIER_JURY` defaults to `on`; only
+`off` disables it. With the jury enabled and no explicit `evalVideoModel`, both
+`gemini-4-argon` and `gemini-3.8-flash` inspect the same silent frames through
+`Promise.allSettled`, with Argon as the primary observation. `GEMINI_VIDEO_MODEL`
+selects the single visual model when the jury is off. An explicit evaluation model
+always retains the single-model path. Audio and finance model IDs remain
+configurable through their environment variables. Historical
 3.8 runs above and in [finance measurements](finance-agent.md#historical-live-read-only-loop-measurement)
 retain their original model IDs and measured times.
 If `GEMINI_AUDIO_MODEL` names a general Gemini model, the adapter requests strict
 JSON transcript/segments/claims and checks claims against the actual transcript.
 The Transcribe adapter uses its native structured `word_info` annotations,
 verbatim mode and word timestamps; it does not ask that ASR model to make a
-semantic acceptance decision. No third model call performs comparison.
+semantic acceptance decision. Rubric comparison remains deterministic; no model
+call performs final comparison or grants payment authority.
+
+The action builds a report for each visual model against the same audio and
+rubric. Different criterion statuses, or either visual call failing, add
+`Visual judges disagree: <criteria>` and force review. Both visual runs are
+recorded in `pipeline.modelRuns` (the canonical cap remains 16).
+`observations.jury` stores advisory per-model reports, disagreed criterion IDs
+and an `agreementFraction`: agreeing criteria divided by all rubric criteria.
+Failed visual or audio analysis records `null`, never fallback agreement. A
+visual failure also marks the final pipeline failed; successful disagreement
+marks it `needs_review`. No failed secondary model is silently replaced.
 
 Billing is now enabled. The team's latest Interactions API probes all returned
 HTTP 200 with correct visual responses: 3.8 Flash in approximately **2.1 seconds**,
@@ -155,10 +183,14 @@ submission payable.
 The original SHA-256 is computed server-side. Six grayscale 9×8 frames are sampled
 at relative positions `(i + 0.5) / 6`, for `i = 0..5`. Horizontal dHash yields 16
 lowercase hex characters per frame; the ordered fingerprint concatenates all six.
-Compare frame sequences using Hamming distances: mean <=6 bits/frame and no
-frame >10 bits. At least three informative frames are required for approximate
-matching; uniform all-zero/all-one hashes are not informative. These heuristic
-thresholds are not calibrated against real red-cup retakes or crops.
+Compare frame sequences with a monotonic best alignment that permits skipped
+frames and unequal sequence lengths. Each match advances both indices: a frame
+cannot be reused to manufacture three matches. Select the largest qualifying
+match count, then the lowest total Hamming distance, with at least three matched
+informative frames, mean <=6 bits/frame and no matched distance >10 bits.
+Uniform all-zero/all-one hashes are not informative; each input must contain
+at least two distinct informative hashes to reject patterned-static clips.
+These heuristic thresholds are not calibrated against real red-cup retakes.
 
 Both analysis and `acceptAndPublish` check copy candidates. The finance mutation
 rechecks accepted work in the same transaction and organization, so a concurrent
@@ -176,10 +208,13 @@ fallback evidence, explicitly warned and never sufficient for automatic
 acceptance. They are not proof of bytes, authenticity or uniqueness. The decoded
 original stays quarantined on such a failure.
 
-A six-frame match is a candidate, not a fraud verdict or a localized temporal
-alignment. Approximate matches report no proven overlap interval. One synthetic
-benign re-encode test passes; crop resistance, speed edits and hard-negative
-independent retakes remain unmeasured. Payment/review decisions remain separate.
+An aligned sample match is a candidate, not a fraud verdict or a proven continuous
+overlap interval. The evidence query returns the actual left/right sample indices,
+times and stored frame assets used by the matcher. Local FFmpeg re-encode and
+synthetic one-second-shift regressions pass; they do not measure real-world trim
+recall. dHash does not cover crop, flip, overlay or screen recapture. Speed edits,
+static-scene ambiguity and hard-negative independent retakes remain uncalibrated.
+Payment/review decisions remain separate.
 
 ## Client and sample contract
 
@@ -234,7 +269,7 @@ Mocks are not model accuracy or latency measurements.
 ## Deferred research
 
 The Railway/Python worker, faster-whisper, SSCD copy descriptors, constrained
-video alignment, learned acceptance heads and generalized action recognition
+dense video alignment, learned acceptance heads and generalized action recognition
 are deferred. Their context follows; none is required by this live Node demo.
 
 ## Training scope

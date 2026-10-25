@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import ffmpegPath from "ffmpeg-static";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { frameDHash, prepareMedia } from "./lib/media";
+import { compareFrameHashes } from "./lib/copyDetection";
 
 // Observe the permission workaround while still performing real file copies,
 // chmod calls and FFmpeg execution. No installed dependency is modified.
@@ -169,6 +170,7 @@ describe("actual bounded FFmpeg preprocessing", () => {
     }, 0);
     // A measured candidate signal. Equality is deliberately not assumed.
     expect(distance).toBeLessThanOrEqual(20);
+    expect(compareFrameHashes(original.frameDHashes, reencoded.frameDHashes)).not.toBeNull();
   }, 30_000);
 
   it("rejects oversized, unsupported, empty and malformed input", async () => {

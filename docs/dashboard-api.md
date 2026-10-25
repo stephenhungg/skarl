@@ -493,3 +493,36 @@ enabling it. See [agent wallet setup and limits](agent-wallet.md).
 Base Sepolia remains first in x402 `accepts`; Solana Devnet is an optional second funding rail. Payouts remain Base-only. `payments.fundingStatus` and `GET /api/orders/[id]/fund` return `network` and `explorerUrl` (null without a transaction); the intent/attempt network becomes authoritative when a claim exists. Before a claim, `network` defaults to Base and the HTTP `rails` list supplies available `{ network, recipientAddress, asset }` options.
 
 `activity.feed` chain items and `activity.payoutHistory` observations include `network` and a per-rail `explorerUrl`. Render the chain badge from that network, never from the order's Base denomination or signature shape. Solana links use `https://explorer.solana.com/tx/<signature>?cluster=devnet`; preserve base58 case. A transaction link, signature or facilitator response alone does not establish funding: only RPC-observed `confirmed` funding activates the order.
+
+### Hosted reconciliation and finance jobs
+
+`scheduledJobs.reconcile` runs internally every **2 minutes**. It observes existing
+prepared/submitted/reconciling attempts using Base receipt validation or Solana
+signature/transaction validation. It never signs, sends, claims execution or
+creates a replacement payment attempt. Hashless and late attempts remain
+reconciliation exceptions for manual recovery; timeout is not proof of failure.
+Detected exceptions are persisted as changed snapshots/audits and remain visible
+through `exceptions.list`. Stale pending CDP webhook rows are classified against
+existing chain observations, not invented settlement evidence.
+
+`scheduledJobs.finance` runs internally every **10 minutes** over changed accrued
+payables and current exceptions. It calls the existing bounded Gemini tool loop
+as finance-agent: reads evidence, proposes stored obligations and requests
+independent controller approval. It cannot approve or sign. The ordinary
+`financeAgentData` transcript/history queries expose these runs to the dashboard.
+Stable fingerprints and durable request IDs suppress unchanged repeat runs;
+interrupted pre-action reservations reuse the same request ID. A proposal may
+create a new missing-transfer exception and trigger one explanatory follow-up.
+
+`scheduledData.snapshots({demoIdentity,orderId})` is available to controllers and
+finance agents in their organization. It returns checkpoint metadata (kind,
+status, generation, request/run IDs, nextAt/leaseUntil/fingerprint) plus parsed
+`snapshot`: accrued obligations/current exceptions for finance, or exception
+key/details for reconciliation. These are advisory operating records.
+
+Caps are three paginated orders per tick, four pending attempts per order and
+ten stale webhook rows per reconciliation tick; finance inherits the existing
+call-count, cumulative amount and deadline caps. `SKARL_SCHEDULED_JOBS_DISABLED=true`
+disables both jobs; `FINANCE_AGENT_BACKGROUND_ENABLED=false` disables finance.
+The existing payment service secret and RPC settings must be configured. Jobs
+become active only after the designated deployment owner's clean-main deploy.

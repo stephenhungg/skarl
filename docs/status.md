@@ -1,20 +1,54 @@
 # Build Status
 
-Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 finance and Task 2 verification run on the shared Convex cloud dev deployment below. Both visual and audio inference completed on generated-media and real YouTube-origin negative smoke tests; a human task quality benchmark remains unmeasured. Payment adapters are implemented; the payment owner recorded a first live x402 funding below. Live payout remains unconfirmed. Update this file when another integration becomes demonstrable.
+Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 finance and Task 2 verification run on the shared Convex cloud dev deployment below. Both visual and audio inference completed on generated-media and real YouTube-origin negative smoke tests; a human task quality benchmark remains unmeasured. Live x402 funding is recorded below on Base Sepolia and, at 03:29 PDT, the optional Solana Devnet rail. Live payout remains unconfirmed. Update this file when another integration becomes demonstrable.
 
 | Area | Implemented now | Remaining for the [demo path](workstreams.md) |
 | --- | --- | --- |
 | Web | Next.js landing/contributor recorder, Convex upload/status wiring, health and payment API routes; production build passes | Controller dashboard, live browser/wallet integration and HTTPS deployment verification |
 | Shared contracts | Base Sepolia chain constants (`chain.ts`), funding/payout status lists, JSON Schema, TS report validation, `parseAtomicUsdc` | Rubric-membership check wired into acceptance |
 | Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads and verified contributor wallets; production auth is out of demo scope |
-| Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; both stages completed on a real YouTube-origin negative (Flash 4,893 ms, audio 1,322 ms) | Human red-cup acceptance, model accuracy and copy calibration remain unmeasured; provider failures route to review |
-| Evaluation | Cloud clip runner; pre-labeled/source-hashed manifest; isolated copy scope; advisory quality projection; resumable paired Argon/Flash comparison with per-model accuracy, false accepts and latency | No consented labeled human corpus or measured accuracy run yet; earlier provider quota blockers resolved after billing was enabled |
+| Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; deterministic rubric comparison; validated reports. Default Argon/Flash jury and monotonic trim-candidate alignment are implemented and locally tested; historical live negative timings below predate the jury | Deploy the jury/alignment changes from `origin/main`; human red-cup acceptance, model accuracy and copy calibration remain unmeasured; provider failures route to review |
+| Evaluation | Cloud clip runner; frozen labels/source hashes; isolated copy scopes; advisory projection; paired Argon/Flash comparison; Python/JS Wilson 95% intervals, criterion kappa/confusion matrix and risk-coverage operating point | No consented labeled human corpus or measured accuracy run yet; intervals and agreement tests establish scoring behavior, not model quality |
 | Ledger | Atomic journal persistence; journal-derived trial balance, cash, deferred revenue, revenue/expense and payables by contributor; exact replay protection | Live payout settlement and end-to-end reconciliation evidence |
 | Payments | Live Base Sepolia x402 funding succeeded: **10 USDC** to treasury `0x8408a922ea400af33d7c2080a9edd5d3495b695f` ([transaction](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757)); funding journal/reconciliation and payout adapters implemented | Independent controller approval, wallet payout and payout reconciliation remain to demonstrate |
 | Finance agent | Gemini function-calling action; six typed tools; persisted transcript/explanation; cumulative exact batch and call caps; existing proposal and refused approval audits | Live model measurement below; durable Workflow approval wait implemented; wallet execution remains separate |
 | Sponsors | Requirements checked against Devpost and the briefs | Working integrations; Coinbase eligibility checklist per member |
 
 Local tests prove only the behavior they execute. They do not prove settlement, inference quality, authorization or sponsor eligibility.
+
+## Verifier jury and evaluation honesty — October 25, 2026
+
+Implemented and pushed for operator deployment:
+
+- Default-on `VERIFIER_JURY` runs Argon and Flash on the same silent frames in
+  parallel with separate audio. Argon stays primary; per-criterion disagreement
+  or a failed visual request produces review. Both model attempts and advisory
+  per-model reports are retained; agreement is `null` on failed analysis.
+  Explicit evaluation model overrides remain single-model; `VERIFIER_JURY=off`
+  restores the configured single-model deployment path.
+- Python/JS scorers agree on Wilson 95% intervals, criterion Cohen's kappa with
+  confusion matrices, and risk/coverage. The requested 0/15, 0/20 and 1/15
+  interval regressions pass. Failures and review abstentions do not masquerade
+  as successful automatic decisions; undefined denominators remain `null`.
+- Approximate duplicate candidates use one-to-one monotonic informative-frame
+  alignment, at least three matches, mean Hamming distance <=6 and maximum <=10.
+  The evidence query returns the actual aligned indices/assets. Local FFmpeg
+  re-encode, synthetic one-second shift, unrelated/static/blank fingerprints,
+  non-reuse and a second-payable refusal regression pass. dHash does not cover
+  crop, flip, overlay or screen recapture; real trim recall and retake false
+  positives remain uncalibrated.
+
+Validation after the code changes: `pnpm check` passed typechecks, 126 package/
+script tests, 302 Convex tests, 168 payment tests, docs checks and the web build.
+The eval suite passed 14 Python unit tests; the installed verifier environment
+passed 54 pytest tests. Provider behavior in the jury tests is mocked. No live
+inference, new labeled-corpus measurement or chain transaction ran for these
+upgrades. No Convex deploy was performed; the operator must deploy `origin/main`
+to activate the backend changes. The jury adds a second visual request by
+default, so its live cost/latency and review rate still need measurement.
+
+See [verification rationale](ai-verification.md#why-these-choices) and
+[metric definitions](evaluation.md#uncertainty-agreement-and-selective-prediction).
 
 ## Initial scaffold verification (October 24, 2026)
 
@@ -850,3 +884,42 @@ The source change requires the orchestrator's deployment of clean `origin/main`;
 no cloud sync was run from this checkout.
 
 Frame commit validation ran against an isolated snapshot of the staged tree, excluding other in-progress batch changes: `pnpm check` passed **550 tests** (122 Node, 287 Convex, 141 payment-route), typechecks, docs and production build. Actual local FFmpeg extraction ran; provider observations and chain evidence in tests are synthetic. The persistence regression verifies all 18 assets, both duplicate sides, exact indices/distances, role refusal, replay and invalid frame-binding refusals.
+
+
+## Confirmed Solana funding after fee-payer fix — October 25, 2026, 03:29 PDT
+
+**Live, finalized testnet transfer: [1 USDC on Solana Explorer](https://explorer.solana.com/tx/31LMrtZYcf4PcBRcyFmFX8tBmt2fNttNSBA4mz7sTrZKSw6E2kH9oghw5FTafzR77JZT9so1zzjkj8ZuVqrGUezi?cluster=devnet).** The bounded CDP-managed buyer funded `skarl-red-cup-demo-sol` (`kh70wdg1psv4np16bfkq4hkc6d8gz715`) through the **CDP facilitator**, after Vercel's production alias served fix commit `d91c1e9`. The response was HTTP 200 with `fundingStatus: confirmed` and `settledBy: cdp`; the route reports `X-Skarl-Facilitator: cdp`. No x402.org fallback was needed. No manual deployment or Convex change was performed for this fix.
+
+- Network: `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`; canonical USDC mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`; amount **1000000 micro-USDC**.
+- Buyer: `35pgsKg8sUYQRbLuWSmgYnham9rWhqNuG1JJhGKN6TWy`; treasury owner: `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh`; recipient ATA: `CtgPLBxHZU1UZcyovafXuQR2cVAFvpHksPh5HCBDJWHY`.
+- Finalized RPC observation: slot **514940239**, outer transfer instruction index **2**, exact payer/mint/recipient/amount and order memo matched the stored signed message hash. Fee payer: `GVJJ7rdGiXr5xaYbRwRbjfaJL7fmwRygFi1H6aGqDveb`.
+- Convex read-back: order `funded`, funding intent `confirmed`, attempt `kx72x5z60d65xxj20t3kmad00s8gywx5`; reconciliation returned **one 1000000-micro-USDC match and zero exceptions**, including the balanced funding journal and `(network, signature, 2)` identity.
+- Finalized balances: buyer **2000000 → 1000000**, treasury **1000000 → 2000000** micro-USDC. The treasury's pre-existing faucet deposit is not counted as order funding.
+
+Exactly one new authorization was created. Before it, finalized RPC confirmed the earlier rejected authorization's blockhash was invalid, treasury history contained only its original faucet deposit, and the order had no intent/attempt. The earlier private attempt was archived and its 1-USDC reservation retained; this retry kept a 1-USDC per-payment cap and a 2-USDC cumulative cap covering both reservations. No automatic second payment was sent.
+
+Validation: `pnpm check` passed **578 tests** (123 Node, 287 Convex, 168 payment tests), typechecks, documentation links and the production build. Subsequent incoming homepage-only edits passed fresh typechecks/build before the push. Rotation tests cover currently supported versus unsupported fee payers, every other quote field, signed-message fee-payer binding, cache expiry and single-authorization refusal. Those tests are simulated; the Explorer/RPC/Convex observations above are live. Base remains primary and the only payout rail; no Solana payout or bridge is claimed.
+## Backend batch — hosted cron jobs
+
+Added real Convex intervals: every two minutes, observe existing Base/Solana
+funding and Base payout attempts without signing/resending; every ten minutes,
+run the bounded finance-agent loop over changed accrued payables and exceptions.
+The loop persists tool calls/results/explanations, can propose stored payouts,
+and has no approval/signing authority. Unchanged state and completed failed model
+runs do not repeatedly spend inference; interrupted pre-action reservations reuse
+their durable request ID.
+
+Atomic leases/generations, least-recently-checked observation reservations and
+pagination cap each tick at three orders/four pending attempts per order.
+Confirmed/finalized/definitively failed attempts are skipped. Ten stale pending
+CDP webhook receipts per tick are classified from existing observations. Current
+unknown/late discrepancies persist as advisory snapshots/audits and remain in
+`exceptions.list`. Hashless attempts stay pending; none are re-sent.
+
+Controller/finance-agent query `scheduledData.snapshots` exposes scoped operating
+state. Global and finance-only kill switches are documented in the dashboard
+contract. Existing Gemini time/tool/amount caps apply. These jobs require the
+orchestrator's clean-main deployment; no hosted execution or live settlement is
+claimed from the new mocked tests.
+
+Cron commit validation: isolated staged-source `pnpm check` passed **567 tests** (122 Node, 304 Convex, 141 payment-route), typechecks, docs and production build. The 17 new cron cases cover Base/Solana receipt reconciliation, existing payout observation, ambiguity without resend, status/call caps, fair pagination, unchanged/failed finance runs, approval refusal and tenant/role fences. CLI API generation completed without activating a deployment; all provider/chain observations in these tests are mocked.

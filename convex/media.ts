@@ -3,7 +3,7 @@ import { query, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireRole, type DemoPrincipal } from "./lib/demoAuth";
 import { requireTenant } from "./lib/finance";
-import { compareFrameHashes, hamming } from "./lib/copyDetection";
+import { alignFrameHashes } from "./lib/copyDetection";
 
 async function principal(ctx: QueryCtx, identity: string) {
   const member = await requireRole(ctx, identity, ["controller", "contributor"]);
@@ -83,17 +83,17 @@ export const duplicatePair = query({
     if (left._id === right._id) throw new Error("distinct_submissions_required");
     const [leftEvidence, rightEvidence] = await Promise.all([evidence(ctx, left), evidence(ctx, right)]);
     const leftHashes = left.frameDHashes ?? [], rightHashes = right.frameDHashes ?? [];
-    const score = compareFrameHashes(leftHashes, rightHashes);
+    const alignment = alignFrameHashes(leftHashes, rightHashes), score = alignment?.score ?? null;
     // dHashes and persisted visual samples may use different timestamps. Return
     // both explicitly; the UI must not label a nearest frame as the hash's frame.
-    const matchedFrames = leftHashes.length === rightHashes.length ? leftHashes.map((frame, index) => ({
-      sampleIndex: index, leftTimestampMs: frame.timestampMs, rightTimestampMs: rightHashes[index]!.timestampMs,
-      distance: hamming(frame.hash, rightHashes[index]!.hash),
-      leftFrame: leftEvidence.dHashFrames.find(asset => asset.sampleIndex === index && asset.timestampMs === frame.timestampMs)
-        ?? leftEvidence.frames.find(asset => asset.kind === "legacy" && asset.timestampMs === frame.timestampMs) ?? null,
-      rightFrame: rightEvidence.dHashFrames.find(asset => asset.sampleIndex === index && asset.timestampMs === rightHashes[index]!.timestampMs)
-        ?? rightEvidence.frames.find(asset => asset.kind === "legacy" && asset.timestampMs === rightHashes[index]!.timestampMs) ?? null,
-    })) : [];
+    const matchedFrames = (alignment?.matches ?? []).map(({leftIndex, rightIndex, distance}) => ({
+      sampleIndex: leftIndex, leftSampleIndex: leftIndex, rightSampleIndex: rightIndex,
+      leftTimestampMs: leftHashes[leftIndex]!.timestampMs, rightTimestampMs: rightHashes[rightIndex]!.timestampMs, distance,
+      leftFrame: leftEvidence.dHashFrames.find(asset => asset.sampleIndex === leftIndex && asset.timestampMs === leftHashes[leftIndex]!.timestampMs)
+        ?? leftEvidence.frames.find(asset => asset.kind === "legacy" && asset.timestampMs === leftHashes[leftIndex]!.timestampMs) ?? null,
+      rightFrame: rightEvidence.dHashFrames.find(asset => asset.sampleIndex === rightIndex && asset.timestampMs === rightHashes[rightIndex]!.timestampMs)
+        ?? rightEvidence.frames.find(asset => asset.kind === "legacy" && asset.timestampMs === rightHashes[rightIndex]!.timestampMs) ?? null,
+    }));
     return { left: leftEvidence, right: rightEvidence, matchedFrames, score,
       exactSourceMatch: !!left.sourceHash && left.sourceHash === right.sourceHash,
       perceptualMatch: score !== null, heuristicOnly: true };
