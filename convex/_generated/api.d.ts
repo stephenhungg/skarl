@@ -12,7 +12,6 @@ import type * as activity from "../activity.js";
 import type * as agentChat from "../agentChat.js";
 import type * as agentChatData from "../agentChatData.js";
 import type * as analytics from "../analytics.js";
-import type * as orders from "../orders.js";
 import type * as approvalWorkflow from "../approvalWorkflow.js";
 import type * as dashboard from "../dashboard.js";
 import type * as exceptions from "../exceptions.js";
@@ -29,6 +28,7 @@ import type * as lib_gemini from "../lib/gemini.js";
 import type * as lib_media from "../lib/media.js";
 import type * as lib_verificationReport from "../lib/verificationReport.js";
 import type * as media from "../media.js";
+import type * as orders from "../orders.js";
 import type * as payments from "../payments.js";
 import type * as review from "../review.js";
 import type * as seed from "../seed.js";
@@ -44,7 +44,6 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  "orders": typeof orders;
   activity: typeof activity;
   agentChat: typeof agentChat;
   agentChatData: typeof agentChatData;
@@ -65,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   "lib/media": typeof lib_media;
   "lib/verificationReport": typeof lib_verificationReport;
   media: typeof media;
+  orders: typeof orders;
   payments: typeof payments;
   review: typeof review;
   seed: typeof seed;

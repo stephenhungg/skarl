@@ -221,3 +221,163 @@ export function formatUsdc(value: string | bigint) {
 ```
 
 Use `PAYMENT_NETWORK`, `PAYMENT_CHAIN_ID`, `USDC_ADDRESS`, `USDC_DECIMALS` from `@skarl/contracts/chain` for implementation. ETH gas remains a separate asset and never enters USDC totals.
+
+## Extended API
+
+The functions below are implemented in source and validated with isolated
+`convex-test` fixtures and anonymous local Convex validation. They have not been
+deployed or exercised against live Gemini/chain state by this API extension.
+Use the generated API types. All money and quantity values returned by these
+new endpoints are exact decimal integer strings; times and durations use
+milliseconds. The existing impersonable demo identity limitations still apply.
+
+### Human review
+
+`review.reviewSubmission` is a mutation taking
+`{demoIdentity, submissionId, decision, reasonCode, note}`. `decision` is
+`accept | reject | request_correction`; `reasonCode` is a lowercase identifier
+matching `[a-z][a-z0-9_]{0,79}`, and `note` is nonblank, at most 4,000 characters.
+Only an independent human controller may review. The contributor, finance
+agent, conflicting memberships and other tenants are refused.
+
+A decision binds the current source, rubric and analysis evidence and is stored
+with an audit event. `accept` calls the same transactional acceptance helper as
+`finance.acceptAndPublish`: verified media, consent, wallet, funding, quota,
+deadline and duplicate checks all remain in force. A human may explicitly
+review unavailable/incomplete analysis; that does not make the model's output
+an acceptance recommendation. Verification-only uploads remain ineligible.
+
+Returns `{ok:true,decisionId,replayed}` for rejection/correction. Successful
+acceptance also returns `payableId`, `deliveryId`, and `journalEntryId`.
+Failures return `{ok:false,code,decisionId?,matchingSubmissionId?}`; a stored
+human acceptance may coexist with a financial refusal and must not be rendered
+as delivered. Exact retries reuse the decision. Retrying a superseded decision
+returns `review_superseded`. Rejection sets `rejected`; correction sets
+`needs_correction` and creates no payable.
+
+### Buyer orders and cancellation proposals
+
+| Function | Kind | Arguments and behavior |
+| --- | --- | --- |
+| `orders.createOrder` | M | Buyer only. `{demoIdentity,requestId,title,buyerWalletAddress,quantityRequested,pricePerSampleAtomic,contributorRateAtomic,deadlineAt,taskPrompt,criteria}`. Counts/prices are canonical decimal strings. `criteria` is 1–50 `{criterionId,description,modality}` rows; modalities are `visual`, `audio`, `cross_modal`, `temporal`. |
+| `orders.listOrders` | Q | `{demoIdentity,paginationOpts:{numItems,cursor}}`; use `cursor:null` first. Buyer sees owned orders; controller/finance-agent see their organization. At most 100 rows per page. Returns native `{page,isDone,continueCursor}` plus Convex pagination metadata. |
+| `orders.cancelRemainder` | M | Buyer owner only. `{demoIdentity,orderId,reason}`; reason is nonblank, at most 2,000 characters. Atomically stops collection, reserves the unused funded quota and creates an approval-required refund proposal. |
+
+`createOrder` freezes rubric version 1 and computes
+`budgetAtomic = quantityRequested × pricePerSampleAtomic` using bigint. The
+contributor rate must be positive and no greater than the sample price; the
+budget must fit Int64. It returns
+`{orderId,taskVersionId,publicId,status:"awaiting_funding",budgetAtomic,replayed}`.
+Use one stable `requestId` per order; changed terms on retry produce
+`order_request_conflict`. A replay returns the order's current status. The
+wallet address is a quote field, not a claim of wallet ownership verification;
+confirmed funding establishes the actual payer under the existing payment path.
+
+`cancelRemainder` requires a reconciled, confirmed funding intent and an exact
+match between unused quota value and the order's prepayment ledger balance.
+It derives the recipient from the confirmed payer; no amount or destination
+argument is accepted. It posts the existing refund-reservation journal, leaves
+cash unchanged, and moves the order to `cancelling`. Acceptance and cancellation
+conflict on the order record so they cannot consume the same unit.
+
+Returns `{ok:true,paymentCommandId,fundingIntentId,journalEntryId,amountAtomic,
+controllerApprovalRequired:true,executionAvailable:false,replayed}`. This is
+**proposal-only**: it creates the existing `paymentCommands.kind="buyer_refund"`
+and links it through the original confirmed funding intent's optional
+`refundPaymentCommandId`. It does not create a new executable refund intent,
+controller approval, dispatch, signature or transfer. The existing
+`finance.approve`/browser payout adapter handles contributor payouts only;
+refund approval/execution needs the payments integration owner. Never pass the
+funding ID to the payout signing hook or display `refunded`. Retry with the same
+reason; changed proposal bindings produce `refund_proposal_changed`.
+
+### Reconciliation exceptions
+
+`exceptions.list({demoIdentity,orderId})` is a controller/finance-agent query.
+It reuses `payments.reconciliation` and returns
+`[{exceptionKey,exception,stillDetected,disposition}]`. `exception` retains the
+existing `code`, `detail` and optional event/order/chain identities;
+`disposition` is null or the durable handling record.
+
+Controller-only mutations `exceptions.acknowledge` and `exceptions.resolve`
+take `{demoIdentity,orderId,exceptionKey,reason}` and return
+`{dispositionId,replayed}`. Obtain the key from `list`; a caller cannot invent an
+exception. Reasons must be nonblank and at most 2,000 characters. Exact retries
+are idempotent; changed terminal reasons conflict. Each transition is audited.
+Resolution is a manual handling status: a discrepancy that still exists remains
+visible with `stillDetected:true`. These functions never change ledger, intent,
+attempt or chain-observation history. Reconciliation covers imported observations,
+not a scan of every treasury transfer.
+
+### Media and duplicate evidence
+
+| Query | Arguments | Return |
+| --- | --- | --- |
+| `media.submissionEvidence` | `{demoIdentity,submissionId}` | `{submissionId,analysisId,clip,frames,framesAvailable,transcriptSegments,perceptualHashSource}`. Clip includes asset ID, MIME type, status, duration and URL. Frames include asset ID, `timestampMs`, MIME type and URL. Segments contain `{startMs,endMs,text}`. |
+| `media.duplicatePair` | `{demoIdentity,submissionId,matchingSubmissionId}` | `{left,right,matchedFrames,score,exactSourceMatch,perceptualMatch,heuristicOnly:true}`. Each match includes both hash timestamps, Hamming `distance`, and nullable frame assets at those exact timestamps. |
+
+Controller access is organization-scoped; contributors can access only their
+own submissions. Both sides of a duplicate pair are authorized independently,
+so owning one clip does not reveal another contributor's clip. Buyer and
+finance-agent identities cannot obtain these original-media URLs.
+
+These are native Convex **bearer storage URLs issued after role checks**, not a
+custom expiring signed-URL service. Do not publish or cache them. A deleted or
+quarantined clip is unavailable. Extracted frames are returned only when verified,
+linked to the current analysis and its job, and persisted with timestamps.
+The current verifier does not persist those frame assets: empty `frames` and
+null matched frame assets are honest unavailable states, not fabricated images.
+The original clip can still be sought to the hash/transcript timestamps.
+Perceptual matching is a bounded heuristic, not proof of robust copy detection.
+
+### Ask the finance agent
+
+`agentChat.askAgent({demoIdentity,question,orderId?,requestId?})` is an action for
+controller/finance-agent identities. `question` is nonblank and at most 2,000
+characters. Omitted `orderId` discovers the default demo order. Supply a stable
+`requestId` (`[a-zA-Z0-9_-]{1,100}`) for uncertain retries; omission starts a new
+request. Returns `{chatId,replayed}`, not a guarantee that inference completed.
+
+Read `agentChatData.history({demoIdentity,orderId})` for the latest 50 persisted
+questions, answers, status, transcript, verified `citedRecordIds` and failure
+code. Chat reuses the bounded Gemini finance loop with only four read tools:
+`listOutstandingPayables`, `explainPayable`, `getTrialBalance`, and
+`listReconciliationExceptions`. Both the advertised tool set and dispatcher
+exclude proposals, approval requests, approvals and execution. Even a forced
+valid payment-tool call is refused as `read_only_chat`. Citations include only
+retrieved record IDs actually mentioned by the answer. Answers remain advisory;
+provider failures and interrupted runs are persisted without inventing results.
+
+### Analytics and paginated lists
+
+All functions in this table require controller/finance-agent membership and
+accept `{demoIdentity,orderId?}`. Omitting the order scopes to the organization.
+
+| Query | Additional arguments | Result |
+| --- | --- | --- |
+| `analytics.overview` | None | `orderCount`, `submitted`, `accepted`, `delivered`, `funded`, `fundedAtomic`, `duplicatesBlocked`, `refusals`, acceptance-rate numerator/denominator/`basisPoints`, verification latency, payout cycle time, cash and liability totals. |
+| `analytics.timeSeries` | `{from,to}` | `{bucketMs:300000,from,to,buckets}` with submitted/accepted/delivered/duplicate/refusal counts, funded/paid amounts and cash delta. Half-open `[from,to)`, at most seven days; empty five-minute buckets retained. |
+| `activity.contributors` | `{cursor?,limit?}` | Contributor identity/status, submitted/accepted counts, `earningsAccruedAtomic`, `earningsPaidAtomic`, `outstandingAtomic`. Earnings come from journals. |
+| `activity.payoutHistory` | `{cursor?,limit?}` | Contributor payout proposals and their statuses, exact amounts, attempts and observed tx/log details. Pending/proposed rows are not labeled paid. |
+| `activity.feed` | `{cursor?,limit?}` | Unified audit, chain-observation and finance-agent-run events, each with source, record ID, action, summary, timestamp and evidence references. |
+
+Lists return `{page,isDone,continueCursor}` with default `limit:50`, maximum 100.
+Pass the opaque cursor back to the same endpoint/order scope. Keyset pagination
+uses timestamp plus ID and does not shift offsets when new rows arrive. Reads
+currently aggregate the bounded demo dataset before pagination; production-scale
+indexed aggregation is not implemented.
+
+`overview` financial fields are `cashAtomic`, `obligationsAtomic`,
+`cashLessObligationsAtomic`, `customerPrepaymentsAtomic`,
+`contributorPayablesAtomic`, and `customerRefundsAtomic`. They derive from posted,
+balanced journals, never from an unfunded order budget. Corrupt/unbalanced
+journals return an error instead of zero. Verification p50/p95 sums recorded
+`pipeline.modelRuns[].elapsedMs` per analysis; payout cycle p50/p95 measures
+payable accrual to the posted confirmed payout. Both return `{sampleCount,p50,p95,
+source}`, with null percentiles when observations are missing. These are observed
+demo timings, not benchmark claims.
+
+Validation note: `CONVEX_AGENT_MODE=anonymous` does not override an already
+configured cloud deployment. Local validation used a separate checkout with no
+cloud `.env.local` or deployment variables; it selected `127.0.0.1:3210`.
+No cloud function deployment was performed by this extension.
