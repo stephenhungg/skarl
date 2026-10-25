@@ -287,8 +287,13 @@ describe("Claude strict tool schemas", () => {
   });
 
   // Anthropic strict mode returns HTTP 400 for array maxItems; a live run failed on it before this guard.
+  // It also rejects integer minimum/maximum; one bad tool fails every run, which silently broke Claude after taxSummary landed.
   it("advertises no keyword that strict tool use rejects, while the runtime still caps batch size", () => {
-    expect(JSON.stringify(claudeFinanceTools)).not.toContain("maxItems");
+    const advertised = JSON.stringify(claudeFinanceTools);
+    for (const keyword of ["maxItems", "\"minimum\"", "\"maximum\""]) expect(advertised).not.toContain(keyword);
+    // Anthropic caps strict tools at 20; every mutating tool must stay strict.
+    expect(claudeFinanceTools.filter(tool => tool.strict).length).toBeLessThanOrEqual(20);
+    for (const name of ["proposePaymentBatch", "requestApproval"]) expect(claudeFinanceTools.find(tool => tool.name === name)?.strict).toBe(true);
     const batch = financeTools.find(tool => tool.name === "proposePaymentBatch")!;
     const call = (count: number) => ({ id: "call_1", name: batch.name, arguments: Object.fromEntries(batch.parameters.required.map(key =>
       [key, key === "payableIds" ? Array.from({ length: count }, (_, index) => `payable_${index}`) : "value"])) });

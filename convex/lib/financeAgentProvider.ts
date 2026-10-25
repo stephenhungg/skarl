@@ -16,16 +16,19 @@ export function financeProviderConfig(): { provider: FinanceProvider; model: str
   return { provider, model };
 }
 
-// Claude strict tool schemas reject array `maxItems`; validateToolCall still enforces it before dispatch.
-function claudeStrictSchema(value: unknown): unknown {
+// Claude strict tool schemas reject array `maxItems` and integer `minimum`/`maximum`;
+// validateFinanceToolCall still enforces every bound before dispatch.
+const CLAUDE_UNSUPPORTED_KEYWORDS = new Set(["maxItems", "minimum", "maximum"]);
+export function claudeStrictSchema(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(claudeStrictSchema);
   if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== "maxItems").map(([key, item]) => [key, claudeStrictSchema(item)]));
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !CLAUDE_UNSUPPORTED_KEYWORDS.has(key)).map(([key, item]) => [key, claudeStrictSchema(item)]));
 }
 
 // Both providers advertise the exact same allowlist; never advertise approve/sign/send.
 export const claudeFinanceTools: Tool[] = financeTools.map(tool => ({
-  name: tool.name, description: tool.description, strict: true,
+  // Anthropic allows at most 20 strict tools. Mutating tools stay strict; reads rely on validateFinanceToolCall.
+  name: tool.name, description: tool.description, strict: !financeReadToolNames.has(tool.name),
   input_schema: { ...(claudeStrictSchema(tool.parameters) as object), type: "object" },
 }));
 
