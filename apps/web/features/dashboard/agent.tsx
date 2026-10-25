@@ -1,16 +1,16 @@
 "use client";
-import { useAction, useQuery } from "convex/react";
+import { useAction } from "convex/react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import { VoiceBeam, useMicrophone } from "voice-glow";
-import { Button } from "@/components/glaze/ui/button";
-import { Status, StatusMark } from "@/components/glaze/ui/status";
+import { StatusMark } from "@/components/glaze/ui/status";
 import { toast } from "@/components/glaze/ui/toast";
-import { api, CONTROLLER, useOrderId, useRuns, type AgentRun, type Id } from "./data";
+import { SendButton } from "@/components/glaze/ai/send-button";
+import { api, CONTROLLER, useOrderId, useRuns, type AgentRun } from "./data";
 import { formatMs, formatUsdc, humanize } from "./format";
-import { Amount, Loading, PageHeader, QueryBoundary, Section, Unavailable } from "./ui";
+import { Amount, Loading, Unavailable } from "./ui";
+import { cn } from "@/lib/glaze/utils";
 
-const RUN_STATUS = { running: "running", completed: "ok", failed: "fail", capped: "warn" } as const;
 const SUGGESTIONS = [
   { label: "What do we owe?", prompt: "Summarize what we owe contributors and what has been paid." },
   { label: "Propose payouts", prompt: "Propose payouts for every eligible payable and request independent approval." },
@@ -91,11 +91,11 @@ function Prose({ text }: { text: string }) {
   );
 }
 
-function Question({ text }: { text: string }) {
-  return <div className="ms-auto max-w-[80%] rounded-shell bg-field px-4 py-2.5 type-body-sm text-text-1">{text}</div>;
+function UserMessage({ text }: { text: string }) {
+  return <div className="ms-auto max-w-[85%] whitespace-pre-wrap rounded-[20px] bg-field px-4 py-2.5 type-body text-text-1">{text}</div>;
 }
 
-function Exchange({ run, live }: { run: AgentRun; live?: boolean }) {
+function AgentMessage({ run, live }: { run: AgentRun; live?: boolean }) {
   const steps = (run.transcript ?? []) as Step[];
   const facts = steps.map(factFor).filter((f): f is Fact => !!f);
   const [showProse, setShowProse] = useState(false);
@@ -103,57 +103,37 @@ function Exchange({ run, live }: { run: AgentRun; live?: boolean }) {
   const took = run.completedAt && run.startedAt ? formatMs(run.completedAt - run.startedAt) : null;
   const proposed = BigInt(run.proposedAtomic);
   return (
-    <div className="flex flex-col gap-3">
-      {run.prompt && <Question text={run.prompt} />}
-      <div className="flex gap-3">
-        <div className="shrink-0 pt-0.5"><ThinkingOrb state={running ? "solving" : "breathing"} size={20} paused={!running && !live} /></div>
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <p className="type-label-sm text-text-3">
-            Finance agent{run.provider ? ` · ${humanize(run.provider)}` : ""}{took ? ` · ${took}` : ""}
-            {proposed > 0n ? <> &middot; proposed <Amount value={run.proposedAtomic} /></> : null}
-          </p>
-          {running ? <p className="type-body text-text-2">Reading the books</p>
-            : run.status === "failed" ? <p className="type-body text-fail-text">Stopped: {humanize(run.failureCode ?? "run failed")}. Nothing was proposed.</p>
-            : (
-              <>
-                {facts.length > 0 && (
-                  <ul className="flex flex-col gap-1.5">
-                    {facts.map((fact, i) => (
-                      <li key={i} className="flex items-center gap-2 type-body">
-                        <StatusMark status={fact.status} />
-                        <span>{fact.text}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {run.explanation && (facts.length > 0
-                  ? <div>
-                      <button type="button" onClick={() => setShowProse(v => !v)} aria-expanded={showProse} className="type-label-sm text-text-2 underline underline-offset-4">
-                        {showProse ? "Hide the agent's explanation" : "Read the agent's explanation"}
-                      </button>
-                      {showProse && <div className="mt-2"><Prose text={run.explanation} /></div>}
-                    </div>
-                  : <Prose text={run.explanation} />)}
-              </>
-            )}
-        </div>
+    <div className="flex gap-3">
+      <div className="shrink-0 pt-1"><ThinkingOrb state={running ? "solving" : "breathing"} size={20} paused={!running && !live} /></div>
+      <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+        {running ? <p className="type-body text-text-2">Reading the books</p>
+          : run.status === "failed" ? <p className="type-body text-fail-text">Stopped: {humanize(run.failureCode ?? "run failed")}. Nothing was proposed.</p>
+          : (
+            <>
+              {facts.length > 0 && (
+                <ul className="flex flex-col gap-1.5">
+                  {facts.map((fact, i) => (
+                    <li key={i} className="flex items-center gap-2 type-body"><StatusMark status={fact.status} /><span>{fact.text}</span></li>
+                  ))}
+                </ul>
+              )}
+              {run.explanation && (facts.length > 0
+                ? <div>
+                    <button type="button" onClick={() => setShowProse(v => !v)} aria-expanded={showProse} className="type-label-sm text-text-2 underline underline-offset-4">
+                      {showProse ? "Hide explanation" : "Show explanation"}
+                    </button>
+                    {showProse && <div className="mt-2"><Prose text={run.explanation} /></div>}
+                  </div>
+                : <Prose text={run.explanation} />)}
+            </>
+          )}
+        <p className="type-label-sm text-text-3">
+          {run.provider ? humanize(run.provider) : "Agent"}{took ? ` \u00b7 ${took}` : ""}
+          {proposed > 0n ? <> &middot; proposed <Amount value={run.proposedAtomic} /></> : null}
+          {" \u00b7 "}{new Date(run._creationTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+        </p>
       </div>
     </div>
-  );
-}
-
-function EarlierRun({ run }: { run: AgentRun }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <li>
-      <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open}
-        className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5 text-start hover:bg-hover-row">
-        <Status status={RUN_STATUS[run.status as keyof typeof RUN_STATUS] ?? "idle"} className="w-28 shrink-0">{humanize(run.status)}</Status>
-        <span className="min-w-0 flex-1 truncate type-body-sm">{run.prompt ?? "Agent run"}</span>
-        <span className="type-label-sm text-text-3">{new Date(run._creationTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
-      </button>
-      {open && <div className="px-4 pb-4 pt-1"><Exchange run={run} /></div>}
-    </li>
   );
 }
 
@@ -187,7 +167,20 @@ export function Agent() {
   const [pending, setPending] = useState<string | null>(null);
   const onVoice = useRef((text: string) => setPrompt(text)).current;
   const dictation = useDictation(onVoice);
+  const input = useRef<HTMLTextAreaElement>(null);
+  const end = useRef<HTMLDivElement>(null);
   const listening = mic.state === "live";
+  // Oldest first, like any chat; runs arrive newest first.
+  const thread = [...(runs ?? [])].reverse();
+
+  useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [thread.length, pending]);
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [prompt]);
+
   if (orderId === null) return <Unavailable title="No staged order" description="Run pnpm seed to stage the demo order." />;
 
   function stopListening() {
@@ -198,7 +191,7 @@ export function Agent() {
     await mic.start();
     try { dictation.recognition.current?.start(); } catch { /* already started */ }
   }
-  async function start(text = prompt) {
+  async function send(text = prompt) {
     if (!orderId || !text.trim() || busy) return;
     if (listening) stopListening();
     setPending(text.trim()); setPrompt(""); setBusy(true);
@@ -206,82 +199,62 @@ export function Agent() {
       // One stable id per deliberate request, so a retry replays instead of running twice.
       await run({ demoIdentity: CONTROLLER, orderId, requestId: `ui-${crypto.randomUUID()}`, prompt: text.trim() });
     } catch (error) {
-      toast.fail("The agent could not start", { description: error instanceof Error ? error.message : undefined });
+      toast.fail("The agent could not answer", { description: error instanceof Error ? error.message : undefined });
       setPrompt(text);
     } finally { setBusy(false); setPending(null); }
   }
 
-  const [latest, ...earlier] = runs ?? [];
+  const empty = runs !== undefined && thread.length === 0 && !pending;
   return (
-    <>
-      <PageHeader title="Finance agent" />
-      <VoiceBeam stream={mic.stream} motion={busy ? workingMotion : null} colors={BRAND_GLOW} theme="light" active={listening || busy} className="rounded-[20px]">
-        <div className="rounded-[20px] border border-line-control bg-paper p-3 focus-within:border-line-focus">
-          <textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={2} maxLength={2000}
-            placeholder={listening ? "Listening" : "Ask about payouts, the books or reconciliation"} aria-label="Ask the finance agent"
-            onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void start(); } }}
-            className="w-full resize-none bg-transparent px-1 type-body text-text-1 outline-none placeholder:text-text-3" />
-          <div className="mt-2 flex items-center gap-2">
-            {dictation.supported && mic.supported && (
-              <Button variant="secondary" size="sm" onClick={() => (listening ? stopListening() : void startListening())}>{listening ? "Stop" : "Dictate"}</Button>
-            )}
-            <span className="me-auto type-label-sm text-text-3">{mic.state === "denied" ? "Microphone blocked in this browser" : "Enter to send"}</span>
-            <Button size="sm" disabled={busy || !prompt.trim()} onClick={() => void start()}>{busy ? "Working" : "Ask"}</Button>
+    <div className="mx-auto flex min-h-[calc(100dvh-9rem)] w-full max-w-3xl flex-col">
+      <div className="flex-1">
+        {runs === undefined ? <Loading rows={3} /> : empty ? (
+          <div className="flex min-h-[50dvh] flex-col items-center justify-center gap-5 text-center">
+            <ThinkingOrb state="breathing" size={64} />
+            <h1 className="type-title">What should we check in the books?</h1>
+            <div className="flex flex-wrap justify-center gap-2">
+              {SUGGESTIONS.map(s => (
+                <button key={s.label} type="button" onClick={() => void send(s.prompt)} title={s.prompt}
+                  className="rounded-pill border border-line-control px-3.5 py-1.5 type-label-sm text-text-2 hover:bg-hover hover:text-text-1">{s.label}</button>
+              ))}
+            </div>
           </div>
-        </div>
-      </VoiceBeam>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {SUGGESTIONS.map(s => (
-          <button key={s.label} type="button" disabled={busy} onClick={() => void start(s.prompt)} title={s.prompt}
-            className="rounded-pill border border-line-control px-3 py-1 type-label-sm text-text-2 hover:bg-hover hover:text-text-1 disabled:opacity-50">{s.label}</button>
-        ))}
+        ) : (
+          <div className="flex flex-col gap-8 pb-6 pt-2">
+            {thread.map((item, index) => (
+              <div key={item._id} className="flex flex-col gap-4">
+                {item.prompt && <UserMessage text={item.prompt} />}
+                <AgentMessage run={item} live={index === thread.length - 1} />
+              </div>
+            ))}
+            {pending && (
+              <div className="flex flex-col gap-4">
+                <UserMessage text={pending} />
+                <div className="flex items-center gap-3"><ThinkingOrb state="solving" size={20} /><span className="type-body text-text-2">Reading the books</span></div>
+              </div>
+            )}
+            <div ref={end} />
+          </div>
+        )}
       </div>
 
-      <section className="mt-8" aria-label="Latest answer">
-        {pending ? (
-          <div className="flex flex-col gap-3">
-            <Question text={pending} />
-            <div className="flex items-center gap-3"><ThinkingOrb state="solving" size={64} /><span className="type-body text-text-2">Reading the books</span></div>
+      <div className="sticky bottom-0 bg-page pb-4 pt-2">
+        <VoiceBeam stream={mic.stream} motion={busy ? workingMotion : null} colors={BRAND_GLOW} theme="light" active={listening || busy} className="rounded-[24px]">
+          <div className="flex items-end gap-2 rounded-[24px] border border-line-control bg-paper py-2 pe-2 ps-4 focus-within:border-line-focus">
+            <textarea ref={input} value={prompt} onChange={event => setPrompt(event.target.value)} rows={1} maxLength={2000}
+              placeholder={listening ? "Listening" : "Ask the finance agent"} aria-label="Ask the finance agent"
+              onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }}
+              className="max-h-[200px] min-h-6 flex-1 resize-none self-center bg-transparent py-1.5 type-body text-text-1 shadow-none outline-none placeholder:text-text-3 focus-visible:outline-none focus-visible:shadow-none [&:focus-visible]:[outline:none]" />
+            {dictation.supported && mic.supported && (
+              <button type="button" onClick={() => (listening ? stopListening() : void startListening())} aria-pressed={listening}
+                className={cn("h-9 shrink-0 rounded-pill px-3 type-label-sm", listening ? "bg-ink text-text-inverse" : "text-text-2 hover:bg-hover")}>
+                {listening ? "Stop" : "Dictate"}
+              </button>
+            )}
+            <SendButton empty={!prompt.trim()} disabled={busy} onClick={() => void send()} className="shrink-0" />
           </div>
-        ) : runs === undefined ? <Loading rows={3} /> : latest ? <Exchange run={latest} live /> : null}
-      </section>
-
-      {orderId && <QueryBoundary><BackgroundJobs orderId={orderId} /></QueryBoundary>}
-
-      {earlier.length > 0 && (
-        <Section title="Earlier questions">
-          <ul className="divide-y divide-line-faint rounded-panel border border-line-faint">{earlier.map(item => <EarlierRun key={item._id} run={item} />)}</ul>
-        </Section>
-      )}
-    </>
-  );
-}
-
-const JOB: Record<string, { label: string; every: string }> = {
-  reconciliation: { label: "Reconciliation", every: "every 2 minutes" },
-  finance: { label: "Finance agent", every: "every 10 minutes" },
-  observation: { label: "Chain observation", every: "on new transfers" },
-  job: { label: "Job", every: "scheduled" },
-};
-
-/** Stephen's hosted jobs. Advisory operating records: they observe and propose, never approve or sign. */
-function BackgroundJobs({ orderId }: { orderId: Id<"orders"> }) {
-  const rows = useQuery(api.scheduledData.snapshots, { demoIdentity: CONTROLLER, orderId });
-  if (!rows || rows.length === 0) return null;
-  const ago = (ms: number) => { const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`; };
-  return (
-    <Section title="Running on its own">
-      <ul className="divide-y divide-line-faint rounded-panel border border-line-faint">
-        {rows.map(row => (
-          <li key={row._id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5">
-            <Status status={row.status === "failed" ? "fail" : row.status === "running" ? "running" : "ok"} className="w-28 shrink-0">{humanize(row.status)}</Status>
-            <span className="type-label">{JOB[row.kind]?.label ?? humanize(row.kind)}</span>
-            <span className="type-body-sm text-text-2">runs {JOB[row.kind]?.every ?? "on a schedule"}</span>
-            {row.lastErrorCode && <span className="type-label-sm text-fail-text">{humanize(row.lastErrorCode)}</span>}
-            <span className="ms-auto type-label-sm text-text-3">last ran {ago(row.updatedAt)}</span>
-          </li>
-        ))}
-      </ul>
-    </Section>
+        </VoiceBeam>
+      </div>
+    </div>
   );
 }
