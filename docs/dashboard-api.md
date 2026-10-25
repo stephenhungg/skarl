@@ -470,3 +470,21 @@ Primary references: [webhook signatures](https://docs.cdp.coinbase.com/webhooks/
 [subscription API](https://docs.cdp.coinbase.com/api-reference/v2/rest-api/webhooks/create-webhook-subscription),
 [SQL client authentication](https://docs.cdp.coinbase.com/data/sql-api/quickstart),
 and [SQL schema](https://docs.cdp.coinbase.com/data/sql-api/schema).
+### Optional CDP finance executor
+
+`PAYOUT_EXECUTOR=controller_wallet` remains the default. In the optional
+`cdp_agent` mode, independent controller approval and the existing durable
+workflow queue an internal `agentWallet.execute({intentId})` action. It claims
+the stored payout once and submits the exact USDC transfer from the configured
+CDP account. The dashboard should not prompt for browser signing in this mode;
+deployment configuration must select the matching UI flow. The existing claim
+boundary prevents the browser and agent from both executing an intent.
+
+Approval and submission still do not mean paid. Read the existing payable,
+payment attempt and reconciliation records; only confirmed receipt observation
+posts the payout journal. `requires_reconciliation` never authorizes another
+send. Operator-only `agentWallet.reconcile({intentId,txHash?})` verifies a saved
+or recovered hash without signing, including after disabling the executor.
+This integration is implemented and tested with simulated fixtures; live CDP
+policy enforcement and payout evidence must be recorded separately before
+enabling it. See [agent wallet setup and limits](agent-wallet.md).

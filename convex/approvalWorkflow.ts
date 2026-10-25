@@ -1,5 +1,6 @@
 import { defineEvent, vWorkflowId, WorkflowManager } from "@convex-dev/workflow";
 import { v } from "convex/values";
+import { makeFunctionReference } from "convex/server";
 import { MAX_ATOMIC_USDC, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
 import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
@@ -92,6 +93,9 @@ export const queueApprovedDispatch = internalMutation({
       action: "payment_dispatch_queued", entityType: "paymentIntents", entityId: intent._id,
       reason: "Durable workflow released the independently approved payout for wallet execution; no money sent.",
       evidenceReferences: [args.workflowId, approval._id, command._id, outboxEventId] });
+    if (process.env.PAYOUT_EXECUTOR === "cdp_agent") {
+      await ctx.scheduler.runAfter(0, makeFunctionReference<"action", { intentId: typeof intent._id }>("agentWallet:execute"), { intentId: intent._id });
+    }
     return { outboxEventId, replayed: false };
   },
 });
