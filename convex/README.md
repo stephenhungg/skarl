@@ -9,13 +9,15 @@ outgoing payment proposals, independent approval and dashboard queries.
 Task 2 adds `submissions.ts`, scheduled Node `verify.ts`, byte hashing, isolated
 media, model observations and canonical report persistence. Provider failures
 remain review-only; see [measured state](../docs/status.md). Production auth,
-licensed media downloads, wallet verification, funding confirmation, payout
-execution and chain reconciliation remain unimplemented.
+licensed media downloads and contributor-wallet verification remain unimplemented.
+The merged `payments.ts` provides trusted funding/payout imports and reconciliation;
+its tests use synthetic chain evidence, with no confirmed live settlement.
 
 ## Files and API
 
 - `seed.ts`: internal `seed:demo`; `pnpm seed`. One organization, four identities,
-  one unfunded 100-USDC order and the frozen red-cup rubric. No fabricated funding.
+  the unfunded 10-USDC v2 order and frozen red-cup rubric. The legacy 100-USDC
+  v1 order is preserved. No fabricated funding.
 - `lib/demoAuth.ts`: `requireRole`; **demo-only, impersonable identity selectors**.
 - `lib/finance.ts`: deterministic binding hashes, audits and atomic persistence
   of the pure `packages/ledger` journals.

@@ -2,7 +2,7 @@
 
 Verified human demonstrations, paid with x402 on Base. The AP/settlement seat for a human-data company. Buyers request narrated demonstrations; contributors record them; multimodal AI grounds quality checks in video and audio evidence. A bounded finance agent prepares payouts, handles exceptions and reconciles the resulting books.
 
-Built for Cal Hacks 13.0. **Current state: deployed demo finance backend plus web scaffold, not a complete marketplace.** The shared Convex dev backend has seeded demo identities, acceptance/payable/journal mutations, independent approval and dashboard queries. Task 2 adds scheduled Gemini verification, uploads and server media processing. Audio ran live; a successful visual response is currently blocked by provider availability/quota. Production authentication and payments remain unimplemented. See [connection/setup](docs/setup.md) and [current status](docs/status.md).
+Built for Cal Hacks 13.0. **Current state: deployed demo backend, contributor recorder and payment adapters, not a complete marketplace.** The shared Convex dev backend has seeded demo identities, acceptance/payable/journal mutations, independent approval and dashboard queries. Task 2 adds scheduled Gemini verification, uploads and server media processing. Audio ran live; a successful visual response is currently blocked by provider availability/quota. The merged x402 funding and payout/reconciliation adapters are implemented with mock-backed tests; no live settlement is confirmed. Production authentication and contributor-wallet verification remain unimplemented. See [connection/setup](docs/setup.md) and [current status](docs/status.md).
 
 ## Start here
 
@@ -29,11 +29,11 @@ These assignments reflect Stephen's requested split. Folder paths describe owner
 ## Repository map
 
 ```text
-apps/web/               Next.js App Router shell and health endpoint
+apps/web/               Next.js contributor recorder and payment API routes
 convex/                 Demo finance API, uploads, scheduled Gemini verification and generated types
 packages/contracts/    Shared statuses, Base Sepolia chain constants and verification schema
 packages/ledger/       Exact USDC arithmetic and pure double-entry journal replay
-packages/payments/     Payment policy helpers and explicitly unimplemented payment adapter
+packages/payments/     x402 funding, receipt checks, reconciliation and wallet adapters
 services/verifier/     Python report validator (the Railway inference worker is deferred)
 fixtures/              Instructions for consented media; no private recordings
 evals/                 Evaluation scoring scaffolding (split protocol deferred)

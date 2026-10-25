@@ -4,13 +4,13 @@ Truthful state as of October 25, 2026, after the adversarial audit and the move 
 
 | Area | Implemented now | Remaining for the [demo path](workstreams.md) |
 | --- | --- | --- |
-| Web | Server-rendered Next.js shell and `/api/health` | Recorder page, controller dashboard, Convex wiring, HTTPS deployment |
+| Web | Next.js landing/contributor recorder, Convex upload/status wiring, health and payment API routes; production build passes | Controller dashboard, live browser/wallet integration and HTTPS deployment verification |
 | Shared contracts | Base Sepolia chain constants (`chain.ts`), funding/payout status lists, JSON Schema, TS report validation, `parseAtomicUsdc` | Rubric-membership check wired into acceptance |
-| Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads, verified wallets, trusted funding/settlement import, Workflow approval wait; production auth is out of demo scope |
+| Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads, verified contributor wallets, Workflow approval wait; production auth is out of demo scope |
 | Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; live audio measured | Successful live visual response blocked by Flash 503/timeouts and Argon zero quota; real demonstration quality/copy calibration unmeasured; Python worker deferred |
 | Evaluation | Scoring scaffolding | Deferred: no labeled corpus. Staged demo clips only |
-| Ledger | Audited pure helpers plus atomic Convex journal/line persistence, fulfillment accrual, event fingerprints and replay protection | Real funding/payout import and chain reconciliation |
-| Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | Deploy merged Convex backend; supply controller treasury address; complete Wallet MCP authentication; run real funding/payout. Live buyer balance verified at 20 USDC; no live transfer yet |
+| Ledger | Audited pure helpers plus atomic Convex journal/line persistence, fulfillment accrual, event fingerprints and replay protection | Live funding/payout settlement and reconciliation evidence |
+| Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | Supply controller treasury address; complete Wallet MCP authentication; run real funding/payout. Live buyer balance verified at 20 USDC; no live transfer yet |
 | Finance agent | Server payment proposal, independent approval, durable refused self/agent approval audit and exact dashboard projections | Model explanation/tool loop, Workflow wait, approved-command execution |
 | Sponsors | Requirements checked against Devpost and the briefs | Working integrations; Coinbase eligibility checklist per member |
 
@@ -116,3 +116,20 @@ Latest measured submission: `mn76ffw1ds98w5s2n1rqgtjrp18gz13h`, pipeline
 `8047a87afedc01a0a54ebcffd301d39970dfc965f657c407c6c08572f9a5a57d`.
 The report and observations can be read through `submissions.getReport` with the
 controller demo selector. Final Task 2 checks passed under Node 22.21.1: `pnpm check` (62 package + 88 Convex tests, typechecks, docs links/anchors and production build), cloud deploy/typecheck, and secret preflight. The 88 Convex tests include 62 added Task 2 cases on top of the 26 Task 1 cases. No source under `apps/web` or `packages/payments` changed; raw media stays ignored.
+
+## Combined-main verification (October 25, 2026)
+
+Task 2 was rebased onto the payment and contributor work, preserving both sets
+of package scripts, generated APIs and documentation. The combined backend was
+deployed to the shared Convex development URL. A Node/DOM `Blob` type conflict
+was fixed by using the Node 22 global constructor.
+
+`pnpm check` passed: 74 package tests, 111 Convex tests, 24 payment-route tests,
+root/Convex/web typechecks, documentation links and the production web build.
+The installed Python verifier suite passed all 54 tests. Cloud deploy/typecheck
+and the outgoing-secret/media preflight passed. These checks do not establish
+successful visual inference or live chain settlement.
+
+Known integration gaps remain: contributor wallets need verified provisioning
+before acceptance can create a payable; duplicate refusals persist evidence in
+the controller audit but currently show generic review in the contributor UI.

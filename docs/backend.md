@@ -6,8 +6,10 @@ Task 1 is deployed to **https://keen-marmot-986.convex.cloud** with an idempoten
 internal seed, persisted demo-role checks, server finance mutations and dashboard
 queries. The generated API/data-model files are committed. Task 2 adds upload creation/scheduling, isolated media, Gemini observations and validated
 report persistence (see [AI verification](ai-verification.md)). Production auth,
-private-media downloads, real funding confirmation,
-wallet verification and chain execution/reconciliation remain unimplemented.
+private-media downloads and contributor-wallet verification remain unimplemented.
+The merged payment adapter implements trusted funding/payout confirmation and
+chain reconciliation with synthetic-evidence tests; no live settlement is confirmed.
+See [payment integration](payments.md) for the current contract.
 The seed creates an **unfunded** order; it performs no transfer or inference.
 
 The architecture targets Hyphenate, meaningful Convex use, Coinbase Best Use of
