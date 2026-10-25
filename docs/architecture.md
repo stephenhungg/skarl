@@ -1,5 +1,10 @@
 # Architecture
 
+This document retains the original build design, including historical scaffold
+descriptions. For the submission snapshot, use the [current architecture and
+controls](coinbase-submission.md), [exported diagram](architecture.svg), and
+dated [live evidence](status.md); the design below is not a live-completion claim.
+
 ## System boundaries
 
 ```mermaid

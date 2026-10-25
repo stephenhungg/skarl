@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { SmoothScroll } from "@/components/smooth-scroll";
+import { TestnetBanner } from "@/components/testnet-banner";
 import "./globals.css";
 
 const montrealBook = localFont({ src: "./fonts/montreal-book.woff2", weight: "400", variable: "--font-montreal-book", display: "swap" });
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <SmoothScroll />
         {children}
+        <TestnetBanner />
       </body>
     </html>
   );

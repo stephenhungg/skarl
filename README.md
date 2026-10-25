@@ -1,41 +1,47 @@
 # Skarl
 
-Production URL: https://skarl.vercel.app
+**The AP/settlement seat for a human-data company.**<br>
+Agents fund narrated demonstrations through x402; independent visual and audio evidence helps determine what is owed.<br>
+A bounded finance agent proposes payouts; a human approves, and chain receipts reconcile the books.
 
-Verified human demonstrations, paid with x402 on Base. The AP/settlement seat for a human-data company. Buyers request narrated demonstrations; contributors record them; multimodal AI grounds quality checks in video and audio evidence. A bounded finance agent prepares payouts, handles exceptions and reconciles the resulting books.
+**[Open the live demo](https://skarl.vercel.app)** · [Coinbase submission](docs/coinbase-submission.md) · [Devpost text](docs/devpost.md) · [Two-minute demo and judging runbook](docs/demo-script.md) · [Architecture SVG](docs/architecture.svg)
 
-Built for Cal Hacks 13.0. **Current state: deployed demo backend, contributor recorder and payment adapters, not a complete marketplace.** The shared Convex dev backend has seeded demo identities, acceptance/payable/journal mutations, independent approval and dashboard queries. Task 2 adds scheduled Gemini verification, uploads and server media processing. Both independent model stages ran live on one generated-media smoke test; human demonstration accuracy remains unmeasured. A bounded finance tool loop, durable approval Workflow and journal-derived statements are implemented. The payment owner recorded live x402 funding; outgoing wallet payout remains unconfirmed. Production authentication and contributor-wallet verification remain unimplemented. See [connection/setup](docs/setup.md) and [current status](docs/status.md).
+**Testnet · test USDC · demo identities.** Demonstrated payments use Base Sepolia; operator-owned test assets, no real customer funds. The hosted demo uses impersonable identities, not production authentication.
 
-Current configurable model defaults are `gemini-4-argon` for visual evidence, `gemini-3.8-flash` for the finance agent and read-only `askAgent`, and `gemini-3.5-transcribe` for audio. Billing is enabled and the latest provider probes succeeded; earlier free-tier quota failures are historical. Each logical provider request shares one 30-second deadline across at most three transient attempts, including backoff. Finance rounds also remain within the two-minute overall run budget. Historical measurements retain the actual model IDs used. See [model configuration and probe results](docs/ai-verification.md#models-and-configuration).
+## Use Skarl from your agent in 3 steps
 
-## Start here
+1. Connect Coinbase Wallet MCP and complete its human wallet onboarding:
+   ```sh
+   claude mcp add --transport http --scope user base-mcp https://wallet-mcp.coinbase.com
+   ```
+2. Give your agent [the Skarl plugin instructions](docs/wallet-mcp-plugin/skarl.md). They pin Base Sepolia, the test USDC contract, approved payee and payment cap; no Skarl server credentials are needed.
+3. Ask: **“Check whether Skarl order `skarl-red-cup-demo-v2` is funded.”** It already has confirmed 10 USDC funding, so this completes a no-charge status check. For a new payment, supply a fresh unfunded order ID and explicit cap, approve in Coinbase Wallet, then let the agent complete the same request and verify confirmed funding. [Exact requests and recovery](docs/wallet-mcp-plugin/README.md).
+
+The 0.25 USDC evidence-purchase endpoint is implemented, with Bazaar discovery metadata. A licensed, accepted and delivered sample is still needed: **no live evidence sale, Bazaar listing or completed Wallet MCP payment is verified**. A missing sample stops before payment. The agent plugin is a custom instruction file, not a Coinbase-approved integration.
+
+## What actually ran
+
+| Evidence | Observed result |
+| --- | --- |
+| [10 USDC funding](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757) | Live Base Sepolia x402 buyer CLI payment through the public facilitator; reconciled funding journal. |
+| [0.01 USDC CDP funding](https://sepolia.basescan.org/tx/0x20c9252f7d67a2dac87be839ad82b83465686157478645354838ac0f7239390d) | Live CDP facilitator settlement, signed provider webhook processed, exact balanced journal and no reconciliation exceptions. This is funding, not a payout. |
+| Independent Gemini observations | Live inference on generated and real-video negative smoke tests; both correctly remained review-only. No human-task accuracy benchmark. |
+| Finance agent | Live Flash tool call to the journal-derived trial balance and persisted explanation; no proposal or transfer in that run. |
+| CDP wallet policy | Live contributor signature verification, an applied 2 USDC per-transfer cap, and actual CDP rejections for over-cap and non-allowlisted sends. Three faucet receipts funded 3 test USDC; these are not payouts. |
+| Duplicate, approval and payout controls | Implemented with synthetic regression coverage. A licensed accepted contribution, independently approved payout and Wallet MCP execution remain unverified. |
+
+[Build status](docs/status.md) records the dated evidence and limitations. Video defaults to `gemini-4-argon`; finance reasoning uses `gemini-3.8-flash`; independent audio uses `gemini-3.5-transcribe`. Historical Flash measurements keep their actual model attribution. [Model choices](docs/ai-verification.md#models-and-configuration).
+
+## Run locally
 
 ```sh
 # Node 22.18+ within the Node 22 line; pnpm 10.19.0
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
 # http://localhost:3000
 ```
 
-No API keys are required to run the shell. See [setup](docs/setup.md) for Python and cloud integration. `pnpm check` runs TypeScript checks, tests, local documentation link checks and the production web build.
-
-## Use Skarl from your agent in 3 steps
-
-1. Connect Coinbase Wallet MCP in your agent client and complete its wallet onboarding:
-   `claude mcp add --transport http --scope user base-mcp https://wallet-mcp.coinbase.com`.
-   Use Base Sepolia test USDC; the human approves payment requests in Coinbase Wallet.
-2. Load [the Skarl plugin](docs/wallet-mcp-plugin/skarl.md) as agent context. It includes
-   exact request arguments, allowed network/token/recipient checks and recovery rules.
-3. Ask: “Check Skarl order `skarl-red-cup-demo-v2`; fund it only if unfunded, with a
-   maximum of 10 USDC.” The existing demo order is already funded, so this is a safe
-   status demonstration without another charge. For a new order, use its actual ID
-   and stored budget. The plugin also describes buying a verified sample’s evidence
-   for at most 0.25 USDC; the endpoint is implemented, but a licensed, accepted and delivered
-   sample is still required. Stop if the sample is unavailable.
-
-See [deployment](docs/deployment.md) for operator setup and [status](docs/status.md)
-for live evidence. Installing the plugin is not proof of a completed Wallet MCP
-payment or Bazaar listing. Demo identity selectors are not production authentication.
+No API keys are required to run the shell. [Setup](docs/setup.md) covers cloud integration; [deployment](docs/deployment.md) covers operator configuration. `pnpm check` runs TypeScript, package/Convex/payment tests, documentation links and the production web build. It does not prove live inference or settlement.
 
 ## Team handoffs
 
