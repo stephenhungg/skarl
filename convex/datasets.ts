@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { query, type QueryCtx } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
 import { digest, requireTenant } from "./lib/finance";
 import { attestationLinks } from "./lib/eas";
@@ -8,6 +8,8 @@ import { checkSpokenLiveness } from "./lib/spokenLiveness";
 import type { AudioObservation, VerificationReport } from "./lib/verificationReport";
 import { PAYMENT_NETWORK, PAYMENT_RAILS, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { validateTransfer } from "../packages/payments/src/reconciliation";
+import { createDatasetMediaToken } from "../packages/payments/src/dataset-media-token";
+import { service } from "./payments";
 
 /** A broadcast hash or approval is not proof of payment. */
 async function payout(ctx: QueryCtx, payable: Doc<"payables"> | undefined) {
@@ -43,7 +45,7 @@ async function payout(ctx: QueryCtx, payable: Doc<"payables"> | undefined) {
  * supported: a controller may accept evidence that the machine sent to review.
  */
 async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Doc<"deliveries">,
-  rubric: Doc<"rubricVersions">, payables: Doc<"payables">[]) {
+  rubric: Doc<"rubricVersions">, payables: Doc<"payables">[], demoIdentity: string, nativeMedia = false) {
   const submission = await ctx.db.get(delivery.submissionId);
   const manifest = delivery.manifest;
   if (!submission || !manifest || submission.status !== "accepted" || submission.verificationOnly ||
@@ -100,6 +102,15 @@ async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Do
   if (samplePayables.length > 1) throw new Error("duplicate_payable_reference");
   const url = await ctx.storage.getUrl(original.storageId);
   if (!url) return null;
+  const binding = digest({ submissionId: submission._id, manifestHash: delivery.manifestHash,
+    consentReceiptHash: consent.receiptHash, licenseHash: consent.licenseHash });
+  let mediaUrl = url, expiresAt: number | null = null;
+  if (!nativeMedia) {
+    const secret = process.env.SKARL_PAYMENTS_SERVICE_SECRET ?? "";
+    const grant = createDatasetMediaToken({ demoIdentity, orderId: order._id, submissionId: submission._id, binding }, secret);
+    expiresAt = grant.expiresAt;
+    mediaUrl = `https://skarl.vercel.app/api/orders/${order._id}/dataset/media?token=${encodeURIComponent(grant.token)}`;
+  }
   return { submissionId: submission._id, sourceSha256: submission.sourceHash, durationMs: original.durationMs ?? report?.source.durationMs ?? null,
     task: { id: rubric._id, version: rubric.version, criterionIds: rubric.criteria.map(row => row.criterionId) },
     acceptedAt: decision.decidedAt, acceptance: { basis: machine ? "machine" as const : "human_controller" as const, decisionId: decision._id },
@@ -110,13 +121,10 @@ async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Do
     liveness: submission.liveness ? checkSpokenLiveness(submission.liveness, audio, original.durationMs ?? report?.source.durationMs ?? 0) : null,
     duplicate: { status: report?.duplicate.status ?? "not_checked" },
     attestation: attested ? { uid: attestation.attestationUid!, ...attestationLinks(attestation.attestationUid!, attestation.txHash!) } : null,
-    payout: await payout(ctx, samplePayables[0]), media: { url, mimeType: original.mimeType } };
+    payout: await payout(ctx, samplePayables[0]), media: { url: mediaUrl, mimeType: original.mimeType, binding, expiresAt } };
 }
 
-/** Buyer delivery is an explicit licensed publication, never an analysis queue export. */
-export const forOrder = query({
-  args: { demoIdentity: v.string(), orderId: v.id("orders") },
-  handler: async (ctx, args) => {
+async function orderScope(ctx: QueryCtx, args: { demoIdentity: string; orderId: Id<"orders"> }) {
     const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller"]);
     if (args.demoIdentity === "finance-agent" || principal.roles.includes("finance-agent")) throw new Error("forbidden");
     const order = await ctx.db.get(args.orderId);
@@ -127,6 +135,16 @@ export const forOrder = query({
     if (rubric && (rubric.organizationId !== order.organizationId || rubric.orderId !== order._id || rubric.frozenAt === undefined)) {
       throw new Error("task_version_mismatch");
     }
+    return { order, rubric };
+}
+
+/** Buyer delivery is an explicit licensed publication, never an analysis queue export. */
+export const forOrder = query({
+  // A changing cache key refreshes expiring grants without mutating dataset data.
+  // It never supplies the authoritative signing clock or changes access rights.
+  args: { demoIdentity: v.string(), orderId: v.id("orders"), refreshKey: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const { order, rubric } = await orderScope(ctx, args);
     const [deliveries, payables] = await Promise.all([
       ctx.db.query("deliveries").withIndex("by_order", q => q.eq("orderId", order._id)).collect(),
       ctx.db.query("payables").withIndex("by_order", q => q.eq("orderId", order._id)).collect(),
@@ -135,11 +153,29 @@ export const forOrder = query({
     const seen = new Set<string>();
     if (rubric) for (const delivery of deliveries) {
       if (seen.has(delivery.submissionId)) continue;
-      const sample = await deliveredSample(ctx, order, delivery, rubric, payables);
+      const sample = await deliveredSample(ctx, order, delivery, rubric, payables, args.demoIdentity);
       if (sample) { samples.push(sample); seen.add(sample.submissionId); }
     }
     return { schema: "skarl.dataset.v1" as const, orderId: order._id,
       task: rubric ? { id: rubric._id, version: rubric.version, criterionIds: rubric.criteria.map(row => row.criterionId) } : null,
       generatedAt: Date.now(), samples };
+  },
+});
+
+/** Only the trusted streaming proxy receives the native non-expiring storage URL. */
+export const originalMedia = query({
+  args: { serviceSecret: v.string(), demoIdentity: v.string(), orderId: v.id("orders"),
+    submissionId: v.id("submissions"), binding: v.string() },
+  handler: async (ctx, args) => {
+    service(args.serviceSecret);
+    const { order, rubric } = await orderScope(ctx, args);
+    if (!rubric) throw new Error("sample_not_available");
+    const deliveries = await ctx.db.query("deliveries").withIndex("by_submission", q => q.eq("submissionId", args.submissionId)).collect();
+    for (const delivery of deliveries) {
+      if (delivery.orderId !== order._id) continue;
+      const sample = await deliveredSample(ctx, order, delivery, rubric, [], args.demoIdentity, true);
+      if (sample?.media.binding === args.binding) return { storageUrl: sample.media.url, mimeType: sample.media.mimeType, binding: args.binding };
+    }
+    throw new Error("sample_not_available");
   },
 });

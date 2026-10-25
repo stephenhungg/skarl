@@ -17,7 +17,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   if (!url) return paymentJson({ error: "dataset_not_configured" }, 503);
   try {
     const db = new ConvexHttpClient(url);
-    const manifest = await db.query(api.datasets.forOrder, { demoIdentity, orderId: orderId as Id<"orders"> });
+    const manifest = await db.query(api.datasets.forOrder, { demoIdentity, orderId: orderId as Id<"orders">,
+      refreshKey: Math.floor(Date.now() / 60_000) });
     if (format === "json") return paymentJson(manifest);
     // Authorize and materialize the snapshot before starting the response. Each
     // pull emits one complete sample without a manifest or metadata line.

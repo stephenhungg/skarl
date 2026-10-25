@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { makeFunctionReference } from "convex/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { canonical, digest, paymentBinding, sourceVersion } from "./lib/finance";
@@ -12,6 +12,9 @@ const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
 const forOrder = makeFunctionReference<"query">("datasets:forOrder");
 const CONTRIBUTOR = "demo:skarl:contributor";
 const RECIPIENT = "0x1111111111111111111111111111111111111111";
+const SERVICE_SECRET = "synthetic-dataset-service-secret-32-characters";
+beforeEach(() => vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", SERVICE_SECRET));
+afterEach(() => vi.unstubAllEnvs());
 
 async function setup() {
   const t = convexTest(schema, modules);
@@ -277,5 +280,67 @@ describe("buyer dataset delivery (synthetic evidence)", () => {
     const f = await setup();
     await delivered(f, "human-reviewed", true);
     expect((await f.t.query(forOrder, args(f))).samples[0].acceptance.basis).toBe("human_controller");
+  });
+});
+
+const originalMedia = makeFunctionReference<"query">("datasets:originalMedia");
+
+describe("expiring buyer original-media grants (synthetic storage)", () => {
+  it("publishes a five-minute signed proxy URL instead of exposing a native storage bearer URL", async () => {
+    const f = await setup(), sample = await delivered(f);
+    const before = Date.now();
+    const exported = (await f.t.query(forOrder, args(f))).samples[0];
+    const after = Date.now(), mediaUrl = new URL(exported.media.url);
+    expect(mediaUrl.origin).toBe("https://skarl.vercel.app");
+    expect(mediaUrl.pathname).toBe(`/api/orders/${f.orderId}/dataset/media`);
+    expect(exported.media.expiresAt).toBeGreaterThanOrEqual(before + 5 * 60_000);
+    expect(exported.media.expiresAt).toBeLessThanOrEqual(after + 5 * 60_000);
+    const { verifyDatasetMediaToken } = await import("../packages/payments/src/dataset-media-token");
+    const token = mediaUrl.searchParams.get("token")!;
+    const grant = verifyDatasetMediaToken(token, SERVICE_SECRET);
+    expect(grant).toMatchObject({ demoIdentity: "buyer", orderId: f.orderId,
+      submissionId: sample.submissionId, binding: exported.media.binding, expiresAt: exported.media.expiresAt });
+    expect(grant).not.toHaveProperty("storageUrl");
+    expect(grant).not.toHaveProperty("storageId");
+    expect(JSON.stringify(grant)).not.toContain("convex.cloud");
+    expect(() => verifyDatasetMediaToken(token, SERVICE_SECRET, exported.media.expiresAt + 1)).toThrow();
+  });
+
+  it("releases the native URL only to the configured service after rechecking buyer ownership", async () => {
+    const f = await setup(), sample = await delivered(f);
+    const exported = (await f.t.query(forOrder, args(f))).samples[0];
+    const mediaArgs = { ...args(f), serviceSecret: SERVICE_SECRET, submissionId: sample.submissionId, binding: exported.media.binding };
+    for (const serviceSecret of ["", "incorrect-service-secret"]) {
+      await expect(f.t.query(originalMedia, { ...mediaArgs, serviceSecret })).rejects.toThrow();
+    }
+    const original = await f.t.query(originalMedia, mediaArgs);
+    expect(original).toMatchObject({ mimeType: "video/mp4", binding: exported.media.binding });
+    expect(original.storageUrl).toMatch(/^https?:/);
+    expect(original.storageUrl).not.toBe(exported.media.url);
+    await expect(f.t.query(originalMedia, { ...mediaArgs, demoIdentity: "contributor" })).rejects.toThrow("forbidden");
+    await f.t.run(ctx => ctx.db.patch(f.orderId, { buyerTokenIdentifier: "demo:another-order-buyer" }));
+    await expect(f.t.query(originalMedia, mediaArgs)).rejects.toThrow("order_not_owned");
+  });
+
+  it("invalidates an old grant when consent receipt changes even though licensing remains valid", async () => {
+    const f = await setup(), sample = await delivered(f);
+    const exported = (await f.t.query(forOrder, args(f))).samples[0];
+    const mediaArgs = { ...args(f), serviceSecret: SERVICE_SECRET, submissionId: sample.submissionId, binding: exported.media.binding };
+    await f.t.run(ctx => ctx.db.patch(sample.consentRecordId, { receiptHash: digest("replacement synthetic consent receipt") }));
+    await expect(f.t.query(originalMedia, mediaArgs)).rejects.toThrow("sample_not_available");
+    const refreshed = (await f.t.query(forOrder, args(f))).samples[0];
+    expect(refreshed.media.binding).not.toBe(exported.media.binding);
+    expect((await f.t.query(originalMedia, { ...mediaArgs, binding: refreshed.media.binding })).storageUrl).toMatch(/^https?:/);
+  });
+
+  it.each(["quarantined", "rejected"])("rechecks %s access instead of trusting an earlier grant", async state => {
+    const f = await setup(), sample = await delivered(f);
+    const exported = (await f.t.query(forOrder, args(f))).samples[0];
+    await f.t.run(async ctx => {
+      if (state === "quarantined") await ctx.db.patch(sample.originalAssetId, { status: "quarantined" });
+      else await ctx.db.patch(sample.submissionId, { status: "rejected" });
+    });
+    await expect(f.t.query(originalMedia, { ...args(f), serviceSecret: SERVICE_SECRET,
+      submissionId: sample.submissionId, binding: exported.media.binding })).rejects.toThrow("sample_not_available");
   });
 });

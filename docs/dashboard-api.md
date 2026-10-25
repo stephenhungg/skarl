@@ -987,7 +987,7 @@ empty response body. Example sample (illustrative, not live evidence):
   "duplicate": {"status": "clear"},
   "attestation": null,
   "payout": {"status": "pending", "amountAtomic": "1875000", "txHash": null, "explorerUrl": null},
-  "media": {"mimeType": "video/mp4", "url": "https://storage.example/private-original"}
+  "media": {"mimeType": "video/mp4", "url": "https://skarl.vercel.app/api/orders/ORDER_ID/dataset/media?token=SIGNED_GRANT", "binding": "DELIVERY_BINDING_HASH", "expiresAt": 1792926300000}
 }
 ```
 
@@ -1016,14 +1016,26 @@ All monetary amounts are decimal integer micro-USDC strings. A payout becomes
 command, attempt and confirmed Base Sepolia USDC observation agree. Approval,
 broadcast and unresolved transactions remain `pending`.
 
-Export responses use `Cache-Control: private, no-store`. Media URLs are issued
-via `ctx.storage.getUrl` only after buyer/controller and licensed original checks.
-Convex storage bearer URLs have no application-configurable expiry; do not
-describe these URLs as expiring or publish/cache the export. A strictly
-short-lived download requires a separate expiring proxy grant, as used by the
-paid sample media endpoint. Neither that endpoint's x402 grant nor its access
-rights are reused for buyer exports. No deployment or live download was performed
-as part of this implementation.
+Export responses use `Cache-Control: private, no-store`. Both the public query
+and HTTP manifest expose a signed five-minute download URL, with Unix-millisecond
+`media.expiresAt`. Export again to refresh an expired grant. The proxy checks the
+signature, expiry, order, caller's current membership/ownership and the current
+licensed delivery binding before streaming only the original asset. Changes to
+consent, delivery, source or eligibility invalidate an old grant. URLs are bearer
+credentials: do not publish or cache them.
+
+The HTTP route changes the query's optional `refreshKey` each minute so an
+unchanged dataset still receives fresh grants. Direct query clients should pass
+`refreshKey: Math.floor(Date.now() / 60000)` when refreshing an export; this is
+only a cache key, never the signing clock or payment authority.
+
+Native Convex bearer URLs from `ctx.storage.getUrl` have no configurable expiry;
+they are available only to the trusted proxy through service-authenticated
+`datasets.originalMedia`, and are never returned by the public manifest or in a
+redirect. The proxy uses the existing matching `SKARL_PAYMENTS_SERVICE_SECRET`
+in Convex and the web server, and fails closed if it is absent. Buyer dataset
+grants do not reuse the paid sample endpoint's x402 grants. No deployment or live
+download was performed as part of this implementation.
 
 ## Bank witness — Capital One Nessie
 

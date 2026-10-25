@@ -46,7 +46,7 @@ it.each(["buyer", "controller"])("returns the manifest using authoritative query
   expect(mocks.client).toHaveBeenCalledWith("https://example.convex.cloud");
   const [reference, args] = mocks.query.mock.calls[0]!;
   expect(getFunctionName(reference)).toBe("datasets:forOrder");
-  expect(args).toEqual({ demoIdentity, orderId });
+  expect(args).toEqual({ demoIdentity, orderId, refreshKey: Math.floor(Date.now() / 60_000) });
 });
 
 it("streams exactly one independently parseable sample per JSONL line", async () => {
