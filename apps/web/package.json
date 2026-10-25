@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@coinbase/x402": "2.1.0",
+    "@react-three/fiber": "^9.8.2",
     "@skarl/contracts": "workspace:*",
     "@skarl/ledger": "workspace:*",
     "@skarl/payments": "workspace:*",
@@ -29,12 +30,14 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "tailwind-merge": "^3.7.0",
+    "three": "^0.186.1",
     "viem": "2.57.11"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.14",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.186.0",
     "postcss": "^8.5.31",
     "tailwindcss": "4.1.14"
   }
