@@ -28,7 +28,7 @@ Injected finance checks to have ready: a repeated funding event (one journal ent
 
 ## Finance fixture
 
-Use Base Sepolia test USDC only: buyer prepays 100 USDC for ten samples at 10 each. Deliver one sample, accrue the 7.5 contributor cost/payable and confirm the 7.5 payout. The remaining 90 stays a buyer prepayment liability; refunding it is deferred unless time allows (cash would then be 2.5 with no remaining demo liabilities); this is **before** inference, fees, hosting and gas. It is not net profit. See [accounting](accounting.md) for entries and the principal-model assumption.
+Use Base Sepolia test USDC only. Default order `skarl-red-cup-demo-v2` prepays 10 USDC for four samples at 2.50 each (`4n * 2_500_000n` micro-USDC). Run `pnpm agent:fund` or explicitly `pnpm agent:fund skarl-red-cup-demo-v2`. The buyer needs USDC only; the exact/EIP-3009 facilitator pays gas. Configure the human controller's receiving address as `SKARL_TREASURY_ADDRESS` on the web server first; missing configuration blocks funding with an actionable error. Deliver one sample, accrue the 1.875 contributor cost/payable and confirm the 1.875 payout. The remaining 7.50 stays a buyer prepayment liability; refunding it is deferred unless time allows (cash would then be 0.625 with no remaining demo liabilities); this is **before** inference, fees, hosting and gas. It is not net profit. The original 100 USDC `skarl-red-cup-demo-v1` remains unchanged for compatibility. See [accounting](accounting.md) for the legacy illustrative entries and the principal-model assumption.
 
 ## Evidence before submission
 

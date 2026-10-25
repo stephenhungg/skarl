@@ -109,7 +109,8 @@ export const demoContext = query({
   args: { demoIdentity: v.string() },
   handler: async (ctx, input) => {
     const principal = await requireRole(ctx, input.demoIdentity, ["buyer", "contributor", "controller", "finance-agent"]);
-    const order = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v1")).unique();
+    const order = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique()
+      ?? await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v1")).unique();
     if (!order) return null;
     requireTenant(principal, order);
     return { organizationId: order.organizationId, orderId: order._id, taskVersionId: order.taskVersionId,

@@ -13,6 +13,7 @@ import { MAX_ATOMIC_USDC } from "@skarl/contracts";
 import { PAYMENT_NETWORK, PAYMENT_CHAIN_ID, USDC_ADDRESS } from "@skarl/contracts/chain";
 
 class BuyerError extends Error {}
+const treasuryConfigurationMessage = "Set SKARL_TREASURY_ADDRESS in the web server environment to the human controller's Coinbase Wallet receiving address before funding.";
 const configurationDirectory = join(homedir(), ".config", "skarl");
 const keyPath = join(configurationDirectory, "buyer.env");
 const hashPattern = /^0x[0-9a-fA-F]{64}$/;
@@ -54,21 +55,22 @@ function printTransaction(value: unknown) {
   if (typeof value === "string" && hashPattern.test(value)) console.log(`${baseSepolia.blockExplorers.default.url}/tx/${value}`);
 }
 async function jsonResponse(response: Response): Promise<Record<string, unknown>> {
+  const body: unknown = await response.json().catch(() => null);
+  if (record(body) && body.error === "treasury_not_configured") throw new BuyerError(treasuryConfigurationMessage);
   if (!response.ok) throw new BuyerError(`Payment service returned HTTP ${response.status}. No new payment will be attempted automatically.`);
-  const body: unknown = await response.json();
   if (!record(body) || body.ok === false) throw new BuyerError("The payment service refused this operation.");
   return body;
 }
 
 export async function fundOrder(args = process.argv.slice(2)) {
   validateEnvironment();
-  if (args.length !== 1 || (!/^[a-zA-Z0-9_-]+$/.test(args[0]) && args[0] !== "--address")) {
-    throw new BuyerError("Usage: pnpm agent:fund <orderId> (or --address)");
+  const orderId = args[0] ?? "skarl-red-cup-demo-v2";
+  if (args.length > 1 || (!/^[a-zA-Z0-9_-]+$/.test(orderId) && orderId !== "--address")) {
+    throw new BuyerError("Usage: pnpm agent:fund [orderId] (default: skarl-red-cup-demo-v2; or --address)");
   }
   const account = buyerAccount();
   console.log(account.address);
   if (args[0] === "--address") return;
-  const orderId = args[0];
   const app = new URL(process.env.SKARL_APP_URL || "http://localhost:3000");
   if (app.username || app.password || (app.protocol !== "https:" && !(app.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(app.hostname)))) {
     throw new BuyerError("SKARL_APP_URL must use HTTPS, or HTTP on localhost.");
@@ -96,6 +98,9 @@ export async function fundOrder(args = process.argv.slice(2)) {
     console.log(`Funding status: ${typeof reconciled.fundingStatus === "string" ? reconciled.fundingStatus : "reconciliation requested"}`);
     return;
   }
+  if (typeof status.recipientAddress !== "string" || !status.recipientAddress.trim()) {
+    throw new BuyerError(treasuryConfigurationMessage);
+  }
   if (typeof status.amountAtomic !== "string" || !/^[1-9][0-9]*$/.test(status.amountAtomic) ||
     BigInt(status.amountAtomic) > MAX_ATOMIC_USDC || typeof status.recipientAddress !== "string" ||
     !isAddress(status.recipientAddress) || /^0x0{40}$/i.test(status.recipientAddress)) {
@@ -106,14 +111,11 @@ export async function fundOrder(args = process.argv.slice(2)) {
   const rpcUrl = process.env.BASE_SEPOLIA_RPC_URL || baseSepolia.rpcUrls.default.http[0];
   const chain = createPublicClient({ chain: baseSepolia, transport: http(rpcUrl, { retryCount: 0, timeout: 20_000 }) });
   if (await chain.getChainId() !== PAYMENT_CHAIN_ID) throw new BuyerError("RPC is not Base Sepolia; refusing to sign.");
-  const [usdc, eth] = await Promise.all([
-    chain.readContract({ address: USDC_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [account.address] }),
-    chain.getBalance({ address: account.address }),
-  ]);
-  if (usdc < amount || eth === 0n) {
-    console.log(`Insufficient test funds. USDC atomic balance: ${usdc}; required: ${amount}. ETH wei balance: ${eth}.`);
+  // EIP-3009 signs an offchain authorization; the facilitator submits it and pays gas.
+  const usdc = await chain.readContract({ address: USDC_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [account.address] });
+  if (usdc < amount) {
+    console.log(`Insufficient test funds. USDC atomic balance: ${usdc}; required: ${amount}. Buyer ETH is not required.`);
     console.log("Base Sepolia USDC: https://faucet.circle.com");
-    console.log("Base Sepolia ETH: https://www.alchemy.com/faucets/base-sepolia");
     process.exitCode = 2;
     return;
   }
@@ -161,7 +163,8 @@ export async function fundOrder(args = process.argv.slice(2)) {
       printTransaction(result.txHash);
     }
     console.log(`Funding status: ${typeof result.fundingStatus === "string" ? result.fundingStatus : "unknown; reconcile before paying again"}`);
-  } catch {
+  } catch (error) {
+    if (!existsSync(savedPath) && error instanceof BuyerError) throw error;
     throw new BuyerError(existsSync(savedPath)
       ? "The signed authorization is saved privately. Settlement may have occurred. Rerun this command to reconcile; do not delete the saved attempt or pay again."
       : "Funding request failed before a signed request was sent. Check the app configuration and stored quote.");

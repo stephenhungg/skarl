@@ -60,8 +60,10 @@ controller check. Do not use real funds or private user data on this demo API.
 
 Dashboard monetary fields and counters are decimal integer strings, for example
 `amountAtomic: "7500000"`, not floating dollars. Mutations store/compute `bigint`
-Int64 money. The order's seed budget is 100,000,000 micro-USDC; quota is 10,
-sample price 10,000,000 and contributor rate 7,500,000. Budget is not funded cash.
+Int64 money. Default order `skarl-red-cup-demo-v2` has a 10,000,000 micro-USDC
+budget, quota 4, sample price 2,500,000 and contributor rate 1,875,000. The
+legacy v1 order remains unchanged at budget 100,000,000, quota 10, sample price
+10,000,000 and contributor rate 7,500,000. Budget is not funded cash.
 
 Acceptance requires an open funded order, remaining quota, verified original
 asset and contributor wallet record, consent, frozen matching rubric and a
@@ -254,6 +256,9 @@ execution and recover settlement/HTTP/database failure windows explicitly.
 For the demo, assume Skarl sells the licensed sample as principal and purchases
 the contributor's work. This is an explicit simulation policy, not an accounting
 conclusion about a real company.
+
+The following illustrative entries retain the legacy v1 amounts; the current
+v2 demo amounts are in the [demo runbook](demo.md#finance-fixture).
 
 | Business event | Debit | Credit |
 | --- | --- | --- |

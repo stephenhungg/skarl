@@ -4,6 +4,10 @@ Skarl's prototype models a company selling verified, licensed human demonstratio
 
 ## Principal model and fulfillment trigger
 
+The following legacy v1 illustration uses 100 USDC; the default v2 demo uses
+10 USDC for four samples at 2.50 each with a 1.875 contributor rate. See the
+[demo runbook](demo.md#finance-fixture) for current amounts.
+
 For the demonstration, assume skarl is principal: it promises a verified sample to the buyer, controls acceptance and delivery before licensing it, sets the buyer price, and purchases contributor work at an agreed rate. A $10 fulfilled sample is $10 gross dataset revenue and $7.50 contributor acquisition cost. Gross margin is $2.50 **before inference, network fees, tax, and other operating costs**.
 
 If the business merely arranges a contributor-to-buyer sale, an agent/net-fee revenue model may be appropriate instead. These presentations cannot be mixed. The IFRS Foundation's principal/agent framework turns on control of the specified good/service before transfer, not whether a payment used crypto. [Principal versus agent considerations](https://www.ifrs.org/news-and-events/updates/ifric/2021/ifric-update-november-2021/)

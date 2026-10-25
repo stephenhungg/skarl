@@ -14,16 +14,18 @@ type Context = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, context: Context) {
   try {
+    const treasury = treasuryAddress();
     const { db, serviceSecret } = paymentService();
     const result = await db.query(api.payments.fundingStatus, { serviceSecret, orderId: (await context.params).id,
       demoIdentity: request.headers.get("x-skarl-demo-identity") || "buyer" });
-    return paymentJson({ recipientAddress: treasuryAddress(), orderId: result.order._id, status: result.order.status, amountAtomic: result.order.budgetAtomic,
+    return paymentJson({ recipientAddress: treasury, orderId: result.order._id, status: result.order.status, amountAtomic: result.order.budgetAtomic,
       fundingStatus: result.intent?.status ?? "awaiting_payment", txHash: result.attempt?.txHash ?? null,
       attemptId: result.attempt?._id ?? null });
   } catch (error) { return paymentError(error); }
 }
 export async function POST(request: NextRequest, context: Context) {
   try {
+    const treasury = treasuryAddress();
     const { db, serviceSecret } = paymentService();
     const orderId = (await context.params).id;
     const demoIdentity = request.headers.get("x-skarl-demo-identity") || "buyer";
@@ -32,7 +34,6 @@ export async function POST(request: NextRequest, context: Context) {
     if (intent) return paymentJson({ orderId: order._id, status: order.status, fundingStatus: intent.status,
       txHash: attempt?.txHash ?? null, attemptId: attempt?._id, reconcileUrl: "/api/payments/reconcile" }, intent.status === "confirmed" ? 200 : 202);
     if (!["draft", "awaiting_funding"].includes(order.status) || Date.now() > order.deadlineAt) throw new Error("order_not_fundable");
-    const treasury = treasuryAddress();
     const keyId = process.env.CDP_API_KEY_ID, keySecret = process.env.CDP_API_KEY_SECRET;
     if (!!keyId !== !!keySecret) throw new Error("payment_service_not_configured");
     const facilitator = new HTTPFacilitatorClient(keyId && keySecret ? createFacilitatorConfig(keyId, keySecret) :

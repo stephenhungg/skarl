@@ -25,5 +25,9 @@ export function paymentError(error: unknown) {
   const code = ["treasury_not_configured", "payment_service_not_configured", "wrong_treasury_wallet", "payout_not_executable",
     "claim_not_found", "order_not_found", "order_not_fundable", "transaction_already_bound", "funding_already_pending_reconcile_first"]
     .find(c => message.includes(c)) ?? "payment_request_refused";
-  return paymentJson({ ok: false, error: code }, code.endsWith("not_configured") ? 503 : 409);
+  return paymentJson({ ok: false, error: code,
+    ...(code === "treasury_not_configured" ? {
+      message: "Set SKARL_TREASURY_ADDRESS in the web server environment to the human controller's Coinbase Wallet receiving address before funding.",
+    } : {}),
+  }, code.endsWith("not_configured") ? 503 : 409);
 }

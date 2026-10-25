@@ -90,9 +90,21 @@ Do not commit root or app `.env.local`, and do not create a second project merel
 to typecheck. `pnpm check:convex` remains the anonymous local-backend CI check;
 for this task, the equivalent cloud deploy/typecheck was exercised instead.
 
-The seed creates one org, the four memberships, a frozen red-cup rubric and an
-**unfunded** order for 10 samples at 10 USDC each (7.5 contributor rate). It does
-not seed submissions, verified wallet proofs, fake analysis, chain receipts or
+The idempotent seed creates one org, the four memberships, and two **unfunded**
+orders with the same frozen red-cup rubric. The default `skarl-red-cup-demo-v2`
+requests four samples at 2.50 USDC each: a 10 USDC budget (`4n * 2_500_000n`
+micro-USDC), with a 1.875 USDC contributor rate. The original
+`skarl-red-cup-demo-v1` stays unchanged at 10 samples for 10 USDC each
+(100 USDC budget, 7.5 contributor rate). Seed return fields `orderId` and
+`taskVersionId` retain their v1 meaning; `defaultOrderId` and
+`defaultTaskVersionId` identify v2. `dashboard.demoContext` prefers v2, falling
+back to v1 until the deployment owner reruns the seed. Run `pnpm agent:fund`
+(default v2) or `pnpm agent:fund skarl-red-cup-demo-v2` after the main-checkout
+deployment owner deploys and seeds the update. Buyer funding needs USDC only,
+not ETH; the exact/EIP-3009 facilitator pays gas. Set `SKARL_TREASURY_ADDRESS`
+on the web server to the human controller's Coinbase Wallet receiving address;
+missing or invalid configuration returns HTTP 503 and an actionable buyer error.
+The seed does not seed submissions, verified wallet proofs, fake analysis, chain receipts or
 cash. Acceptance stays blocked until the upload/analysis, wallet verification
 and trusted funding integrations supply their real prerequisites. Convex tests
 supply explicitly synthetic fixtures for these boundaries.
@@ -103,7 +115,8 @@ supply explicitly synthetic fixtures for these boundaries.
   upcoming analysis action. The Railway/Python inference worker remains deferred.
 - Implement private upload/media and verified contributor-wallet provisioning.
 - The payment owner needs a server-only CDP key, controller Coinbase Wallet and
-  Base Sepolia test USDC/ETH. No server-side signing key is part of this design.
+  Base Sepolia test USDC. Buyer funding requires no ETH; controller payout gas
+  is a separate wallet concern. No server-side signing key is part of this design.
 - Approval records enqueue a dispatch command; they do not execute or confirm a
   payment. Wallet execution and `(network, txHash, logIndex)` reconciliation remain
   payment-owner work.

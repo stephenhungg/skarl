@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "@skarl/contracts/chain";
-import { POST } from "../../../apps/web/app/api/orders/[id]/fund/route";
+import { GET, POST } from "../../../apps/web/app/api/orders/[id]/fund/route";
 
 // Exercises the actual dynamic Next route and real @x402/next/core middleware.
 // Facilitator responses, Convex state and RPC receipts are deliberately mocked;
@@ -104,6 +104,28 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("actual POST /api/orders/[id]/fund x402 adapter", () => {
+  it.each([undefined, "", " ", "not-an-address", `0x${"0".repeat(40)}`])("refuses an unset/invalid treasury (%s) with actionable configuration guidance", async address => {
+    vi.stubEnv("SKARL_TREASURY_ADDRESS", address);
+    for (const handler of [GET, POST]) {
+      const response = await handler(request(), context);
+      expect(response.status).toBe(503);
+      expect(response.headers.get("PAYMENT-REQUIRED")).toBeNull();
+      expect(await response.json()).toEqual({ ok: false, error: "treasury_not_configured",
+        message: "Set SKARL_TREASURY_ADDRESS in the web server environment to the human controller's Coinbase Wallet receiving address before funding." });
+    }
+    expect(mocks.query).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    expect(mocks.mutation).not.toHaveBeenCalled();
+  });
+
+  it("quotes and challenges the 10 USDC v2 budget using integer strings", async () => {
+    stored.order.budgetAtomic = 4n * 2_500_000n;
+    const response = await GET(request(), context);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ amountAtomic: "10000000", recipientAddress: TREASURY });
+    expect((await requirement()).accepts[0]).toMatchObject({ amount: "10000000", payTo: TREASURY });
+  });
+
   it("protects the dynamic route with exact stored micro-USDC requirements", async () => {
     const challenge = await requirement();
     expect(challenge.x402Version).toBe(2);
