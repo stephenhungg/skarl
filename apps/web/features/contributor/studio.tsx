@@ -77,7 +77,8 @@ export function Studio(props: StudioProps) {
           <div className="mx-auto flex h-12 max-w-6xl items-center gap-3 px-4 md:px-6">
             <Link href="/" className="flex items-center gap-2 text-text-1" aria-label="Skarl home"><LogoMark size={12} /><span className="type-label">Skarl</span></Link>
             <span className="type-label-sm text-text-3">Contributor</span>
-            <span className="ms-auto hidden type-label-sm text-text-2 sm:inline">Base Sepolia &middot; test USDC</span>
+            <Link href="/contribute/earnings" className="ms-auto type-label-sm text-text-2 underline underline-offset-4">Submissions &amp; earnings</Link>
+            <span className="hidden type-label-sm text-text-2 sm:inline">Base Sepolia &middot; test USDC</span>
             {payables && payables.length > 0 && (
               <span className="type-label tabular-nums" title="Earned across accepted clips; paid once a transfer confirms">
                 {formatUsdc(earned.toString())} earned{paid > 0n ? `, ${formatUsdc(paid.toString())} paid` : ""}
