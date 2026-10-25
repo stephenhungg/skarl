@@ -3,7 +3,6 @@ import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { createHash } from "node:crypto";
-import { Blob } from "node:buffer";
 import { prepareMedia, MediaPreparationError } from "./lib/media";
 import { observeVideo, observeAudio, GeminiFailure, videoModel, audioModel } from "./lib/gemini";
 import { buildVerificationReport, type AudioObservation, type VideoObservation, type ModelRun } from "./lib/verificationReport";
