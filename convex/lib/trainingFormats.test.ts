@@ -114,9 +114,32 @@ it("saved hand keypoints remain an advisory image-space action proxy with model 
     videoWidth: 720, videoHeight: 1280, advisory: true as const, frames: [{ tMs: 0, hands: [] }] };
   const result = trainingFrames({ ...aligned, trainingInputs: { ...aligned.trainingInputs, hands } });
   expect(result.action_proxy).toMatchObject({ advisory: true, robot_control: false, model: hands.model, keyframes: [{ timestamp_ms: 0, hands: [] }] });
-  expect(result.frames[0]!.action).toMatchObject({ advisory: true, hands: [] });
-  expect(result.frames[1]!.action).toBeNull();
+  expect(result.frames[0]!.hand_proxy).toMatchObject({ advisory: true, hands: [] });
+  // A saved no-detection frame yields no robot target: null, not zero joints.
+  expect(result.frames[0]!.action).toBeNull();
+  expect(result.frames[1]).toMatchObject({ action: null, hand_proxy: null });
   const handsOnly = trainingFrames({ ...aligned, trainingInputs: { status: "validated_storage", trace: null, hands } });
-  expect(handsOnly.frames[0]).toMatchObject({ "observation.state": [], action: { advisory: true, hands: [] } });
+  expect(handsOnly.frames[0]).toMatchObject({ "observation.state": [], action: null, hand_proxy: { advisory: true, hands: [] } });
   expect(handsOnly.state_names).toEqual([]);
+});
+it("a detected hand becomes an SO-101 joint-target action labeled as retargeted, advisory and hardware-unvalidated", () => {
+  const point = (x: number, y: number): [number, number, number] => [x, y, 0.5];
+  const keypoints = Array.from({ length: 21 }, () => point(0.5, 0.5));
+  keypoints[0] = point(0.5, 0.6); keypoints[5] = point(0.43, 0.42); keypoints[9] = point(0.5, 0.4); keypoints[17] = point(0.57, 0.43);
+  keypoints[4] = point(0.36, 0.34); keypoints[8] = point(0.4, 0.34);
+  const hands = { schema: "skarl.annotations.v1" as const, kind: "hands" as const, submissionId: sample.submissionId,
+    sourceSha256: "a".repeat(64), model: sample.annotations[0]!.model, sampleFps: 5, videoWidth: 1000, videoHeight: 1000, advisory: true as const,
+    frames: [{ tMs: 0, hands: [{ handedness: "Right" as const, score: 0.9, keypoints }] }, { tMs: 200, hands: [] }] };
+  const input = { ...manifest, samples: [{ ...aligned, trainingInputs: { status: "validated_storage", trace: null, hands } }] };
+  const le = lerobotManifest(input), rlds = rldsJsonManifest(input);
+  const episode = le.episodes[0]!;
+  expect(episode.action_spec).toMatchObject({ robot_type: "so101", units: "rad", source: "retargeted_from_human_hand",
+    validated_on_hardware: false, advisory: true, names: ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"] });
+  expect(episode.frames[0]!.action).toHaveLength(6);
+  expect(episode.frames[0]!.action_status).toMatchObject({ source_timestamp_ms: 0, reachable: true, handedness: "Right" });
+  expect(episode.frames[2]).toMatchObject({ action: null, action_status: null }); // 200 ms frame has no hand
+  expect(le.info.features.action).toMatchObject({ dtype: "float32", shape: [6], units: "rad", validated_on_hardware: false, advisory: true });
+  expect(le.info.absent_fields).toMatchObject({ action: false, joint_states: false });
+  expect(le.info.absent_fields.reason).toMatch(/retargeted.*validated_on_hardware:false/);
+  expect(rlds.episodes[0]!.steps[0]).toMatchObject({ action: episode.frames[0]!.action, action_status: { reachable: true } });
 });

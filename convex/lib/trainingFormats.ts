@@ -5,6 +5,7 @@
  * are explicitly approximate and preserve missing data.
  */
 import type { AnnotationFile } from "./derivedAnnotations";
+import { retargetHands, SO101_JOINT_NAMES, SO101_SPEC, type ArmTrajectory } from "./armRetarget";
 
 export interface TrainingTrace {
   version: number; durationMs: number; videoStartOffsetMs?: number | null; videoStopOffsetMs?: number | null;
@@ -35,7 +36,7 @@ export interface TrainingManifest {
 }
 
 const absent = { action: false, joint_states: false, reward: false, discount: false,
-  reason: "Human demonstration video; no robot controls, joint states, rewards or discounts were recorded. An advisory image-space hand action proxy may be present; it is not a robot control." } as const;
+  reason: "Human demonstration video; no robot controls, joint states, rewards or discounts were recorded (action:false means no recorded robot command). When a saved hand run exists, `action` carries SO-101 joint targets retargeted from browser-estimated hand keypoints: advisory, kinematic-model only, validated_on_hardware:false." } as const;
 const videoKey = "observation.images.video";
 const sensorColumns: Record<string, { key: string; names: string[]; units: string }> = {
   accelerometer: { key: "observation.imu.accelerometer", names: ["x", "y", "z"], units: "g" },
@@ -84,6 +85,14 @@ function episodeMetadata(manifest: TrainingManifest, sample: TrainingSample, epi
     duration_ms: sample.durationMs ?? null, absent_fields: absent };
 }
 
+/** Episode-level descriptor for the retargeted action; per-frame values live in frames[].action. */
+export function actionSpec(arm: ArmTrajectory) {
+  return { kind: "joint_targets" as const, robot_type: arm.robotType, names: arm.jointNames, units: arm.units, dtype: "float32" as const, shape: [arm.jointNames.length],
+    source: arm.source, validated_on_hardware: arm.validated_on_hardware, advisory: arm.advisory, kinematics_source: arm.kinematicsSource,
+    joint_convention: "URDF joint zero (so101_new_calib.urdf); a physical follower needs its own calibration mapping",
+    camera_convention: arm.cameraConvention, hand_model: arm.handModel, sample_fps: arm.sampleFps, mapping_config: arm.config, summary: arm.summary };
+}
+
 /** Resample only nearby observations, never extrapolate through unavailable channels or long gaps.
  * The grid is nominal video time; client file FPS and callback-based sync are explicitly approximate.
  */
@@ -97,12 +106,14 @@ export function trainingFrames(sample: TrainingSample) {
   const stateNames = channels.flatMap(name => sensorColumns[name]!.names.map(axis => `${name}.${axis}`));
   const units = channels.flatMap(name => sensorColumns[name]!.names.map(() => sensorColumns[name]!.units));
   const hands = sample.trainingInputs?.hands;
+  const arm = hands ? retargetHands(hands) : null;
   const base = { state_names: stateNames, state_units: units, camera: trace?.device ?? sample.sensorTrace?.device ?? null,
     context: trace?.context ?? sample.sensorTrace?.context ?? null, segments: trace?.segments ?? sample.sensorTrace?.segments ?? [],
     sync: trace ? { videoStartOffsetMs: offset ?? null, videoStopOffsetMs: trace.videoStopOffsetMs ?? null,
       source: trace.syncSource ?? "legacy_unaligned", accuracy: trace.syncAccuracy ?? "unknown" } : null,
     action_proxy: hands ? { kind: "hand_keypoints", advisory: true, derived: true, model: hands.model,
       sample_fps: hands.sampleFps, keyframes: hands.frames.map(frame => ({ timestamp_ms: frame.tMs, hands: frame.hands ?? [] })), coordinate_system: "normalized_image_xyz", robot_control: false } : null,
+    action_spec: arm ? actionSpec(arm) : null,
     grid: { fps, source: positive(sample.media?.fps) ? "verified_media_metadata" : fps ? "client_reported_file_metadata" : "unavailable",
       native_frame_timestamps: false, resampling: "nearest_sample_within_100ms", max_gap_ms: 100 } };
   if (!fps || fps > 240 || !durationMs || durationMs > 31_000 || (!canAlignImu && !hands)) return { ...base, frames: [], status: "unavailable_sync_or_fps" };
@@ -124,10 +135,16 @@ export function trainingFrames(sample: TrainingSample) {
     const annotations = hands?.frames ?? [];
     while (handCursor + 1 < annotations.length && Math.abs(annotations[handCursor + 1]!.tMs - timestampMs) < Math.abs(annotations[handCursor]!.tMs - timestampMs)) handCursor++;
     const handFrame = annotations[handCursor];
-    const action = hands && handFrame && Math.abs(handFrame.tMs - timestampMs) <= Math.min(250, 500 / hands.sampleFps)
-      ? { kind: "hand_keypoints" as const, advisory: true as const, hands: handFrame.hands ?? [], source_timestamp_ms: handFrame.tMs } : null;
+    const covered = !!hands && !!handFrame && Math.abs(handFrame.tMs - timestampMs) <= Math.min(250, 500 / hands.sampleFps);
+    const hand_proxy = covered ? { kind: "hand_keypoints" as const, advisory: true as const, hands: handFrame!.hands ?? [], source_timestamp_ms: handFrame!.tMs } : null;
+    const retargeted = covered ? arm!.frames[handCursor]! : null;
+    // Null outside annotation coverage or without a confident hand; never zero joints.
+    const action = retargeted?.joints ?? null;
+    const action_status = retargeted?.ik ? { source_timestamp_ms: retargeted.tMs, handedness: retargeted.handedness,
+      reachable: retargeted.ik.reachable, joint_limited: retargeted.ik.jointLimited, position_residual_m: retargeted.ik.positionResidualM,
+      approach_residual_rad: retargeted.ik.approachResidualRad, hinge_residual_rad: retargeted.ik.hingeResidualRad } : null;
     return { frame_index: frameIndex, timestamp: timestampMs / 1000, "observation.state": state,
-      ...(hands ? { action } : {}) };
+      ...(hands ? { action, action_status, hand_proxy } : {}) };
   });
   return { ...base, frames, status: "nominal_frame_grid" };
 }
@@ -158,11 +175,15 @@ export function lerobotManifest<T extends TrainingManifest>(manifest: T) {
   }
   if (episodes.some(episode => episode.frames.length)) features["observation.state"] = { dtype: "float64", shape: null,
     names: null, nullable: true, metadata_scope: "episode.state_names/state_units", source: "clientReported" };
-  if (episodes.some(episode => episode.action_proxy)) features.action = { dtype: "advisory_hand_keypoints", robot_control: false, advisory: true };
+  if (episodes.some(episode => episode.action_spec)) {
+    features.action = { dtype: "float32", shape: [SO101_JOINT_NAMES.length], names: SO101_JOINT_NAMES, units: "rad", robot_type: SO101_SPEC.robotType,
+      source: "retargeted_from_human_hand", validated_on_hardware: false, advisory: true, nullable: true, metadata_scope: "episode.action_spec" };
+    features.hand_proxy = { dtype: "advisory_hand_keypoints", robot_control: false, advisory: true };
+  }
   const lengthsKnown = episodes.every(episode => episode.length !== null);
   return { schema: "skarl.lerobot-v2-manifest.v1" as const, orderId: manifest.orderId, generatedAt: manifest.generatedAt,
     compatibility: { target: "LeRobot v2", directly_loadable: false,
-      reason: "Metadata and private video references only. Decode media, verify FPS/dimensions/frame counts, and write per-frame Parquet before LeRobot loading. Sensor grids use explicit sync and file FPS when available; native frame timestamps remain unverified." },
+      reason: "Metadata and private video references only. Decode media, verify FPS/dimensions/frame counts, and write per-frame Parquet before LeRobot loading, or request format=lerobot-v2 for a loadable action-only Parquet archive. Sensor grids use explicit sync and file FPS when available; native frame timestamps remain unverified." },
     info: { codebase_version: "v2.1", robot_type: "human_video", total_episodes: episodes.length,
       total_frames: lengthsKnown ? episodes.reduce((sum, episode) => sum + episode.length!, 0) : null,
       total_tasks: manifest.task ? 1 : 0, fps: rates.length === 1 ? rates[0] : null,
@@ -177,8 +198,8 @@ export function lerobotManifest<T extends TrainingManifest>(manifest: T) {
 export function rldsJsonManifest<T extends TrainingManifest>(manifest: T) {
   return { schema: "skarl.rlds-json.v1" as const, orderId: manifest.orderId, generatedAt: manifest.generatedAt,
     compatibility: { target: "RLDS", directly_loadable: false,
-      reason: "JSON temporal references, not TFDS or decoded video. Robot controls, rewards and discounts are absent; saved image-space hand proxies are advisory. Acceptance success is not an environment terminal signal." },
-    step_metadata: { materialized: false, materialization_scope: "Video pixels are not decoded; episode.steps may contain temporal references, real resampled state and advisory hand proxies.", required_fields: ["is_first", "is_last"],
+      reason: "JSON temporal references, not TFDS or decoded video. Recorded robot controls, rewards and discounts are absent; actions, when present, are SO-101 joint targets retargeted from advisory image-space hand estimates and were never validated on hardware. Acceptance success is not an environment terminal signal." },
+    step_metadata: { materialized: false, materialization_scope: "Video pixels are not decoded; episode.steps may contain temporal references, real resampled state, advisory hand proxies and retargeted SO-101 joint targets.", required_fields: ["is_first", "is_last"],
       observation: { video_key: videoKey, source: "episode.video.url", frame_timestamp_unit: "seconds" },
       language_instruction: "episode.language_instruction", absent_fields: absent,
       sensor_alignment: "Episode grid and sync describe approximate nominal-frame resampling; native frame PTS are not recorded." },
@@ -190,7 +211,7 @@ export function rldsJsonManifest<T extends TrainingManifest>(manifest: T) {
       ...training,
       steps: frames.map((frame, index) => ({ is_first: index === 0, is_last: index === frames.length - 1,
         timestamp: frame.timestamp, observation: { state: frame["observation.state"], video: { url: sample.media?.url ?? null, timestamp: frame.timestamp } },
-        ...(training.action_proxy ? { action: frame.action } : {}) })),
+        ...(training.action_proxy ? { action: frame.action, action_status: frame.action_status, hand_proxy: frame.hand_proxy } : {}) })),
       steps_status: frames.length ? "temporal_references_not_decoded" : "not_materialized",
     }); }) };
 }

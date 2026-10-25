@@ -8,7 +8,10 @@ Skarl collects task-targeted human demonstration video. The output is licensed
 video plus evidence and conversion metadata. It is **not robot teleoperation**:
 no robot actions, joint states, depth, camera poses, rewards, or
 discounts are recorded. A supported task criterion is a verification finding,
-not a robot control label. No action fields are inferred from narration.
+not a robot control label. No action fields are inferred from narration. The
+only `action` values are SO-101 joint targets *retargeted* from saved,
+browser-estimated hand keypoints (see [Retargeted SO-101 action](#retargeted-so-101-action));
+they are advisory and were never validated on hardware.
 
 ## Access and formats
 
@@ -49,8 +52,9 @@ human-verified labels. These outputs cannot change verdicts, acceptance,
 payables or quality scores. Model names and versions are client-declared
 provenance, not server-attested inference. All four export formats retain the
 same annotation metadata. LeRobot and RLDS also read the latest saved, validated
-`hands` run into an explicitly advisory action proxy. Objects and masks remain
-annotation references; they are not robot action labels.
+`hands` run into an explicitly advisory hand proxy and a retargeted SO-101
+joint-target `action`. Objects and masks remain annotation references; they are
+not robot action labels.
 
 `provenance.derivedAnnotations` lists the runs with model, summary, timestamp and
 `basis: "client_computed"`, without creator identities or download grants.
@@ -142,7 +146,10 @@ secret or database is needed. Raw hydration inputs are excluded from exports.
 | LeRobot `frames` | `frame_index`, `timestamp` in video seconds, `observation.state`; nominal file-FPS grid, not decoded video |
 | RLDS `steps[].observation.state` | Same resampled vector, paired with `observation.video.{url,timestamp}`; video is an external temporal reference |
 | `action_proxy` | Latest validated saved hand run: model/version/runtime, `advisory:true`, `derived:true`, `robot_control:false`, normalized-image coordinates and original timestamped `keyframes`; null without saved hands |
-| Frame/step `action` | Advisory hand keypoints nearest video time within half an annotation period (at most 250 ms); null outside coverage; empty hands means an actual saved no-detection frame |
+| `action_spec` | Retargeted action descriptor: `robot_type:"so101"`, joint `names`, `units:"rad"`, `source:"retargeted_from_human_hand"`, `validated_on_hardware:false`, `advisory:true`, URDF source, camera convention, mapping config and reachability summary; null without saved hands |
+| Frame/step `hand_proxy` | Advisory hand keypoints nearest video time within half an annotation period (at most 250 ms); null outside coverage; empty hands means an actual saved no-detection frame |
+| Frame/step `action` | Six SO-101 joint targets (rad) retargeted from that same nearest hand frame; null outside coverage, without a hand scoring at least the configured minimum, or for a no-detection frame, never zeros |
+| Frame/step `action_status` | `reachable`, `joint_limited`, IK `position_residual_m`, `approach_residual_rad`, `hinge_residual_rad`, handedness and source timestamp; null whenever `action` is null |
 
 For video frame time `t_ms`, the resampler looks up trace time
 `t_ms + videoStartOffsetMs`. It chooses each channel's nearest actual callback
@@ -157,6 +164,45 @@ frame PTS for variable-frame-rate video and careful robot-learning use.
 Camera dimensions/intrinsics from iOS use encoded track pixel axes, while browser
 hand points use displayed-video coordinates. Apply the video's display rotation
 before combining them; the estimate supplies no calibrated camera-to-hand transform.
+
+### Retargeted SO-101 action
+
+`convex/lib/armRetarget.ts` deterministically maps each saved hand frame onto the
+[LeRobot SO-101](https://github.com/TheRobotStudio/SO-ARM100) arm. Kinematics are
+copied verbatim (joint origins, axes and limits) from `so101_new_calib.urdf` at
+SO-ARM100 commit `385e8d7c`; joint values use that URDF's zero, which is **not**
+a physical follower's calibrated zero. Mapping a target onto a real arm needs that
+arm's calibration and a safety review. `info.absent_fields.action` stays `false`
+because no robot command was ever recorded.
+
+Per annotation frame:
+
+1. Pick the highest-scoring hand at or above `SKARL_ARM_MIN_HAND_SCORE_PERMILLE`;
+   otherwise the frame's action is null.
+2. Convert keypoints to isotropic image-height units. Saved `z` is MediaPipe
+   wrist-relative depth (+0.5), so it only informs orientation; the wrist has no
+   absolute depth. Apparent hand size (wrist to middle MCP, index MCP to pinky MCP)
+   is the only distance cue.
+3. Camera convention `overhead_tabletop`: the camera looks down at the work
+   surface from the demonstrator's side. Wrist image x/y map to robot -y/+x inside
+   the declared workspace box; a larger (nearer) hand maps higher in z. Other
+   mounts break this assumption; the convention is exported, not calibrated.
+4. Approach = wrist to middle MCP; jaw hinge = palm normal from (wrist, index MCP,
+   pinky MCP), both pitched by `SKARL_ARM_APPROACH_PITCH_MRAD` so a flat hand maps
+   to a downward grasp. Gripper opening = thumb tip to index tip distance divided
+   by hand length, linearly mapped between the configured closed/open ratios and
+   gripper angles.
+5. Exponential smoothing (`SKARL_ARM_SMOOTHING_PERMILLE`), restarted after any
+   gap longer than `SKARL_ARM_SMOOTHING_RESET_MS` or any missing hand.
+6. Levenberg-Marquardt IK over the five arm joints, clamped to URDF limits and
+   seeded with the previous frame. A 5-DOF arm cannot match an arbitrary 6-DOF
+   pose, so position outweighs orientation and residuals are reported. A frame is
+   `reachable` when position error is within `SKARL_ARM_REACH_TOLERANCE_MM`.
+
+All mapping constants are `SKARL_ARM_*` integers (mm, permille, mrad) in
+`convex/lib/config.ts` and are echoed in `action_spec.mapping_config` in SI units.
+The replay studio renders the same trajectory on a primitive SO-101 model next to
+the video.
 
 ## Usable segment and quality
 
