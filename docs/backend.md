@@ -5,8 +5,10 @@
 Task 1 is deployed to **https://keen-marmot-986.convex.cloud** with an idempotent
 internal seed, persisted demo-role checks, server finance mutations and dashboard
 queries. The generated API/data-model files are committed. Task 2 adds upload creation/scheduling, isolated media, Gemini observations and validated
-report persistence (see [AI verification](ai-verification.md)). Production auth,
-private-media downloads and contributor-wallet verification remain unimplemented.
+report persistence (see [AI verification](ai-verification.md)). Additive Convex
+Auth sign-in is implemented in source; operator setup and deployment remain
+required (see [authentication](auth.md)). The dated Task 1 snapshot does not
+establish the status of later private-media or wallet integrations.
 The merged payment adapter implements trusted funding/payout confirmation and
 chain reconciliation with synthetic-evidence tests; no live settlement is confirmed.
 See [payment integration](payments.md) for the current contract.
@@ -43,7 +45,11 @@ const summary = await client.query(api.dashboard.orderSummary, {
 
 Public `demoIdentity` values are `buyer`, `contributor`, `controller`,
 `finance-agent`; their stored token identifiers are `demo:skarl:<identity>`.
-These selectors are intentionally impersonable demo credentials, **not auth**.
+For unsigned callers while demo mode is enabled, these selectors remain
+intentionally impersonable demo credentials, **not auth**. Signed-in callers use
+only their own `auth:<userId>` membership; `demoIdentity` is ignored and cannot
+escalate their role. `SKARL_DEMO_IDENTITIES=off` disables the unsigned fallback.
+See [authentication](auth.md) for sign-in, role claims and controller onboarding.
 `requireRole` checks active memberships and organization status; finance-agent
 cannot act as controller even if misprovisioned with that role. The internal
 seed bootstrap is CLI/operator-only and provisions the initial roles before its

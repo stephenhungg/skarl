@@ -1,3 +1,4 @@
+import { authenticateConvexRequest } from "../../../../../lib/auth/server";
 import { ConvexHttpClient } from "convex/browser";
 import type { NextRequest } from "next/server";
 import { api, paymentJson, type Id } from "../../../../../lib/payments/server";
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   if (!url) return paymentJson({ error: "dataset_not_configured" }, 503);
   try {
     const db = new ConvexHttpClient(url);
+    await authenticateConvexRequest(db, request);
     const manifest = await db.query(api.datasets.forOrder, { demoIdentity, orderId: orderId as Id<"orders">,
       refreshKey: Math.floor(Date.now() / 60_000) });
     if (format === "json") return paymentJson(manifest);

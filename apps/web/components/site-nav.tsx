@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Wordmark } from "./wordmark";
+import { AccountMenu } from "@/features/auth/account-menu";
 
 // Just the wordmark and one button, no bar. Light over the dark hero, dark once past it.
 // Slides away while scrolling down past 120px and returns on any scroll up.
@@ -34,12 +35,15 @@ export function SiteNav() {
         <Link href="/" aria-label="Skarl home" className="flex items-center">
           <Wordmark color={onDark ? "rgb(var(--paper))" : "rgb(var(--ink))"} />
         </Link>
-        <Link
-          href="/dashboard"
-          className={`cut-regular inline-flex h-9 items-center rounded-[10px] px-5 text-[14px] leading-none tracking-[0.01em] transition-colors duration-[400ms] ${onDark ? "bg-[rgb(var(--paper)/.1)] text-paper hover:bg-[rgb(var(--paper)/.18)]" : "bg-mist text-ink hover:bg-haze"}`}
-        >
-          Open console
-        </Link>
+        <div className="flex items-center gap-2">
+          <AccountMenu onDark={onDark} />
+          <Link
+            href="/dashboard"
+            className={`cut-regular inline-flex h-9 items-center rounded-[10px] px-5 text-[14px] leading-none tracking-[0.01em] transition-colors duration-[400ms] ${onDark ? "bg-[rgb(var(--paper)/.1)] text-paper hover:bg-[rgb(var(--paper)/.18)]" : "bg-mist text-ink hover:bg-haze"}`}
+          >
+            Open console
+          </Link>
+        </div>
       </div>
     </header>
   );

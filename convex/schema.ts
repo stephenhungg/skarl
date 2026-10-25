@@ -1,4 +1,5 @@
 import { defineSchema, defineTable } from "convex/server";
+import { authTables } from "@convex-dev/auth/server";
 import { bankWitnessTables } from "./bankWitnessSchema";
 import { coachTables } from "./coachSchema";
 import { attestationTables } from "./attestationsSchema";
@@ -60,6 +61,7 @@ const analysisContext = {
   perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))),
 };
 export default defineSchema({
+  ...authTables,
   ...coachTables,
   ...attestationTables,
   ...bankWitnessTables,
@@ -110,8 +112,8 @@ export default defineSchema({
     issuer: v.string(),
     subject: v.string(),
     tokenIdentifier,
-    // Roles are granted by an existing controller (or seeded by an operator),
-    // never self-assigned. Provisioning must reject contributor + controller
+    // Auth onboarding permits buyer/contributor claims and verified allowlisted
+    // controllers. Provisioning must reject contributor + controller
     // on one membership so payout requester and approver stay separate.
     roles: v.array(membershipRole),
     grantedByTokenIdentifier: tokenIdentifier,

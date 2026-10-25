@@ -13,6 +13,7 @@ import { ChevronSort, Icon } from "@/components/glaze/icon";
 import { LogoMark } from "@/components/logo-mark";
 import { useConvexConfig } from "@/components/convex-provider";
 import { Lordicon, type LordiconName } from "./lordicon";
+import { AccountMenu } from "@/features/auth/account-menu";
 import { needsYou, useOrderData, useOrderId } from "./data";
 
 type NavItem = { href: string; label: string; icon: LordiconName; count?: "needs" | "review" | "approve" };
@@ -103,14 +104,14 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
                     {!collapsed && <>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate type-label">Skarl</span>
-                        <span className="block truncate type-label-sm text-text-3">Controller, demo identity</span>
+                        <span className="block truncate type-label-sm text-text-3">Evidence & settlement</span>
                       </span>
                       <Icon icon={ChevronSort} size={14} className="text-text-3" />
                     </>}
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     <DropdownMenuGroup>
-                      <DropdownMenuLabel>Signed in as the demo controller. This is a selector, not authentication.</DropdownMenuLabel>
+                      <DropdownMenuLabel>Account roles are checked on the server. Use the account menu in the header to view your identity.</DropdownMenuLabel>
                     </DropdownMenuGroup>
                     <DropdownMenuSeparator />
                     <DropdownMenuLinkItem render={<Link href="/contribute" />}>Open contributor view</DropdownMenuLinkItem>
@@ -155,6 +156,7 @@ function Frame({ counts, children }: { counts: Counts; children: ReactNode }) {
             <div className="flex min-w-0 flex-col pb-16 md:pb-0">
               <header className="sticky top-0 z-(--z-sticky) flex h-12 items-center gap-3 border-b border-line-faint bg-page px-4 md:px-6">
                 <BreadcrumbTrail items={crumbs} renderLink={href => <Link href={href} />} className="min-w-0 flex-1" />
+                <AccountMenu />
                 <span className="hidden rounded-pill bg-[rgb(199_241_142)] px-2 py-0.5 type-label-sm text-[rgb(22_32_12)] sm:inline">Live</span>
               </header>
               <main className="mx-auto w-full max-w-[1200px] flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>

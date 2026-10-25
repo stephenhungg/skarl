@@ -56,3 +56,7 @@ for (const path of ["/llms.txt", "/.well-known/agent-card.json", "/.well-known/m
 import { handle as mcpHandler } from "./mcp";
 http.route({ path: "/mcp", method: "POST", handler: mcpHandler });
 http.route({ path: "/mcp", method: "GET", handler: mcpHandler });
+
+// Additive auth endpoints; keep Jira, MCP and agent discovery routes intact.
+import { auth } from "./auth";
+auth.addHttpRoutes(http);

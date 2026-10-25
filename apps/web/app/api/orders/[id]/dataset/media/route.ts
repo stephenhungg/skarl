@@ -1,3 +1,4 @@
+import { authenticateConvexRequest } from "../../../../../../lib/auth/server";
 import { makeFunctionReference } from "convex/server";
 import type { NextRequest } from "next/server";
 import { paymentJson, paymentService, type Id } from "../../../../../../lib/payments/server";
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   try {
     const orderId = (await context.params).id;
     const { db, serviceSecret } = paymentService();
+    await authenticateConvexRequest(db, request);
     const grant = verifyDatasetMediaToken(request.nextUrl.searchParams.get("token") ?? "", serviceSecret);
     if (grant.orderId !== orderId) throw new Error("invalid_dataset_media_grant");
     const original = await db.query(originalMedia, { serviceSecret, demoIdentity: grant.demoIdentity,

@@ -8,7 +8,7 @@ import { MAX_SENSOR_TRACE_BYTES, summarizeMotion, validateSensorTrace } from "./
 import { sensorTrace } from "./sensorTraceValidators";
 
 const uploadArgs = { demoIdentity: v.string(), submissionId: v.id("submissions"), storageId: v.id("_storage") };
-async function owned(ctx: Pick<QueryCtx, "db">, demoIdentity: string, submissionId: Id<"submissions">) {
+async function owned(ctx: Pick<QueryCtx, "db" | "auth">, demoIdentity: string, submissionId: Id<"submissions">) {
   const principal = await requireRole(ctx, demoIdentity, "contributor"), submission = await ctx.db.get(submissionId);
   if (!submission) throw new Error("submission_not_found");
   requireTenant(principal, submission);

@@ -1,3 +1,4 @@
+import { authenticateConvexRequest } from "../../../../lib/auth/server";
 import { walletMcpSendForClaim } from "../../../../../../packages/payments/src/wallet-mcp";
 import { type NextRequest } from "next/server";
 import { api, paymentError, paymentJson, paymentService, treasuryAddress, type Id } from "../../../../lib/payments/server";
@@ -14,6 +15,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     if (typeof body.intentId !== "string" || typeof body.demoIdentity !== "string") return paymentJson({ error: "intent_and_identity_required" }, 400);
     const { db, serviceSecret } = paymentService();
+    await authenticateConvexRequest(db, request);
     const intentId = body.intentId as Id<"paymentIntents">;
     if (body.action === "claim" || body.action === "claim_mcp") {
       if (typeof body.senderAddress !== "string") return paymentJson({ error: "sender_required" }, 400);

@@ -15,9 +15,34 @@ Handoff for MatthewKim323. Snapshot queried with `pnpm exec convex run` on Octob
 - Funding is reconciled at [BaseScan](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757), Transfer log `18`. One funding journal, no reconciliation exceptions.
 - One stored submission, `mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j`, is a **synthetic verification-only upload**, not a licensed contributor sample. Real inference ran; all three criteria are `unobservable`, recommendation/pipeline `needs_review`. No accept-eligible submission exists. Never turn its evaluation projection into payment authority.
 - Payables, deliveries and payment approvals are empty. Four finance-agent runs exist: one completed read-only trial-balance call, two `gemini_timeout`, one `gemini_incomplete`; no money proposed. No live payout or approval-refusal example exists yet.
-- Pass `demoIdentity: "controller"` for dashboard reads, acceptance and approval; `"finance-agent"` for proposal and refusal demo. These are impersonable demo selectors, not production authentication. Exceptions below: funding service uses `"buyer"`; evaluation-run lookup uses `"contributor"`.
+- Pass `demoIdentity: "controller"` for dashboard reads, acceptance and approval; `"finance-agent"` for proposal and refusal demo. For unsigned calls with demo mode enabled, these remain impersonable demo selectors. Signed-in calls use their own membership and ignore this argument; see [authentication](#authentication). Exceptions below: funding service uses `"buyer"`; evaluation-run lookup uses `"contributor"`.
 
 Source: [dashboard](../convex/dashboard.ts), [finance](../convex/finance.ts), [payments](../convex/payments.ts), [agent](../convex/financeAgent.ts), [agent runs](../convex/financeAgentData.ts), [statements](../convex/statements.ts), [submissions](../convex/submissions.ts).
+
+## Authentication
+
+**Source implementation; operator configuration and deployment required.** See
+[authentication setup](auth.md) for keys, environment variables and GitHub OAuth.
+The existing `demoIdentity` arguments below stay required for compatibility.
+When a Convex caller is signed in, the shared role check resolves only that
+user's `auth:<userId>` membership and ignores `demoIdentity`; passing a controller
+selector cannot elevate a signed-in contributor. Action calls preserve this
+identity through `ctx.runQuery` and `ctx.runMutation`.
+
+`auth/memberships:me({})` returns `userId`, `email`, `roles`, `demoMode`,
+`githubEnabled` and `canClaimController`. Signed-in users can call
+`auth/memberships:claimRole({role})` to claim buyer/contributor in the demo
+organization. A controller claim requires a verified email on the
+`SKARL_CONTROLLER_EMAILS` allowlist. Humans cannot claim finance-agent, and a
+contributor cannot also become controller. Role checks still enforce independent
+review and refuse self-approval.
+
+Unsigned callers retain labeled demo identities by default. Setting
+`SKARL_DEMO_IDENTITIES=off` rejects anonymous role-gated calls, including existing
+unsigned scripts/mobile/MCP demo calls. With demo mode on, `/dashboard` visibly
+labels anonymous access “Demo identity”. Signed-in users without controller
+membership see “controller access required”. Real sign-in does not remove the
+impersonable anonymous demo path while demo mode remains enabled.
 
 ## Exact arguments
 
@@ -57,8 +82,9 @@ Additional runtime constraints: `requestId` matches `[a-zA-Z0-9_-]{1,100}`, prom
 
 **Source handoff; deployment required.** Both endpoints require the persisted
 controller role and the selected order's organization. The existing
-`demoIdentity` selector is impersonable demo authentication. Buyer, contributor
-and finance-agent selectors cannot run scenarios or read the controller's lab
+`demoIdentity` selector remains impersonable for unsigned callers while demo
+mode is enabled; signed-in callers use their own membership. Buyer, contributor
+and finance-agent principals cannot run scenarios or read the controller's lab
 history. Scenario artifacts are **SIMULATED CONTROL TEST — NO TRANSFER**; never
 render their synthetic chain hashes as evidence of a real transfer.
 
@@ -152,7 +178,7 @@ scenario success is claimed here.
 three distinct common words and an expiry exactly two minutes after issuance.
 The mobile camera requests a fresh challenge per take and asks the contributor
 to say the words in order while recording. These are public challenge words,
-not authentication credentials; the existing demo identity limitations apply.
+not authentication credentials; [authentication rules](#authentication) still apply.
 
 `submissions:create` adds optional
 `livenessChallengeId: Id<"livenessChallenges">`. The same transaction binds the
@@ -232,8 +258,9 @@ pnpm exec convex run submissions:evaluationRun '{"demoIdentity":"contributor","o
 projection of the stored witnesses behind a submission. It neither runs new
 inference nor creates an attestation, decision, proposal, journal or payment.
 Controllers in the organization, the order's buyer and the owning contributor
-can read it. A finance-agent identity cannot read this endpoint. Demo selectors
-remain impersonable demo credentials, not production authentication.
+can read it. A finance-agent identity cannot read this endpoint. The
+[authentication rules](#authentication) apply; unsigned demo selectors remain
+impersonable while demo mode is enabled.
 
 For Matthew's dashboard, subscribe with
 `useQuery(api.witnessReceipt.forSubmission, {demoIdentity: "controller", submissionId})`.
@@ -494,7 +521,8 @@ The functions below are implemented in source and validated with isolated
 deployed or exercised against live Gemini/chain state by this API extension.
 Use the generated API types. All money and quantity values returned by these
 new endpoints are exact decimal integer strings; times and durations use
-milliseconds. The existing impersonable demo identity limitations still apply.
+milliseconds. The [authentication rules](#authentication) apply; unsigned demo
+selectors remain impersonable while demo mode is enabled.
 
 ### Human review
 
@@ -979,8 +1007,9 @@ request ID returns its original run; switching providers does not rerun it.
 
 Both endpoints require the stored contributor role, active organization and
 ownership of the submission. Controller, buyer and finance-agent selectors do
-not gain access to the contributor's coach response. The existing demo selector
-is impersonable; these role checks are not production authentication.
+not gain access to the contributor's coach response. The
+[authentication rules](#authentication) apply; unsigned demo selectors remain
+impersonable while demo mode is enabled.
 
 | Function | Kind | Arguments and result |
 | --- | --- | --- |
@@ -1047,8 +1076,9 @@ an unavailable coach as successful inference.
 **Source implementation; deployment required.** `datasets.forOrder({demoIdentity,
 orderId})` returns the buyer's versioned dataset, rather than the review queue.
 The order's buyer and an active controller in its organization may export it.
-Other buyers, contributors, and finance agents are refused. Demo identities
-remain impersonable selectors, not production authentication.
+Other buyers, contributors, and finance agents are refused. The
+[authentication rules](#authentication) apply; unsigned demo selectors remain
+impersonable while demo mode is enabled.
 
 ```sh
 curl -H 'x-skarl-demo-identity: buyer' \

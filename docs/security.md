@@ -2,29 +2,32 @@
 
 ## Current status
 
-Task 1 implements internal demo seeding, persisted server role checks,
-acceptance/payable/journal posting, independent approval and refusal audits on
-the shared development deployment. Public demo selectors are impersonable and
-are not authentication: only disposable synthetic data/test assets belong here.
-Production identity, private-media serving, wallet verification, Gemini inference,
-HMAC gateways and actual funding/payout execution remain unimplemented.
+Server role checks protect acceptance/payable/journal posting, independent
+approval and refusal audits. Additive Convex Auth password and optional GitHub
+sign-in is implemented in source; operator configuration and deployment are
+required before live authentication is claimed. See [authentication](auth.md).
+Unsigned demo selectors remain impersonable when demo mode is enabled (the
+default); only intended demo assets and testnet funds belong on that path.
+The dated Task 1 deployment snapshot does not establish the status of later
+media, wallet, inference or payment integrations; consult their subsystem docs.
 
 ## Human identities and permissions
 
-For the demo, identities are **seeded demo users** (buyer, contributor,
-controller, finance agent) with roles stored in Convex memberships and checked on
-the server in every mutation. They are labeled as demo identities in the UI and
-submission. Auth0 is not used (there is no Auth0 prize at Cal Hacks 13.0); a real
-identity provider is a post-event decision. The finance agent's identity can
-propose but never approve.
+The shared `requireRole` resolves a verified Convex session to the user's active
+`auth:<userId>` membership and organization. Signed-in callers cannot switch to
+another identity by passing `demoIdentity`. Without a session, the four seeded
+demo selectors remain available only while `SKARL_DEMO_IDENTITIES` is not `off`.
+The UI labels that fallback as a demo identity. Turning it off also refuses
+unsigned role-gated demo scripts and integrations.
 
-For Task 1, `requireRole` resolves a demo selector to its active stored membership
-and organization. It rejects finance-agent controller authority even if the role
-is misprovisioned. There is no verified external token. A future production
-identity provider must verify issuer/subject before this membership lookup;
-role checks alone do not secure the intentionally impersonable demo selectors.
+Signed-in humans may claim buyer or contributor in the demo organization.
+Controller claims require both an allowlisted email and verified email ownership;
+password signup alone does not prove ownership. Humans cannot claim finance-agent.
+Contributor/controller role conflicts, agent-approval refusals and independent
+self-approval checks remain server-enforced. See [controller onboarding](auth.md#membership-and-onboarding-api)
+for the operator verification process and remaining password reset limitation.
 
-| Principal | Allowed future authority | Excluded authority |
+| Principal | Allowed authority | Excluded authority |
 | --- | --- | --- |
 | Buyer | Create/fund own order, read licensed deliveries, request cancellation | Approve contributor settlement merely by being a buyer |
 | Contributor | Read offered terms, upload own contribution, view own earnings | Accept own work, alter rates, access others' originals, approve/pay |

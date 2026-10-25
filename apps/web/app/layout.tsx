@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
+import { ConvexClientProvider } from "@/components/convex-provider";
 import localFont from "next/font/local";
 import { SmoothScroll } from "@/components/smooth-scroll";
 import "./globals.css";
@@ -15,12 +17,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const fonts = [montrealBook, montrealRegular, montrealMedium, fono].map(f => f.variable).join(" ");
-  return (
+  const content = (
     <html lang="en" className={fonts}>
       <body>
         <SmoothScroll />
-        {children}
+        <ConvexClientProvider>{children}</ConvexClientProvider>
       </body>
     </html>
   );
+  // Preserve the existing honest unavailable state when no backend is configured.
+  return process.env.NEXT_PUBLIC_CONVEX_URL?.trim()
+    ? <ConvexAuthNextjsServerProvider>{content}</ConvexAuthNextjsServerProvider>
+    : content;
 }

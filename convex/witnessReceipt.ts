@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { query, type QueryCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
-import { requireRole } from "./lib/demoAuth";
+import { isFinanceAgent, requireRole } from "./lib/demoAuth";
 import { requireTenant } from "./lib/finance";
 import { checkSpokenLiveness } from "./lib/spokenLiveness";
 import { BANK_WITNESS_LABEL, compareBankWitness, type BankActivity } from "./lib/nessie";
@@ -155,7 +155,7 @@ export const forSubmission = query({
   args: { demoIdentity: v.string(), submissionId: v.id("submissions") },
   handler: async (ctx, args): Promise<WitnessReceipt> => {
     const principal = await requireRole(ctx, args.demoIdentity, ["controller", "buyer", "contributor"]);
-    if (args.demoIdentity === "finance-agent" || principal.roles.includes("finance-agent")) throw new Error("forbidden");
+    if (isFinanceAgent(principal)) throw new Error("forbidden");
     const submission = await ctx.db.get(args.submissionId);
     if (!submission) throw new Error("submission_not_found");
     requireTenant(principal, submission);

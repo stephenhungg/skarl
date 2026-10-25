@@ -134,7 +134,7 @@ describe("approved workflow dispatch boundary", () => {
   it("checks the finance agent's current persisted role", async () => {
     const f = await setup();
     await f.t.run(ctx => ctx.db.patch(f.agentId, { roles: ["buyer"] }));
-    await expect(f.t.mutation(internal.approvalWorkflow.queueApprovedDispatch, f.args)).rejects.toThrow("forbidden");
+    await expect(f.t.mutation(internal.approvalWorkflow.queueApprovedDispatch, f.args)).rejects.toThrow("inactive_finance_service");
     expect(await f.outbox()).toHaveLength(0);
   });
 

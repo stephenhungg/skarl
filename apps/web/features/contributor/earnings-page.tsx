@@ -6,6 +6,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { useConvexConfig } from "@/components/convex-provider";
 import { LogoMark } from "@/components/logo-mark";
+import { AccountMenu } from "@/features/auth/account-menu";
 import { Button } from "@/components/glaze/ui/button";
 import { DEMO_IDENTITY, formatUsdc, refs, type Decision, type Submission } from "./api";
 import { durationLabel, earningsTotals, evidenceTime, payoutDuration, type Earning } from "./earnings";
@@ -39,13 +40,14 @@ function Frame({ children }: { children: ReactNode }) {
         <Link href="/" className="flex items-center gap-2 type-label" aria-label="Skarl home"><LogoMark size={12} />Skarl</Link>
         <span className="type-label-sm text-text-3">Contributor</span>
         <Link href="/contribute" className="ms-auto type-label text-text-2 underline underline-offset-4">Record a task</Link>
+        <AccountMenu />
       </nav>
     </header>
     <main className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-12">
       <div className="mb-7 max-w-2xl"><p className="type-label-sm text-text-3">Your contribution record</p>
         <h1 className="mt-2 type-title">Submissions & earnings</h1>
         <p className="mt-3 type-body text-text-2">See what the evidence says, why a decision was made, and whether a transfer has actually been confirmed.</p>
-        <p className="mt-2 type-caption text-text-3">Demo contributor identity · Base Sepolia test USDC. Demo identities are impersonable; this is not production authentication.</p>
+        <p className="mt-2 type-caption text-text-3">Base Sepolia test USDC. Signed-in accounts use their own roles; signed-out visitors use the public demo contributor when demo mode is enabled.</p>
       </div>
       {children}
     </main>

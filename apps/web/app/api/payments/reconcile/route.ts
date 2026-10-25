@@ -1,3 +1,4 @@
+import { authenticateConvexRequest } from "../../../../lib/auth/server";
 import { type NextRequest } from "next/server";
 import { api, paymentError, paymentJson, paymentService } from "../../../../lib/payments/server";
 import { observeTransfer, publicClient, usdcEvents } from "../../../../lib/payments/chain";
@@ -13,6 +14,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     if (typeof body.orderId !== "string") return paymentJson({ error: "orderId_required" }, 400);
     const { db, serviceSecret } = paymentService();
+    await authenticateConvexRequest(db, request);
     const { order, intent, attempt } = await db.query(api.payments.fundingStatus, { serviceSecret, orderId: body.orderId,
       demoIdentity: body.demoIdentity || "buyer" });
     if (!intent || !attempt || !attempt.authorizationNonce) return paymentJson({ error: "funding_attempt_required" }, 409);
