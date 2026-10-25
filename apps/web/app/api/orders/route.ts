@@ -18,11 +18,16 @@ const terms = { demo: true, testnet: true, price: "1.000000", amountAtomic: DEMO
 /** Public documentation remains readable even without server configuration. */
 export function GET() {
   return paymentJson({ ...terms, method: "POST", path: "/api/orders", body: { autoPay: terms.autoPay }, identityHeaderRequired: false,
+    idempotency: "Send a stable Idempotency-Key header (8–128 letters, numbers, dots, underscores, colons or hyphens); retries return the original order. Changed autoPay under that key returns 409.",
     instructions: "POST {} for the default auto-pay rule, or {autoPay:{enabled,maxPerClipAtomic,requireAllChecks:true}} to choose it. Then POST its fundUrl for an x402 challenge. Funding needs Base Sepolia test USDC; never pay a pending order again.",
     hostedUrl: "https://skarl.vercel.app/api/orders" });
 }
 
 export async function POST(request: Request) {
+  const idempotencyKey = request.headers.get("Idempotency-Key") ?? undefined;
+  if (idempotencyKey !== undefined && !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+    return paymentJson({ error: "invalid_idempotency_key" }, 400);
+  }
   // Commercial terms stay fixed; the buyer can select only the auto-pay rule.
   let autoPay: { enabled: boolean; maxPerClipAtomic: string; requireAllChecks: true } | undefined;
   const reader = request.body?.getReader();
@@ -62,7 +67,7 @@ export async function POST(request: Request) {
     const forwarded = process.env.VERCEL === "1" ? request.headers.get("x-forwarded-for")?.trim() : undefined;
     const ip = forwarded && isIP(forwarded) ? forwarded : "shared-untrusted-ingress";
     const ipDigest = createHmac("sha256", serviceSecret).update(ip).digest("hex");
-    const result = await db.mutation(api.payments.createDemoOrder, { serviceSecret, ipDigest, requestId: randomUUID(), ...(autoPay ? { autoPay } : {}) });
+    const result = await db.mutation(api.payments.createDemoOrder, { serviceSecret, ipDigest, requestId: randomUUID(), ...(idempotencyKey ? { idempotencyKey } : {}), ...(autoPay ? { autoPay } : {}) });
     if (!result.ok) {
       const response = paymentJson({ error: result.code, retryAfterSeconds: result.retryAfterSeconds }, 429);
       response.headers.set("Retry-After", String(result.retryAfterSeconds));
@@ -73,7 +78,10 @@ export async function POST(request: Request) {
       autoPay: result.autoPay ?? autoPay ?? terms.autoPay,
       explorer: { treasury: `https://sepolia.basescan.org/address/${payTo}`,
         transaction: "https://sepolia.basescan.org/tx/{txHash}" } }, 201);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("idempotency_key_conflict")) {
+      return paymentJson({ error: "idempotency_key_conflict" }, 409);
+    }
     // Do not expose wrapped Convex errors, arguments or secrets.
     return paymentJson({ error: "demo_orders_unavailable",
       message: "The server needs a configured treasury, payment service and deployed/seeded Convex demo backend. For hosted use, retry https://skarl.vercel.app/api/orders or contact the operator." }, 503);

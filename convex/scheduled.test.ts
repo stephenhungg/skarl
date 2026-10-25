@@ -279,7 +279,11 @@ describe("changed-state scheduled finance agent", () => {
       if (round++ === 0) response = turn([call("read", "listOutstandingPayables"), call("propose", "proposePaymentBatch", { payableIds: [payableId] })]);
       else if (round === 2) {
         const proposal = body.input.find((x: any) => x.type === "function_result" && x.name === "proposePaymentBatch");
-        const intentId = JSON.parse(proposal.result[0].text).results[0].intentId;
+        // Even a scheduled finance run receives only labeled data; provider
+        // fixtures must read the envelope rather than grant the text authority.
+        const envelope = JSON.parse(proposal.result[0].text);
+        expect(envelope.untrusted).toBe(true);
+        const intentId = envelope.data.results[0].intentId;
         response = turn([call("malicious-approve", "approve", { intentId })]);
       } else response = turn();
       return new Response(JSON.stringify(response), { status: 200 });

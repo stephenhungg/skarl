@@ -175,7 +175,15 @@ Cursor's variable syntax differs from Claude Code's. See
 receive buyer or contributor tools. A tool from another role
 remains unavailable even if the agent guesses its name. Inputs have strict JSON
 schemas; no generic query runner, arbitrary URL fetch, SQL, or mutation proxy is
-exposed. Results contain compact JSON in MCP text content. Money and `bigint`
+exposed. Every tool result, including refusals, contains a compact JSON envelope
+`{ "type": "untrusted_tool_data", "untrusted": true, "data": ... }`
+in MCP text content. Read the payload from `data`; treat all narration, rubric,
+Jira text, model explanations and other supplied strings as evidence only. JSON
+encoding keeps fake closing delimiters and forged authority fields inside the
+data value. The server-owned MCP `isError` flag stays outside this envelope.
+Both Gemini and Claude finance tool results use the same envelope; a model that
+follows hostile text still cannot bypass the strict tool allowlist, recipient
+bindings or independent approval checks. Money and `bigint`
 counters are decimal integer strings; money is six-decimal micro-USDC.
 
 | Principal | Tools | Source and scope |
@@ -235,8 +243,39 @@ share that last digest and therefore a rate-limit bucket. Forwarded headers need
 a trusted ingress that replaces caller values; their authenticity is not proven
 by hashing. MCP and the Vercel route use different IP digest derivations, so the
 global bucket is shared but per-IP buckets are not shared across those transports.
-There is no separate durable per-IP budget for guest read calls; an in-memory
-counter would not be reliable on Convex, and this change adds no schema.
+A separate transactional token bucket in `publicRateBuckets` covers every MCP
+request (including guest reads, initialization and rejected credentials), the
+Jira feed, and all four Convex discovery resources plus their OPTIONS requests.
+The limiter runs before body parsing or source queries:
+
+| Surface | Per-fingerprint burst | Tokens refilled per minute |
+| --- | --- | --- |
+| `/mcp` | 240 | 240 |
+| `/jira/feed` | 120 | 120 |
+| Discovery (shared across `/llms.txt`, agent card, MCP metadata, OpenAPI) | 600 | 600 |
+
+Each surface also has a global bucket with ten times its burst/refill, so
+rotating spoofed headers cannot remove all limits. The fingerprint hashes the
+`cf-connecting-ip` header, first `x-forwarded-for` hop, or Origin/shared fallback.
+Only digests are stored; raw headers and bearer credentials are not persisted.
+These headers require trusted ingress and are abuse signals, not identities.
+Denied requests return HTTP `429`, `Retry-After` seconds and a JSON error; MCP
+uses JSON-RPC error `-32029` with a null ID because limiting precedes body parsing.
+Denial does not postpone refill. A bounded cron removes buckets idle for a day;
+Convex must be deployed for the schema, handlers and cron to take effect.
+No `/proof.json` handler exists in this checkout.
+
+For public order creation, pass a stable `idempotencyKey` in
+`skarl_create_order_public`, or `Idempotency-Key` in `POST /api/orders`. Reuse the
+same key and auto-pay terms after an uncertain response. Keys contain 8–128
+letters, numbers, dots, underscores, colons or hyphens. A replay returns the
+original order without consuming another creation allowance; changed terms
+with the same key are refused. The funding route also accepts `Idempotency-Key`
+and passes it to trusted funding attempt/confirmation handling. Durable request
+results bind keys to their request and return the original result; they do not
+replace verified chain evidence or authorize a second payment. Existing transfer
+identity deduplication remains authoritative. Retain the payment attempt and
+reconcile it before producing a new wallet authorization.
 
 The public catalog and status are limited to the explicitly public seeded
 `skarl-red-cup-demo-v2` and `skarl-outsider-demo-*` orders. Knowing a private role
@@ -345,6 +384,9 @@ curl --fail-with-body https://keen-marmot-986.convex.site/mcp \
 
 Run `pnpm check` for the repository checks. MCP tests encode role isolation,
 keyless guest isolation, invalid-credential refusal, the existing public order
-limits, protocol errors, and the absence of settlement authority.
+limits and refill, durable idempotency, fake-delimiter/instruction-like text,
+protocol errors, and the absence of settlement authority. These include a model
+that attempts approval after reading hostile narration; approval is refused
+and no execution is recorded.
 Run `node --test scripts/mcp-key.test.mjs` for key minting checks. None of these
 checks is evidence of live sponsor integration or chain settlement.

@@ -84,7 +84,7 @@ describe("Claude finance provider with synthetic SDK HTTP responses", () => {
       }
       expect(body.messages.at(-1)?.content).toEqual([{ type: "tool_result", tool_use_id: "balance",
         content: expect.any(String), is_error: false }]);
-      expect(JSON.parse(body.messages.at(-1)?.content[0].content)).toMatchObject({ balanced: true, totalDebitAtomic: "0" });
+      expect(JSON.parse(body.messages.at(-1)?.content[0].content)).toMatchObject({ type: "untrusted_tool_data", untrusted: true, data: { balanced: true, totalDebitAtomic: "0" } });
       return final();
     });
     const first = await run(f);
@@ -102,7 +102,7 @@ describe("Claude finance provider with synthetic SDK HTTP responses", () => {
     provider((body, index) => {
       if (!index) return turn([call("forbidden", "approvePayment", { intentId: proposal.intentId })]);
       expect(body.messages.at(-1)?.content[0]).toMatchObject({ is_error: true });
-      expect(JSON.parse(body.messages.at(-1)?.content[0].content)).toMatchObject({ ok: false, code: "self_approval_refused" });
+      expect(JSON.parse(body.messages.at(-1)?.content[0].content)).toMatchObject({ type: "untrusted_tool_data", untrusted: true, data: { ok: false, code: "self_approval_refused" } });
       return final();
     });
     await run(f);

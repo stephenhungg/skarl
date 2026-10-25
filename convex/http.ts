@@ -4,6 +4,7 @@ import type { ApiFromModules, FunctionReturnType } from "convex/server";
 import type * as jiraFeed from "./jiraFeed";
 import type * as exceptions from "./exceptions";
 import { exceptionFeedItem, feedSecretMatches } from "./lib/jiraFeed";
+import { checkPublicRateLimit } from "./lib/publicRateLimit";
 
 type FeedApi = ApiFromModules<{ jiraFeed: typeof jiraFeed; exceptions: typeof exceptions }>;
 const snapshotRef = makeFunctionReference<"query", {}, FunctionReturnType<FeedApi["jiraFeed"]["snapshot"]>>("jiraFeed:snapshot");
@@ -14,6 +15,8 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 const http = httpRouter();
 http.route({ path: "/jira/feed", method: "GET", handler: httpAction(async (ctx, request) => {
+  const limited = await checkPublicRateLimit(ctx, request, "jira");
+  if (limited) return limited;
   const expected = process.env.SKARL_JIRA_FEED_SECRET ?? "";
   if (expected.length < 32 || expected.length > 512) return json({ error: "jira_feed_not_configured" }, 503);
   if (!await feedSecretMatches(expected, request.headers.get("x-skarl-feed-secret"))) return json({ error: "unauthorized" }, 401);

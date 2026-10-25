@@ -12,6 +12,7 @@ import { chainIdentity, validateTransfer, reconcilePayments, type TransferObserv
 import { DEMO_ORDER_BUDGET, DEMO_ORDER_CONTRIBUTOR_RATE, DEMO_ORDER_GLOBAL_LIMIT, DEMO_ORDER_IP_LIMIT, DEMO_ORDER_WINDOW_MS } from "../packages/payments/src/demo-order";
 import { audit } from "./lib/finance";
 import { parseAtomicUsdc } from "../packages/contracts/src/index";
+import { validateIdempotencyKey, idempotencyKeyHash, readIdempotentResult, saveIdempotentResult } from "./lib/requestIdempotency";
 
 // Trusted Next server reads RPC receipts; browsers cannot submit settlement facts directly.
 export function service(secret: string) {
@@ -25,18 +26,28 @@ const secretArg = { serviceSecret: v.string() };
 
 /** Public HTTP entry point: fixed commercial terms, buyer-selected auto-pay rule. */
 export const createDemoOrder = mutation({
-  args: { ...secretArg, ipDigest: v.string(), requestId: v.string(),
+  args: { ...secretArg, ipDigest: v.string(), requestId: v.string(), idempotencyKey: v.optional(v.string()),
     autoPay: v.optional(v.object({ enabled: v.boolean(), maxPerClipAtomic: v.string(), requireAllChecks: v.literal(true) })) },
   handler: async (ctx, args) => {
     service(args.serviceSecret);
     if (!/^[a-f0-9]{64}$/.test(args.ipDigest) || !/^[a-f0-9-]{36}$/.test(args.requestId)) throw new Error("invalid_demo_request");
+    if (args.idempotencyKey !== undefined) validateIdempotencyKey(args.idempotencyKey);
     const buyer = await requireRole(ctx, "buyer", "buyer");
     if (buyer.roles.includes("finance-agent")) throw new Error("human_buyer_required");
+    const maxPerClipAtomic = parseAtomicUsdc(args.autoPay?.maxPerClipAtomic ?? DEMO_ORDER_BUDGET.toString());
+    if (maxPerClipAtomic <= 0n) throw new Error("invalid_auto_pay_policy");
+    const keyHash = idempotencyKeyHash(args.idempotencyKey ?? args.requestId);
+    const requestHash = digest({ organizationId: buyer.organizationId, buyer: buyer.tokenIdentifier,
+      enabled: args.autoPay?.enabled ?? true, maxPerClipAtomic, requireAllChecks: true });
+    type Created = { ok: true; orderId: Id<"orders">; publicId: string; deadlineAt: number;
+      autoPay: { enabled: boolean; maxPerClipAtomic: string; requireAllChecks: true; setBy: string; setAt: number } };
+    const previous = await readIdempotentResult<Created>(ctx, "public_order", keyHash, requestHash);
+    // A lost creation response must not create another obligation or consume the
+    // demo's spend capacity, including when the caller has reached its cap.
+    if (previous) return previous;
     const source = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
     const rubric = source?.taskVersionId ? await ctx.db.get(source.taskVersionId) : null;
     if (!source || !rubric || source.organizationId !== buyer.organizationId || rubric.orderId !== source._id) throw new Error("demo_seed_required");
-    const maxPerClipAtomic = parseAtomicUsdc(args.autoPay?.maxPerClipAtomic ?? DEMO_ORDER_BUDGET.toString());
-    if (maxPerClipAtomic <= 0n) throw new Error("invalid_auto_pay_policy");
     const now = Date.now(), windowStart = Math.floor(now / DEMO_ORDER_WINDOW_MS) * DEMO_ORDER_WINDOW_MS;
     const limits = await Promise.all([
       { key: `ip:${args.ipDigest}`, limit: DEMO_ORDER_IP_LIMIT },
@@ -54,7 +65,7 @@ export const createDemoOrder = mutation({
     }
     const autoPay = { enabled: args.autoPay?.enabled ?? true, maxPerClipAtomic, requireAllChecks: true as const,
       setBy: buyer.tokenIdentifier, setAt: now };
-    const publicId = `skarl-outsider-demo-${args.requestId}`;
+    const publicId = `skarl-outsider-demo-${keyHash}`;
     const termsHash = digest({ contentHash: rubric.contentHash, quantityRequested: 1n, pricePerSampleAtomic: DEMO_ORDER_BUDGET,
       contributorRateAtomic: DEMO_ORDER_CONTRIBUTOR_RATE, licenseVersion: "demo-consent-v1",
       autoPay: { enabled: autoPay.enabled, maxPerClipAtomic, requireAllChecks: true } });
@@ -77,8 +88,10 @@ export const createDemoOrder = mutation({
       actor: { kind: "human", identity: buyer.tokenIdentifier }, action: "auto_pay_policy_set", entityType: "orders", entityId: orderId,
       reason: `Buyer selected auto-pay ${autoPay.enabled ? "enabled" : "disabled"}; cap ${maxPerClipAtomic} micro-USDC; every check required.`,
       evidenceReferences: [termsHash] });
-    return { ok: true as const, orderId, publicId, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS,
+    const result: Created = { ok: true, orderId, publicId, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS,
       autoPay: { ...autoPay, maxPerClipAtomic: maxPerClipAtomic.toString() } };
+    await saveIdempotentResult(ctx, "public_order", keyHash, requestHash, result);
+    return result;
   },
 });
 const evidence = v.object({ network: v.string(), tokenAddress: v.string(), txHash: v.string(), logIndex: v.number(),
@@ -120,7 +133,8 @@ export const fundingStatus = query({
 });
 export const recordFundingAttempt = mutation({
   args: { ...secretArg, orderId: v.string(), demoIdentity: v.string(), payerAddress: v.string(), recipientAddress: v.string(),
-    authorizationNonce: v.string(), amountAtomic: v.int64(), validBefore: v.number(), network: v.optional(fundingNetwork) },
+    authorizationNonce: v.string(), amountAtomic: v.int64(), validBefore: v.number(), network: v.optional(fundingNetwork),
+    idempotencyKey: v.optional(v.string()) },
   handler: async (ctx, args) => {
     service(args.serviceSecret);
     const order = await orderFor(ctx, args.orderId, args.demoIdentity);
@@ -131,6 +145,14 @@ export const recordFundingAttempt = mutation({
       throw new Error("wrong_solana_treasury");
     }
     const nonce = hash(args.authorizationNonce);
+    if (args.idempotencyKey !== undefined) validateIdempotencyKey(args.idempotencyKey);
+    const scope = "funding_attempt", keyHash = args.idempotencyKey ? idempotencyKeyHash(args.idempotencyKey) : undefined;
+    const requestHash = digest({ orderId: order._id, network, payerAddress, recipientAddress, authorizationNonce: nonce, amountAtomic: args.amountAtomic });
+    if (keyHash) {
+      const existing = await readIdempotentResult<{ attemptId: Id<"paymentAttempts"> }>(ctx, scope, keyHash, requestHash);
+      // Status replay must always stop the caller before another settlement.
+      if (existing) return { ...existing, replayed: true };
+    }
     if (payerAddress === recipientAddress || recipientAddress === `0x${"0".repeat(40)}`) throw new Error("invalid_recipient");
     if (order.network !== PAYMENT_NETWORK || order.tokenAddress !== USDC_ADDRESS || order.budgetAtomic <= 0n ||
       order.budgetAtomic !== order.quantityRequested * order.pricePerSampleAtomic || order.budgetAtomic !== args.amountAtomic) throw new Error("quote_changed");
@@ -145,6 +167,7 @@ export const recordFundingAttempt = mutation({
       const prior = used.paymentIntentId && await ctx.db.get(used.paymentIntentId);
       if (!prior || used.payerAddress !== payerAddress || prior.kind === "contributor_payout" || prior.orderId !== order._id || prior.recipientAddress !== recipientAddress || prior.amountAtomic !== args.amountAtomic) throw new Error("authorization_already_claimed");
       // A replay is for status/reconciliation ONLY; the HTTP adapter must not settle twice.
+      if (keyHash) await saveIdempotentResult(ctx, scope, keyHash, requestHash, { attemptId: used._id });
       return { attemptId: used._id, replayed: true };
     }
     if (!["draft", "awaiting_funding"].includes(order.status) || Date.now() > order.deadlineAt) throw new Error("order_not_fundable");
@@ -159,6 +182,7 @@ export const recordFundingAttempt = mutation({
     const attemptId = await ctx.db.insert("paymentAttempts", { organizationId: order.organizationId, network,
       tokenAddress: rail.token, paymentIntentId: intentId, attemptId: `funding:${order._id}`, attempt: 1,
       amountAtomic: order.budgetAtomic, payerAddress, authorizationNonce: nonce, status: "prepared", createdAt: now, updatedAt: now });
+    if (keyHash) await saveIdempotentResult(ctx, scope, keyHash, requestHash, { attemptId });
     return { attemptId, replayed: false };
   },
 });
@@ -233,10 +257,21 @@ export async function confirmFundingFor(ctx: MutationCtx, args: {
     return { ...result, ok: true as const };
 }
 export const confirmFunding = mutation({
-  args: { ...secretArg, attemptId: v.id("paymentAttempts"), authorizationNonce: v.string(), observation: evidence },
+  args: { ...secretArg, attemptId: v.id("paymentAttempts"), authorizationNonce: v.string(), observation: evidence,
+    idempotencyKey: v.optional(v.string()) },
   handler: async (ctx, args) => {
     service(args.serviceSecret);
-    return confirmFundingFor(ctx, args);
+    if (args.idempotencyKey === undefined) return confirmFundingFor(ctx, args);
+    const keyHash = idempotencyKeyHash(args.idempotencyKey);
+    // Fresh RPC reads may advance confirmations/time, but the immutable receipt,
+    // amount, authorizer and attempt remain bound to the original business intent.
+    const { observedAt: _observedAt, confirmations: _confirmations, ...receipt } = args.observation;
+    const requestHash = digest({ attemptId: args.attemptId, authorizationNonce: args.authorizationNonce, receipt });
+    const previous = await readIdempotentResult<Awaited<ReturnType<typeof confirmFundingFor>>>(ctx, "funding_confirmation", keyHash, requestHash);
+    if (previous) return previous;
+    const result = await confirmFundingFor(ctx, args);
+    await saveIdempotentResult(ctx, "funding_confirmation", keyHash, requestHash, result);
+    return result;
   },
 });
 

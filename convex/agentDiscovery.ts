@@ -1,4 +1,5 @@
 import { httpAction } from "./_generated/server";
+import { checkPublicRateLimit } from "./lib/publicRateLimit";
 import { PAYMENT_NETWORK, PAYMENT_RAILS } from "@skarl/contracts/chain";
 
 export const AGENT_ORIGIN = "https://keen-marmot-986.convex.site";
@@ -29,7 +30,7 @@ Paste into any MCP-capable agent:
 
 ## Guest access
 ${guestAccess}
-Guest tools: ${guestTools.join(", ")}. Public responses exclude buyer identities, private media and ledger internals. Only the explicit public seed and outsider demo orders appear; knowing a private role order ID does not make it public. skarl_create_order_public uses the same payments.createDemoOrder path and durable demoOrderLimits as POST ${paymentOrigin}/api/orders: fixed terms, three orders per IP per hour and thirty globally. The MCP IP bucket hashes the first x-forwarded-for hop, then cf-connecting-ip; absent headers share the mcp-unknown digest. Forwarded headers require trusted ingress; MCP and Vercel use different per-IP digest derivations and share the global creation limit. No separate durable budget for guest reads is implemented.
+Guest tools: ${guestTools.join(", ")}. Public responses exclude buyer identities, private media and ledger internals. Only the explicit public seed and outsider demo orders appear; knowing a private role order ID does not make it public. skarl_create_order_public uses the same payments.createDemoOrder path and durable demoOrderLimits as POST ${paymentOrigin}/api/orders: fixed terms, three orders per IP per hour and thirty globally. The MCP IP bucket hashes the first x-forwarded-for hop, then cf-connecting-ip; absent headers share the mcp-unknown digest. Forwarded headers require trusted ingress; MCP and Vercel use different per-IP digest derivations and share the global creation limit. Public requests share a durable token bucket per hashed client fingerprint: MCP 240/minute, discovery 600/minute, Jira feed 120/minute. HTTP 429 includes Retry-After; MCP returns JSON-RPC -32029. No IP or credential is persisted in the bucket.
 Connect Claude Code: claude mcp add --transport http skarl ${AGENT_ORIGIN}/mcp
 For Claude.ai, ChatGPT or another MCP client, paste ${AGENT_ORIGIN}/mcp as a custom connector with no authentication, where supported. Account and workspace connector permissions still apply.
 
@@ -184,12 +185,12 @@ function discoveryResponse(body: string | object, plainText = false) {
   } });
 }
 
-// Public static metadata only: no identity resolution, database reads or mutations.
-export const llms = httpAction(async () => discoveryResponse(llmsText, true));
-export const card = httpAction(async () => discoveryResponse(agentCard));
-export const mcp = httpAction(async () => discoveryResponse(mcpDiscovery));
-export const apiSpec = httpAction(async () => discoveryResponse(openapi));
-export const preflight = httpAction(async () => new Response(null, { status: 204, headers: {
+// Static metadata remains public; the only write consumes an anonymous abuse budget.
+export const llms = httpAction(async (ctx, request) => await checkPublicRateLimit(ctx, request, "discovery") ?? discoveryResponse(llmsText, true));
+export const card = httpAction(async (ctx, request) => await checkPublicRateLimit(ctx, request, "discovery") ?? discoveryResponse(agentCard));
+export const mcp = httpAction(async (ctx, request) => await checkPublicRateLimit(ctx, request, "discovery") ?? discoveryResponse(mcpDiscovery));
+export const apiSpec = httpAction(async (ctx, request) => await checkPublicRateLimit(ctx, request, "discovery") ?? discoveryResponse(openapi));
+export const preflight = httpAction(async (ctx, request) => await checkPublicRateLimit(ctx, request, "discovery") ?? new Response(null, { status: 204, headers: {
   "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Max-Age": "86400", "Cache-Control": "public, max-age=300",
 } }));

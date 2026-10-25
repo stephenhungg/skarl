@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { authTables } from "@convex-dev/auth/server";
 import { bankWitnessTables } from "./bankWitnessSchema";
+import { publicSecurityTables } from "./publicSecuritySchema";
 import { coachTables } from "./coachSchema";
 import { attestationTables } from "./attestationsSchema";
 import { v } from "convex/values";
@@ -63,6 +64,7 @@ const analysisContext = {
 };
 export default defineSchema({
   ...authTables,
+  ...publicSecurityTables,
   ...coachTables,
   ...attestationTables,
   ...bankWitnessTables,

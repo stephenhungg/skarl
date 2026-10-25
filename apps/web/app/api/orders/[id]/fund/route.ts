@@ -32,6 +32,10 @@ export async function GET(request: NextRequest, context: Context) {
   } catch (error) { return paymentError(error); }
 }
 export async function POST(request: NextRequest, context: Context) {
+  const idempotencyKey = request.headers.get("Idempotency-Key") ?? undefined;
+  if (idempotencyKey !== undefined && !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+    return paymentJson({ error: "invalid_idempotency_key" }, 400);
+  }
   try {
     const treasury = treasuryAddress();
     const solanaTreasury = solanaTreasuryAddress();
@@ -66,7 +70,7 @@ export async function POST(request: NextRequest, context: Context) {
           return { abort: true, reason: "quote_changed" };
         }
         const recorded = await db.mutation(api.payments.recordFundingAttempt, { serviceSecret, orderId, demoIdentity, ...authorization,
-          ...(network === SOLANA_PAYMENT_NETWORK ? { network } : {}) });
+          ...(network === SOLANA_PAYMENT_NETWORK ? { network } : {}), ...(idempotencyKey ? { idempotencyKey } : {}) });
         if (recorded.replayed) return { abort: true, reason: "authorization_already_claimed_reconcile" };
         claimedNetwork = network;
         attemptId = recorded.attemptId; authorizationNonce = authorization.authorizationNonce;
@@ -95,7 +99,8 @@ export async function POST(request: NextRequest, context: Context) {
         const observation = current.intent.network === SOLANA_PAYMENT_NETWORK
           ? await observeSolanaTransfer(current.attempt.txHash, { ...expected, authorizationNonce: authorizationNonce!, orderId: order._id })
           : await observeTransfer(current.attempt.txHash as Hash, expected, authorizationNonce);
-        const confirmation = await db.mutation(api.payments.confirmFunding, { serviceSecret, attemptId, authorizationNonce: authorizationNonce!, observation });
+        const confirmation = await db.mutation(api.payments.confirmFunding, { serviceSecret, attemptId, authorizationNonce: authorizationNonce!, observation,
+          ...(idempotencyKey ? { idempotencyKey } : {}) });
         if (confirmation?.ok === false) throw new Error(confirmation.code);
         const confirmed = paymentJson({ orderId: order._id, fundingStatus: "confirmed", txHash: observation.txHash, settledBy,
           network: observation.network, explorerUrl: paymentRail(observation.network).explorerTx(observation.txHash) });

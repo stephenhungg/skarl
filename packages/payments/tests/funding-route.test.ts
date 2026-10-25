@@ -183,20 +183,25 @@ describe("actual POST /api/orders/[id]/fund x402 adapter", () => {
     expect(mocks.mutation.mock.calls.some(([reference]) => getFunctionName(reference) === "payments:confirmFunding")).toBe(false);
   });
 
-  it("confirms only after RPC observation and carries the settlement receipt header", async () => {
+  it("binds the caller key before settlement and confirms only after RPC observation with the receipt header", async () => {
     const payment = await signedPayload();
     const observation = { network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS, txHash: TX_HASH, logIndex: 1,
       blockNumber: 100n, blockHash: `0x${"cc".repeat(32)}`, fromAddress: PAYER, toAddress: TREASURY,
       amountAtomic: 100_000_000n, confirmations: 2, succeeded: true, observedAt: Date.now() };
     mocks.observeTransfer.mockImplementation(async () => { events.push("chain:observe"); return observation; });
-    const response = await POST(request(payment), context);
+    const keyed = request(payment);
+    keyed.headers.set("Idempotency-Key", "funding-request-1");
+    const response = await POST(keyed, context);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ fundingStatus: "confirmed", txHash: TX_HASH,
       explorerUrl: `https://sepolia.basescan.org/tx/${TX_HASH}` });
     expect(response.headers.get("PAYMENT-RESPONSE")).toBeTruthy();
     expect(events.at(-2)).toBe("chain:observe");
     expect(events.at(-1)).toBe("payments:confirmFunding");
-    expect(mocks.mutation.mock.calls.at(-1)?.[1]).toMatchObject({ attemptId: "synthetic-attempt", authorizationNonce: NONCE, observation });
+    expect(mocks.mutation.mock.calls.find(([reference]) => getFunctionName(reference) === "payments:recordFundingAttempt")?.[1])
+      .toMatchObject({ idempotencyKey: "funding-request-1" });
+    expect(mocks.mutation.mock.calls.at(-1)?.[1]).toMatchObject({ attemptId: "synthetic-attempt", authorizationNonce: NONCE, observation,
+      idempotencyKey: "funding-request-1" });
   });
 
   it("does not settle if nonce persistence refuses an already claimed authorization", async () => {
