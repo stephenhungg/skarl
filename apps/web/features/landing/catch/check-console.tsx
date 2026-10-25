@@ -129,7 +129,6 @@ export function CheckConsole() {
             </div>
           </div>
         </div>
-        <p className="mt-3 text-[13px] text-slate-500">Example run on a hand-written report.</p>
       </div>
     </div>
   );
