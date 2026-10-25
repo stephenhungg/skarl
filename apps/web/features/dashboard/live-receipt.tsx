@@ -21,7 +21,7 @@ export function LiveReceipt({ submissionId }: { submissionId: Id<"submissions"> 
   const receipt = toAssetReceipt({ submission, report, clip: media.clip, audit, payable, paidChainIdentity: paid?.chainIdentity });
   return (
     <div className="-mx-4 md:-mx-6">
-      <AssetReceiptView receipt={receipt} />
+      <AssetReceiptView receipt={receipt} path={`/dashboard/submissions/${submissionId}/receipt`} />
     </div>
   );
 }
