@@ -529,3 +529,36 @@ The initial mutation became available live. Its challenge returned the correct B
 Inspection found viem's `recoverPublicKey` dynamically imports `@noble/curves/secp256k1`; [Convex documents dynamic dependency imports as unsupported in its default runtime](https://docs.convex.dev/functions/bundling). The focused correction statically imports the same pinned curve implementation and retains EIP-191 hashing, strict recovery-bit validation, recovered-address matching and the transactional challenge gate. This is the leading cause inferred from code/runtime behavior, not a captured inner exception. Deployment and a successful live retry are required before claiming wallet verification.
 
 The static-recovery correction was pushed as `67194ed`; `pnpm check` passed **466 tests** (107 Node, 273 Convex, 86 payment tests), all typechecks, documentation links and the production build. A subsequent retry of the same private proof still reached the old handler and returned `invalid_wallet_signature` at its original line 67, request `a706ae388c910736`; the corrected handler's rejection is at a different line. The orchestrator was asked to deploy `67194ed` or later. Registration, account policy/faucets, real CDP negative sends and approved payout remain incomplete until that deployment and, for payout, a licensed submission. No backend deploy or verification bypass was performed here.
+
+### Live retry after recovery deployment — October 25, 2026, 03:05 PDT
+
+The orchestrator reported the recovery fix deployed at 03:04 PDT. This run used the checked-out `origin/main` implementation, invoked existing Convex functions and changed environment configuration only; it did not deploy backend or web code. The results below supersede the registration and policy blockers above. All assets are Base Sepolia test USDC.
+
+| Check | Live evidence | Result |
+| --- | --- | --- |
+| Contributor verification | Fresh SIWE challenge and EIP-191 signature returned `verified:true`, `replayed:false`, `chainId:84532`, `verifiedAt:1792922707057`, wallet `0x975e1455d277d3030ac53e6b00f0251c7b3ae9fd`. `lib/cdpWallet:allowlist` returned exactly this address. | Passed against the deployed mutation; proof/key remain private. An initial challenge used an incorrect demo token separator and returned `contributor_not_found`; using the canonical `demo:skarl:contributor` resolved that invocation error. |
+| CDP account policy | `CONVEX_DEPLOYMENT=dev:keen-marmot-986 CDP_PAYOUT_CAP_ATOMIC=2000000 pnpm cdp:policy:apply` exited 0. Account `skarl-finance-agent`: `0x0A9EfDF66c58543538824906aE267B969Ed651c5`; active account policy `fa62ac94-e420-4013-bb4f-2dcab18deb7b`; recipient operator `in`; one verified recipient; cap `2000000` micro-USDC. | Applied. Candidate/probe and finance-account simulations accepted the allowlisted transfer at cap and rejected over-cap, non-allowlisted, wrong token, native value, wrong network and wrong function. Those preflight results are simulations. |
+| Convex environment | Set and read back `CDP_AGENT_ADDRESS=0x0A9EfDF66c58543538824906aE267B969Ed651c5` and `CDP_AGENT_POLICY_ID=fa62ac94-e420-4013-bb4f-2dcab18deb7b` on `dev:keen-marmot-986`. | Both match the live CDP account. No credential values were printed. |
+| Agent funding | Three `requestFaucet` calls for `usdc`, `base-sepolia`, each with a persisted distinct idempotency key. Successful receipts with two confirmations contained exactly `1000000` micro-USDC each to the agent. Transaction/log identities are below. | 3 USDC funded; balance read after the negative tests remained `3000000` at 03:05:58 PDT. |
+| Direct over-cap send | Real `cdp.evm.sendTransaction` from `skarl-finance-agent`, canonical USDC `transfer`, amount `2000001` (2.000001 USDC), verified contributor recipient. HTTP **403**, `APIError`, `errorType:policy_violation`; correlation `a5006791aba9be62-IAD`. | Rejected by CDP; no transaction hash returned. This was not the unfunded probe account or a simulation. |
+| Direct non-allowlisted send | Real `cdp.evm.sendTransaction` from the same finance account, canonical USDC `transfer`, amount `100000` (0.10 USDC), recipient `0x000000000000000000000000000000000000dEaD`. HTTP **403**, `APIError`, `errorType:policy_violation`; correlation `a500679519ddbe62-IAD`. | Rejected by CDP; no transaction hash returned. This was not a simulation. |
+| Within-policy 0.10 USDC payout | Live `dashboard:submissions` for v2 order `kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg` still returned the same three `verificationOnly:true`, `needs_review` submissions with null deliveries; `dashboard:payables` returned `[]`. | **Skipped:** no accept-eligible submission, payable or stored approved intent. No allowed-recipient send, fabricated obligation, approval bypass or executor enablement was performed. The requested 0.10 USDC cannot replace an obligation's bound amount. |
+| SQL witness, one retry | `pnpm cdp:sql:witness` exited **2** for funding transaction `0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757`: `evidence:not_verified`, `sql.status:witness_unavailable`, `reason:http_500`, `fetchedAt:1792922706483`. | Still unavailable; no SQL match claimed and no further SQL retries in this run. |
+
+Both direct negative calls returned the exact same CDP rejection message:
+
+```text
+The request is forbidden due to violating at least one configured policy.
+```
+
+Both responses included `errorLink:https://docs.cdp.coinbase.com/api-reference/v2/errors#policy-violation`. Before each real negative call, policy simulation returned `reject`; the live account/policy binding and absence of overriding project accepts were checked. Exact attempt terms and idempotency keys were persisted privately before dispatch. The real HTTP 403 responses, rather than the preflight simulations or a balance failure, establish the two policy rejections.
+
+| Faucet claim | Confirmed Base Sepolia transaction | USDC Transfer log index | Amount (micro-USDC) |
+| --- | --- | --- | --- |
+| 1 | [0x0044a094cafb5eb0cf09577177fa71477259eb199e8cbebc80bcd051be8b933e](https://sepolia.basescan.org/tx/0x0044a094cafb5eb0cf09577177fa71477259eb199e8cbebc80bcd051be8b933e) | 12 | 1000000 |
+| 2 | [0x4fa28ece62b78fbda786f5d57587bb81b4675f1e115ee091834f40afd2a4859a](https://sepolia.basescan.org/tx/0x4fa28ece62b78fbda786f5d57587bb81b4675f1e115ee091834f40afd2a4859a) | 6 | 1000000 |
+| 3 | [0x55c0da36c680f9f96d462d1901721af42f4e8fc6d162fb114ab4f48c32316c1d](https://sepolia.basescan.org/tx/0x55c0da36c680f9f96d462d1901721af42f4e8fc6d162fb114ab4f48c32316c1d) | 21 | 1000000 |
+
+No outgoing agent or treasury transfer is claimed. No deployment is needed for this documentation-only follow-up or the already-applied environment values. A live payout still requires licensed acceptance, the corresponding bound payable, independent stored approval and an explicitly enabled executor.
+
+Validation for this follow-up: `pnpm check` passed all typechecks, **466 tests** (107 Node, 273 Convex, 86 payments), local links/anchors in 33 Markdown files and the production web build. `git diff --check` passed. These local checks are separate from the live API and chain evidence above.
