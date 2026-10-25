@@ -14,6 +14,7 @@ import { LogoMark } from "@/components/logo-mark";
 import { useConvexConfig } from "@/components/convex-provider";
 import { Lordicon, type LordiconName } from "./lordicon";
 import { needsYou, useOrderData, useOrderId } from "./data";
+import { OrderSwitcher } from "./order-switcher";
 
 export type NavItem = { href: string; label: string; icon: LordiconName; count?: string; loud?: boolean };
 export type ShellConfig = {
@@ -41,12 +42,13 @@ const CONTROLLER_NAV: ShellConfig["nav"] = [
   { group: "System", items: [
     { href: "/dashboard/agent", label: "Finance agent", icon: "browser-terminal" },
     { href: "/dashboard/audit", label: "Audit log", icon: "fingerprint-circle" },
+    { href: "/dashboard/scenarios", label: "Scenario lab", icon: "wrench" },
   ] },
 ];
 export const CONTROLLER_SHELL: ShellConfig = {
   home: "/dashboard", role: "Controller", homeLabel: "Overview", nav: CONTROLLER_NAV,
   mobile: [CONTROLLER_NAV[0]!.items[0]!, CONTROLLER_NAV[0]!.items[1]!, CONTROLLER_NAV[1]!.items[0]!, CONTROLLER_NAV[1]!.items[1]!],
-  titles: { receipt: "Receipt", inbox: "Needs you", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log" },
+  titles: { receipt: "Receipt", inbox: "Needs you", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log", scenarios: "Scenario lab" },
   switchTo: { label: "Open contributor view", href: "/contribute" },
 };
 const STORE = "skarl:dashboard:sidebar";
@@ -73,12 +75,12 @@ function Count({ loud, value, collapsed }: { loud?: boolean; value: number; coll
 export function DashboardShell({ children }: { children: ReactNode }) {
   const { status } = useConvexConfig();
   return status === "ready"
-    ? <ControllerCounts>{counts => <AppShell config={CONTROLLER_SHELL} counts={counts}>{children}</AppShell>}</ControllerCounts>
+    ? <ControllerCounts>{counts => <AppShell config={CONTROLLER_SHELL} counts={counts} header={<OrderSwitcher />}>{children}</AppShell>}</ControllerCounts>
     : <AppShell config={CONTROLLER_SHELL} counts={{}}>{children}</AppShell>;
 }
 
 /** The shared app frame: sidebar, breadcrumbs, mobile bar and toaster, for any role. */
-export function AppShell({ config, counts, children }: { config: ShellConfig; counts: Counts; children: ReactNode }) {
+export function AppShell({ config, counts, header, children }: { config: ShellConfig; counts: Counts; header?: ReactNode; children: ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -166,7 +168,7 @@ export function AppShell({ config, counts, children }: { config: ShellConfig; co
             <div className="flex min-w-0 flex-col pb-16 md:pb-0">
               <header className="sticky top-0 z-(--z-sticky) flex h-12 items-center gap-3 border-b border-line-faint bg-page px-4 md:px-6">
                 <BreadcrumbTrail items={crumbs} renderLink={href => <Link href={href} />} className="min-w-0 flex-1" />
-                
+                {header}
               </header>
               <main className="mx-auto w-full max-w-[1200px] flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
             </div>

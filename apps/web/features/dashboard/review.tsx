@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/glaze/ui/alert";
 import { Badge } from "@/components/glaze/ui/badge";
 import { Button } from "@/components/glaze/ui/button";
@@ -37,6 +37,7 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
   const { summary, submissions } = useOrderData(orderId);
   const report = useQuery(api.submissions.getReport, { demoIdentity: CONTROLLER, submissionId });
   const media = useQuery(api.media.submissionEvidence, { demoIdentity: CONTROLLER, submissionId });
+  const attestation = useQuery(api.attestations.forSubmission, { submissionId });
   const submission = submissions?.find(s => s._id === submissionId);
   const video = useRef<HTMLVideoElement>(null);
   const stopAt = useRef<number | null>(null);
@@ -86,6 +87,7 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
           {parsed?.pipeline.modelRuns.map(run => <span key={run.model} className="text-text-3">{run.model}{run.elapsedMs ? ` ${formatMs(run.elapsedMs)}` : ""}</span>)}
         </span>}
         actions={<>
+          {attestation && <a href={attestation.easscanUrl} target="_blank" rel="noreferrer" className="type-label text-text-2 underline underline-offset-4">Verify on-chain</a>}
           <Link href={`/dashboard/submissions/${submissionId}/receipt`} className="type-label text-text-2 underline underline-offset-4">Receipt</Link>
           <Link href="/dashboard/submissions" className="type-label text-text-2 underline underline-offset-4">All submissions</Link>
         </>} />
@@ -100,8 +102,10 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
               : <div className="flex aspect-video items-center justify-center type-body-sm text-text-inverse">No playable clip. The original is missing or quarantined.</div>}
           </div>
           <EvidenceTrack criteria={criteria.map(c => c.finding).filter((f): f is Finding => !!f)} durationMs={durationMs} now={now}
-            focus={focus} onFocus={setFocus} onSeek={seek} />
+            focus={focus} onFocus={setFocus} onSeek={seek} motion={media.sensorTrace?.motionSummary?.bins ?? null} />
           <Transcript segments={segments} now={now} onSeek={seek} />
+          <Capture trace={media.sensorTrace} liveness={submission?.liveness ?? null}
+            livenessPassed={!!parsed?.criteria.some(c => c.evidence.some(e => e.claim.startsWith("Spoken liveness matched")))} />
           {!report.verificationOnly && parsed?.warnings?.length ? <ul className="flex flex-col gap-1">{parsed.warnings.map(w => <li key={w} className="type-body-sm text-text-2">{w}</li>)}</ul> : null}
         </div>
         <aside className="flex flex-col gap-3 lg:sticky lg:top-16 lg:self-start">
@@ -140,8 +144,11 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
   );
 }
 
-function EvidenceTrack({ criteria, durationMs, now, focus, onFocus, onSeek }: {
+type MotionBin = { startMs: number; endMs: number; gyroRmsRadPerSec: number | null; active: boolean };
+
+function EvidenceTrack({ criteria, durationMs, now, focus, onFocus, onSeek, motion }: {
   criteria: Finding[]; durationMs: number; now: number; focus: string | null; onFocus: (id: string | null) => void; onSeek: (start: number, end?: number) => void;
+  motion: MotionBin[] | null;
 }) {
   if (!durationMs) return null;
   const pct = (ms: number) => `${Math.min(100, Math.max(0, (ms / durationMs) * 100))}%`;
@@ -169,7 +176,49 @@ function EvidenceTrack({ criteria, durationMs, now, focus, onFocus, onSeek }: {
             </div>
           </div>
         ))}
+        {motion && motion.length > 0 && (() => {
+          const peak = Math.max(...motion.map(b => b.gyroRmsRadPerSec ?? 0), 0.01);
+          return (
+            <div className="flex items-center gap-3">
+              <span className="w-12 shrink-0 type-label-sm text-text-2">Motion</span>
+              <div className="relative h-6 flex-1 overflow-hidden rounded-tag bg-field">
+                {motion.map(bin => (
+                  <button key={bin.startMs} type="button" onClick={() => onSeek(bin.startMs)} title={`${formatMs(bin.startMs)}: ${bin.gyroRmsRadPerSec?.toFixed(2) ?? "no data"} rad/s${bin.active ? ", moving" : ""}`}
+                    className={cn("absolute bottom-0", bin.active ? "bg-ink" : "bg-line-strong")}
+                    style={{ left: pct(bin.startMs), width: `calc(${pct(bin.endMs)} - ${pct(bin.startMs)})`, height: `${Math.max(6, ((bin.gyroRmsRadPerSec ?? 0) / peak) * 100)}%` }} />
+                ))}
+                <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-px bg-ink" style={{ left: pct(now) }} />
+              </div>
+            </div>
+          );
+        })()}
       </div>
+    </div>
+  );
+}
+
+type Trace = { sampleRateHz: number; sampleCount: number; sensors: string[]; device: { model: string; os: string; osVersion: string; appVersion: string };
+  motionSummary?: { steadinessRatio?: number | null; meanTiltDegrees?: number | null } } | null | undefined;
+
+/** What the phone recorded alongside the video. Client-reported; it never changes acceptance on its own. */
+function Capture({ trace, liveness, livenessPassed }: { trace: Trace; liveness: { words: string[] } | null; livenessPassed: boolean }) {
+  if (!trace && !liveness) return null;
+  const rows: [string, React.ReactNode][] = [];
+  if (trace) {
+    rows.push(["Device", `${trace.device.model} \u00b7 ${trace.device.os} ${trace.device.osVersion}`]);
+    rows.push(["Sensors", `${trace.sensors.length} channels at ${Math.round(trace.sampleRateHz)} Hz`]);
+    if (trace.motionSummary?.steadinessRatio != null) rows.push(["Steady", `${Math.round(trace.motionSummary.steadinessRatio * 100)}% of the take`]);
+    if (trace.motionSummary?.meanTiltDegrees != null) rows.push(["Tilt", `${trace.motionSummary.meanTiltDegrees.toFixed(1)}\u00b0`]);
+  }
+  if (liveness) rows.push(["Spoken words", <span key="l" className="flex flex-wrap items-baseline gap-2">
+    <Status status={livenessPassed ? "ok" : "warn"} size="sm">{livenessPassed ? "Matched" : "Not matched"}</Status>
+    <span className="text-text-2">{liveness.words.join(" ")}</span></span>]);
+  return (
+    <div className="rounded-panel border border-line-faint p-3">
+      <p className="mb-2 type-label-sm text-text-3">Capture</p>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 type-body-sm">
+        {rows.map(([label, value]) => <Fragment key={label}><dt className="text-text-2">{label}</dt><dd>{value}</dd></Fragment>)}
+      </dl>
     </div>
   );
 }

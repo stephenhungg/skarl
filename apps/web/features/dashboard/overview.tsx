@@ -1,10 +1,11 @@
 "use client";
+import { useQuery } from "convex/react";
 import Link from "next/link";
 import { Status } from "@/components/glaze/ui/status";
 import { Badge } from "@/components/glaze/ui/badge";
 import { cn } from "@/lib/glaze/utils";
-import { needsYou, useAudit, useExceptions, useOrderData, useOrderId, useReconciliation, type Id, type PayableRow, type SubmissionRow } from "./data";
-import { basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
+import { api, CONTROLLER, needsYou, useAudit, useExceptions, useOrderData, useOrderId, useReconciliation, type Id, type PayableRow, type SubmissionRow } from "./data";
+import { formatMs, basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
 import { Lordicon } from "./lordicon";
 import { ActivityFeed } from "./activity";
 import { Amount, Loading, PageHeader, Section, Unavailable } from "./ui";
@@ -20,6 +21,7 @@ export function Overview() {
       <PageHeader title={order.title}
         description={<>Order <span className="mono">{order.publicId}</span> &middot; {humanize(order.status)} &middot; {order.acceptedCount} of {order.quantityRequested} samples accepted</>} />
       <NeedsYouList orderId={orderId!} submissions={submissions} payables={payables} />
+      <Operations orderId={orderId!} />
       <Section title="Money">
         <dl className="grid grid-cols-2 border-y border-line-faint md:grid-cols-4">
           {[
@@ -113,6 +115,32 @@ function RecentActivity({ orderId }: { orderId: Id<"orders"> }) {
   return (
     <Section title="Recent activity" meta={<Link href="/dashboard/audit" className="underline underline-offset-4">Full audit log</Link>}>
       {audit === undefined ? <Loading /> : audit.length === 0 ? <p className="type-body-sm text-text-2">No activity yet.</p> : <ActivityFeed events={audit} limit={4} />}
+    </Section>
+  );
+}
+
+function Operations({ orderId }: { orderId: Id<"orders"> }) {
+  const stats = useQuery(api.analytics.overview, { demoIdentity: CONTROLLER, orderId });
+  if (!stats) return null;
+  const rate = stats.acceptanceRate.basisPoints;
+  const p = stats.verificationLatencyMs;
+  const items: [string, string, string?][] = [
+    ["Licensed clips", stats.submitted, `${stats.accepted} accepted${rate != null ? ` (${(Number(rate) / 100).toFixed(0)}%)` : ""}`],
+    ["AI check time", p.p50 != null ? formatMs(p.p50) : "No runs", p.p95 != null ? `p95 ${formatMs(p.p95)} over ${p.sampleCount} runs` : undefined],
+    ["Duplicates blocked", stats.duplicatesBlocked],
+    ["Refused actions", stats.refusals],
+  ];
+  return (
+    <Section title="Operations">
+      <dl className="grid grid-cols-2 border-y border-line-faint md:grid-cols-4">
+        {items.map(([label, value, sub], index) => (
+          <div key={label} className={cn("flex flex-col gap-0.5 py-4 md:px-5", index % 2 === 1 && "ps-5 border-s border-line-faint", index > 1 && "md:border-s md:border-line-faint", index === 0 && "md:ps-0")}>
+            <dt className="type-label-sm text-text-2">{label}</dt>
+            <dd className="type-heading tabular-nums">{value}</dd>
+            {sub && <dd className="type-label-sm text-text-3">{sub}</dd>}
+          </div>
+        ))}
+      </dl>
     </Section>
   );
 }

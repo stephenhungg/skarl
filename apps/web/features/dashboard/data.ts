@@ -1,5 +1,6 @@
 "use client";
 import { useQuery } from "convex/react";
+import { useSyncExternalStore } from "react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -19,10 +20,35 @@ export type AuditEvent = FunctionReturnType<typeof api.dashboard.auditEvents>[nu
 export type AgentRun = FunctionReturnType<typeof api.financeAgentData.runs>[number];
 export type ExceptionItem = FunctionReturnType<typeof api.exceptions.list>[number];
 
-/** The staged demo order. `undefined` while loading, `null` when the deployment has no seeded order. */
+// The controller's chosen order, shared by every page and remembered per browser.
+const ORDER_KEY = "skarl:dashboard:order";
+const listeners = new Set<() => void>();
+let chosen: string | null = null;
+let loaded = false;
+function readChosen() {
+  if (!loaded) { loaded = true; try { chosen = localStorage.getItem(ORDER_KEY); } catch { chosen = null; } }
+  return chosen;
+}
+export function chooseOrder(orderId: Id<"orders">) {
+  chosen = orderId;
+  try { localStorage.setItem(ORDER_KEY, orderId); } catch { /* storage unavailable */ }
+  listeners.forEach(listener => listener());
+}
+const subscribe = (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener); };
+
+/** The order in view: the one the controller picked, else the staged demo order. `undefined` while loading. */
 export function useOrderId(): Id<"orders"> | null | undefined {
+  const picked = useSyncExternalStore(subscribe, readChosen, () => null);
   const context = useQuery(api.dashboard.demoContext, { demoIdentity: CONTROLLER });
+  if (picked) return picked as Id<"orders">;
   return context === undefined ? undefined : context?.orderId ?? null;
+}
+
+export type OrderRow = FunctionReturnType<typeof api.orders.listOrders>["page"][number];
+/** Real orders only; scenario-lab orders are simulated artifacts and live on the lab page. */
+export function useOrders() {
+  const result = useQuery(api.orders.listOrders, { demoIdentity: CONTROLLER, paginationOpts: { numItems: 50, cursor: null } });
+  return result?.page.filter(order => !order.publicId.startsWith("scenario:"));
 }
 
 const scoped = (orderId: Id<"orders"> | null | undefined) => (orderId ? { demoIdentity: CONTROLLER, orderId } : "skip" as const);
