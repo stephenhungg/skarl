@@ -260,3 +260,12 @@ Final rebase verification also exposed a pre-existing cleanup-test race between
 concurrent local checkouts. The FFmpeg regression now asserts deletion of the
 temporary directories created by its own invocation, retaining real cleanup
 coverage without comparing unrelated processes' folders.
+
+A final shared-deployment collision briefly removed indexes from concurrently
+deployed reconciliation/chat work. After those commits landed, main was
+synchronized through `2677e1b`, both index families were restored, and live
+`exceptions.list` / `agentChatData.history` reads succeeded. No payment command
+or journal was created by that verification. The combined `pnpm check` passed
+320 tests (95 Node, 197 Convex and 28 payment-route) plus typechecks/docs/build.
+See [deployment coordination](../convex/README.md#shared-deployment-coordination)
+to avoid repeating the checkout-versus-shared-deployment mismatch.

@@ -72,3 +72,12 @@ pnpm check:convex
 The native backend enforces schemas/indexes; indexes are not unique constraints.
 Idempotency reads and writes are in the same mutation. `convex-test` checks the
 application logic, not real inference, wallet proofs or chain transfers.
+
+## Shared deployment coordination
+
+The shared development deployment is not isolated per checkout. A Convex push
+replaces the deployed module/schema set and can remove indexes that exist only
+in another branch. Deploy from freshly synchronized main and avoid overlapping
+backend deployments. Commit and merge parallel backend work before switching
+the deployment owner; a successful local typecheck does not establish that the
+checkout contains every currently deployed feature.
