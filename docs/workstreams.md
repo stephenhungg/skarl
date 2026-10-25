@@ -12,7 +12,7 @@ Named Hyphenate seats: **settlement accountant + AP clerk**.
 
 | Time (PDT) | Everyone |
 | --- | --- |
-| 00:30–01:30 | Hour 0–1: deploy Convex, seed demo identities (buyer, contributor, controller, finance agent) with roles, one order and the rubric. qtzx06 installs `@x402/evm`, `@x402/next` and `@x402/paywall`, then typechecks. **Every member confirms Coinbase eligibility and a verified Coinbase account** ([checklist](sponsor-tracks.md#team-eligibility-checklist)). Get a CDP API key and Base Sepolia ETH/USDC from the faucet. |
+| 00:30–01:30 | Hour 0–1: deploy Convex, seed demo identities (buyer, contributor, controller, finance agent) with roles, one order and the rubric. Stephen (Codex) installs `@x402/evm`, `@x402/next` and `@x402/paywall`, then typechecks. **Every member confirms Coinbase eligibility and a verified Coinbase account** ([checklist](sponsor-tracks.md#team-eligibility-checklist)). Get a CDP API key and Base Sepolia ETH/USDC from the faucet. |
 | 01:30–05:00 | Parallel build against the seeded deployment (sections below). Merge to `main` small and often. |
 | 05:00–06:30 | Integrate the full path end to end; stage the three clips (valid, duplicate re-encode, narration mismatch). |
 | 06:30–07:00 | **Record the fallback demo video** (opens with the duplicate moment). Write the real-vs-simulated inventory. |
@@ -29,14 +29,16 @@ Cut rule: if a step is not working by its slot, replace it with a clearly labele
 3. Mutations `acceptAndPublish` (payable + journal via `packages/ledger`, idempotent event keys, duplicate SHA-256/perceptual hash blocks a second payable), `proposePayment` and `approve` (the requester cannot approve; the agent identity can never approve).
 4. Approval wait via Convex Workflow; finance-agent explanation call over the deterministic projections.
 
-## qtzx06 — x402 on Base and Coinbase for Agents
+## Stephen (Codex) — x402 on Base and Coinbase for Agents
 
-**Own:** `packages/payments/**`, `apps/web/lib/payments/**` (to create), payment routes such as `apps/web/app/api/orders/[id]/fund/**` (to create), `docs/payments.md`.
+**Own:** `packages/payments/**`, `apps/web/lib/payments/**`, `apps/web/app/api/orders/[id]/fund/**`, `apps/web/app/api/payments/**`, `convex/payments.ts`, `docs/payments.md`. Shared schema changes remain coordinated with the backend owner; this implementation needed none.
 
-1. One real Base Sepolia x402 `exact` funding through the CDP facilitator; observe the USDC `Transfer` and call Stephen's funding-confirmation mutation.
+1. One real Base Sepolia x402 `exact` funding through the public testnet facilitator (or CDP when configured); observe USDC `Transfer` and `AuthorizationUsed`, then call the trusted funding-confirmation mutation.
 2. Coinbase for Agents: the buyer agent pays the funding endpoint via Wallet MCP (`initiate_x402_request`/`complete_x402_request`, tight `maxPayment`). The finance agent pays an **approved** intent via Wallet MCP `send` (the controller approves in Coinbase Wallet). No treasury key in the web runtime or the agent.
 3. Reconcile by `(txHash, logIndex)`: check the token, recipient, amount and receipt status, then report the facts to Convex. Save BaseScan links.
 4. Write the Coinbase builder feedback (biggest blocker, workaround, most-wanted capability) from what you actually hit.
+
+Current handoff: funding, receipt reconciliation, buyer CLI, browser payout hook and prepared MCP calls are implemented and tested with mocks. No live transfer yet. The remaining runtime requirements are a merged backend deployment, treasury address, buyer faucet funds and human wallet/MCP approval. See [payments](payments.md).
 
 ## silaswu4 — UI and contributor flow
 
@@ -62,10 +64,10 @@ The core path above is the floor, not the product. Cuts below remove infrastruct
 | Evidence player: click any criterion or duplicate match and the video seeks to that timestamp, with the narration transcript aligned underneath | MatthewKim323 | Makes the multimodal AI visible, not a JSON blob |
 | Server-side perceptual duplicate detection on sampled frames (re-encode/crop survives), with a side-by-side frame comparison in the UI | Stephen | The demo moment must be real, not a hash of the same file |
 | Finance agent as a real tool-calling loop over typed Convex tools: explains obligations, proposes payout batches, flags exceptions, and is visibly refused when it tries to approve | Stephen | Hyphenate's "autonomous finance" ask, with separation of duties on screen |
-| Three-way reconciliation: order contract vs. ledger vs. chain (BaseScan), with an exceptions queue for mismatches (wrong amount, unknown transfer, late settlement) | qtzx06 + Stephen | Hyphenate brief: "sources that disagree" |
+| Three-way reconciliation: order contract vs. ledger vs. chain (BaseScan), with an exceptions queue for mismatches (wrong amount, unknown transfer, late settlement) | Stephen (Codex) + Stephen | Hyphenate brief: "sources that disagree" |
 | Live financial statements from journals: payables, cash, revenue, a trial balance that always balances | Stephen | Proves the books are real double-entry, not a dashboard total |
-| Buyer funding via x402 by an agent (Wallet MCP) and a buyer view of delivery and remaining quota | qtzx06 | Coinbase x402 track |
-| Refund of unused quota (x402-funded order, controller-approved transfer back) | qtzx06 | Completes the money loop; keep if funding + payout work by 05:00 |
+| Buyer funding via x402 by an agent (Wallet MCP) and a buyer view of delivery and remaining quota | Stephen (Codex) | Coinbase x402 track |
+| Refund of unused quota (x402-funded order, controller-approved transfer back) | Stephen (Codex) | Completes the money loop; keep if funding + payout work by 05:00 |
 | Mini evaluation: 15–20 staged team clips (valid, missed step, narration mismatch, re-encoded copy) labeled before running; report accuracy, false acceptances and latency in the README | Stephen | "Actual AI engineering": a measured number, not a claim |
 | Convex Workflow for the approval wait, live queries everywhere | Stephen | Convex track criterion: real Convex features |
 
