@@ -5,7 +5,7 @@ import { internal } from "./_generated/api";
 import { createHash } from "node:crypto";
 import { prepareMedia, MediaPreparationError } from "./lib/media";
 import { observeVideo, observeAudio, GeminiFailure, videoModel, audioModel } from "./lib/gemini";
-import { buildVerificationReport, type AudioObservation, type VideoObservation, type ModelRun } from "./lib/verificationReport";
+import { buildVerificationReports, EVALUATION_PROJECTION_VERSION, type AudioObservation, type VideoObservation, type ModelRun } from "./lib/verificationReport";
 import { validateVerificationReportForRubric } from "../packages/contracts/src/verification";
 import { canonical, digest } from "./lib/finance";
 import type { Id } from "./_generated/dataModel";
@@ -49,22 +49,25 @@ export const run = internalAction({
           frameDHashes:submission.clientFrameDHashes,perceptualHash:submission.clientFrameDHashes.map(f=>f.hash).join(""),perceptualHashSource:"clientReported"});
       }
     }
-    if (submission.verificationOnly) warnings.push("Verification-only development upload; no training license, dataset sale, or payable may be created.");
-    let report=buildVerificationReport({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,criteria:rubric.criteria,
-      video,audio,modelRuns:runs,duplicate,warnings,...(failure ? {failure} : {}),reportId:`analysis:${job._id}:${generation}`});
-    let validation=validateVerificationReportForRubric(report,rubric.criteria.map(c=>c.criterionId));
-    if (!validation.valid) {
+    const scope={verificationOnly:submission.verificationOnly,evalRunId:submission.evalRunId};
+    let reports=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,criteria:rubric.criteria,
+      video,audio,modelRuns:runs,duplicate,warnings,...(failure ? {failure} : {}),reportId:`analysis:${job._id}:${generation}`},scope);
+    const validReports=()=>[reports.report,...(reports.qualityReport ? [reports.qualityReport] : [])]
+      .every(report=>validateVerificationReportForRubric(report,rubric.criteria.map(c=>c.criterionId)).valid);
+    if (!validReports()) {
       failure="report_validation_failed";
-      report=buildVerificationReport({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,criteria:rubric.criteria,
-        modelRuns:runs,duplicate:{status:"not_checked",matches:[]},failure:"report_validation_failed",reportId:`analysis:${job._id}:${generation}`});
-      validation=validateVerificationReportForRubric(report,rubric.criteria.map(c=>c.criterionId));
-      if (!validation.valid) throw new Error("fallback_report_invalid");
+      reports=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,criteria:rubric.criteria,
+        modelRuns:runs,duplicate:{status:"not_checked",matches:[]},warnings,failure,reportId:`analysis:${job._id}:${generation}`},scope);
+      if (!validReports()) throw new Error("fallback_report_invalid");
     }
+    const {report,qualityReport}=reports;
+    const evaluation=qualityReport ? {evaluationOnly:true,projectionVersion:EVALUATION_PROJECTION_VERSION,
+      qualityReport,qualityReportHash:digest(qualityReport)} : undefined;
     const reportJson=canonical(report);
     const reportStorageId=await ctx.storage.store(new Blob([reportJson],{type:"application/json"}));
     try {
       const analysisId=await ctx.runMutation(internal.submissions.complete,{jobId:job._id,generation,reportJson,
-        observationsJson:canonical({video,audio,failureCode:failure}),reportStorageId,reportHash:digest(report),processingElapsedMs:Date.now()-started,...(failure ? {failureCode:failure} : {})});
+        observationsJson:canonical({video,audio,failureCode:failure,...(evaluation ? {evaluation} : {})}),reportStorageId,reportHash:digest(report),processingElapsedMs:Date.now()-started,...(failure ? {failureCode:failure} : {})});
       return {analysisId};
     } catch {
       await ctx.storage.delete(reportStorageId);
@@ -80,14 +83,19 @@ export const interrupted = internalAction({
     const context=await ctx.runQuery(internal.submissions.interruptedContext,args);
     if(!context) return {skipped:true};
     const {job,submission,rubric,asset}=context;
-    const report=buildVerificationReport({submissionId:submission._id,taskVersionId:rubric._id,sourceHash:job.sourceHash,
+    const {report,qualityReport}=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash:job.sourceHash,
       durationMs:asset?.durationMs ?? 0,criteria:rubric.criteria,modelRuns:[],duplicate:{status:"not_checked",matches:[]},
-      failure:"verification_interrupted",reportId:`analysis:${job._id}:${args.generation}`});
+      failure:"verification_interrupted",reportId:`analysis:${job._id}:${args.generation}`},
+      {verificationOnly:submission.verificationOnly,evalRunId:submission.evalRunId});
     report.pipeline.version=job.pipelineVersion;
-    if(!validateVerificationReportForRubric(report,rubric.criteria.map(c=>c.criterionId)).valid) throw new Error("timeout_report_invalid");
+    if(qualityReport) qualityReport.pipeline.version=job.pipelineVersion;
+    if(![report,...(qualityReport ? [qualityReport] : [])].every(value=>
+      validateVerificationReportForRubric(value,rubric.criteria.map(c=>c.criterionId)).valid)) throw new Error("timeout_report_invalid");
+    const evaluation=qualityReport ? {evaluationOnly:true,projectionVersion:EVALUATION_PROJECTION_VERSION,
+      qualityReport,qualityReportHash:digest(qualityReport)} : undefined;
     const reportJson=canonical(report),reportStorageId=await ctx.storage.store(new Blob([reportJson],{type:"application/json"}));
     try {
-      return {analysisId:await ctx.runMutation(internal.submissions.complete,{...args,reportJson,observationsJson:canonical({failureCode:"verification_interrupted"}),
+      return {analysisId:await ctx.runMutation(internal.submissions.complete,{...args,reportJson,observationsJson:canonical({failureCode:"verification_interrupted",...(evaluation ? {evaluation} : {})}),
         reportStorageId,reportHash:digest(report),processingElapsedMs:job.leaseExpiresAt ? Math.max(0,Date.now()-job.leaseExpiresAt+5*60_000) : 0,failureCode:"verification_interrupted"})};
     } catch {await ctx.storage.delete(reportStorageId);return {skipped:true};}
   },

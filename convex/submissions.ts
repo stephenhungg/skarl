@@ -1,12 +1,12 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { demoToken, requireRole } from "./lib/demoAuth";
+import { requireRole } from "./lib/demoAuth";
 import { audit, actorFor, digest, requireTenant } from "./lib/finance";
 import { validateFrameHashes, compareFrameHashes } from "./lib/copyDetection";
+import { PIPELINE_VERSION, validateEvaluationScope, applyVerificationOnlyGuard, EVALUATION_PROJECTION_VERSION } from "./lib/verificationReport";
 
 const frame = v.object({ timestampMs: v.number(), hash: v.string() });
-import { PIPELINE_VERSION } from "./lib/verificationReport";
 export const generateUploadUrl = mutation({
   args: { demoIdentity: v.string() },
   handler: async (ctx, args) => { await requireRole(ctx, args.demoIdentity, "contributor"); return ctx.storage.generateUploadUrl(); },
@@ -14,7 +14,7 @@ export const generateUploadUrl = mutation({
 
 export const create = mutation({
   args: { demoIdentity: v.string(), orderId: v.id("orders"), storageId: v.id("_storage"), clientRequestId: v.string(),
-    consentAcknowledged: v.boolean(), clientFrameDHashes: v.optional(v.array(frame)), verificationOnly: v.optional(v.boolean()) },
+    consentAcknowledged: v.boolean(), clientFrameDHashes: v.optional(v.array(frame)), verificationOnly: v.optional(v.boolean()), evalRunId: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, "contributor");
     const order = await ctx.db.get(args.orderId);
@@ -22,12 +22,13 @@ export const create = mutation({
     requireTenant(principal, order);
     if (!args.consentAcknowledged) throw new Error("consent_required");
     if (!/^[a-zA-Z0-9._:-]{1,120}$/.test(args.clientRequestId)) throw new Error("invalid_request_id");
+    validateEvaluationScope(args.verificationOnly, args.evalRunId);
     const existing = await ctx.db.query("submissions").withIndex("by_request", q => q.eq("organizationId", principal.organizationId)
       .eq("contributorTokenIdentifier", principal.tokenIdentifier).eq("clientRequestId", args.clientRequestId)).unique();
     if (existing) {
       const asset = existing.originalAssetId ? await ctx.db.get(existing.originalAssetId) : null;
       if (existing.orderId !== args.orderId || asset?.storageId !== args.storageId ||
-        !!existing.verificationOnly !== !!args.verificationOnly || digest(existing.clientFrameDHashes ?? []) !== digest(args.clientFrameDHashes ?? [])) throw new Error("submission_request_conflict");
+        !!existing.verificationOnly !== !!args.verificationOnly || existing.evalRunId !== args.evalRunId || digest(existing.clientFrameDHashes ?? []) !== digest(args.clientFrameDHashes ?? [])) throw new Error("submission_request_conflict");
       return { submissionId: existing._id, replayed: true };
     }
     if (["closed", "cancelled", "cancelling", "fulfilled", "refunded"].includes(order.status)) throw new Error("order_closed");
@@ -47,7 +48,7 @@ export const create = mutation({
     const submissionId = await ctx.db.insert("submissions", { organizationId: order.organizationId, orderId: order._id,
       taskVersionId: rubric._id, contributorTokenIdentifier: principal.tokenIdentifier, status: "queued",
       clientRequestId: args.clientRequestId, expectedSourceHash: uploadedHash, ...(args.clientFrameDHashes ? { clientFrameDHashes: args.clientFrameDHashes } : {}),
-      verificationOnly: args.verificationOnly ?? false, updatedAt: now });
+      verificationOnly: args.verificationOnly ?? false, ...(args.evalRunId !== undefined ? { evalRunId: args.evalRunId } : {}), updatedAt: now });
     const originalAssetId = await ctx.db.insert("mediaAssets", { organizationId: order.organizationId, submissionId,
       storageId: args.storageId, purpose: "original", status: "uploaded", contentHash: uploadedHash,
       mimeType: uploadMime, sizeBytes: metadata.size });
@@ -115,7 +116,12 @@ export const copies = internalQuery({
   handler: async (ctx, args) => {
     const submission = await ctx.db.get(args.submissionId);
     if (!submission?.sourceHash) return { status: "not_checked" as const, matches: [] };
-    const candidates = await ctx.db.query("submissions").withIndex("by_contributor", q => q.eq("organizationId", submission.organizationId)).take(201);
+    validateEvaluationScope(submission.verificationOnly, submission.evalRunId);
+    // An explicit undefined index value excludes every scoped evaluation row from the ordinary pool.
+    const candidates = await ctx.db.query("submissions").withIndex("by_eval_run", q =>
+      q.eq("organizationId", submission.organizationId).eq("evalRunId", submission.evalRunId)).take(201);
+    if (submission.evalRunId !== undefined && candidates.some(candidate => !candidate.verificationOnly ||
+      candidate.orderId !== submission.orderId || candidate.contributorTokenIdentifier !== submission.contributorTokenIdentifier)) throw new Error("evaluation_scope_contaminated");
     if (candidates.length > 200) return { status: "not_checked" as const, matches: [] };
     const matches = [];
     for (const candidate of candidates) {
@@ -131,7 +137,10 @@ export const copies = internalQuery({
   },
 });
 
-/** Only the Node action calls this after canonical schema/rubric validation. Not a public model-output API. */
+/** Trusted Node action owns full canonical schema/rubric validation before storing either report.
+ * This internal mutation fences scope, frozen criterion IDs, digests and licensing without runtime code generation.
+ * It is not a public model-output API.
+ */
 export const complete = internalMutation({
   args: { jobId: v.id("jobs"), generation: v.number(), reportJson: v.string(), observationsJson: v.string(),
     reportStorageId: v.id("_storage"), reportHash: v.string(), processingElapsedMs: v.number(), failureCode: v.optional(v.string()) },
@@ -154,6 +163,24 @@ export const complete = internalMutation({
     if (interruptedFailure && (report.pipeline.status !== "failed" || report.recommendation !== "needs_review")) throw new Error("timeout_report_must_fail_closed");
     const submission = await ctx.db.get(job.submissionId);
     if (!submission || submission.status === "accepted" || submission.taskVersionId !== job.taskVersionId || submission.sourceHash !== job.sourceHash) throw new Error("submission_changed");
+    validateEvaluationScope(submission.verificationOnly, submission.evalRunId);
+    const observations = JSON.parse(args.observationsJson);
+    const evaluation = observations?.evaluation;
+    if (submission.evalRunId !== undefined) {
+      const quality = evaluation?.qualityReport;
+      const rubric = await ctx.db.get(submission.taskVersionId);
+      const expectedCriteria = new Set(rubric?.criteria.map(c => c.criterionId) ?? []);
+      const criterionIds = Array.isArray(quality?.criteria)
+        ? quality.criteria.map((criterion: {criterionId?: unknown}) => criterion?.criterionId) : [];
+      const frozenCriteriaMatch = criterionIds.length === expectedCriteria.size && new Set(criterionIds).size === criterionIds.length &&
+        criterionIds.every((criterionId: unknown) => typeof criterionId === "string" && expectedCriteria.has(criterionId));
+      if (!evaluation || evaluation.evaluationOnly !== true || evaluation.projectionVersion !== EVALUATION_PROJECTION_VERSION ||
+        !quality || !rubric || !frozenCriteriaMatch ||
+        quality.submissionId !== report.submissionId || quality.taskVersionId !== report.taskVersionId ||
+        digest(quality.source) !== digest(report.source) || quality.pipeline.version !== job.pipelineVersion ||
+        digest(quality) !== evaluation.qualityReportHash || digest(applyVerificationOnlyGuard(quality)) !== args.reportHash) throw new Error("evaluation_report_mismatch");
+    } else if (evaluation !== undefined) throw new Error("unexpected_evaluation_projection");
+    if (submission.verificationOnly && report.recommendation !== "needs_review") throw new Error("verification_only_must_review");
     const context = { organizationId: job.organizationId, jobId: job._id, submissionId: job.submissionId, taskVersionId: job.taskVersionId,
       sourceHash: job.sourceHash, pipelineVersion: job.pipelineVersion, leaseGeneration: args.generation,
       summary: `${report.recommendation}: ${report.criteria.map((c: {criterionId:string;status:string}) => `${c.criterionId}=${c.status}`).join(", ")}`,
@@ -195,6 +222,7 @@ export const getReport = query({
     const analysis = submission.currentAnalysisId ? await ctx.db.get(submission.currentAnalysisId) : null;
     if (analysis && (analysis.organizationId !== submission.organizationId || analysis.submissionId !== submission._id)) throw new Error("analysis_reference_mismatch");
     return { status: submission.status, sourceHash: submission.sourceHash, perceptualHashSource: submission.perceptualHashSource,
+      verificationOnly: submission.verificationOnly ?? false, evalRunId: submission.evalRunId,
       report: analysis?.reportJson ? JSON.parse(analysis.reportJson) : null,
       observations: analysis?.observationsJson ? JSON.parse(analysis.observationsJson) : null,
       processingElapsedMs: analysis?.processingElapsedMs };
@@ -210,5 +238,24 @@ export const interruptedContext = internalQuery({
     const asset=submission?.originalAssetId ? await ctx.db.get(submission.originalAssetId) : null;
     if(!submission || !rubric || submission.currentAnalysisId || submission.organizationId !== job.organizationId || rubric.organizationId !== job.organizationId) return null;
     return {job,submission,rubric,asset};
+  },
+});
+
+/** Bounded inventory lets an eval runner reject unknown or cross-owner run members. */
+export const evaluationRun = query({
+  args: { demoIdentity: v.string(), orderId: v.id("orders"), evalRunId: v.string() },
+  handler: async (ctx, args) => {
+    const principal = await requireRole(ctx, args.demoIdentity, "contributor");
+    validateEvaluationScope(true, args.evalRunId);
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("order_not_found");
+    requireTenant(principal, order);
+    const submissions = await ctx.db.query("submissions").withIndex("by_eval_run", q =>
+      q.eq("organizationId", principal.organizationId).eq("evalRunId", args.evalRunId)).take(201);
+    if (submissions.some(submission => !submission.verificationOnly || submission.orderId !== args.orderId ||
+      submission.contributorTokenIdentifier !== principal.tokenIdentifier)) throw new Error("evaluation_scope_contaminated");
+    return { submissions: submissions.slice(0, 200).map(submission => ({ _id: submission._id,
+      clientRequestId: submission.clientRequestId, ...(submission.sourceHash ? { sourceHash: submission.sourceHash } : {}) })),
+      truncated: submissions.length > 200 };
   },
 });

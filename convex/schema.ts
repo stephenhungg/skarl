@@ -155,12 +155,15 @@ export default defineSchema({
     frameDHashes: v.optional(v.array(v.object({ timestampMs: v.number(), hash: v.string() }))),
     clientFrameDHashes: v.optional(v.array(v.object({ timestampMs: v.number(), hash: v.string() }))),
     verificationOnly: v.optional(v.boolean()),
+    evalRunId: v.optional(v.string()),
     currentAnalysisId: v.optional(v.id("analysisResults")),
     currentDecisionId: v.optional(v.id("reviewDecisions")),
     supersedesSubmissionId: v.optional(v.id("submissions")),
     updatedAt: v.number(),
   })
     .index("by_order_status", ["orderId", "status"])
+    .index("by_eval_run", ["organizationId", "evalRunId"])
+    .index("by_org_status", ["organizationId", "status"])
     .index("by_contributor", ["organizationId", "contributorTokenIdentifier"])
     // Scoped to the contributor so one user cannot claim another's request ID.
     .index("by_request", [

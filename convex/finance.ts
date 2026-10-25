@@ -57,7 +57,7 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
     const perceptual = submission.perceptualHash ? await ctx.db.query("submissions").withIndex("by_perceptual_hash", q =>
       q.eq("organizationId", submission.organizationId).eq("perceptualHash", submission.perceptualHash)).collect() : [];
     const frameCandidates = submission.frameDHashes?.length ? await ctx.db.query("submissions")
-      .withIndex("by_contributor", q => q.eq("organizationId", submission.organizationId)).take(201) : [];
+      .withIndex("by_org_status", q => q.eq("organizationId", submission.organizationId).eq("status", "accepted")).take(201) : [];
     if (frameCandidates.length > 200) return refuse(ctx, principal, submission, "acceptance", "copy_check_capacity_exceeded");
     const matching = [...exact, ...perceptual, ...frameCandidates].find(candidate => candidate._id !== submission._id && candidate.status === "accepted" &&
       (candidate.sourceHash === submission.sourceHash || (!!candidate.perceptualHash && candidate.perceptualHash === submission.perceptualHash) ||

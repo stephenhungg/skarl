@@ -1,4 +1,4 @@
-# AI Verification: Task 2
+# AI Verification
 
 The shared Convex dev deployment now has a scheduled Node verification pipeline,
 private upload workflow, server-computed original SHA-256, separate visual/audio
@@ -57,15 +57,34 @@ quality benchmark or real human demonstration evaluation has been completed.
    no payable, acceptance decision or payment. A five-minute watchdog handles
    interrupted jobs by exposing review rather than leaving a spinner.
 
-## Measured cloud run and live limitation
+## Latest Task 3 smoke test
 
-The latest ten-second synthetic clip completed the cloud action in **8,942 ms**.
+The evaluation runner processed one pre-labeled generated color-pattern clip
+with machine speech, using isolated copy scope and verification-only licensing.
+Both independent stages completed: `gemini-3.8-flash` visual observation took
+**3,629 ms** and `gemini-3.5-transcribe` took **1,038 ms**. Backend processing was
+**9,766 ms**; client create-to-stored-report latency was **12,443 ms**. All three
+criteria were unobservable and both advisory and operational reports recommended
+review. This proves the transport/report path on a generated negative; it does
+not prove red-cup acceptance, human-task accuracy or calibrated copy detection.
+The earlier provider failures below remain relevant operational observations.
+
+Scoped evaluation adds a canonical advisory quality report before the licensing
+warning. Its hash/source/rubric are bound to the operational report, which stays
+review-only. Full schema validation runs in the Node action; Convex's standard
+runtime forbids Ajv's dynamic compilation, so its completion mutation checks
+scope, hashes, frozen criterion IDs and the exact licensing guard. See the
+[clip runner](../evals/README.md#run-actual-local-clips) and [status](status.md).
+
+## Task 2 cloud run and initial provider limits
+
+The earlier Task 2 ten-second synthetic clip completed the cloud action in **8,942 ms**.
 Its real `gemini-3.5-transcribe` audio round trip was **1,262 ms** and the transcript
 was stored. Server hashing, actual FFmpeg processing and canonical failure-report
 persistence ran. The visual stage returned HTTP 503; the final report is failed /
 needs_review. Earlier native-video attempts and a minimal image probe also failed
-or timed out. A listed Argon model returned 429 with zero free-tier quota. **No
-successful live visual observation or real human-demo quality result is claimed.**
+or timed out. A listed Argon model returned 429 with zero free-tier quota. **That Task 2 attempt did not produce a successful visual observation.** The
+later Task 3 generated-input success is above; human-demo quality remains unmeasured.
 See [current status](status.md#task-2-verification-and-actual-provider-state).
 
 ## Models and configuration

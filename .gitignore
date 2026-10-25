@@ -12,3 +12,6 @@ __pycache__/
 work/
 services/verifier/.cache/
 .convex/
+
+# Local evaluation artifacts contain private clip metadata and report excerpts.
+evals/results/

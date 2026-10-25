@@ -105,3 +105,19 @@ The supplied examples are synthetic metadata with no media. The output labels th
 - [SSCD implementation and evaluation material](https://github.com/facebookresearch/sscd-copy-detection)
 - [Audio–visual evidence conflict research](https://arxiv.org/abs/2604.02605)
 - [Video citation verification study](https://arxiv.org/abs/2608.15574)
+
+## Implemented cloud clip runner
+
+Use `pnpm eval:clips <manifest.json>` for the mini evaluation. See the
+[runner instructions and manifest template](../evals/README.md#run-actual-local-clips).
+Labels and source hashes are frozen before network work; real uploads trigger
+the existing Convex verifier. Results are local dated JSON plus a Markdown
+metrics table. Generated artifacts and recordings are not committed.
+
+The scored recommendation is the validated pre-licensing advisory quality
+report, while the operational report and the financial guard keep evaluation
+submissions ineligible for payment. Evaluation copy comparisons are scoped to
+the run, and dependencies execute in manifest order. Failed providers, blocked
+cases and client timeouts remain visible in the denominator and coverage; no
+failed review fallback is credited as a correct model decision. No real corpus
+accuracy is claimed merely because the runner tests pass.

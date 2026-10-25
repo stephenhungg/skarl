@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1.0",
+  "syntheticMetadata": false,
+  "description": "TEMPLATE ONLY. Replace paths, IDs and SHA-256 values with consented local clips and independently frozen labels. Placeholder files/hashes do not exist and must fail preflight. Keep the real manifest and recordings private.",
+  "samples": [
+    {
+      "sampleId": "replace-valid-original",
+      "actorId": "replace-actor-test",
+      "sessionId": "replace-session-test",
+      "originRecordingId": "replace-recording-test-1",
+      "split": "test",
+      "variant": "original",
+      "mediaPath": "private-clips/REPLACE-original.mp4",
+      "contentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "expected": {
+        "recommendation": "accept",
+        "duplicateStatus": "clear",
+        "criteria": { "red-cup-pickup": "supported", "coaster-placement": "supported", "narration-alignment": "supported" }
+      }
+    },
+    {
+      "sampleId": "replace-reencoded-copy",
+      "actorId": "replace-actor-test",
+      "sessionId": "replace-session-test",
+      "originRecordingId": "replace-recording-test-1",
+      "split": "test",
+      "variant": "reencoded-copy",
+      "duplicateOf": "replace-valid-original",
+      "mediaPath": "private-clips/REPLACE-copy.webm",
+      "contentSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "expected": {
+        "recommendation": "needs_review",
+        "duplicateStatus": "suspected",
+        "criteria": { "red-cup-pickup": "supported", "coaster-placement": "supported", "narration-alignment": "supported" }
+      }
+    }
+  ]
+}

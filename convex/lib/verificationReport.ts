@@ -401,3 +401,28 @@ export function buildVerificationReport(input: BuildVerificationReportInput): Ve
     warnings: [...new Set(warnings)],
   };
 }
+
+export const EVALUATION_PROJECTION_VERSION = "prelicensing-advisory-v1";
+export const VERIFICATION_ONLY_WARNING = "Verification-only development upload; no training license, dataset sale, or payable may be created.";
+
+/** Evaluation scope is immutable submission metadata, never a model instruction. */
+export function validateEvaluationScope(verificationOnly: boolean | undefined, evalRunId: string | undefined): void {
+  if (evalRunId === undefined) return;
+  if (!/^[A-Za-z0-9._:-]{1,64}$/.test(evalRunId)) throw new Error("invalid_eval_run_id");
+  if (verificationOnly !== true) throw new Error("evaluation_requires_verification_only");
+}
+
+/** Apply the licensing guard after quality comparison; all other evidence is preserved. */
+export function applyVerificationOnlyGuard(report: VerificationReport): VerificationReport {
+  return { ...report, pipeline: { ...report.pipeline, status: report.pipeline.status === "failed" ? "failed" : "needs_review" },
+    recommendation: "needs_review", warnings: [...new Set([...report.warnings, VERIFICATION_ONLY_WARNING])] };
+}
+
+export function buildVerificationReports(input: BuildVerificationReportInput, scope: { verificationOnly?: boolean; evalRunId?: string }): {
+  report: VerificationReport; qualityReport?: VerificationReport;
+} {
+  validateEvaluationScope(scope.verificationOnly, scope.evalRunId);
+  const qualityReport = buildVerificationReport(input);
+  return { report: scope.verificationOnly ? applyVerificationOnlyGuard(qualityReport) : qualityReport,
+    ...(scope.verificationOnly && scope.evalRunId !== undefined ? { qualityReport } : {}) };
+}

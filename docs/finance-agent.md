@@ -113,3 +113,13 @@ claiming execution. A premature claim returns `dispatch_not_ready` without
 creating a payment attempt. Claiming consumes the outbox and creates the durable
 attempt in one mutation; `delivered` means handed to the executor, never paid.
 The existing wallet/reconciliation path remains responsible for settlement.
+
+## Live read-only loop measurement
+
+After earlier provider timeouts, a real `gemini-3.8-flash` run selected
+`getTrialBalance`, read the funded order's exact `10000000` micro-USDC debit and
+credit totals, and persisted its final advisory explanation. Client time was
+6,805 ms and backend run time 6,351 ms. It created no proposal, approval or
+payment attempt. Proposal/refusal policy coverage remains the synthetic
+regression suite; this measurement proves the native function-call/result/final
+explanation loop against the shared cloud backend.

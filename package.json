@@ -20,7 +20,9 @@
     "agent:fund": "node packages/payments/src/agent-fund.ts",
     "test:payments": "vitest run --config packages/payments/vitest.config.mts",
     "verify:sample": "node scripts/verify-sample.mjs",
-    "demo:e2e": "node scripts/demo-e2e.mjs"
+    "demo:e2e": "node scripts/demo-e2e.mjs",
+    "eval:clips": "node scripts/eval-clips.mjs",
+    "test:eval": "node --test scripts/eval-clips.test.mjs"
   },
   "dependencies": {
     "@convex-dev/workflow": "0.4.10",

@@ -1,14 +1,14 @@
 # Build Status
 
-Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 finance and Task 2 verification run on the shared Convex cloud dev deployment below. Audio inference succeeded; successful visual inference remains externally blocked as detailed below. Payment adapters are implemented; the payment owner recorded a first live x402 funding below. Live payout remains unconfirmed. Update this file when another integration becomes demonstrable.
+Truthful state as of October 25, 2026, after the adversarial audit and the move from Solana to Base Sepolia. Task 1 finance and Task 2 verification run on the shared Convex cloud dev deployment below. Both visual and audio inference completed on one generated-media smoke test; a human demonstration quality benchmark remains unmeasured. Payment adapters are implemented; the payment owner recorded a first live x402 funding below. Live payout remains unconfirmed. Update this file when another integration becomes demonstrable.
 
 | Area | Implemented now | Remaining for the [demo path](workstreams.md) |
 | --- | --- | --- |
 | Web | Next.js landing/contributor recorder, Convex upload/status wiring, health and payment API routes; production build passes | Controller dashboard, live browser/wallet integration and HTTPS deployment verification |
 | Shared contracts | Base Sepolia chain constants (`chain.ts`), funding/payout status lists, JSON Schema, TS report validation, `parseAtomicUsdc` | Rubric-membership check wired into acceptance |
 | Convex | Shared cloud dev deployment; idempotent seed; persisted demo-role checks; `acceptAndPublish` / `proposePayment` / `approve`; uploads/scheduling/fenced report persistence; dashboard queries; committed generated API | Licensed media downloads and verified contributor wallets; production auth is out of demo scope |
-| Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; live audio measured | Successful live visual response blocked by Flash 503/timeouts and Argon zero quota; real demonstration quality/copy calibration unmeasured; Python worker deferred |
-| Evaluation | Scoring scaffolding | Deferred: no labeled corpus. Staged demo clips only |
+| Verifier | Scheduled Node action; SHA-256; server FFmpeg/JPEG/WAV/dHashes; independent Gemini stages; deterministic rubric comparison; validated stored reports; live audio measured | Both model stages completed on one generated input; human task acceptance, model accuracy and copy calibration remain unmeasured; intermittent provider failures persist |
+| Evaluation | Cloud clip runner; pre-labeled/source-hashed manifest; isolated copy scope; advisory quality projection; dated JSON/Markdown metrics and resume checkpoints | No consented labeled human corpus or measured accuracy run yet; provider availability remains a blocker |
 | Ledger | Atomic journal persistence; journal-derived trial balance, cash, deferred revenue, revenue/expense and payables by contributor; exact replay protection | Live payout settlement and end-to-end reconciliation evidence |
 | Payments | Base Sepolia x402 exact route; nonce dedup; receipt/authorization-log validation; atomic funding and payout journals; three-way reconciliation; testnet buyer CLI; browser payout hook; prepared Wallet MCP calls; mock-backed tests | First x402 funding recorded below; v2 read-back is funded with 10000000 micro-USDC cash and deferred revenue. Complete the independent approval, wallet payout and reconciliation demo |
 | Finance agent | Gemini function-calling action; six typed tools; persisted transcript/explanation; cumulative exact batch and call caps; existing proposal and refused approval audits | Live model measurement below; durable Workflow approval wait implemented; wallet execution remains separate |
@@ -210,3 +210,53 @@ One live query took **145 ms** and returned cash `10000000`, deferred revenue
 `10000000`, revenue `0`, and equal debit/credit totals of `10000000` micro-USDC.
 This is a current journal projection of the funded v2 order, not new inference
 or a new transfer.
+
+## Task 3 — clip evaluation harness
+
+`pnpm eval:clips <manifest.json>` validates and freezes labels/source hashes
+before network requests, uploads actual recordings to the existing scheduled
+Convex verifier and scores stored advisory quality projections with the Python
+scorer when report coverage is complete. It writes local dated JSON and a
+Markdown metrics table under ignored `evals/results/`, preserving partial state
+for resumption without rerunning completed submissions.
+
+Evaluation submissions remain verification-only and cannot create a payable.
+Their quality report omits only the subsequently added licensing warning;
+inference, media and safety warnings remain intact. Copy checks are isolated by
+evaluation run, while financial duplicate blocking remains global over accepted
+work. Provider failures are excluded from correctness credit, and incomplete
+cases remain in the reported coverage and failure-adjusted accuracy denominator.
+Only harness code, tests and the placeholder manifest are committed; no media
+or generated benchmark result is included. No 15–20 clip accuracy result exists
+yet.
+
+Task 3 implementation validation (before subsequent team feature merges):
+`pnpm check` passed **273 tests** (74 package, 164
+Convex, 24 payment-route and 11 runner tests), root/Convex/web typechecks,
+documentation checks and the production build. The separate Python checks
+passed 54 verifier pytest cases and 10 scorer unittests. Cloud deploy/typecheck
+passed after keeping Ajv schema compilation in the Node runtime; the completion
+mutation performs binding/criterion/licensing checks without dynamic compilation.
+
+**Live generated-media transport smoke:** one pre-labeled ten-second generated
+color-pattern clip with machine speech (not a human demonstration) ran through
+`pnpm eval:clips`. Both independent models responded: Flash visual observation
+**3,629 ms**, Transcribe **1,038 ms**, backend processing **9,766 ms**, and client
+create-to-stored-report latency **12,443 ms**. The advisory report had all three
+criteria unobservable and recommended review; the operational report remained
+review-only. Submission: `mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j`. The runner wrote
+ignored JSON/Markdown artifacts and invoked the offline scorer. A single
+obvious generated negative is transport evidence, not a human accuracy benchmark;
+no 15–20 clip quality evaluation has run.
+
+**Later live finance-agent check:** provider capacity recovered. Run
+`mx73x9mwd5qg366srgvygh5t098gy0hq` completed in **6,805 ms client time**
+(**6,351 ms backend run time**). Gemini selected `getTrialBalance`, received exact
+`10000000` debit/credit totals from the real statement query, and produced a
+persisted advisory explanation. This supersedes the earlier availability blocker
+for that read-only run. It proposed, approved and transferred nothing.
+
+Final rebase verification also exposed a pre-existing cleanup-test race between
+concurrent local checkouts. The FFmpeg regression now asserts deletion of the
+temporary directories created by its own invocation, retaining real cleanup
+coverage without comparing unrelated processes' folders.

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { Buffer } from "node:buffer";
 import { execFile } from "node:child_process";
-import { chmod, copyFile, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -13,7 +13,7 @@ import { frameDHash, prepareMedia } from "./lib/media";
 // chmod calls and FFmpeg execution. No installed dependency is modified.
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...actual, copyFile: vi.fn(actual.copyFile), chmod: vi.fn(actual.chmod) };
+  return { ...actual, copyFile: vi.fn(actual.copyFile), chmod: vi.fn(actual.chmod), mkdtemp: vi.fn(actual.mkdtemp) };
 });
 
 const execute = promisify(execFile);
@@ -167,10 +167,13 @@ describe("actual bounded FFmpeg preprocessing", () => {
     await expect(prepareMedia(new Uint8Array(25 * 1024 * 1024 + 1), "video/mp4")).rejects.toThrow("media_input_size_exceeded");
     await expect(prepareMedia(narrated, "application/json")).rejects.toThrow("unsupported_media_type");
     await expect(prepareMedia(new Uint8Array(), "video/mp4")).rejects.toThrow("empty_media");
-    const before = (await readdir(tmpdir())).filter((name) => name.startsWith("skarl-media-") && !name.startsWith("skarl-media-test-"));
+    const before = vi.mocked(mkdtemp).mock.results.length;
     await expect(prepareMedia(new Uint8Array([1, 2, 3]), "video/mp4")).rejects.toThrow("missing_video_stream");
-    const after = (await readdir(tmpdir())).filter((name) => name.startsWith("skarl-media-") && !name.startsWith("skarl-media-test-"));
-    expect(after.sort()).toEqual(before.sort());
+    // Other checkouts may preprocess clips concurrently in the same OS temp root.
+    // Assert cleanup of this invocation's actual directory, not a global snapshot.
+    const created = await Promise.all(vi.mocked(mkdtemp).mock.results.slice(before).map(result => result.value));
+    expect(created).toHaveLength(1);
+    for (const path of created) await expect(stat(path)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects overlong video even when streaming metadata has no duration", async () => {
