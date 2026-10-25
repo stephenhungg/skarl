@@ -20,3 +20,15 @@ test("only exact EIP-3009 authorization with integer amount and bounded expiry i
   assert.throws(() => parseFundingAuthorization({ authorization: { ...authorization, validBefore: "9999999999999999999999" } }));
   assert.throws(() => parseFundingAuthorization({ permit2: {} }));
 });
+
+test("optional Solana funding is second and binds a canonical order memo", async () => {
+  const { SOLANA_PAYMENT_NETWORK, SOLANA_USDC_MINT } = await import("@skarl/contracts/chain");
+  const solanaTreasury = "5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh";
+  const base = fundingRouteConfig(1_000_000n, treasury);
+  const config = fundingRouteConfig(1_000_000n, treasury, { treasuryAddress: solanaTreasury, orderId: "order123" });
+  assert.ok(Array.isArray(config.accepts));
+  assert.deepEqual(config.accepts[0], base.accepts);
+  assert.deepEqual(config.accepts[1], { scheme: "exact", network: SOLANA_PAYMENT_NETWORK, payTo: solanaTreasury,
+    price: { asset: SOLANA_USDC_MINT, amount: "1000000" }, maxTimeoutSeconds: 60, extra: { memo: "skarl:order123" } });
+  assert.throws(() => fundingRouteConfig(1n, treasury, { treasuryAddress: "invalid", orderId: "order" }));
+});

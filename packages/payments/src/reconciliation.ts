@@ -1,7 +1,7 @@
-import { PAYMENT_NETWORK, USDC_ADDRESS } from "@skarl/contracts/chain";
+import { PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK, SOLANA_USDC_MINT, USDC_ADDRESS, paymentRail } from "@skarl/contracts/chain";
 
 export type TransferIdentity = Readonly<{ network: string; txHash: string; logIndex: number }>;
-export type ExpectedTransfer = Readonly<{ fromAddress: string; toAddress: string; amountAtomic: bigint }>;
+export type ExpectedTransfer = Readonly<{ fromAddress: string; toAddress: string; amountAtomic: bigint; network?: string }>;
 export type TransferObservation = TransferIdentity & ExpectedTransfer & Readonly<{
   tokenAddress: string;
   blockNumber: bigint;
@@ -12,31 +12,36 @@ export type TransferObservation = TransferIdentity & ExpectedTransfer & Readonly
 }>;
 export const REQUIRED_CONFIRMATIONS = 2;
 const HASH = /^0x[\da-fA-F]{64}$/;
+const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const SOLANA_SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
 const ADDRESS = /^0x[\da-fA-F]{40}$/;
 const MAX_AMOUNT = (1n << 63n) - 1n;
 
 export function chainIdentity(transfer: TransferIdentity): string {
-  if (transfer.network !== PAYMENT_NETWORK || !HASH.test(transfer.txHash) ||
+  if ((transfer.network !== PAYMENT_NETWORK && transfer.network !== SOLANA_PAYMENT_NETWORK) ||
+    !(transfer.network === SOLANA_PAYMENT_NETWORK ? SOLANA_SIGNATURE : HASH).test(transfer.txHash) ||
     !Number.isSafeInteger(transfer.logIndex) || transfer.logIndex < 0) throw new Error("invalid_transfer_identity");
-  return `${transfer.network}:${transfer.txHash.toLowerCase()}:${transfer.logIndex}`;
+  return `${transfer.network}:${transfer.network === SOLANA_PAYMENT_NETWORK ? transfer.txHash : transfer.txHash.toLowerCase()}:${transfer.logIndex}`;
 }
 
 /** Validate RPC-derived evidence before a financial mutation. Caller must obtain it from a trusted RPC, never a buyer payload. */
 export function validateTransfer(observation: TransferObservation, expected: ExpectedTransfer): void {
-  if (observation.network !== PAYMENT_NETWORK) throw new Error("wrong_network");
-  if (observation.tokenAddress.toLowerCase() !== USDC_ADDRESS.toLowerCase()) throw new Error("wrong_token");
+  if (observation.network !== (expected.network ?? PAYMENT_NETWORK)) throw new Error("wrong_network");
+  const solana = observation.network === SOLANA_PAYMENT_NETWORK;
+  const normalize = (value: string) => solana ? value : value.toLowerCase();
+  if (normalize(observation.tokenAddress) !== normalize(solana ? SOLANA_USDC_MINT : USDC_ADDRESS)) throw new Error("wrong_token");
   chainIdentity(observation);
-  if (typeof observation.blockNumber !== "bigint" || observation.blockNumber < 0n || !HASH.test(observation.blockHash)) {
+  if (typeof observation.blockNumber !== "bigint" || observation.blockNumber < 0n || !(solana ? SOLANA_ADDRESS : HASH).test(observation.blockHash)) {
     throw new Error("invalid_block_identity");
   }
   if (observation.succeeded !== true) throw new Error("receipt_failed");
   if (!Number.isSafeInteger(observation.confirmations) || observation.confirmations < REQUIRED_CONFIRMATIONS) {
     throw new Error("insufficient_confirmations");
   }
-  if (!ADDRESS.test(expected.fromAddress) || !ADDRESS.test(observation.fromAddress) ||
-    observation.fromAddress.toLowerCase() !== expected.fromAddress.toLowerCase()) throw new Error("wrong_sender");
-  if (!ADDRESS.test(expected.toAddress) || !ADDRESS.test(observation.toAddress) ||
-    observation.toAddress.toLowerCase() !== expected.toAddress.toLowerCase()) throw new Error("wrong_recipient");
+  if (!(solana ? SOLANA_ADDRESS : ADDRESS).test(expected.fromAddress) || !(solana ? SOLANA_ADDRESS : ADDRESS).test(observation.fromAddress) ||
+    normalize(observation.fromAddress) !== normalize(expected.fromAddress)) throw new Error("wrong_sender");
+  if (!(solana ? SOLANA_ADDRESS : ADDRESS).test(expected.toAddress) || !(solana ? SOLANA_ADDRESS : ADDRESS).test(observation.toAddress) ||
+    normalize(observation.toAddress) !== normalize(expected.toAddress)) throw new Error("wrong_recipient");
   if (typeof expected.amountAtomic !== "bigint" || expected.amountAtomic <= 0n || expected.amountAtomic > MAX_AMOUNT ||
     typeof observation.amountAtomic !== "bigint" || observation.amountAtomic !== expected.amountAtomic) throw new Error("wrong_amount");
   if (!Number.isFinite(observation.observedAt) || observation.observedAt < 0) throw new Error("invalid_observation_time");
@@ -79,7 +84,9 @@ function correctJournal(journal: PaymentJournal, obligation: PaymentObligation, 
     ? { debit: "asset:usdc", credit: "liability:customer_prepayments" }
     : { debit: "liability:contributor_payables", credit: "asset:usdc" };
   return journal.orderId === obligation.orderId && journal.kind === obligation.kind &&
-    journal.network === PAYMENT_NETWORK && journal.tokenAddress.toLowerCase() === USDC_ADDRESS.toLowerCase() &&
+    journal.network === (obligation.network ?? PAYMENT_NETWORK) &&
+    (journal.network === SOLANA_PAYMENT_NETWORK ? journal.tokenAddress === paymentRail(journal.network).token :
+      journal.tokenAddress.toLowerCase() === USDC_ADDRESS.toLowerCase()) &&
     identityOrUndefined(journal.transfer) === identity && journal.lines.length === 2 &&
     (["debit", "credit"] as const).every(side => journal.lines.filter(line =>
       line.side === side && line.account === accounts[side] && line.amountAtomic === obligation.amountAtomic).length === 1);

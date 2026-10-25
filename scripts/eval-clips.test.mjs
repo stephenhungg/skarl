@@ -25,7 +25,9 @@ async function fixture(t, count = 1) {
   const manifestPath = join(dir, "manifest.json"), outputDir = join(dir, "results");
   const save = () => writeFile(manifestPath, JSON.stringify(manifest, null, 2));
   await save();
-  return { dir, manifest, manifestPath, outputDir, save, options: { manifestPath, outputDir, url: "https://unit-test.convex.cloud", timeoutMs: 5, pollMs: 2 } };
+  // Report tests perform real local writes: a 5 ms wall deadline flakes under parallel checks.
+  // Timeout tests inject a clock, so a realistic allowance does not add real waiting.
+  return { dir, manifest, manifestPath, outputDir, save, options: { manifestPath, outputDir, url: "https://unit-test.convex.cloud", timeoutMs: 1000, pollMs: 2 } };
 }
 
 function storedResponse(row, options = {}) {

@@ -1,10 +1,11 @@
 /// <reference types="node" />
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { fundingNetwork } from "./validators";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
 import { digest, normalizeAddress, paymentBinding, recordJournal, requireTenant } from "./lib/finance";
-import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
+import { PAYMENT_NETWORK, paymentRail, SOLANA_PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { createFundingJournal, createPayoutJournal } from "../packages/ledger/src/index";
 import { chainIdentity, validateTransfer, reconcilePayments, type TransferObservation, type PaymentObligation, type PaymentJournal } from "../packages/payments/src/reconciliation";
 
@@ -20,6 +21,18 @@ const secretArg = { serviceSecret: v.string() };
 const evidence = v.object({ network: v.string(), tokenAddress: v.string(), txHash: v.string(), logIndex: v.number(),
   blockNumber: v.int64(), blockHash: v.string(), fromAddress: v.string(), toAddress: v.string(), amountAtomic: v.int64(),
   confirmations: v.number(), succeeded: v.boolean(), observedAt: v.number() });
+function railAddress(network: string, value: string): string {
+  paymentRail(network);
+  if (network === PAYMENT_NETWORK) return normalizeAddress(value);
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) throw new Error("invalid_solana_address");
+  return value;
+}
+function transactionHash(network: string, value: string): string {
+  paymentRail(network);
+  if (network === PAYMENT_NETWORK) return hash(value);
+  if (!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(value)) throw new Error("invalid_solana_signature");
+  return value;
+}
 const hash = (value: string) => { if (!/^0x[0-9a-fA-F]{64}$/.test(value)) throw new Error("invalid_hash"); return value.toLowerCase(); };
 async function orderFor(ctx: QueryCtx | MutationCtx, orderId: string, demoIdentity: string) {
   const member = await requireRole(ctx, demoIdentity, "buyer");
@@ -37,25 +50,37 @@ export const fundingStatus = query({
     const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
     const intent = intents.find(i => i.kind !== "contributor_payout");
     const attempt = intent ? await ctx.db.query("paymentAttempts").withIndex("by_intent", q => q.eq("paymentIntentId", intent._id)).unique() : null;
-    return { order, intent: intent ?? null, attempt };
+    const network = intent?.network ?? PAYMENT_NETWORK;
+    return { order, intent: intent ?? null, attempt, network,
+      explorerUrl: attempt?.txHash ? paymentRail(network).explorerTx(attempt.txHash) : null };
   },
 });
 export const recordFundingAttempt = mutation({
   args: { ...secretArg, orderId: v.string(), demoIdentity: v.string(), payerAddress: v.string(), recipientAddress: v.string(),
-    authorizationNonce: v.string(), amountAtomic: v.int64(), validBefore: v.number() },
+    authorizationNonce: v.string(), amountAtomic: v.int64(), validBefore: v.number(), network: v.optional(fundingNetwork) },
   handler: async (ctx, args) => {
     service(args.serviceSecret);
     const order = await orderFor(ctx, args.orderId, args.demoIdentity);
-    const payerAddress = normalizeAddress(args.payerAddress), recipientAddress = normalizeAddress(args.recipientAddress);
+    const network = args.network ?? PAYMENT_NETWORK;
+    const rail = paymentRail(network);
+    const payerAddress = railAddress(network, args.payerAddress), recipientAddress = railAddress(network, args.recipientAddress);
+    if (network === SOLANA_PAYMENT_NETWORK && recipientAddress !== process.env.SKARL_SOLANA_TREASURY_ADDRESS) {
+      throw new Error("wrong_solana_treasury");
+    }
     const nonce = hash(args.authorizationNonce);
     if (payerAddress === recipientAddress || recipientAddress === `0x${"0".repeat(40)}`) throw new Error("invalid_recipient");
     if (order.network !== PAYMENT_NETWORK || order.tokenAddress !== USDC_ADDRESS || order.budgetAtomic <= 0n ||
       order.budgetAtomic !== order.quantityRequested * order.pricePerSampleAtomic || order.budgetAtomic !== args.amountAtomic) throw new Error("quote_changed");
-    const used = await ctx.db.query("paymentAttempts").withIndex("by_authorization_nonce", q =>
-      q.eq("network", PAYMENT_NETWORK).eq("payerAddress", payerAddress).eq("authorizationNonce", nonce)).unique();
+    // A Solana message hash already commits to its authority. Never let a caller
+    // reuse that message under a different (including case-mutated) payer.
+    const used = network === SOLANA_PAYMENT_NETWORK
+      ? await ctx.db.query("paymentAttempts").withIndex("by_message_hash", q =>
+        q.eq("network", network).eq("authorizationNonce", nonce)).unique()
+      : await ctx.db.query("paymentAttempts").withIndex("by_authorization_nonce", q =>
+        q.eq("network", network).eq("payerAddress", payerAddress).eq("authorizationNonce", nonce)).unique();
     if (used) {
       const prior = used.paymentIntentId && await ctx.db.get(used.paymentIntentId);
-      if (!prior || prior.kind === "contributor_payout" || prior.orderId !== order._id || prior.recipientAddress !== recipientAddress || prior.amountAtomic !== args.amountAtomic) throw new Error("authorization_already_claimed");
+      if (!prior || used.payerAddress !== payerAddress || prior.kind === "contributor_payout" || prior.orderId !== order._id || prior.recipientAddress !== recipientAddress || prior.amountAtomic !== args.amountAtomic) throw new Error("authorization_already_claimed");
       // A replay is for status/reconciliation ONLY; the HTTP adapter must not settle twice.
       return { attemptId: used._id, replayed: true };
     }
@@ -65,11 +90,11 @@ export const recordFundingAttempt = mutation({
     if (!Number.isSafeInteger(args.validBefore) || args.validBefore <= Date.now()) throw new Error("authorization_expired");
     const now = Date.now();
     const intentId = await ctx.db.insert("paymentIntents", { organizationId: order.organizationId, kind: "funding", orderId: order._id,
-      network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS, intentId: `funding:${order._id}`, buyerWalletAddress: payerAddress,
+      network, tokenAddress: rail.token, intentId: `funding:${order._id}`, buyerWalletAddress: payerAddress,
       recipientAddress, amountAtomic: order.budgetAtomic, termsHash: order.termsHash, resourcePath: `/api/orders/${order._id}/fund`,
       x402Version: 2, paymentIdentifier: nonce, expiresAt: args.validBefore, status: "settlement_pending", updatedAt: now });
-    const attemptId = await ctx.db.insert("paymentAttempts", { organizationId: order.organizationId, network: PAYMENT_NETWORK,
-      tokenAddress: USDC_ADDRESS, paymentIntentId: intentId, attemptId: `funding:${order._id}`, attempt: 1,
+    const attemptId = await ctx.db.insert("paymentAttempts", { organizationId: order.organizationId, network,
+      tokenAddress: rail.token, paymentIntentId: intentId, attemptId: `funding:${order._id}`, attempt: 1,
       amountAtomic: order.budgetAtomic, payerAddress, authorizationNonce: nonce, status: "prepared", createdAt: now, updatedAt: now });
     return { attemptId, replayed: false };
   },
@@ -77,29 +102,31 @@ export const recordFundingAttempt = mutation({
 export const recordTransaction = mutation({
   args: { ...secretArg, attemptId: v.id("paymentAttempts"), txHash: v.string() },
   handler: async (ctx, args) => {
-    service(args.serviceSecret); const txHash = hash(args.txHash);
+    service(args.serviceSecret);
     const attempt = await ctx.db.get(args.attemptId);
     if (!attempt) throw new Error("attempt_not_found");
+    const txHash = transactionHash(attempt.network, args.txHash);
     if (attempt.txHash && attempt.txHash !== txHash) throw new Error("transaction_already_bound");
     if (attempt.status === "confirmed") return;
     await ctx.db.patch(attempt._id, { txHash, status: "reconciling", updatedAt: Date.now() });
   },
 });
 async function insertObservation(ctx: MutationCtx, attempt: Doc<"paymentAttempts">, observation: TransferObservation) {
-  const txHash = hash(observation.txHash);
+  if (observation.network !== attempt.network) throw new Error("wrong_network");
+  const txHash = transactionHash(attempt.network, observation.txHash);
   if (attempt.txHash && attempt.txHash !== txHash) throw new Error("transaction_already_bound");
   const previous = await ctx.db.query("chainObservations").withIndex("by_transfer", q =>
-    q.eq("network", PAYMENT_NETWORK).eq("txHash", txHash).eq("logIndex", observation.logIndex)).unique();
+    q.eq("network", attempt.network).eq("txHash", txHash).eq("logIndex", observation.logIndex)).unique();
   if (previous) {
     if (previous.paymentAttemptId !== attempt._id || previous.blockHash !== observation.blockHash ||
-      previous.amountAtomic !== observation.amountAtomic || previous.fromAddress !== normalizeAddress(observation.fromAddress) ||
-      previous.toAddress !== normalizeAddress(observation.toAddress)) throw new Error("transfer_already_claimed_or_changed");
+      previous.amountAtomic !== observation.amountAtomic || previous.fromAddress !== railAddress(attempt.network, observation.fromAddress) ||
+      previous.toAddress !== railAddress(attempt.network, observation.toAddress)) throw new Error("transfer_already_claimed_or_changed");
     return { observationId: previous._id, replayed: true };
   }
   if (attempt.status === "confirmed") throw new Error("attempt_already_confirmed");
   const observationId = await ctx.db.insert("chainObservations", { ...observation, organizationId: attempt.organizationId,
-    paymentAttemptId: attempt._id, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS, txHash,
-    fromAddress: normalizeAddress(observation.fromAddress), toAddress: normalizeAddress(observation.toAddress) });
+    paymentAttemptId: attempt._id, network: attempt.network, tokenAddress: paymentRail(attempt.network).token, txHash,
+    fromAddress: railAddress(attempt.network, observation.fromAddress), toAddress: railAddress(attempt.network, observation.toAddress) });
   await ctx.db.patch(attempt._id, { txHash, status: "confirmed", updatedAt: Date.now() });
   return { observationId, replayed: false };
 }
@@ -111,17 +138,21 @@ export const confirmFunding = mutation({
     const intent = attempt?.paymentIntentId && await ctx.db.get(attempt.paymentIntentId);
     if (!attempt || !intent || intent.kind === "contributor_payout") throw new Error("funding_attempt_not_found");
     if (hash(args.authorizationNonce) !== attempt.authorizationNonce) throw new Error("authorization_mismatch");
+    if (attempt.network !== intent.network || attempt.tokenAddress !== intent.tokenAddress ||
+      intent.tokenAddress !== paymentRail(intent.network).token) throw new Error("funding_rail_changed");
     const order = await ctx.db.get(intent.orderId);
     if (!order || order.budgetAtomic !== intent.amountAtomic || order.termsHash !== intent.termsHash) throw new Error("quote_changed");
-    validateTransfer(args.observation, { fromAddress: intent.buyerWalletAddress, toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic });
+    validateTransfer(args.observation, { network: intent.network, fromAddress: intent.buyerWalletAddress, toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic });
     const result = await insertObservation(ctx, attempt, args.observation);
     if (result.replayed) return result;
     if (!["draft", "awaiting_funding"].includes(order.status)) throw new Error("order_not_fundable");
     const journal = await recordJournal(ctx, order.organizationId, createFundingJournal({ eventId: `funding:${order._id}`,
       orderId: order._id, amountMicroUsdc: intent.amountAtomic }));
-    await ctx.db.patch(journal, { sourceReference: chainIdentity(args.observation) });
+    await ctx.db.patch(journal, { network: intent.network, tokenAddress: intent.tokenAddress, sourceReference: chainIdentity(args.observation) });
     await ctx.db.patch(intent._id, { status: "confirmed", updatedAt: Date.now() });
-    await ctx.db.patch(order._id, { status: "funded", buyerWalletAddress: intent.buyerWalletAddress, updatedAt: Date.now() });
+    // Solana funding does not change the Base payout/refund address on the order.
+    await ctx.db.patch(order._id, { status: "funded",
+      ...(intent.network === PAYMENT_NETWORK ? { buyerWalletAddress: intent.buyerWalletAddress } : {}), updatedAt: Date.now() });
     return result;
   },
 });
@@ -202,7 +233,7 @@ export const recordPayoutObservation = mutation({
     const command = await ctx.db.get(intent.paymentCommandId), payable = await ctx.db.get(intent.payableId);
     if (!command || !command.approvalId || !payable || command.attemptCount !== 1) throw new Error("payout_not_dispatched");
     if (args.observation.observedAt < attempt.createdAt - 1000) throw new Error("transfer_predates_approval_claim");
-    validateTransfer(args.observation, { fromAddress: attempt.payerAddress, toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic });
+    validateTransfer(args.observation, { network: PAYMENT_NETWORK, fromAddress: attempt.payerAddress, toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic });
     const result = await insertObservation(ctx, attempt, args.observation);
     if (result.replayed) return result;
     const journal = await recordJournal(ctx, intent.organizationId, createPayoutJournal({ eventId: intent.intentId, orderId: intent.orderId,
@@ -231,7 +262,7 @@ export const reconciliation = query({
       const seen: Doc<"chainObservations">[] = [];
       for (const attempt of attempts) seen.push(...await ctx.db.query("chainObservations").withIndex("by_attempt", q => q.eq("paymentAttemptId", attempt._id)).collect());
       for (const observation of seen) observations.push({ ...observation, eventKey: intent.intentId, orderId: order._id });
-      obligations.push({ eventKey: intent.intentId, orderId: order._id, kind: intent.kind === "contributor_payout" ? "payout" : "funding",
+      obligations.push({ network: intent.network, eventKey: intent.intentId, orderId: order._id, kind: intent.kind === "contributor_payout" ? "payout" : "funding",
         fromAddress: intent.kind === "contributor_payout" ? attempts[0]?.payerAddress ?? "" : intent.buyerWalletAddress,
         toAddress: intent.recipientAddress, amountAtomic: intent.kind === "contributor_payout" ? intent.amountAtomic : order.budgetAtomic,
         deadlineAt: intent.expiresAt, ...(seen[0] ? { transfer: seen[0] } : {}) });

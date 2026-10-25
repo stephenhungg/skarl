@@ -68,3 +68,40 @@ export const demo = internalMutation({
     return { organizationId: org._id, ...legacy, defaultOrderId: current.orderId, defaultTaskVersionId: current.taskVersionId, demoIdentities: DEMO_IDENTITIES };
   },
 });
+
+/** Separate idempotent funding demo; denomination and eventual payouts remain Base USDC. */
+export const solanaDemo = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const controller = await requireRole(ctx, "controller", "controller");
+    const publicId = "skarl-red-cup-demo-sol";
+    const existing = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", publicId)).unique();
+    if (existing) {
+      if (existing.organizationId !== controller.organizationId || !existing.taskVersionId) throw new Error("invalid_demo_order");
+      return { orderId: existing._id, taskVersionId: existing.taskVersionId, publicId };
+    }
+    const source = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
+    const rubric = source?.taskVersionId && await ctx.db.get(source.taskVersionId);
+    if (!source || !rubric || source.organizationId !== controller.organizationId) throw new Error("run_seed_demo_first");
+    const now = Date.now(), quantityRequested = 1n, pricePerSampleAtomic = 1_000_000n, contributorRateAtomic = 750_000n;
+    const orderId = await ctx.db.insert("orders", {
+      organizationId: controller.organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
+      publicId, buyerTokenIdentifier: demoToken("buyer"), buyerWalletAddress: "0x0000000000000000000000000000000000000001",
+      title: "Red-cup Solana funding demonstration", status: "awaiting_funding", quantityRequested,
+      pricePerSampleAtomic, contributorRateAtomic, budgetAtomic: quantityRequested * pricePerSampleAtomic,
+      acceptedCount: 0n, deadlineAt: now + 8 * 60 * 60 * 1000,
+      termsHash: digest({ contentHash: rubric.contentHash, quantityRequested, pricePerSampleAtomic, contributorRateAtomic,
+        licenseVersion: "demo-consent-v1" }), updatedAt: now,
+    });
+    const taskVersionId = await ctx.db.insert("rubricVersions", {
+      organizationId: controller.organizationId, orderId, version: 1, taskPrompt: rubric.taskPrompt,
+      criteria: rubric.criteria, contentHash: rubric.contentHash, createdByTokenIdentifier: controller.tokenIdentifier, frozenAt: now,
+    });
+    await ctx.db.patch(orderId, { taskVersionId });
+    await audit(ctx, { organizationId: controller.organizationId, eventKey: `seed:${publicId}`,
+      actor: { kind: "human", identity: controller.tokenIdentifier }, action: "demo_seeded", entityType: "orders", entityId: orderId,
+      reason: "Unfunded 1 USDC Solana funding demo. No transfer or inference was performed; payouts remain on Base.",
+      evidenceReferences: [taskVersionId] });
+    return { orderId, taskVersionId, publicId };
+  },
+});

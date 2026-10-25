@@ -1,3 +1,4 @@
+import { paymentRail } from "../packages/contracts/src/chain";
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
@@ -62,7 +63,7 @@ export const payoutHistory = query({
         contributorTokenIdentifier: payable.contributorTokenIdentifier, recipientAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic.toString(),
         network: intent.network, status: intent.status, payableStatus: payable.status,
         attempts: attempts.map(row => ({ id: row._id, status: row.status, txHash: row.txHash ?? null, createdAt: row.createdAt })),
-        observations: observations.map(row => ({ id: row._id, network: row.network, txHash: row.txHash, logIndex: row.logIndex,
+        observations: observations.map(row => ({ id: row._id, network: row.network, explorerUrl: paymentRail(row.network).explorerTx(row.txHash), txHash: row.txHash, logIndex: row.logIndex,
           amountAtomic: row.amountAtomic.toString(), blockNumber: row.blockNumber.toString(), succeeded: row.succeeded, confirmations: row.confirmations, observedAt: row.observedAt })) });
     }
     return pageRows(result, `payouts:${scope.principal.organizationId}:${input.orderId ?? "all"}`, input.cursor, input.limit);
@@ -76,7 +77,7 @@ export const feed = query({
     const entities = new Set<string>([...scope.orderIds, ...data.submissions.map(row => row._id), ...data.payables.map(row => row._id), ...data.intents.map(row => row._id), ...data.runs.map(row => row._id)]);
     const audits = (await ctx.db.query("auditEvents").withIndex("by_org_time", q => q.eq("organizationId", scope.principal.organizationId)).collect())
       .filter(row => !input.orderId || entities.has(row.entityId));
-    const events: { id: string; occurredAt: number; source: "audit" | "chain" | "agent"; recordId: string; action: string; summary: string; evidenceReferences: string[]; amountAtomic?: string; txHash?: string; logIndex?: number }[] = audits.map(row => ({
+    const events: { id: string; occurredAt: number; source: "audit" | "chain" | "agent"; recordId: string; action: string; summary: string; evidenceReferences: string[]; amountAtomic?: string; txHash?: string; logIndex?: number; network?: string; explorerUrl?: string }[] = audits.map(row => ({
       id: `audit:${row._id}`, occurredAt: row.occurredAt, source: "audit", recordId: row._id, action: row.action, summary: row.reason, evidenceReferences: row.evidenceReferences }));
     const observations = await ctx.db.query("chainObservations").filter(q => q.eq(q.field("organizationId"), scope.principal.organizationId)).collect();
     for (const row of observations) {
@@ -90,7 +91,8 @@ export const feed = query({
       events.push({ id: `chain:${row._id}`, occurredAt: row.observedAt, source: "chain", recordId: row._id,
         action: row.succeeded ? "transfer_observed" : "transfer_failed", summary: `${intent?.kind ?? command?.kind ?? "unlinked_transfer"}: ${row.confirmations} confirmations`,
         evidenceReferences: [row.paymentAttemptId, ...(intent ? [intent._id] : []), ...(command ? [command._id] : [])],
-        amountAtomic: row.amountAtomic.toString(), txHash: row.txHash, logIndex: row.logIndex });
+        amountAtomic: row.amountAtomic.toString(), txHash: row.txHash, logIndex: row.logIndex,
+        network: row.network, explorerUrl: paymentRail(row.network).explorerTx(row.txHash) });
     }
     // Use the immutable start time so an in-flight run completing does not move between pages.
     for (const run of data.runs) events.push({ id: `agent:${run._id}`, occurredAt: run.startedAt, source: "agent", recordId: run._id,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PAYMENT_NETWORK, USDC_ADDRESS } from "@skarl/contracts/chain";
+import { PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK, SOLANA_USDC_MINT, USDC_ADDRESS } from "@skarl/contracts/chain";
 import { chainIdentity, reconcilePayments, validateTransfer } from "./reconciliation.ts";
 import type { PaymentJournal, PaymentObligation, ReconciliationObservation } from "./reconciliation.ts";
 
@@ -103,4 +103,18 @@ test("payout journals require payable debit and cash credit", () => {
     { account: "asset:usdc", side: "credit", amountAtomic: obligation.amountAtomic },
   ] };
   assert.equal(reconcilePayments({ ...input, obligations: [payout], journals: [payoutJournal] }).matches.length, 1);
+});
+
+
+test("Solana evidence requires its stored rail and preserves base58 case in identities", () => {
+  const solanaExpected = { network: SOLANA_PAYMENT_NETWORK, fromAddress: "35pgsKg8sUYQRbLuWSmgYnham9rWhqNuG1JJhGKN6TWy",
+    toAddress: "5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh", amountAtomic: 1_000_000n };
+  const solana = { ...observation, ...solanaExpected, tokenAddress: SOLANA_USDC_MINT, txHash: "2".repeat(86),
+    blockHash: "11111111111111111111111111111111" };
+  validateTransfer(solana, solanaExpected);
+  assert.throws(() => validateTransfer(solana, { ...solanaExpected, network: PAYMENT_NETWORK }), /wrong_network/);
+  assert.throws(() => validateTransfer({ ...solana, toAddress: solana.toAddress.toLowerCase() }, solanaExpected), /wrong_recipient/);
+  assert.throws(() => validateTransfer({ ...solana, tokenAddress: SOLANA_USDC_MINT.toLowerCase() }, solanaExpected), /wrong_token/);
+  const identity = { network: SOLANA_PAYMENT_NETWORK, txHash: "Ab".repeat(44), logIndex: 2 };
+  assert.notEqual(chainIdentity(identity), chainIdentity({ ...identity, txHash: identity.txHash.toLowerCase() }));
 });

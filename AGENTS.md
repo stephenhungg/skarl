@@ -4,7 +4,7 @@ Read `docs/README.md`, `docs/workstreams.md` (the 8-hour plan; deadline Oct 25, 
 
 ## Product and platform constraints
 
-- Base Sepolia (`eip155:84532`) is the only enabled payment target. Use the canonical constants in `packages/contracts/src/chain.ts` (`PAYMENT_NETWORK`, `PAYMENT_CHAIN_ID`, `USDC_ADDRESS`, `USDC_DECIMALS`).
+- Base Sepolia (`eip155:84532`) is the primary funding rail and the only payout target. Solana Devnet is an optional funding-only rail; advertise Base first in x402 accepts. Use the canonical constants and `PAYMENT_RAILS` in `packages/contracts/src/chain.ts`.
 - Money uses `bigint` micro-USDC (six decimals), Convex Int64 and decimal integer strings at JSON boundaries. Never float money.
 - Convex is the system of record. Do not introduce another database, event bus or workflow engine without a concrete need. No custom smart contract (no Solidity, no escrow contract).
 - AI produces evidence, not final payment authority. `scaffold`, incomplete or unavailable analysis must never recommend acceptance.

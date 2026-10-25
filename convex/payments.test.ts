@@ -4,13 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { runScheduledUntil } from "../test/workflow";
-import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
+import { PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK, SOLANA_USDC_MINT, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import type { TransferObservation } from "../packages/payments/src/reconciliation";
 import { createFulfillmentJournal } from "../packages/ledger/src/index";
 import { recordJournal } from "./lib/finance";
 
 // Isolated transactional tests with synthetic receipts. No RPC, wallet signature,
-// inference or actual Base Sepolia transfer is performed by these fixtures.
+// inference or actual chain transfer is performed by these fixtures.
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
 const SERVICE_SECRET = "test-only-payments-service-secret-not-a-real-credential";
 const PAYER = `0x${"11".repeat(20)}`;
@@ -301,5 +301,113 @@ describe("approved payout execution", () => {
     const reconciliation = await fixture.t.query(api.payments.reconciliation, { demoIdentity: "controller", orderId: fixture.orderId });
     expect(reconciliation.matches).toHaveLength(2);
     expect(reconciliation.exceptions).toHaveLength(0);
+  });
+});
+
+
+// Synthetic Solana observations exercise persistence and authority boundaries;
+// RPC instruction, ATA and memo validation is tested in the payments package.
+const SOL_PAYER = "So11111111111111111111111111111111111111112";
+const SOL_TREASURY = SOLANA_USDC_MINT;
+const SOL_SIGNATURE = "3".repeat(42) + "Ab" + "3".repeat(44);
+async function solanaFixture() {
+  const fixture = await setup();
+  const seeded = await fixture.t.mutation(internal.seed.solanaDemo, {});
+  vi.stubEnv("SKARL_SOLANA_TREASURY_ADDRESS", SOL_TREASURY);
+  const funding = { ...fixture.funding, orderId: seeded.orderId, network: SOLANA_PAYMENT_NETWORK,
+    payerAddress: SOL_PAYER, recipientAddress: SOL_TREASURY, amountAtomic: 1_000_000n };
+  const observation: TransferObservation = { ...fixture.observation, network: SOLANA_PAYMENT_NETWORK,
+    tokenAddress: SOLANA_USDC_MINT, txHash: SOL_SIGNATURE, blockHash: "4".repeat(44),
+    fromAddress: SOL_PAYER, toAddress: SOL_TREASURY, amountAtomic: 1_000_000n };
+  return { ...fixture, ...seeded, funding, observation };
+}
+
+describe("Solana funding persistence boundaries", () => {
+  it("claims the message hash once and refuses replay for another order or replacement rail", async () => {
+    const fixture = await solanaFixture();
+    const first = await fixture.t.mutation(api.payments.recordFundingAttempt, fixture.funding);
+    expect(await fixture.t.mutation(api.payments.recordFundingAttempt, fixture.funding)).toEqual({ ...first, replayed: true });
+    const secondOrder = await otherOrder(fixture);
+    await expect(fixture.t.mutation(api.payments.recordFundingAttempt, { ...fixture.funding, orderId: secondOrder }))
+      .rejects.toThrow("authorization_already_claimed");
+    await expect(fixture.t.mutation(api.payments.recordFundingAttempt, { ...fixture.funding, network: PAYMENT_NETWORK,
+      payerAddress: PAYER, recipientAddress: TREASURY })).rejects.toThrow("funding_already_pending_reconcile_first");
+    await expect(fixture.t.mutation(api.payments.recordFundingAttempt, { ...fixture.funding,
+      orderId: secondOrder, payerAddress: SOL_PAYER.replace("S", "s") })).rejects.toThrow("authorization_already_claimed");
+    const state = await snapshot(fixture);
+    expect(state.attempts).toHaveLength(1);
+    expect(state.attempts[0]).toMatchObject({ network: SOLANA_PAYMENT_NETWORK, tokenAddress: SOLANA_USDC_MINT, payerAddress: SOL_PAYER });
+    expect(state.order?.status).toBe("awaiting_funding");
+    expect(state.journals).toHaveLength(0);
+  });
+
+  it("requires the configured Solana recipient and keeps its address case-sensitive", async () => {
+    const fixture = await solanaFixture();
+    await expect(fixture.t.mutation(api.payments.recordFundingAttempt, { ...fixture.funding,
+      recipientAddress: SOL_TREASURY.replace("M", "m") })).rejects.toThrow("wrong_solana_treasury");
+    vi.stubEnv("SKARL_SOLANA_TREASURY_ADDRESS", undefined);
+    await expect(fixture.t.mutation(api.payments.recordFundingAttempt, fixture.funding)).rejects.toThrow("wrong_solana_treasury");
+    expect((await snapshot(fixture)).attempts).toHaveLength(0);
+  });
+
+  it("preserves signature case and refuses a case-mutated transaction during reconciliation", async () => {
+    const fixture = await solanaFixture();
+    const attempt = await fixture.t.mutation(api.payments.recordFundingAttempt, fixture.funding);
+    await fixture.t.mutation(api.payments.recordTransaction, { serviceSecret: SERVICE_SECRET,
+      attemptId: attempt.attemptId, txHash: SOL_SIGNATURE });
+    await expect(fixture.t.mutation(api.payments.recordTransaction, { serviceSecret: SERVICE_SECRET,
+      attemptId: attempt.attemptId, txHash: SOL_SIGNATURE.replace("A", "a") })).rejects.toThrow("transaction_already_bound");
+    await expect(fixture.t.mutation(api.payments.confirmFunding, { serviceSecret: SERVICE_SECRET,
+      attemptId: attempt.attemptId, authorizationNonce: NONCE,
+      observation: { ...fixture.observation, txHash: SOL_SIGNATURE.replace("A", "a") } })).rejects.toThrow("transaction_already_bound");
+    expect((await snapshot(fixture)).attempts[0]?.txHash).toBe(SOL_SIGNATURE);
+  });
+
+  it("funds only from matching rail evidence and posts one balanced journal without changing Base payout terms", async () => {
+    const fixture = await solanaFixture();
+    const attempt = await fixture.t.mutation(api.payments.recordFundingAttempt, fixture.funding);
+    await expect(fixture.t.mutation(api.payments.confirmFunding, { serviceSecret: SERVICE_SECRET,
+      attemptId: attempt.attemptId, authorizationNonce: NONCE,
+      observation: { ...fixture.observation, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS } })).rejects.toThrow("wrong_network");
+    await expect(fixture.t.mutation(api.payments.confirmFunding, { serviceSecret: SERVICE_SECRET,
+      attemptId: attempt.attemptId, authorizationNonce: NONCE,
+      observation: { ...fixture.observation, fromAddress: SOL_PAYER.replace("S", "s") } })).rejects.toThrow("wrong_sender");
+    const args = { serviceSecret: SERVICE_SECRET, attemptId: attempt.attemptId, authorizationNonce: NONCE,
+      observation: fixture.observation };
+    await fixture.t.mutation(api.payments.confirmFunding, args);
+    expect((await fixture.t.mutation(api.payments.confirmFunding, args)).replayed).toBe(true);
+    const state = await snapshot(fixture);
+    expect(state.order).toMatchObject({ status: "funded", network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
+      buyerWalletAddress: "0x0000000000000000000000000000000000000001" });
+    expect(state.observations).toHaveLength(1);
+    expect(state.observations[0]).toMatchObject({ network: SOLANA_PAYMENT_NETWORK, txHash: SOL_SIGNATURE,
+      fromAddress: SOL_PAYER, toAddress: SOL_TREASURY });
+    expect(state.journals).toHaveLength(1);
+    expect(state.journals[0]).toMatchObject({ network: SOLANA_PAYMENT_NETWORK, tokenAddress: SOLANA_USDC_MINT });
+    expect(state.lines.map(line => [line.account, line.side, line.amountAtomic])).toEqual([
+      ["asset:usdc", "debit", 1_000_000n], ["liability:customer_prepayments", "credit", 1_000_000n],
+    ]);
+    expect(await fixture.t.query(api.payments.fundingStatus, { serviceSecret: SERVICE_SECRET,
+      orderId: fixture.orderId, demoIdentity: "buyer" })).toMatchObject({ network: SOLANA_PAYMENT_NETWORK,
+      explorerUrl: `https://explorer.solana.com/tx/${SOL_SIGNATURE}?cluster=devnet` });
+    const reconciliation = await fixture.t.query(api.payments.reconciliation, { demoIdentity: "controller", orderId: fixture.orderId });
+    expect(reconciliation.matches).toHaveLength(1);
+    expect(reconciliation.exceptions).toHaveLength(0);
+  });
+
+  it("refuses a Solana observation for an approved Base payout", async () => {
+    const fixture = await payoutFixture();
+    await fixture.t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: fixture.proposal.intentId });
+    await runScheduledUntil(async () => {
+      const dispatch = await fixture.t.run(ctx => ctx.db.query("outboxEvents").withIndex("by_event_key", q =>
+        q.eq("organizationId", fixture.organizationId).eq("eventKey", `dispatch:${fixture.proposal.paymentCommandId}`)).unique());
+      return dispatch?.status === "pending";
+    });
+    const claim = await fixture.t.mutation(api.payments.claimPayout, fixture.claim);
+    await expect(fixture.t.mutation(api.payments.recordPayoutObservation, { serviceSecret: SERVICE_SECRET,
+      attemptId: claim.attemptId, observation: { ...fixture.observation, network: SOLANA_PAYMENT_NETWORK,
+        tokenAddress: SOLANA_USDC_MINT, txHash: SOL_SIGNATURE, fromAddress: SOL_PAYER, toAddress: SOL_TREASURY,
+        amountAtomic: 7_500_000n } })).rejects.toThrow("wrong_network");
+    expect((await fixture.t.run(ctx => ctx.db.get(fixture.payableId)))?.status).toBe("payout_in_progress");
   });
 });

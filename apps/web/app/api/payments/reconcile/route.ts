@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
 import { api, paymentError, paymentJson, paymentService } from "../../../../lib/payments/server";
 import { observeTransfer, publicClient, usdcEvents } from "../../../../lib/payments/chain";
-import { USDC_ADDRESS } from "@skarl/contracts/chain";
+import { observeSolanaTransfer } from "../../../../../../packages/payments/src/solana";
+import { SOLANA_PAYMENT_NETWORK, paymentRail, USDC_ADDRESS } from "@skarl/contracts/chain";
 import type { Hash, Address } from "viem";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -12,12 +13,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     if (typeof body.orderId !== "string") return paymentJson({ error: "orderId_required" }, 400);
     const { db, serviceSecret } = paymentService();
-    const { intent, attempt } = await db.query(api.payments.fundingStatus, { serviceSecret, orderId: body.orderId,
+    const { order, intent, attempt } = await db.query(api.payments.fundingStatus, { serviceSecret, orderId: body.orderId,
       demoIdentity: body.demoIdentity || "buyer" });
     if (!intent || !attempt || !attempt.authorizationNonce) return paymentJson({ error: "funding_attempt_required" }, 409);
-    if (intent.status === "confirmed") return paymentJson({ fundingStatus: "confirmed", txHash: attempt.txHash });
+    if (intent.status === "confirmed") return paymentJson({ fundingStatus: "confirmed", network: intent.network, txHash: attempt.txHash,
+      explorerUrl: attempt.txHash ? paymentRail(intent.network).explorerTx(attempt.txHash) : null });
     let txHash = attempt.txHash ?? body.txHash;
-    if (!txHash) {
+    if (!txHash && intent.network !== SOLANA_PAYMENT_NETWORK) {
       // A facilitator response can be lost before its hash is persisted. Recover via the claimed nonce.
       // Bound public RPC work to the recent ~5.5 hours; older attempts need an explicit explorer hash.
       const client = publicClient();
@@ -33,18 +35,20 @@ export async function POST(request: NextRequest) {
         end = start - 1n;
       }
     }
-    if (typeof txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
-      return paymentJson({ fundingStatus: "settlement_pending", error: "transfer_not_observed_do_not_repay" }, 202);
+    if (typeof txHash !== "string" || !(intent.network === SOLANA_PAYMENT_NETWORK ? /^[1-9A-HJ-NP-Za-km-z]{64,88}$/ : /^0x[0-9a-fA-F]{64}$/).test(txHash)) {
+      return paymentJson({ fundingStatus: "settlement_pending", network: intent.network, error: "transfer_not_observed_do_not_repay" }, 202);
     }
     try {
-      const observation = await observeTransfer(txHash as Hash, { fromAddress: intent.buyerWalletAddress,
-        toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic }, attempt.authorizationNonce);
+      const expected = { fromAddress: intent.buyerWalletAddress, toAddress: intent.recipientAddress, amountAtomic: intent.amountAtomic };
+      const observation = intent.network === SOLANA_PAYMENT_NETWORK
+        ? await observeSolanaTransfer(txHash, { ...expected, authorizationNonce: attempt.authorizationNonce, orderId: order._id })
+        : await observeTransfer(txHash as Hash, expected, attempt.authorizationNonce);
       // Bind caller-supplied recovery hashes ONLY after verifying the nonce and exact transfer.
       await db.mutation(api.payments.confirmFunding, { serviceSecret, attemptId: attempt._id,
         authorizationNonce: attempt.authorizationNonce, observation });
-      return paymentJson({ fundingStatus: "confirmed", txHash, explorerUrl: `https://sepolia.basescan.org/tx/${txHash}` });
+      return paymentJson({ fundingStatus: "confirmed", txHash, network: intent.network, explorerUrl: paymentRail(intent.network).explorerTx(txHash) });
     } catch {
-      return paymentJson({ fundingStatus: "settlement_pending", txHash: attempt.txHash ?? null,
+      return paymentJson({ fundingStatus: "settlement_pending", network: intent.network, txHash: attempt.txHash ?? null,
         error: "transfer_not_confirmed_do_not_repay" }, 202);
     }
   } catch (error) { return paymentError(error); }

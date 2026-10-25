@@ -10,6 +10,8 @@ import {
   evmAddress,
   evaluationVideoModel,
   fundingStatus,
+  fundingNetwork,
+  fundingToken,
   journalSide,
   ledgerAccount,
   membershipRole,
@@ -25,6 +27,7 @@ import {
 
 const tenant = { organizationId: v.id("organizations") };
 const asset = { network, tokenAddress: usdcToken };
+const fundingAsset = { network: fundingNetwork, tokenAddress: fundingToken };
 
 // Demo finance mutations enforce atomic posting and role checks; remaining tables are design scaffolding.
 // Indexes below are lookup indexes, NOT unique constraints. Future mutations
@@ -353,7 +356,7 @@ export default defineSchema({
   // variant linked 1:1 to paymentCommands for independent approval/dispatch.
   paymentIntents: defineTable(v.union(
     v.object({
-      ...tenant, ...asset,
+      ...tenant, ...fundingAsset,
       kind: v.optional(v.literal("funding")),
       refundPaymentCommandId: v.optional(v.id("paymentCommands")),
       orderId: v.id("orders"),
@@ -441,7 +444,7 @@ export default defineSchema({
 
   paymentAttempts: defineTable({
     ...tenant,
-    ...asset,
+    ...fundingAsset,
     paymentIntentId: v.optional(v.id("paymentIntents")),
     paymentCommandId: v.optional(v.id("paymentCommands")),
     attemptId: v.string(),
@@ -450,7 +453,8 @@ export default defineSchema({
     txHash: v.optional(v.string()),
     // x402 `exact` funding on EVM is an EIP-3009 transferWithAuthorization.
     // Claim (payer, nonce) before settlement so one authorization cannot
-    // fund two orders.
+    // fund two orders. Solana uses the signed message SHA-256 as the nonce,
+    // additionally unique across all payers on that network.
     payerAddress: v.optional(evmAddress),
     authorizationNonce: v.optional(v.string()),
     status: attemptStatus,
@@ -462,13 +466,15 @@ export default defineSchema({
     .index("by_command", ["paymentCommandId"])
     .index("by_intent", ["paymentIntentId"])
     .index("by_tx_hash", ["network", "txHash"])
-    .index("by_authorization_nonce", ["network", "payerAddress", "authorizationNonce"]),
+    .index("by_authorization_nonce", ["network", "payerAddress", "authorizationNonce"])
+    .index("by_message_hash", ["network", "authorizationNonce"]),
 
-  // One row per ERC-20 Transfer log. A transaction can emit several transfers,
+  // One row per ERC-20 Transfer log or Solana outer transferChecked instruction.
+  // A transaction can emit several transfers,
   // so identity is (network, txHash, logIndex), never the transaction alone.
   chainObservations: defineTable({
     ...tenant,
-    ...asset,
+    ...fundingAsset,
     paymentAttemptId: v.id("paymentAttempts"),
     txHash: v.string(),
     logIndex: v.number(),
@@ -486,7 +492,7 @@ export default defineSchema({
 
   journalEntries: defineTable({
     ...tenant,
-    ...asset,
+    ...fundingAsset,
     orderId: v.id("orders"),
     eventKey: v.string(),
     kind: v.union(

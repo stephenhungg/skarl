@@ -86,3 +86,24 @@ describe("versioned demo seeds in isolated Convex state", () => {
       .toMatchObject({ orderId: upgraded.defaultOrderId, taskVersionId: upgraded.defaultTaskVersionId });
   });
 });
+
+describe("Solana funding demo seed", () => {
+  it("creates one unfunded 1 USDC order idempotently without changing existing orders or Base payout denomination", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.seed.demo, {});
+    const originals = await t.run(ctx => ctx.db.query("orders").collect());
+    const seeded = await t.mutation(internal.seed.solanaDemo, {});
+    const order = await t.run(ctx => ctx.db.get(seeded.orderId));
+    expect(order).toMatchObject({ publicId: "skarl-red-cup-demo-sol", status: "awaiting_funding", quantityRequested: 1n,
+      budgetAtomic: 1_000_000n, pricePerSampleAtomic: 1_000_000n, contributorRateAtomic: 750_000n,
+      network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS });
+    expect(await t.mutation(internal.seed.solanaDemo, {})).toEqual(seeded);
+    const state = await t.run(async ctx => ({ orders: await ctx.db.query("orders").collect(),
+      journals: await ctx.db.query("journalEntries").collect(), observations: await ctx.db.query("chainObservations").collect() }));
+    expect(state.orders).toHaveLength(3);
+    expect(state.orders.filter(item => item._id !== seeded.orderId)).toEqual(originals);
+    expect(state.orders.find(item => item._id === seeded.orderId)).toEqual(order);
+    expect(state.journals).toHaveLength(0);
+    expect(state.observations).toHaveLength(0);
+  });
+});

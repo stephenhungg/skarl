@@ -5,7 +5,7 @@ import {
   payoutStatuses,
   submissionStatuses,
 } from "../packages/contracts/src/index";
-import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
+import { PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK, SOLANA_USDC_MINT, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { EVALUATION_VIDEO_MODELS } from "./lib/verificationReport";
 
 // Storage validators constrain types. Business invariants still require mutations.
@@ -19,6 +19,9 @@ function literalUnion<const T extends readonly [string, string, ...string[]]>(va
 
 export const network = v.literal(PAYMENT_NETWORK);
 export const usdcToken = v.literal(USDC_ADDRESS);
+/** Funding and its evidence may use either rail; orders and outgoing payments remain Base only. */
+export const fundingNetwork = v.union(v.literal(PAYMENT_NETWORK), v.literal(SOLANA_PAYMENT_NETWORK));
+export const fundingToken = v.union(v.literal(USDC_ADDRESS), v.literal(SOLANA_USDC_MINT));
 /** EVM 0x address. Mutations must validate and lowercase before writing so equality checks hold. */
 export const evmAddress = v.string();
 export const amountAtomic = v.int64();

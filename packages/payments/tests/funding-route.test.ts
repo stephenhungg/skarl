@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
-import { PAYMENT_NETWORK, USDC_ADDRESS } from "@skarl/contracts/chain";
+import { PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK, SOLANA_USDC_MINT, USDC_ADDRESS } from "@skarl/contracts/chain";
 import { GET, POST } from "../../../apps/web/app/api/orders/[id]/fund/route";
 
 // Exercises the actual dynamic Next route and real @x402/next/core middleware.
 // Facilitator responses, Convex state and RPC receipts are deliberately mocked;
 // these tests are not evidence of a valid signature or live chain settlement.
-const mocks = vi.hoisted(() => ({ query: vi.fn(), mutation: vi.fn(), observeTransfer: vi.fn(), fetch: vi.fn() }));
+const mocks = vi.hoisted(() => ({ query: vi.fn(), mutation: vi.fn(), observeTransfer: vi.fn(), parseSolana: vi.fn(), observeSolana: vi.fn(), fetch: vi.fn() }));
 vi.mock("../../../apps/web/lib/payments/server", async importOriginal => {
   const actual = await importOriginal<typeof import("../../../apps/web/lib/payments/server")>();
   return { ...actual, paymentService: () => ({ serviceSecret: "synthetic-service-secret",
@@ -14,6 +14,10 @@ vi.mock("../../../apps/web/lib/payments/server", async importOriginal => {
 });
 vi.mock("../../../apps/web/lib/payments/chain", () => ({ observeTransfer: mocks.observeTransfer }));
 
+vi.mock("../src/solana", () => ({ parseSolanaFundingAuthorization: mocks.parseSolana, observeSolanaTransfer: mocks.observeSolana }));
+const SOLANA_TREASURY = "5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh";
+const SOLANA_PAYER = "11111111111111111111111111111111";
+const SOLANA_SIGNATURE = "A".repeat(88);
 const TREASURY = `0x${"22".repeat(20)}`;
 const PAYER = `0x${"11".repeat(20)}`;
 const NONCE = `0x${"aa".repeat(32)}`;
@@ -24,7 +28,7 @@ const context = { params: Promise.resolve({ id: ORDER_ID }) };
 const events: string[] = [];
 let stored: {
   order: { _id: string; status: string; budgetAtomic: bigint; deadlineAt: number };
-  intent: null | { status: string; buyerWalletAddress: string; recipientAddress: string; amountAtomic: bigint };
+  intent: null | { network: string; status: string; buyerWalletAddress: string; recipientAddress: string; amountAtomic: bigint };
   attempt: null | { _id: string; txHash?: string };
 };
 
@@ -53,6 +57,7 @@ async function signedPayload() {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubEnv("SKARL_TREASURY_ADDRESS", TREASURY);
+  vi.stubEnv("SKARL_SOLANA_TREASURY_ADDRESS", undefined);
   vi.stubEnv("CDP_API_KEY_ID", undefined);
   vi.stubEnv("CDP_API_KEY_SECRET", undefined);
   vi.stubEnv("X402_FACILITATOR_URL", undefined);
@@ -64,7 +69,7 @@ beforeEach(() => {
     const name = getFunctionName(reference);
     events.push(name);
     if (name === "payments:recordFundingAttempt") {
-      stored.intent = { status: "settlement_pending", buyerWalletAddress: args.payerAddress,
+      stored.intent = { network: args.network ?? PAYMENT_NETWORK, status: "settlement_pending", buyerWalletAddress: args.payerAddress,
         recipientAddress: args.recipientAddress, amountAtomic: args.amountAtomic };
       stored.attempt = { _id: "synthetic-attempt" };
       return { attemptId: "synthetic-attempt", replayed: false };
@@ -84,7 +89,8 @@ beforeEach(() => {
   mocks.fetch.mockImplementation(async (input: string | Request, options?: RequestInit) => {
     const url = typeof input === "string" ? input : input.url;
     if (url.endsWith("/supported")) return Response.json({ kinds: [{ x402Version: 2,
-      scheme: "exact", network: PAYMENT_NETWORK }], extensions: [], signers: {} });
+      scheme: "exact", network: PAYMENT_NETWORK }, ...(process.env.SKARL_SOLANA_TREASURY_ADDRESS ? [{ x402Version: 2,
+        scheme: "exact", network: SOLANA_PAYMENT_NETWORK, extra: { feePayer: SOLANA_PAYER } }] : [])], extensions: [], signers: {} });
     if (url.endsWith("/verify")) {
       events.push("facilitator:verify");
       return Response.json({ isValid: true, payer: PAYER });
@@ -118,6 +124,13 @@ describe("actual POST /api/orders/[id]/fund x402 adapter", () => {
     expect(mocks.mutation).not.toHaveBeenCalled();
   });
 
+  it("keeps Base available when optional Solana configuration is malformed", async () => {
+    vi.stubEnv("SKARL_SOLANA_TREASURY_ADDRESS", "not-a-solana-address");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try { expect((await requirement()).accepts).toHaveLength(1); }
+    finally { log.mockRestore(); }
+  });
+
   it("quotes and challenges the 10 USDC v2 budget using integer strings", async () => {
     stored.order.budgetAtomic = 4n * 2_500_000n;
     const response = await GET(request(), context);
@@ -149,7 +162,7 @@ describe("actual POST /api/orders/[id]/fund x402 adapter", () => {
   });
 
   it("returns pending status for an interrupted attempt without verifying or settling again", async () => {
-    stored.intent = { status: "settlement_pending", buyerWalletAddress: PAYER, recipientAddress: TREASURY, amountAtomic: 100_000_000n };
+    stored.intent = { network: PAYMENT_NETWORK, status: "settlement_pending", buyerWalletAddress: PAYER, recipientAddress: TREASURY, amountAtomic: 100_000_000n };
     stored.attempt = { _id: "existing-attempt", txHash: TX_HASH };
     const response = await POST(request({ untrusted: "ignored on pending attempts" }), context);
     expect(response.status).toBe(202);
@@ -206,4 +219,64 @@ describe("actual POST /api/orders/[id]/fund x402 adapter", () => {
     expect(mocks.observeTransfer).not.toHaveBeenCalled();
   });
 
+});
+
+
+describe("optional Solana funding adapter", () => {
+  beforeEach(() => {
+    vi.stubEnv("SKARL_SOLANA_TREASURY_ADDRESS", SOLANA_TREASURY);
+    mocks.parseSolana.mockResolvedValue({ payerAddress: SOLANA_PAYER, recipientAddress: SOLANA_TREASURY,
+      amountAtomic: 100_000_000n, authorizationNonce: NONCE, validBefore: Date.now() + 60_000, logIndex: 2 });
+    mocks.observeSolana.mockRejectedValue(new Error("solana_transaction_pending"));
+    const baseFetch = mocks.fetch.getMockImplementation()!;
+    mocks.fetch.mockImplementation(async (input: string | Request, options?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.endsWith("/verify")) { events.push("facilitator:verify"); return Response.json({ isValid: true, payer: SOLANA_PAYER }); }
+      if (url.endsWith("/settle")) {
+        events.push("facilitator:settle");
+        expect(stored.attempt?._id).toBe("synthetic-attempt");
+        expect(stored.intent?.network).toBe(SOLANA_PAYMENT_NETWORK);
+        return Response.json({ success: true, transaction: SOLANA_SIGNATURE, network: SOLANA_PAYMENT_NETWORK, payer: SOLANA_PAYER });
+      }
+      return baseFetch(input, options);
+    });
+  });
+  async function solanaPayload() {
+    const challenge = await requirement();
+    expect(challenge.accepts.map((a: { network: string }) => a.network)).toEqual([PAYMENT_NETWORK, SOLANA_PAYMENT_NETWORK]);
+    expect(challenge.accepts[1]).toMatchObject({ asset: SOLANA_USDC_MINT, payTo: SOLANA_TREASURY, extra: { memo: `skarl:${ORDER_ID}`, feePayer: SOLANA_PAYER } });
+    return { x402Version: 2, resource: challenge.resource, accepted: challenge.accepts[1], payload: { transaction: "mocked_signed_wire" } };
+  }
+  it("advertises Base first and reports both approved treasury quotes", async () => {
+    await solanaPayload();
+    const quote = await (await GET(request(), context)).json();
+    expect(quote.rails).toEqual([{ network: PAYMENT_NETWORK, recipientAddress: TREASURY, asset: USDC_ADDRESS },
+      { network: SOLANA_PAYMENT_NETWORK, recipientAddress: SOLANA_TREASURY, asset: SOLANA_USDC_MINT }]);
+  });
+  it("claims the message before settlement, preserves signature case, and waits for RPC", async () => {
+    const response = await POST(request(await solanaPayload()), context);
+    expect(response.status).toBe(202);
+    expect(stored.order.status).toBe("awaiting_funding");
+    expect(stored.attempt?.txHash).toBe(SOLANA_SIGNATURE);
+    expect(events).toEqual(["facilitator:verify", "payments:recordFundingAttempt", "facilitator:settle", "payments:recordTransaction"]);
+    expect(mocks.observeTransfer).not.toHaveBeenCalled();
+    expect(mocks.observeSolana).toHaveBeenCalledWith(SOLANA_SIGNATURE, { fromAddress: SOLANA_PAYER,
+      toAddress: SOLANA_TREASURY, amountAtomic: 100_000_000n, authorizationNonce: NONCE, orderId: ORDER_ID });
+  });
+  it("does not call settlement when the signed Solana message fails validation", async () => {
+    const payload = await solanaPayload();
+    mocks.parseSolana.mockRejectedValue(new Error("wrong_order_memo"));
+    expect((await POST(request(payload), context)).status).toBeGreaterThanOrEqual(400);
+    expect(events).toEqual(["facilitator:verify"]);
+    expect(mocks.mutation).not.toHaveBeenCalled();
+  });
+  it("confirms only after Solana RPC evidence and returns the rail explorer", async () => {
+    const payload = await solanaPayload();
+    mocks.observeSolana.mockResolvedValue({ network: SOLANA_PAYMENT_NETWORK, txHash: SOLANA_SIGNATURE });
+    const response = await POST(request(payload), context);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ fundingStatus: "confirmed", network: SOLANA_PAYMENT_NETWORK,
+      explorerUrl: `https://explorer.solana.com/tx/${SOLANA_SIGNATURE}?cluster=devnet` });
+    expect(events.at(-1)).toBe("payments:confirmFunding");
+  });
 });

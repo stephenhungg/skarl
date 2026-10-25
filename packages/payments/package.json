@@ -13,6 +13,7 @@
   "dependencies": {
     "@coinbase/cdp-sdk": "1.60.0",
     "@skarl/contracts": "workspace:*",
+    "@solana/kit": "6.10.0",
     "@x402/core": "2.28.0",
     "@x402/evm": "2.28.0",
     "@x402/extensions": "2.28.0",

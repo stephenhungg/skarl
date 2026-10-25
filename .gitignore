@@ -15,3 +15,4 @@ services/verifier/.cache/
 
 # Local evaluation artifacts contain private clip metadata and report excerpts.
 evals/results/
+.vercel
