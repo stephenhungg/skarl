@@ -1,4 +1,5 @@
 import { defineSchema, defineTable } from "convex/server";
+import { attestationTables } from "./attestationsSchema";
 import { v } from "convex/values";
 import { sensorTrace } from "./sensorTraceValidators";
 import { vWorkflowId } from "@convex-dev/workflow";
@@ -56,6 +57,7 @@ const analysisContext = {
   perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))),
 };
 export default defineSchema({
+  ...attestationTables,
   // Trusted web ingress supplies a keyed IP digest, never a raw IP. Atomic with order creation.
   demoOrderLimits: defineTable({ key: v.string(), windowStart: v.number(), count: v.number() })
     .index("by_key", ["key"]),

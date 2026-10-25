@@ -85,3 +85,21 @@ Skarl separates visual evidence from narration before inference, preventing the 
 ### MLH — Best Use of Solana
 
 **Pending — do not submit this prize claim.** No live Solana devnet transaction is recorded in [status](status.md). Base Sepolia is the demonstrated payment target. Optional Solana contract support and an installed SVM dependency do not establish a working devnet payment. Replace this placeholder only after a dated live devnet transaction and reproducible flow are documented.
+
+
+## Verify on-chain
+
+Skarl's report provenance integration uses the existing EAS predeploy on Base
+Sepolia, with no custom contract. A policy-constrained CDP attestor commits the
+canonical report hash, original-source hash, frozen-rubric hash, pipeline/model
+versions, stored recommendation, completion time and license flag. The public
+record contains no media URL, contributor name or contributor wallet. A dashboard
+**Verify on-chain** badge links the current report to EAS when confirmation is
+available.
+
+The commitment also covers finalized failed reports: it proves what Skarl
+recorded, not model accuracy, acceptance or payment. Verification-only clips are
+marked `licensed: false`. Schema registration and wallet-policy setup have live
+evidence; backend rollout and per-report backfill are tracked separately in
+[build status](status.md). See [Coinbase controls and provenance](coinbase-submission.md#verify-on-chain)
+and the [official EAS deployments](https://docs.attest.org/docs/quick--start/contracts).

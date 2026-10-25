@@ -646,3 +646,30 @@ readings, not video frames. Activity thresholds and approximation limits are in
 [mobile motion summary](mobile.md#motion-summary-for-the-dashboard). A still
 phone is normal for the fixed-camera task. These client-reported signals do not
 change report recommendations, human acceptance, payables or payment authority.
+
+
+## Verify on-chain
+
+After the backend rollout, `attestations.forSubmission({submissionId})` is a
+public reactive query returning `null` or
+`{uid, txHash, easscanUrl, basescanUrl, fields}`. It returns only the current
+analysis's confirmed attestation. Render a **Verify on-chain** badge linking to
+`easscanUrl`; `basescanUrl` is the transaction detail link. A `null` result means
+no confirmed attestation is available for that analysis; show pending/unavailable,
+not a failed verification or a successful attestation. Do not display an older
+analysis's badge after a rerun.
+
+`fields` contains exactly `reportHash`, `sourceSha256`, `rubricHash`,
+`pipelineVersion`, `videoModel`, `recommendation`, `verifiedAt`, and `licensed`.
+Hashes are `0x`-prefixed bytes32 strings; `verifiedAt` is analysis completion time
+in Unix seconds; `licensed` is a boolean. Jury model IDs are comma-separated;
+`unavailable` means no visual model run was recorded. No report text, original
+media URL, contributor identity, or contributor wallet is returned.
+
+The badge proves that Skarl committed these report facts to EAS, not that the
+clip passed, was accepted, or was paid. Finalized failed reports can also be
+attested; recommendations remain as stored and verification-only submissions
+have `licensed: false`. Check the linked EAS record for current revocation state;
+the query records confirmation and does not continuously poll revocations.
+Schema/account/policy setup is live; deployment and report backfill evidence are
+tracked in [build status](status.md).

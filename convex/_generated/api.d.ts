@@ -13,6 +13,8 @@ import type * as agentChat from "../agentChat.js";
 import type * as agentChatData from "../agentChatData.js";
 import type * as agentWallet from "../agentWallet.js";
 import type * as analytics from "../analytics.js";
+import type * as attestations from "../attestations.js";
+import type * as attestationsNode from "../attestationsNode.js";
 import type * as approvalWorkflow from "../approvalWorkflow.js";
 import type * as chainWitness from "../chainWitness.js";
 import type * as contributorWallet from "../contributorWallet.js";
@@ -63,6 +65,8 @@ declare const fullApi: ApiFromModules<{
   agentChatData: typeof agentChatData;
   agentWallet: typeof agentWallet;
   analytics: typeof analytics;
+  attestations: typeof attestations;
+  attestationsNode: typeof attestationsNode;
   approvalWorkflow: typeof approvalWorkflow;
   chainWitness: typeof chainWitness;
   contributorWallet: typeof contributorWallet;

@@ -31,3 +31,23 @@ Status as of October 25, 2026 (post-audit). These are design decisions, not clai
 - What measured quality, false-positive tolerance and latency does the buyer require? Freeze thresholds on training/validation sessions and reserve held-out sessions for reporting.
 
 Routine folder and implementation choices can proceed without waiting on these. Real contributor collection, live signing and claims of sponsor eligibility depend on resolving their respective questions.
+
+
+## Verify on-chain
+
+**Chosen: EAS report commitments on Base Sepolia; still no custom contract.**
+Use the existing EAS predeploy `0x4200000000000000000000000000000000000021` and
+SchemaRegistry `0x4200000000000000000000000000000000000020`, confirmed in the
+[official deployment list](https://docs.attest.org/docs/quick--start/contracts).
+EAS documents a [Spearbit audit of its contracts](https://docs.attest.org/docs/quick--start/faqs).
+Skarl registers one revocable schema with the zero resolver; it deploys no
+Solidity, escrow or resolver contract.
+
+Attestations commit to canonical report/source/rubric hashes and bounded metadata,
+including the existing recommendation and license flag. Failed reports remain
+eligible records and verification-only uploads remain unlicensed for delivery.
+A separate CDP account with an account-scoped EAS-only policy signs these records;
+it is not a treasury or payout signer. Convex retains durable per-analysis intent,
+retry and reconciliation state. The asynchronous sweep cannot accept work or
+create payment authority, and its failure cannot block verification. See
+[build status](status.md) for observed rollout and chain evidence.

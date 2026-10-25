@@ -978,3 +978,35 @@ web deployment. The dashboard API includes the precise signing/recovery flow.
 Refund commit validation: isolated staged-source `pnpm check` passed **662 tests** (163 Node, 325 Convex, 174 payment-route/client), typechecks, docs and production build, including `/api/payments/refund`. Tests exercise exact reservation/payment accounts, approval refusal/revocation/expiry/tenant checks, same-hash replay, changed bindings, browser recovery, and one-time sweep posting. An independent read-only review found no blocking issue. API types were regenerated without activating a deployment. All wallet/chain evidence in these tests is simulated.
 
 After merging the concurrent receipt/mobile backend slice, the complete main checkout passed `pnpm check`: **670 tests** (163 Node, 333 Convex, 174 payment-route/client), all typechecks, 39 Markdown documents’ links/anchors and the production web build. Both `/api/payments/refund` and the incoming receipt route built successfully. This confirms merged source compatibility; no live wallet transfer or cloud deployment was performed.
+
+## Verify on-chain — EAS setup, October 25, 2026
+
+The revocable Skarl report schema is registered on the existing Base Sepolia EAS
+predeploy. No custom contract, resolver or escrow was deployed. The eight fields
+are `reportHash`, `sourceSha256`, `rubricHash`, `pipelineVersion`, `videoModel`,
+`recommendation`, `verifiedAt`, and `licensed`. No original media, report text,
+contributor name, URL or contributor wallet is published.
+
+- Schema UID: `0x1ea6e2d3fd6c61ffc02b18bea15c4037f90f832e2ed82e2d50bb98bcfe6e804f`.
+- [EAS schema](https://base-sepolia.easscan.org/schema/view/0x1ea6e2d3fd6c61ffc02b18bea15c4037f90f832e2ed82e2d50bb98bcfe6e804f).
+- [Successful schema-registration transaction](https://sepolia.basescan.org/tx/0x6467a504407e9d03e7bfb4c41bf7b9e29cd629c86bdb0995a7f1664081ca36a1).
+- Attestor CDP Server Wallet account: `skarl-attestor`, `0xbc1e957F2AE49e39014ea2a9D23e59C62832F26B`.
+- Account policy: `a3f55c34-6ba6-4c7f-b81d-c0203ce30ba0`. Live CDP policy simulations accepted `attest` and `revoke`; rejected wrong destination, network, function, native value, and alternate transaction/hash/message signing. Simulations are policy evidence, not attestation transactions.
+- The separate registrar account is `0x952395cc709E5064137ECfCA46FD8B1BD1a82f8A`; the attestor cannot call SchemaRegistry. Rerunning `scripts/eas-register-schema.mjs` observed the schema and skipped sending.
+
+`convex/attestations.ts` and `convex/attestationsNode.ts` implement an independent
+two-minute sweep, a durable per-analysis intent, fenced retries, and receipt plus
+EAS payload verification. CDP retries reuse one stable request key within 23
+hours; unknown older sends require reconciliation. Proven reverted receipts may
+start up to three fresh attempts while preserving their transaction history.
+The public `attestations.forSubmission` query exposes only the current analysis's
+confirmed public fields and explorer links. Nothing here grants acceptance,
+licensing, delivery or payment authority. Failed finalized reports retain their
+stored recommendation; verification-only reports always attest `licensed=false`.
+
+**Rollout at this snapshot:** schema, attestor, policy and Convex environment
+configuration are live. The new Convex functions/table/cron still require the
+deployment owner's deploy of `origin/main`; no Convex deployment was performed
+by this task. Report backfill and individual attestation links are not yet
+observed. Run `attestations:sweep` after that deploy and inspect
+`attestations:inventory`. Mocked tests do not establish live attestation success.
