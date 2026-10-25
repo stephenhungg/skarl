@@ -68,6 +68,7 @@ def test_acceptance_requires_clear_duplicate_check(payload):
             "claim": "Synthetic evidence for a contract test only."
         }]
     payload["recommendation"] = "accept"
+    del payload["warnings"]
     with pytest.raises(ValidationError, match="clear duplicate"):
         VerificationReport.model_validate(payload)
 

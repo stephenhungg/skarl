@@ -1,0 +1,62 @@
+{
+  "description": "Cross-language contract cases. TypeScript and Python tests both parse this file and must agree on every case. Each case copies a base report, then sets dotted paths (numeric segments index arrays). When rubric is present, the rubric check also runs.",
+  "bases": {
+    "accept": {
+      "schemaVersion": "1.0",
+      "reportId": "r1",
+      "submissionId": "s1",
+      "taskVersionId": "t1",
+      "source": { "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "durationMs": 1000 },
+      "pipeline": { "version": "v1", "status": "completed", "implementation": "inference", "modelRuns": [{ "provider": "fixture", "model": "test", "promptVersion": "v1" }] },
+      "criteria": [{ "criterionId": "c1", "status": "supported", "evidence": [{ "modality": "video", "startMs": 0, "endMs": 500, "claim": "fixture evidence" }], "reason": "fixture only" }],
+      "duplicate": { "status": "clear", "matches": [] },
+      "recommendation": "accept"
+    },
+    "review": {
+      "schemaVersion": "1.0",
+      "reportId": "r2",
+      "submissionId": "s1",
+      "taskVersionId": "t1",
+      "source": { "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "durationMs": 1000 },
+      "pipeline": { "version": "v1", "status": "completed", "implementation": "inference", "modelRuns": [{ "provider": "fixture", "model": "test", "promptVersion": "v1" }] },
+      "criteria": [{ "criterionId": "c1", "status": "unobservable", "evidence": [], "reason": "fixture only" }],
+      "duplicate": { "status": "clear", "matches": [] },
+      "recommendation": "needs_review"
+    }
+  },
+  "cases": [
+    { "name": "accept base", "base": "accept", "valid": true },
+    { "name": "review base", "base": "review", "valid": true },
+    { "name": "accept matching rubric", "base": "accept", "rubric": ["c1"], "valid": true },
+    { "name": "integral floats are integers on both sides", "base": "accept", "set": { "source.durationMs": 1e3, "criteria.0.evidence.0.startMs": 1.0, "criteria.0.evidence.0.endMs": 500.0 }, "valid": true },
+    { "name": "largest safe integer", "base": "accept", "set": { "source.durationMs": 9007199254740991, "criteria.0.evidence.0.endMs": 9007199254740991 }, "valid": true },
+    { "name": "suspected copy with match", "base": "review", "set": { "duplicate": { "status": "suspected", "matches": [{ "submissionId": "s2", "score": 0.9, "overlapMs": 800 }] } }, "valid": true },
+    { "name": "infinite duration and timestamp", "base": "accept", "set": { "source.durationMs": 1e400, "criteria.0.evidence.0.endMs": 1e999 }, "valid": false },
+    { "name": "integer above 2^53", "base": "accept", "set": { "source.durationMs": 9007199254740992, "criteria.0.evidence.0.endMs": 9007199254740993 }, "valid": false },
+    { "name": "infinite token count", "base": "accept", "set": { "pipeline.modelRuns.0.inputTokens": 1e400 }, "valid": false },
+    { "name": "fractional timestamp", "base": "accept", "set": { "criteria.0.evidence.0.startMs": 1.5 }, "valid": false },
+    { "name": "boolean duration", "base": "accept", "set": { "source.durationMs": true }, "valid": false },
+    { "name": "string duration", "base": "accept", "set": { "source.durationMs": "1000" }, "valid": false },
+    { "name": "lone surrogate claim", "base": "accept", "set": { "criteria.0.evidence.0.claim": "\ud800" }, "valid": false },
+    { "name": "whitespace claim", "base": "accept", "set": { "criteria.0.evidence.0.claim": " " }, "valid": false },
+    { "name": "whitespace reason", "base": "accept", "set": { "criteria.0.reason": "\t\n" }, "valid": false },
+    { "name": "whitespace task version", "base": "accept", "set": { "taskVersionId": "　" }, "valid": false },
+    { "name": "whitespace model", "base": "accept", "set": { "pipeline.modelRuns.0.model": " " }, "valid": false },
+    { "name": "null warnings", "base": "review", "set": { "warnings": null }, "valid": false },
+    { "name": "null token count", "base": "review", "set": { "pipeline.modelRuns.0.inputTokens": null }, "valid": false },
+    { "name": "accept on text-only evidence", "base": "accept", "set": { "criteria.0.evidence": [{ "modality": "text", "startMs": 0, "endMs": 500, "claim": "model says ok" }] }, "valid": false },
+    { "name": "text evidence beyond duration", "base": "accept", "set": { "criteria.0.evidence.1": { "modality": "text", "startMs": 5, "endMs": 1000000000000, "claim": "model says ok" } }, "valid": false },
+    { "name": "accept on zero-duration source", "base": "accept", "set": { "source.durationMs": 0, "criteria.0.evidence.0.endMs": 0 }, "valid": false },
+    { "name": "accept on zero-length evidence", "base": "accept", "set": { "criteria.0.evidence.0.startMs": 100, "criteria.0.evidence.0.endMs": 100 }, "valid": false },
+    { "name": "evidence runs backwards", "base": "accept", "set": { "criteria.0.evidence.0.startMs": 600, "criteria.0.evidence.0.endMs": 500 }, "valid": false },
+    { "name": "accept with warnings", "base": "accept", "set": { "warnings": ["ML unavailable"] }, "valid": false },
+    { "name": "not_checked with matches", "base": "review", "set": { "duplicate": { "status": "not_checked", "matches": [{ "submissionId": "s2", "score": 0.9, "overlapMs": 800 }] } }, "valid": false },
+    { "name": "clear with matches", "base": "review", "set": { "duplicate": { "status": "clear", "matches": [{ "submissionId": "s2", "score": 0.9, "overlapMs": 800 }] } }, "valid": false },
+    { "name": "suspected without matches", "base": "review", "set": { "duplicate": { "status": "suspected", "matches": [] } }, "valid": false },
+    { "name": "self match differing by case", "base": "review", "set": { "duplicate": { "status": "suspected", "matches": [{ "submissionId": "S1", "score": 0.9, "overlapMs": 800 }] } }, "valid": false },
+    { "name": "scaffold cannot accept", "base": "accept", "set": { "pipeline.implementation": "scaffold" }, "valid": false },
+    { "name": "invented criterion", "base": "accept", "rubric": ["c1"], "set": { "criteria.0.criterionId": "i-made-this-up" }, "valid": false },
+    { "name": "accept missing a rubric criterion", "base": "accept", "rubric": ["c1", "c2"], "valid": false },
+    { "name": "duplicate rubric IDs", "base": "accept", "rubric": ["c1", "c1"], "valid": false }
+  ]
+}

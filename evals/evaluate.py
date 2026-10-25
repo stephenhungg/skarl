@@ -7,19 +7,29 @@ import argparse
 from collections import Counter
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Any
+import unicodedata
 
 SPLITS = {"train", "validation", "test"}
 DECISIONS = {"accept", "request_correction", "needs_review"}
 CRITERION_STATUSES = {"supported", "contradicted", "unobservable"}
 DUPLICATE_STATUSES = {"not_checked", "clear", "suspected"}
+ZERO_WIDTH = re.compile("[\u200b-\u200d\u2060\ufeff]")
+# Any shared value across splits leaks: the same person, session, recording, or file.
+LEAKAGE_KEYS = ("actorId", "sessionId", "originRecordingId", "mediaPath", "contentSha256")
 
 
 def nonempty_string(value: Any, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{label} must be a nonempty string")
     return value
+
+
+def leakage_key(value: str) -> str:
+    """Normalize so cosmetic variants of an ID cannot slip across splits."""
+    return ZERO_WIDTH.sub("", unicodedata.normalize("NFKC", value)).strip().casefold()
 
 
 def validate_outcome(outcome: Any, label: str) -> None:
@@ -36,6 +46,11 @@ def validate_outcome(outcome: Any, label: str) -> None:
         nonempty_string(name, f"{label}.criterionId")
         if status not in CRITERION_STATUSES:
             raise ValueError(f"{label}.criteria.{name} is invalid")
+    if outcome["recommendation"] == "accept":
+        if any(status != "supported" for status in criteria.values()):
+            raise ValueError(f"{label}: accept requires every criterion to be supported")
+        if outcome["duplicateStatus"] != "clear":
+            raise ValueError(f"{label}: accept requires a clear duplicate check")
 
 
 def validate_manifest(manifest: Any) -> list[dict[str, Any]]:
@@ -61,16 +76,23 @@ def validate_manifest(manifest: Any) -> list[dict[str, Any]]:
         if split not in SPLITS:
             raise ValueError(f"{label}.split is invalid")
         for key in ("actorId", "sessionId", "originRecordingId"):
-            value = nonempty_string(sample.get(key), f"{label}.{key}")
-            group_key = (key, value)
-            previous_split = groups.setdefault(group_key, split)
-            if previous_split != split:
-                raise ValueError(f"split leakage: {key}={value} appears in {previous_split} and {split}")
+            nonempty_string(sample.get(key), f"{label}.{key}")
         nonempty_string(sample.get("variant"), f"{label}.variant")
         if not manifest["syntheticMetadata"]:
             nonempty_string(sample.get("mediaPath"), f"{label}.mediaPath")
         elif sample.get("mediaPath") is not None:
             nonempty_string(sample.get("mediaPath"), f"{label}.mediaPath")
+        if sample.get("contentSha256") is not None and not re.fullmatch(
+            r"[0-9a-f]{64}", str(sample["contentSha256"])
+        ):
+            raise ValueError(f"{label}.contentSha256 must be a lowercase hex SHA-256")
+        for key in LEAKAGE_KEYS:
+            value = sample.get(key)
+            if value is None:
+                continue
+            previous_split = groups.setdefault((key, leakage_key(value)), split)
+            if previous_split != split:
+                raise ValueError(f"split leakage: {key}={value} appears in {previous_split} and {split}")
         validate_outcome(sample.get("expected"), f"{label}.expected")
     return samples
 

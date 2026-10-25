@@ -26,9 +26,43 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(result["duplicates"]["perClass"]["suspected"]["falsePositive"], 1)
 
     def test_derivative_cannot_cross_splits(self):
-        self.manifest["samples"][1]["split"] = "test"
-        with self.assertRaisesRegex(ValueError, "split leakage"):
+        # Distinct actor and session, so only the shared origin recording can trip the check.
+        derivative = self.manifest["samples"][1]
+        derivative.update(split="test", actorId="derivative-actor", sessionId="derivative-session")
+        with self.assertRaisesRegex(ValueError, "split leakage: originRecordingId"):
             MODULE.validate_manifest(self.manifest)
+
+    def test_cosmetic_id_variants_cannot_cross_splits(self):
+        test_sample = self.manifest["samples"][4]
+        for key, value in (
+            ("actorId", "example-actor-train "),
+            ("sessionId", "EXAMPLE-SESSION-TRAIN"),
+            ("originRecordingId", "example-origin-train-1\u200b"),
+        ):
+            manifest = deepcopy(self.manifest)
+            manifest["samples"][4][key] = value
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, f"split leakage: {key}"):
+                MODULE.validate_manifest(manifest)
+        self.assertEqual(test_sample["split"], "test")
+
+    def test_shared_media_cannot_cross_splits(self):
+        for key, value in (("mediaPath", "media/same.mp4"), ("contentSha256", "a" * 64)):
+            manifest = deepcopy(self.manifest)
+            manifest["samples"][0][key] = value
+            manifest["samples"][4][key] = value
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, f"split leakage: {key}"):
+                MODULE.validate_manifest(manifest)
+
+    def test_accept_must_be_consistent_with_its_labels(self):
+        for change in ({"duplicateStatus": "suspected"}, {"criteria": {"object": "contradicted", "action": "supported", "narration": "supported"}}):
+            predictions = deepcopy(self.predictions)
+            predictions[0].update(change)
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "accept requires"):
+                MODULE.score_predictions(self.manifest, predictions, "test")
+            manifest = deepcopy(self.manifest)
+            manifest["samples"][4]["expected"].update(change)
+            with self.subTest(change=change, side="gold"), self.assertRaisesRegex(ValueError, "accept requires"):
+                MODULE.validate_manifest(manifest)
 
     def test_actor_cannot_cross_splits(self):
         self.manifest["samples"][4]["actorId"] = "example-actor-train"

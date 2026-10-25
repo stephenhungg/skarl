@@ -1,6 +1,6 @@
 # Evaluation harness
 
-The starter uses only the Python standard library. It validates split hygiene and scores supplied classification labels. It does not run models, inspect video, or produce measured AI results.
+**Deferred for the event:** there is no labeled corpus before the deadline; tonight's evidence is the staged demo clips. The starter uses only the Python standard library. It validates split hygiene and scores supplied classification labels. It does not run models, inspect video, or produce measured AI results.
 
 ```sh
 python3 evals/evaluate.py --manifest evals/manifest.example.json --check-manifest

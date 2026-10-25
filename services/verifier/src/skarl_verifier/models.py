@@ -2,17 +2,57 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Self
+import math
+import re
+from collections.abc import Iterable
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
-NonemptyString = Annotated[str, Field(min_length=1)]
-NonnegativeInt = Annotated[int, Field(strict=True, ge=0)]
+# Largest integer JavaScript represents exactly; the JSON Schema uses the same bound.
+MAX_SAFE_INTEGER = 9007199254740991
+# Explicit whitespace class shared with the JSON Schema so Python and JavaScript agree.
+NONBLANK = re.compile(
+    "[^\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff\x1c-\x1f\x85]"
+)
+
+
+def _require_nonblank(value: str) -> str:
+    if not NONBLANK.search(value):
+        raise ValueError("must contain a non-whitespace character")
+    return value
+
+
+def _integral_number(value: Any) -> Any:
+    # JSON Schema treats 1.0 as an integer; accept it here too, but never bool or str.
+    if isinstance(value, bool):
+        raise ValueError("must be an integer, not a boolean")
+    if isinstance(value, float):
+        if not (math.isfinite(value) and value.is_integer()):
+            raise ValueError("must be a finite integer")
+        return int(value)
+    return value
+
+
+NonemptyString = Annotated[str, Field(min_length=1), AfterValidator(_require_nonblank)]
+NonnegativeInt = Annotated[
+    int, BeforeValidator(_integral_number), Field(strict=True, ge=0, le=MAX_SAFE_INTEGER)
+]
 DecimalString = Annotated[str, Field(pattern=r"^[0-9]+(\.[0-9]+)?$")]
 
 
 class ContractModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_null(cls, data: Any) -> Any:
+        # Optional contract fields are omitted, never null.
+        if isinstance(data, dict):
+            nulls = sorted(key for key, value in data.items() if value is None)
+            if nulls:
+                raise ValueError(f"null is not allowed; omit optional fields: {', '.join(nulls)}")
+        return data
 
 
 class Source(ContractModel):
@@ -68,6 +108,14 @@ class DuplicateCheck(ContractModel):
     status: Literal["not_checked", "clear", "suspected"]
     matches: list[DuplicateMatch]
 
+    @model_validator(mode="after")
+    def validate_matches(self) -> Self:
+        if self.status == "suspected" and not self.matches:
+            raise ValueError("a suspected duplicate requires at least one match")
+        if self.status != "suspected" and self.matches:
+            raise ValueError("not_checked and clear duplicate checks cannot list matches")
+        return self
+
 
 class VerificationReport(ContractModel):
     schemaVersion: Literal["1.0"]
@@ -92,8 +140,21 @@ class VerificationReport(ContractModel):
                 raise ValueError("accept requires a recorded model run")
             if not self.criteria or any(item.status != "supported" for item in self.criteria):
                 raise ValueError("accept requires nonempty, fully supported criteria")
-            if any(not item.evidence for item in self.criteria):
-                raise ValueError("accept requires evidence for every supported criterion")
+            if any(
+                not any(evidence.modality in ("video", "audio") for evidence in item.evidence)
+                for item in self.criteria
+            ):
+                raise ValueError("accept requires video or audio evidence for every supported criterion")
+            if any(
+                evidence.endMs == evidence.startMs
+                for item in self.criteria
+                for evidence in item.evidence
+            ):
+                raise ValueError("accept requires nonzero-length evidence")
+            if self.source.durationMs == 0:
+                raise ValueError("accept requires a nonzero source duration")
+            if self.warnings:
+                raise ValueError("accept cannot carry warnings")
             if self.duplicate.status != "clear" or self.duplicate.matches:
                 raise ValueError("accept requires a completed, clear duplicate check")
 
@@ -103,13 +164,31 @@ class VerificationReport(ContractModel):
 
         for criterion in self.criteria:
             for evidence in criterion.evidence:
-                if evidence.modality in ("video", "audio") and evidence.endMs > self.source.durationMs:
-                    raise ValueError("audio/video evidence must stay within the source duration")
+                if evidence.endMs > self.source.durationMs:
+                    raise ValueError("evidence must stay within the source duration")
 
         for match in self.duplicate.matches:
-            if match.submissionId == self.submissionId:
+            if match.submissionId.lower() == self.submissionId.lower():
                 raise ValueError("a duplicate candidate cannot reference the same submission")
             if match.overlapMs > self.source.durationMs:
                 raise ValueError("duplicate overlap must stay within the source duration")
 
         return self
+
+
+def validate_against_rubric(
+    report: VerificationReport, rubric_criterion_ids: Iterable[str]
+) -> VerificationReport:
+    """Reject criteria the task never defined; model output can invent its own."""
+    rubric = list(rubric_criterion_ids)
+    if not rubric or len(set(rubric)) != len(rubric):
+        raise ValueError("rubric criterion IDs must be nonempty and unique")
+    reported = {item.criterionId for item in report.criteria}
+    unknown = sorted(reported - set(rubric))
+    if unknown:
+        raise ValueError(f"criteria are not in the task rubric: {', '.join(unknown)}")
+    if report.recommendation == "accept":
+        missing = sorted(set(rubric) - reported)
+        if missing:
+            raise ValueError(f"accept requires every rubric criterion: {', '.join(missing)}")
+    return report

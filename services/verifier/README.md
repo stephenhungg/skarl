@@ -31,10 +31,10 @@ skarl-verifier analyze path/to/recording.mp4
 
 The canonical schema is `packages/contracts/schemas/verification-report.schema.json`. Missing schema files fail clearly; the package does not silently substitute a weaker schema. Installed outside the repository, pass `--schema` explicitly.
 
-## Planned worker boundary
+## Planned worker boundary (deferred)
 
-The future worker receives a narrowly authorized media reference, immutable task version, and submission ID; runs bounded analysis; and returns a validated report through an authenticated, report-only callback. Its credentials must not allow accepting a submission, changing a price, creating a payable, approving a payment, or invoking a Solana signer.
+For the demo, analysis runs as Gemini calls in a Convex action; this package supplies the canonical report validation and tests. The deferred future worker receives a narrowly authorized media reference, immutable task version, and submission ID; runs bounded analysis; and returns a validated report through an authenticated, report-only callback. Its credentials must not allow accepting a submission, changing a price, creating a payable, approving a payment, or invoking any wallet signer.
 
 Reports use `schemaVersion: "1.0"`, criterion findings of `supported`, `contradicted`, or `unobservable`, and an advisory recommendation. Scaffold, failed, incomplete, or unavailable runs must recommend `needs_review`. Acceptance recommendations require completed inference, all criteria supported, and a clear duplicate check. Application code also checks timestamp bounds and duplicate references.
 
-See [AI architecture](../../docs/ai-verification.md) and [evaluation protocol](../../docs/evaluation.md). Skarl's payment implementation is Solana Devnet only; this package has no blockchain implementation.
+See [AI architecture](../../docs/ai-verification.md) and [evaluation protocol](../../docs/evaluation.md). Skarl's payment implementation is Base Sepolia only; this package has no blockchain implementation.

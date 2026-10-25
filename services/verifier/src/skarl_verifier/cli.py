@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
+from jsonschema.exceptions import SchemaError
+
 from .validation import load_report, validate_report_payload
 
 
@@ -48,6 +50,12 @@ def parser() -> argparse.ArgumentParser:
     validate = commands.add_parser("validate-report", help="Validate a report against typed and JSON contracts")
     validate.add_argument("report", type=Path)
     validate.add_argument("--schema", type=Path, help="Path to the canonical verification JSON Schema")
+    validate.add_argument(
+        "--criterion-id",
+        action="append",
+        dest="criterion_ids",
+        help="Task rubric criterion ID; repeat for each. Rejects criteria outside the rubric.",
+    )
 
     scaffold = commands.add_parser("scaffold-report", help="Emit an explicit ml_unavailable report")
     scaffold.add_argument("--submission-id", required=True)
@@ -76,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "validate-report":
-            report = load_report(args.report, args.schema)
+            report = load_report(args.report, args.schema, args.criterion_ids)
             print(json.dumps({"valid": True, "reportId": report.reportId, "inferenceRan": False}))
             return 0
 
@@ -90,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(rendered, end="")
         return 0
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RecursionError, SchemaError) as error:
         print(f"validation failed: {error}", file=sys.stderr)
         return 2
 
