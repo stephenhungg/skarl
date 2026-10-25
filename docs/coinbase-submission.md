@@ -1,6 +1,8 @@
 # Skarl — Coinbase Payment Agents submission
 
-**The AP/settlement seat for a human-data company.** Agents buy verified work; a finance agent explains obligations and proposes payouts; an independent human controls settlement.
+**Every claim has a witness.** Skarl is the autonomous settlement desk for human-data companies: independent witnesses must agree before anything moves. Agents argue the case, deterministic code decides, and humans approve exceptions. Every payout currently also requires independent human approval and wallet signing. The seats are **settlement accountant + AP clerk**.
+
+[The thesis and witness table](thesis.md) separate live work/money evidence from simulated controls and pending integrations. The intended moment is a duplicate blocked before a second payable, refused agent self-approval, then controller approval in Coinbase Wallet and chain/ledger agreement. The complete live sequence remains pending; the receipts below prove funding.
 
 [Hosted demo](https://skarl.vercel.app) · [Repository](https://github.com/stephenhungg/skarl) · [Two-minute demo and judging runbook](demo-script.md) · [Evidence log](status.md) · [Architecture SVG](architecture.svg)
 

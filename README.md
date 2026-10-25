@@ -1,12 +1,14 @@
 # Skarl
 
-**The AP/settlement seat for a human-data company.**<br>
-Agents fund narrated demonstrations through x402; independent visual and audio evidence helps determine what is owed.<br>
-A bounded finance agent proposes payouts; a human approves, and chain receipts reconcile the books.
+**Every claim has a witness.**<br>
+Skarl is the autonomous settlement desk for human-data companies: independent witnesses must agree before anything moves.<br>
+Agents argue the case, deterministic code decides, and humans approve exceptions. Every payout currently requires independent human approval and wallet signing.
+
+[The thesis and live/simulated witness table](docs/thesis.md) map work evidence, money evidence, judgment and the Convex nervous system. The complete duplicate-to-payout moment remains pending in [build status](docs/status.md).
 
 **[Open the live demo](https://skarl.vercel.app)** · [Coinbase submission](docs/coinbase-submission.md) · [Devpost text](docs/devpost.md) · [Two-minute demo and judging runbook](docs/demo-script.md) · [Architecture SVG](docs/architecture.svg)
 
-**Testnet · test USDC · demo identities.** Demonstrated payments use Base Sepolia; operator-owned test assets, no real customer funds. The hosted demo uses impersonable identities, not production authentication.
+**Testnet · test USDC · demo identities.** Demonstrated funding uses Base Sepolia and optional Solana Devnet; payouts remain Base-only; operator-owned test assets, no real customer funds. The hosted demo uses impersonable identities, not production authentication.
 
 ## Use Skarl from your agent in 3 steps
 
