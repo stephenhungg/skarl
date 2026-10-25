@@ -4,7 +4,10 @@ import { useMutation } from "convex/react";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/glaze/ui/button";
 import { api, BUYER, useExceptions, useOrderData, useOrderId, type ExceptionItem, type Id } from "./data";
-import { humanize } from "./format";
+import { formatUsdc, humanize } from "./format";
+import { Switch } from "@/components/glaze/ui/switch";
+import { StatusMark } from "@/components/glaze/ui/status";
+import { toast } from "@/components/glaze/ui/toast";
 import { Loading, PageHeader, Unavailable } from "./ui";
 
 type ReviewEvidence = { code: string; detail?: string; message?: string; failures?: string[];
@@ -25,17 +28,34 @@ export function BuyerReview() {
   return <>
     <PageHeader title="Exceptions"
       actions={<Link href="/orders/new" className="type-label underline underline-offset-4">Post a task</Link>} />
+    {count === 0 ? <div className="flex items-center gap-2 rounded-panel border border-line-faint p-4 type-body-sm"><StatusMark status="ok" />Nothing needs you. Clips and payouts within your rule pay automatically.</div> : null}
+    <div className="flex flex-col gap-3">
+      {open.map(item => <ExceptionCard key={item.exceptionKey} orderId={orderId} item={item} />)}
+      {legacySubmissions.map(row => <RowLink key={row._id} href={`/dashboard/submissions/${row._id}`} status="warn" title={`Review clip ${row._id.slice(0, 8)}`}
+        detail={row.analysis ? `AI suggests: ${humanize(row.analysis.recommendation).toLowerCase()}` : "AI check unavailable"} action="Review" />)}
+      {legacyPayables.map(row => <RowLink key={row._id} href="/dashboard/payables" status="warn" title={`Payout of ${formatUsdc(row.amountAtomic)} USDC`}
+        detail="No policy approval recorded" action="Open payables" />)}
+    </div>
     <PolicyEditor key={`${orderId}:${summary.order.autoPay?.setAt ?? 0}`} orderId={orderId}
       enabled={summary.order.autoPay?.enabled ?? false}
       cap={String(summary.order.autoPay?.maxPerClipAtomic ?? summary.order.pricePerSampleAtomic)} />
-    <h2 className="mb-3 mt-8 type-heading-sm">Exceptions{count ? ` (${count})` : ""}</h2>
-    {count === 0 ? <p className="rounded-panel border border-line-faint p-4 type-body-sm text-text-2">Nothing needs review. Eligible clips and payouts follow your rule automatically.</p> : null}
-    <div className="flex flex-col gap-3">
-      {open.map(item => <ExceptionCard key={item.exceptionKey} orderId={orderId} item={item} />)}
-      {legacySubmissions.map(row => <Link key={row._id} href={`/dashboard/submissions/${row._id}`} className="rounded-panel border border-line-faint p-4 type-body-sm underline underline-offset-4">Review clip {row._id.slice(0, 8)} — {row.analysis ? humanize(row.analysis.recommendation) : "Analysis unavailable"}</Link>)}
-      {legacyPayables.map(row => <Link key={row._id} href="/dashboard/payables" className="rounded-panel border border-line-faint p-4 type-body-sm underline underline-offset-4">Review payout — no policy approval recorded</Link>)}
-    </div>
   </>;
+}
+
+function RowLink({ href, status, title, detail, action }: { href: string; status: "warn" | "fail"; title: string; detail: string; action: string }) {
+  return <Link href={href} className="group flex items-center gap-3 rounded-panel border border-line-faint p-4 hover:bg-hover-row">
+    <StatusMark status={status} />
+    <span className="min-w-0 flex-1"><span className="block type-label">{title}</span><span className="block type-body-sm text-text-2">{detail}</span></span>
+    <span className="shrink-0 type-label-sm text-text-2 group-hover:text-text-1">{action}</span>
+  </Link>;
+}
+
+/** Decimal USDC text to exact micro-USDC digits, or null. Never goes through a float. */
+function toAtomic(text: string): string | null {
+  const match = /^(\d+)(?:\.(\d{0,6}))?$/.exec(text.trim().replaceAll(",", ""));
+  if (!match) return null;
+  const atomic = BigInt(match[1]!) * 1_000_000n + BigInt((match[2] ?? "").padEnd(6, "0") || "0");
+  return atomic > 0n ? atomic.toString() : null;
 }
 
 function PolicyEditor({ orderId, enabled: initialEnabled, cap: initialCap }: {
@@ -43,25 +63,38 @@ function PolicyEditor({ orderId, enabled: initialEnabled, cap: initialCap }: {
 }) {
   const setAutoPay = useMutation(api.orders.setAutoPay);
   const [enabled, setEnabled] = useState(initialEnabled);
-  const [cap, setCap] = useState(initialCap);
+  const [cap, setCap] = useState(formatUsdc(initialCap));
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
+  const atomic = toAtomic(cap);
+  const dirty = enabled !== initialEnabled || atomic !== initialCap;
   async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setMessage("");
+    event.preventDefault();
+    if (!atomic) return;
+    setBusy(true);
     try {
-      await setAutoPay({ demoIdentity: BUYER, orderId, enabled, maxPerClipAtomic: cap });
-      setMessage("Rule saved in the audit trail.");
-    } catch { setMessage("Rule change refused. Check the cap and that you own this order."); }
+      await setAutoPay({ demoIdentity: BUYER, orderId, enabled, maxPerClipAtomic: atomic });
+      toast.success("Auto-pay rule saved.");
+    } catch { toast.fail("Rule change refused. Check the cap and that you own this order."); }
     finally { setBusy(false); }
   }
-  return <form onSubmit={save} className="flex flex-wrap items-end gap-4 rounded-panel border border-line-faint p-4">
-    <label className="flex items-center gap-2 py-2 type-label"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} />Auto-pay enabled</label>
-    <label className="flex flex-col gap-1 type-label-sm">Cap per clip, micro-USDC
-      <input className="mono rounded-tag border border-line-control bg-field px-3 py-2" inputMode="numeric" pattern="[1-9][0-9]*" required value={cap} onChange={event => setCap(event.target.value)} />
-    </label>
-    <Button type="submit" size="sm" disabled={busy}>{busy ? "Saving…" : "Save rule"}</Button>
-    <p className="w-full type-body-sm text-text-2">Every evidence check is required. 1 USDC = 1,000,000 micro-USDC. Changes apply to future approvals.</p>
-    {message ? <p role="status" className="w-full type-body-sm">{message}</p> : null}
+  return <form onSubmit={save} className="mt-8 rounded-panel border border-line-faint">
+    <div className="flex items-center gap-3 border-b border-line-faint px-4 py-3">
+      <span className="min-w-0 flex-1">
+        <span className="block type-label">Auto-pay</span>
+        <span className="block type-body-sm text-text-2">{enabled ? "Clips that pass every check pay out up to the cap without you." : "Every payout waits for you."}</span>
+      </span>
+      <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Auto-pay" />
+    </div>
+    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+      <label htmlFor="autopay-cap" className="type-label-sm text-text-2">Cap per clip</label>
+      <span className="flex items-center rounded-tag border border-line-control bg-field pe-3 focus-within:border-line-focus">
+        <input id="autopay-cap" className="w-28 bg-transparent px-3 py-1.5 type-label outline-none" inputMode="decimal" value={cap}
+          onChange={event => setCap(event.target.value)} aria-invalid={!atomic} />
+        <span className="type-label-sm text-text-3">USDC</span>
+      </span>
+      {!atomic && <span className="type-body-sm text-fail-text">Enter an amount above 0, up to 6 decimals.</span>}
+      <Button type="submit" size="sm" className="ms-auto" disabled={busy || !atomic || !dirty}>{busy ? "Saving…" : "Save rule"}</Button>
+    </div>
   </form>;
 }
 

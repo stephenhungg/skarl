@@ -1,7 +1,7 @@
 "use client";
-import { BuyerReview } from "@/features/dashboard/buyer-review";
+import { Overview } from "@/features/dashboard/overview";
 import { RequireConvex } from "@/features/dashboard/ui";
 
 export default function DashboardPage() {
-  return <RequireConvex><BuyerReview /></RequireConvex>;
+  return <RequireConvex><Overview /></RequireConvex>;
 }
