@@ -10,15 +10,20 @@
     "dev:https": "next dev --experimental-https"
   },
   "dependencies": {
+    "@base-ui/react": "^1.9.0",
     "@coinbase/x402": "2.1.0",
+    "@lordicon/element": "^3.0.2",
+    "@phosphor-icons/react": "^2.1.10",
     "@skarl/contracts": "workspace:*",
     "@skarl/ledger": "workspace:*",
     "@skarl/payments": "workspace:*",
+    "@tanstack/react-virtual": "^3.14.22",
     "@x402/core": "2.28.0",
     "@x402/evm": "2.28.0",
     "@x402/next": "2.28.0",
     "@x402/paywall": "2.28.0",
     "@x402/svm": "2.28.0",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "1.48.0",
     "framer-motion": "^14.6.0",
@@ -32,10 +37,10 @@
     "viem": "2.57.11"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "4.1.14",
+    "@tailwindcss/postcss": "4.3.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "postcss": "^8.5.31",
-    "tailwindcss": "4.1.14"
+    "tailwindcss": "4.3.3"
   }
 }
