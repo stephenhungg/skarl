@@ -6,7 +6,7 @@
 
 [Hosted demo](https://skarl.vercel.app) · [Repository](https://github.com/stephenhungg/skarl) · [Two-minute demo and judging runbook](demo-script.md) · [Evidence log](status.md) · [Architecture SVG](architecture.svg)
 
-**Testnet only: Base Sepolia and optional Solana Devnet funding, test USDC, demo identities, and the operator's own test float. No custody or management of anyone else's real funds.** Live below means an actual testnet/provider operation, not mainnet or production readiness. Evidence cutoff: [status](status.md), including October 25, 2026, 03:05 PDT policy verification and 03:29 PDT Solana funding.
+**Testnet only: Base Sepolia and optional Solana Devnet funding, test USDC, demo identities, and the operator's own test float. No custody or management of anyone else's real funds.** Live below means an actual testnet/provider operation, not mainnet or production readiness. Evidence cutoff: [status](status.md), including October 25, 2026, 03:05 PDT policy verification, 03:29 PDT Solana funding, and the [04:40 evidence refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt).
 
 ## 1. Project summary
 
@@ -16,9 +16,9 @@ Skarl serves AI teams buying short narrated demonstrations and operators who mus
 | --- | --- | --- |
 | **PAY: buyer agent** | Funds an order through x402 V2 `exact`; production uses the CDP facilitator. The reusable Wallet MCP plugin uses `initiate_x402_request`, human approval, then `complete_x402_request`. A separate CDP SDK buyer uses `CdpX402Client` and `SpendControls`. | CLI x402 funding settled on Base Sepolia and Solana Devnet, including CDP-facilitated payments. The recorded payments were **not Wallet MCP purchases**. |
 | **EARN: Skarl evidence service** | Sells an accepted, licensed sample's verification report and five-minute media access for 0.25 test USDC, paid to the separate `skarl-finance-agent` revenue wallet. The x402 endpoint declares CDP Bazaar metadata for agent discovery. | Endpoint and discovery declaration implemented; ineligible samples correctly return `404`. **Paid delivery and a CDP Bazaar listing remain pending.** |
-| **MANAGE: finance agent** | Gemini function-calling agent in Convex reads obligations and journals, explains exceptions and proposes bounded batches. Controller Wallet/MCP signing is the default; an optional CDP Server Wallet executor adds Policy Engine caps and recipient restrictions to already approved intents. | A live read-only tool loop completed. Contributor wallet verification and a 2-USDC CDP policy are live; actual over-cap and non-allowlisted sends returned `403 policy_violation`. **No contributor payout has run.** |
+| **MANAGE: finance agent** | Configurable Gemini/Claude function-calling agent in Convex reads obligations and journals, explains exceptions and proposes bounded batches. Controller Wallet/MCP signing is the default; an optional CDP Server Wallet executor adds Policy Engine caps and recipient restrictions to already approved intents. | Live Gemini and Claude read-only tool loops completed. Contributor wallet verification and a 2-USDC CDP policy are live; actual over-cap and non-allowlisted sends returned `403 policy_violation`. **No contributor payout has run.** |
 
-**Agent platforms:** Claude Code or Codex with Coinbase Wallet MCP for the buyer interface; a bounded Gemini tool loop running as a Convex Node action for finance. The [custom plugin](wallet-mcp-plugin/skarl.md) is reusable instruction context, not a Coinbase-certified or preinstalled plugin. Wallet MCP and CDP Server Wallet are separate execution surfaces.
+**Agent platforms:** Claude Code or Codex with Coinbase Wallet MCP for the buyer interface; bounded Gemini/Claude tool loops running as Convex Node actions for finance. The [custom plugin](wallet-mcp-plugin/skarl.md) is reusable instruction context, not a Coinbase-certified or preinstalled plugin. Wallet MCP and CDP Server Wallet are separate execution surfaces.
 
 ## 2. Working example and reuse
 
@@ -99,8 +99,7 @@ flowchart TB
 Skarl treats the VLM as a sensor, not a judge. VL-RewardBench (CVPR 2025, [arXiv:2411.17451](https://arxiv.org/abs/2411.17451)) and MLLM-as-a-Judge (ICML 2024, [arXiv:2402.04788](https://arxiv.org/abs/2402.04788)) report that multimodal judges fail mostly at perception and drift on holistic scoring, so Gemini emits only structured, timestamped observations from silent frames, a separate model transcribes audio, and deterministic code applies a decomposed rubric mirroring the wrong-object / wrong-order / missing-step taxonomy of procedural mistake detection (Assembly101, CaptainCook4D, Ego-Exo4D). Every event must cite a sampled frame; the audio and video channels are independent and must agree; a two-model panel (after PoLL, [arXiv:2404.18796](https://arxiv.org/abs/2404.18796)) routes any disagreement to human review; nothing auto-accepts on failure. We report false-acceptance with Wilson 95% intervals and a risk-coverage operating point (selective prediction) instead of bare accuracy. Conformal abstention guarantees and SSCD/VSC-style copy detection are next.
 
 The two Gemini judges share a model family, so consensus is not independent
-proof of truth. These upgrades are implemented and tested locally; deployment
-and a labeled human corpus evaluation remain required. dHash does not cover
+proof of truth. The [04:40 evidence refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt) confirms a stored live negative jury run; a labeled human corpus evaluation remains required. dHash does not cover
 crop, flip, overlay or screen recapture.
 
 | Decision | Reason and practical limit |
@@ -188,6 +187,7 @@ failed reports are eligible provenance records; verification-only clips remain
 `licensed: false`. No attestation grants acceptance or payout authority. Convex
 owns durable intents and retry/reconciliation state, while CDP holds the signing
 key. The [EAS predeploy](https://docs.attest.org/docs/quick--start/contracts) adds
-no custom Skarl contract. Backend deployment and report backfill are separate
-from the completed schema/account setup; [build status](status.md) is the live
-evidence inventory.
+no custom Skarl contract. The deployed cron backfilled all 11 finalized reports;
+EASScan and RPC confirmed their attestations, all with `needs_review` outcomes.
+[Live inventory](status.md#live-backfill-and-automatic-sweep--october-25-2026-0353-pdt).
+These receipts prove recorded provenance, not accepted work or payment.

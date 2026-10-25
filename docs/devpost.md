@@ -4,7 +4,7 @@
 
 [Live testnet demo](https://skarl.vercel.app) · [Repository](https://github.com/stephenhungg/skarl) · [One-page thesis and witness table](thesis.md) · [Coinbase submission](coinbase-submission.md) · [Demo script](demo-script.md) · [Setup](setup.md)
 
-**Testnet · test USDC · demo identities · operator-owned funds.** Demo video: **pending recording and upload**. Evidence cutoff: **October 25, 2026, 03:53 PDT**; [status](status.md) is the dated source of truth. Implemented, simulated and live are different claims.
+**Testnet · test USDC · demo identities · operator-owned funds.** Demo video: **pending recording and upload**. Evidence cutoff: **October 25, 2026, 04:40 PDT**; [status](status.md) is the dated source of truth. Implemented, simulated and live are different claims.
 
 ## Inspiration
 
@@ -26,16 +26,16 @@ Existing human-data marketplaces such as [Kled AI](https://www.kled.ai/) proved 
 
 - **Auditable verdicts:** two vision models must agree or a human reviews; every rubric criterion cites timestamped evidence; evals publish Wilson intervals, kappa and risk-coverage.
 - **The verdict is attested, not just the consent:** each verification result and its evidence hash go to EAS on Base Sepolia.
-- **Built for robot learning:** task rubrics plus narration and phone motion sensors, not a photo upload.
+- **Built for robot learning:** task rubrics and narration, with implemented phone motion capture whose physical-device behavior remains unverified.
 - **Agents can buy:** an AI buyer funds an order over x402 without a sales form.
 - **Payments a controller can defend:** agents propose but never approve, CDP policy caps reject over-limit payouts, and order, ledger, chain and bank reconcile.
-- **Contributors get reasons:** a Claude coach explains each outcome with cited timestamps and cannot change the verdict.
+- **Contributors get reasons:** the implemented Claude coach cites stored evidence and cannot change the verdict; contributor-facing quality remains unmeasured.
 
 Kled leads on what matters for a business today: real contributors, mainnet payouts, buyers and fraud models trained on real attacks. Skarl is a testnet prototype.
 
 ## How we built it
 
-Convex holds the order, private media, version-bound evidence, approvals, attempts, journals and agent transcripts. Next.js serves the product and x402 endpoints. Gemini Argon and Flash form a silent-frame jury; separate Gemini Transcribe audio provides another input. Disagreement and failed analysis route to review. The jury is locally tested; historical live single-model smoke tests do not establish that the current jury ran live. Same-family agreement is not independent proof of truth.
+Convex holds the order, private media, version-bound evidence, approvals, attempts, journals and agent transcripts. Next.js serves the product and x402 endpoints. Gemini Argon and Flash form a silent-frame jury; separate Gemini Transcribe audio provides another input. Disagreement and failed analysis route to review. A stored live Argon+Flash negative jury report has both judges agreeing that the task criteria were unobservable; it remains review-only. Same-family agreement is not independent proof of truth.
 
 Amounts stay `bigint` micro-USDC, Convex Int64 and decimal integer strings at JSON boundaries. Durable intent and a single execution claim precede payment. Canonical token, recipient, amount, confirmations and transfer identity must match before posting. Base Sepolia is advertised first and is the only payout target; Solana Devnet is an optional funding rail. There is no custom smart contract or escrow contract.
 
@@ -46,10 +46,11 @@ Amounts stay `bigint` micro-USDC, Convex Int64 and decimal integer strings at JS
 | **Live: Base x402 funding** | [10 test USDC](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757) via the public facilitator; [0.01 test USDC](https://sepolia.basescan.org/tx/0x20c9252f7d67a2dac87be839ad82b83465686157478645354838ac0f7239390d) via CDP with a real signed webhook, processed Convex receipt and balanced funding journal. These are funding receipts, not payouts. |
 | **Live: Solana funding** | [1 test USDC through CDP](https://explorer.solana.com/tx/31LMrtZYcf4PcBRcyFmFX8tBmt2fNttNSBA4mz7sTrZKSw6E2kH9oghw5FTafzR77JZT9so1zzjkj8ZuVqrGUezi?cluster=devnet), finalized slot 514940239, transfer instruction 2; exact RPC/Convex match and zero reconciliation exceptions at 03:29 PDT. |
 | **Live: inference and finance read** | Historical Flash vision (4,893 ms) + Transcribe (1,322 ms) on an unrelated human-video negative; correctly review-only. Flash finance read the trial balance and persisted an explanation (6,805 ms client time), with no proposal or transfer. These are integration measurements, not accuracy or productivity benchmarks. |
+| **Live: jury + Claude finance + mock bank** | The [04:40 evidence refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt) records the Argon/Flash/Transcribe negative jury (7,758/4,916/718 ms), a completed Claude finance loop with three read tools and zero proposed amount, and a fresh 10-USDC order/ledger/chain/Nessie match. Nessie is a simulated bank; no fiat or payout match is claimed. |
 | **Live: CDP enforcement** | Actual over-cap 2.000001-USDC and non-allowlisted 0.10-USDC requests returned `403 policy_violation`; no outgoing transaction returned. Preflight policy simulations are separate evidence. |
 | **Live: EAS public receipts** | All 11 finalized reports have confirmed attestations from the two-minute cron, verified through EASScan and RPC; every recommendation remains `needs_review`. [Inventory and provenance](status.md#live-backfill-and-automatic-sweep--october-25-2026-0353-pdt). |
 | **Simulated / local controls** | Duplicate obligations, trim-candidate alignment, approval refusal, replay, refund reservation and timeout recovery have regression coverage. Workflow wait/resume uses the real component's test adapter. Tests prove those cases, not live settlement. |
-| **Pending** | Licensed accepted contribution; contributor payout; completed Wallet MCP purchase; paid evidence delivery/Bazaar listing; live Argon+Flash jury and settlement/finance cron observations. Claude finance runtime, Cartesia, physical iPhone IMU and Nessie are not evidenced live. EAS report attestations are now live; they do not establish acceptance. |
+| **Pending** | Licensed accepted contribution; contributor payout; completed Wallet MCP purchase; paid evidence delivery/Bazaar listing; settlement/finance cron observations. Cartesia and physical iPhone IMU remain unverified. Claude finance and the negative vision jury now have stored live-run evidence; Nessie has live mock-API evidence. EAS report attestations are now live; they do not establish acceptance. |
 
 The [witness table](thesis.md#the-witness-table) distinguishes each layer. Original media, private URLs and credentials stay out of source control and public receipts. Demo identities are impersonable and are not production authentication.
 
@@ -86,8 +87,8 @@ Convex is the system of record and agent memory. Its transactions keep acceptanc
 | Workflow component | [convex.config.ts](../convex/convex.config.ts), [approvalWorkflow.ts](../convex/approvalWorkflow.ts): durable approval event, revalidation, one dispatch. | Component installed; wait/resume/refusal proven with component tests; live payout pending. |
 | Scheduler | [submissions.ts](../convex/submissions.ts): transactionally queue verification and interrupted-job checks. | Scheduled negative-smoke inference ran live. |
 | Crons | [crons.ts](../convex/crons.ts), [scheduledJobs.ts](../convex/scheduledJobs.ts): bounded settlement observation and finance review; report-attestation sweep. | Attestation cron observed live at 03:50/03:52; settlement/finance cron runs remain unverified in status. No blind resend. |
-| File storage | [submissions.ts](../convex/submissions.ts), [verify.ts](../convex/verify.ts), [media.ts](../convex/media.ts): private source media and access-checked evidence. | Original uploads read live; frame code deployed at 03:50, post-deployment frame execution unverified. |
-| Node actions | [verify.ts](../convex/verify.ts), [financeAgent.ts](../convex/financeAgent.ts): FFmpeg/provider calls outside transactions. | Live isolated inference and read-only Gemini finance run. |
+| File storage | [submissions.ts](../convex/submissions.ts), [verify.ts](../convex/verify.ts), [media.ts](../convex/media.ts): private source media and access-checked evidence. | Original uploads read live; the observed jury report has 19 stored evidence assets. |
+| Node actions | [verify.ts](../convex/verify.ts), [financeAgent.ts](../convex/financeAgent.ts): FFmpeg/provider calls outside transactions. | Live isolated inference, negative jury, and read-only Gemini/Claude finance runs. |
 | Typed validators | [schema.ts](../convex/schema.ts), [validators.ts](../convex/validators.ts), [verification.ts](../packages/contracts/src/verification.ts): typed records, exact money and report validation. | Deployed core validation plus local trust-boundary regressions. |
 
 ### Coinbase — Best Use of x402 by Coinbase / Payment Agents
@@ -105,17 +106,17 @@ Wallet MCP uses `initiate_x402_request`, human approval and `complete_x402_reque
 
 **A named community.** Student and gig contributors recording robot-training demonstrations for labs, and the small AI teams responsible for paying them. The intended benefit is evidence-backed compensation and fewer duplicate obligations; no community deployment or measured social impact is claimed. **A real problem.** Disputed work and uncertain settlement leave contributors and operators without a defensible payment decision. **It works.** The prototype has live funding, Gemini evidence and bounded finance tools; the complete payout loop is pending.
 
-**Thoughtful use of Claude.** Integration gate: the thesis calls for Claude + Gemini agents to argue and explain, with neither able to approve. Live runtime evidence currently proves only the Gemini finance loop. Claude Code used for development or a Wallet MCP setup example does not establish thoughtful in-product Claude use. Keep this entry **pending** until a dated Claude run and its contribution to the named community are evidenced.
+**Thoughtful use of Claude.** Claude and Gemini are configurable finance providers over the same bounded tools; neither can approve. A stored live `claude-sonnet-5-5` run completed at 03:59 PDT, reading payables, trial balance and exceptions, then persisting an explanation with zero proposed amount. The [04:40 evidence refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt) gives its run ID and retains the earlier HTTP 400 failure. This is in-product finance evidence, separate from Claude Code used for development.
 
-Our community is student and gig contributors recording robot-training demonstrations for labs, who can be paid late or rejected without a useful explanation. **Every claim has a witness:** Skarl's Contributor Coach uses Claude to turn stored criterion results into kind, specific guidance linked to exact evidence timestamps, while retaining the recorded outcome and uncertainty. Claude also serves as a configurable finance provider over the same bounded tools as Gemini; agents explain and propose, deterministic code enforces the rules, and humans approve exceptions and payments. Neither role can grant payment authority. The coach omits raw narration, has no tools, validates its output and derives citations from the stored report. The implementation has synthetic provider tests; live Claude inference, deployment and contributor-facing UI integration remain pending because the Anthropic key was unavailable at this checkpoint. Our Monday scope is one useful support task: explain what to correct in a recorded demonstration without promising acceptance or payment. [Implementation, limits and setup](anthropic.md).
+The implemented Contributor Coach translates stored criteria into specific correction guidance with evidence timestamps. It omits raw narration, has no tools, validates output and cannot change the outcome or promise payment. Its contributor-facing quality and community benefit remain unmeasured; this submission refresh did not establish a completed coach result. The useful next step is a consented contributor pilot. [Implementation and limits](anthropic.md).
 
 ### Capital One — Best Use of Nessie
 
-Rubric: **Completeness, Creativity, Complexity**. The proposed Nessie witness compares mock bank records with the contract, ledger and chain; it never establishes a real bank settlement. Completeness requires a reproducible API observation and mismatch/recovery trace; creativity is using disagreement to surface an exception; complexity is binding the observation to an exact obligation without treating it as payment authority. **Pending:** status contains no live Nessie integration. Do not present a bank witness or bank agreement as working yet.
+Rubric: **Completeness, Creativity, Complexity**. **Completeness:** live Nessie mock-API setup and four observed funding deposits; the 04:40 query confirms order, ledger, chain and bank agreement for the 10-USDC order. Payout/off-ramp agreement remains pending. **Creativity:** use disagreement between witnesses to expose an exception. **Complexity:** durable bank intents, exact integer-cent mapping, direction/intent binding, and observation of ambiguous writes instead of blind resend. Sub-cent amounts are refused rather than rounded. No bank record grants payment authority or posts a journal. This is always a **simulated bank**, never evidence that real fiat moved. [Live provider trace](status.md#capital-one-nessie-bank-witness--october-25-2026).
 
 ### MLH — Best Use of Gemini API
 
-Gemini produces timestamped observations instead of final payment authority. Argon + Flash inspect silent frames, Transcribe receives isolated audio, and Flash explains exact finance tool results. The current jury is deployed and tested with simulated provider responses; live jury execution remains unverified; historical Flash/Transcribe negative inference and the read-only Flash tool loop are live. No human-task accuracy or model-superiority claim is made. Missing evidence and disagreement route to review.
+Gemini produces timestamped observations instead of final payment authority. Argon + Flash inspect silent frames, Transcribe receives isolated audio, and Flash explains exact finance tool results. The stored live jury run has Argon and Flash agreeing on unobservable criteria, with separate Transcribe audio and a review-only result. Historical Flash/Transcribe negative inference and the read-only Flash finance loop are also live. Local simulated regressions cover failure and disagreement paths. No human-task accuracy or model-superiority claim is made. Missing evidence and disagreement route to review.
 
 ### MLH — Best Use of Solana
 
@@ -141,11 +142,11 @@ The team has a prototype and a specific problem to validate: can small human-dat
 
 ## What's next
 
-Complete a consented, accept-eligible contribution and independently approved Coinbase Wallet payout; record the entire moment. Verify paid evidence delivery and Wallet MCP/Bazaar discovery. Measure the deployed jury and recovery crons; test public receipts on a newly submitted report as well as the demonstrated backfill. Add Claude and mock-bank evidence only after real provider traces. Evaluate false acceptance and copy detection on labeled human clips before claiming quality or expanding the task.
+Complete a consented, accept-eligible contribution and independently approved Coinbase Wallet payout; record the entire moment. Verify paid evidence delivery and Wallet MCP/Bazaar discovery. Measure the deployed jury and recovery crons; test public receipts on a newly submitted report as well as the demonstrated backfill. Extend the demonstrated Claude read-only finance and mock-bank funding paths to a consented pilot without granting models payment authority. Evaluate false acceptance and copy detection on labeled human clips before claiming quality or expanding the task.
 
 ## Built with
 
-TypeScript, React, Next.js, Vercel, Convex, Convex Workflow, Gemini API (Argon, Flash, Transcribe), FFmpeg, x402, Coinbase CDP SDK/facilitator/webhooks/Policy Engine, Coinbase Wallet MCP adapter, Base Sepolia, Solana Devnet, test USDC, viem, Python, Vitest and pnpm. This list describes implementation, not proof that every integration ran end to end.
+TypeScript, React, Next.js, Vercel, Convex, Convex Workflow, Gemini API (Argon, Flash, Transcribe), Claude API, Capital One Nessie mock API, EAS, FFmpeg, x402, Coinbase CDP SDK/facilitator/webhooks/Policy Engine, Coinbase Wallet MCP adapter, Base Sepolia, Solana Devnet, test USDC, viem, Python, Vitest and pnpm. This list describes implementation, not proof that every integration ran end to end.
 
 ## Verify on-chain
 

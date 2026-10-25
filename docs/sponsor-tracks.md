@@ -102,10 +102,11 @@ Current configurable defaults are `gemini-4-argon` for visual evidence, `gemini-
 
 The earlier 03:13 attempt failed before settlement because fee-payer rotation broke exact quote matching. Its expired, unsettled authorization and spend reservation were retained before the single new attempt. Current-set fee-payer validation resolves that mismatch while retaining all economic and deduplication checks. See [live success and validation](status.md#confirmed-solana-funding-after-fee-payer-fix--october-25-2026-0329-pdt), [Solana rail](payments.md#solana-rail), and [Coinbase builder feedback](coinbase-submission.md#solana-fee-payer-rotation-during-x402-funding). Base/Coinbase remain primary and payouts remain Base-only. This proves testnet funding, not a Solana payout, bridge, Wallet MCP purchase or prize eligibility.
 
-## Not targeted
+## Other tracks and evidence gates
 
 - **Auth0:** Cal Hacks 13.0 has no Auth0 prize. Demo identities are seeded Convex users whose roles are checked on the server, and they are labeled as demo identities.
 - **Cartesia:** no live evidence in the current status snapshot; exclude it as a working witness.
+- **Anthropic / Capital One:** stored live Claude finance and hosted Nessie mock-bank funding evidence now support the [Devpost mapping](devpost.md#prize-specific-evidence). See the [04:40 refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt); no measured community impact or real bank settlement is claimed.
 
 ## Submission package
 

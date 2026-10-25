@@ -1098,3 +1098,45 @@ Convex deployment. The exact signup steps and operator entry points are in the
 [bank-witness dashboard handoff](dashboard-api.md#bank-witness--capital-one-nessie).
 Keep the simulation label after activation: Nessie's hosted mock bank is still
 not a real bank transfer or custody integration.
+
+## Submission evidence refresh — October 25, 2026, 04:40 PDT
+
+Read-only queries against `dev:keen-marmot-986` reconcile the submission text
+with stored live history. These observations supersede earlier pending labels;
+this refresh invoked no inference, bank write, wallet send or deployment.
+
+- **Vision jury:** `dashboard:submissions` for v2 returns analysis
+  `j5793b275cgcb55fwnxsrh1wgh8gy5h9`, completed at **03:35:33 PDT**, for
+  verification-only submission `mn79eef6kdybg8c8g86b3whatd8gzbz2`. Its stored
+  report records Argon **7,758 ms**, Flash **4,916 ms**, Transcribe **718 ms**,
+  `agreementFraction:1`, no disagreed criteria, and 19 evidence assets. Both
+  judges found the task criteria unobservable; the report remains
+  `needs_review` with suspected duplicate evidence. This proves a completed
+  live negative jury run and persisted assets, not valid work, trim robustness
+  or measured human-task accuracy.
+- **Claude finance:** `financeAgentData:runs` returns completed run
+  `mx72prddnhjp87a8qdy9p0svs98gyggq`, provider `claude`, model
+  `claude-sonnet-5-5`, **03:59:29–03:59:33 PDT** (4,636 ms). Its stored tools
+  are `listOutstandingPayables`, `getTrialBalance` and
+  `listReconciliationExceptions`; an explanation is persisted and
+  `proposedAtomic` is `"0"`. The earlier `claude_http_400` run remains recorded.
+  This is live read-only finance evidence, not a proposal, approval, payment,
+  coach-quality measurement or new model call by this refresh.
+- **Nessie funding witness:** the 04:40 read of
+  `bankWitness:reconciliation4Way` returns `bankAvailable:true`,
+  `simulated:true`, label `simulated bank (Capital One Nessie mock)`, and a
+  04:39:26 PDT snapshot. For the v2 funding intent, order/ledger/chain/bank all
+  `match` at `10000000` micro-USDC; activity
+  `d556d8f9-4f88-41be-9034-f24da9b40583`; `exceptions:[]`. This corroborates
+  the hosted mock-bank run above. It does not establish fiat movement or a
+  payout/off-ramp match.
+- **Remaining payout gate:** `dashboard:payables` for v2 still returns `[]` at
+  04:40. Its six observed submissions remain verification-only, review-only
+  and undelivered. The full duplicate-to-controller-wallet-payout sequence,
+  Wallet MCP purchase and paid evidence delivery remain unverified. No new
+  physical iPhone IMU or Cartesia evidence is recorded here.
+
+The finance/bank/payable queries were repeated at 04:40; submission/report
+history was read earlier in this refresh. All reads use the v2 order ID
+`kh7531zdrt7bn8vrs5qsw3c8bs8gy0cg` and the controller demo identity. No original
+media, transcript text, private URL or credential is reproduced here.
