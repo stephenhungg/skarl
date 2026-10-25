@@ -1,21 +1,37 @@
 "use client";
 import { useAction } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
+import Link from "next/link";
+import { AnimatePresence, motion } from "framer-motion";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import { VoiceBeam, useMicrophone } from "voice-glow";
 import { StatusMark } from "@/components/glaze/ui/status";
 import { toast } from "@/components/glaze/ui/toast";
 import { SendButton } from "@/components/glaze/ai/send-button";
-import { api, BUYER, useOrderId, useRuns, type AgentRun } from "./data";
+import { api, BUYER, useExceptions, useOrderData, useOrderId, useRuns, useStatements, type AgentRun, type Id, type PayableRow } from "./data";
 import { formatMs, formatUsdc, humanize } from "./format";
 import { Amount, Loading, Unavailable } from "./ui";
 import { cn } from "@/lib/glaze/utils";
 
 const SUGGESTIONS = [
   { label: "What do we owe?", prompt: "Summarize what we owe contributors and what has been paid." },
-  { label: "Propose payouts", prompt: "Propose payouts for every eligible payable and request independent approval." },
+  { label: "Propose payouts", prompt: "Propose payouts for every eligible payable and request approval." },
   { label: "Explain the books", prompt: "Explain the trial balance and any reconciliation exceptions." },
 ];
+const PROPOSE = SUGGESTIONS[1]!.prompt;
+// Earlier turns ride along in the prompt so follow-ups make sense; the server caps a prompt at 2000 characters.
+const NOW = "\n\nNow: ";
+function withHistory(text: string, runs: AgentRun[]) {
+  let history = "";
+  for (const run of runs.slice(0, 3)) {
+    const turn = `Q: ${shown(run.prompt)}\nA: ${(run.explanation ?? "").slice(0, 400)}\n`;
+    if (history.length + turn.length + text.length > 1800) break;
+    history = turn + history;
+  }
+  return history ? `Earlier in this conversation:\n${history}${NOW}${text}` : text;
+}
+const shown = (prompt: string) => (prompt.includes(NOW) ? prompt.slice(prompt.lastIndexOf(NOW) + NOW.length) : prompt);
 // The landing palette: lime accent through sage, so the glow reads as Skarl, not a generic rainbow.
 const BRAND_GLOW = ["#c7f18e", "#b4e47c", "#9fcf6c", "#86b35d", "#c7f18e"];
 
@@ -95,7 +111,7 @@ function UserMessage({ text }: { text: string }) {
   return <div className="ms-auto max-w-[85%] whitespace-pre-wrap rounded-[20px] bg-field px-4 py-2.5 type-body text-text-1">{text}</div>;
 }
 
-function AgentMessage({ run, live }: { run: AgentRun; live?: boolean }) {
+function AgentMessage({ run, live, payables }: { run: AgentRun; live?: boolean; payables: PayableRow[] | undefined }) {
   const steps = (run.transcript ?? []) as Step[];
   const facts = steps.map(factFor).filter((f): f is Fact => !!f);
   const [showProse, setShowProse] = useState(false);
@@ -117,6 +133,7 @@ function AgentMessage({ run, live }: { run: AgentRun; live?: boolean }) {
                   ))}
                 </ul>
               )}
+              <Proposals steps={steps} payables={payables} />
               {run.explanation && (facts.length > 0
                 ? <div>
                     <button type="button" onClick={() => setShowProse(v => !v)} aria-expanded={showProse} className="type-label-sm text-text-2 underline underline-offset-4">
@@ -136,6 +153,114 @@ function AgentMessage({ run, live }: { run: AgentRun; live?: boolean }) {
     </div>
   );
 }
+
+
+type Gate = { status: "ok" | "warn" | "fail" | "idle" | "running"; label: ReactNode };
+const SENT = new Set(["submitted", "pending", "reconciling"]), SETTLED = new Set(["confirmed", "finalized"]);
+
+/** Where one proposed payout stands, read live: the agent proposes, your rule or you approve, the executor sends. */
+function gates(row: PayableRow | undefined): Gate[] {
+  const intent = row?.intent, approval = row?.approval;
+  const byPolicy = approval?.approverTokenIdentifier.includes("policy-engine");
+  const stopped = intent?.status === "failed" || intent?.status === "cancelled" || row?.status === "reversed";
+  return [
+    { status: "ok", label: "Agent proposed" },
+    approval ? { status: "ok", label: byPolicy ? "Your auto-pay rule approved" : "You approved" }
+      : stopped ? { status: "fail", label: `Stopped: ${humanize(intent?.status ?? row?.status ?? "refused")}` }
+      : { status: "warn", label: <>Waiting on your rule or <Link href="/dashboard/inbox" className="underline underline-offset-4">your review</Link></> },
+    row?.status === "paid" || (intent && SETTLED.has(intent.status)) ? { status: "ok", label: "Paid on Base Sepolia" }
+      : intent && SENT.has(intent.status) ? { status: "running", label: "Sending on Base Sepolia" }
+      : { status: "idle", label: "Not sent" },
+  ];
+}
+
+function Proposals({ steps, payables }: { steps: Step[]; payables: PayableRow[] | undefined }) {
+  const proposed = steps.flatMap(step => {
+    const r = step.result as { ok?: boolean; results?: { payableId: string; amountAtomic: string }[] } | undefined;
+    return step.call.name === "proposePaymentBatch" && r?.ok ? r.results ?? [] : [];
+  });
+  if (!proposed.length) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      {proposed.map(item => {
+        const row = payables?.find(p => p._id === item.payableId);
+        return (
+          <Link key={item.payableId} href="/dashboard/payables" className="rounded-panel border border-line-faint bg-paper p-3 hover:bg-hover-row">
+            <div className="mb-2.5 flex items-baseline justify-between gap-3">
+              <span className="type-label">Payout proposal</span>
+              <span className="type-heading-sm"><Amount value={item.amountAtomic} /></span>
+            </div>
+            <ol className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-0">
+              {gates(row).map((gate, i) => (
+                <li key={i} className="flex items-center gap-2 type-body-sm sm:flex-1">
+                  <StatusMark status={gate.status} />
+                  <span className={cn(gate.status === "idle" ? "text-text-3" : "text-text-1")}>{gate.label}</span>
+                  {i < 2 && <span aria-hidden className="ms-auto me-3 hidden h-px w-6 bg-line sm:block" />}
+                </li>
+              ))}
+            </ol>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Live facts, no model: what is owed, whether the books balance, what is broken. Every row goes where you act. */
+function Brief({ orderId }: { orderId: Id<"orders"> }) {
+  const { payables } = useOrderData(orderId);
+  const statements = useStatements(orderId);
+  const exceptions = useExceptions(orderId);
+  if (!payables || !statements || !exceptions) return null;
+  const open = payables.filter(p => p.status === "accrued" || p.status === "payout_in_progress");
+  const owed = open.reduce((sum, p) => sum + BigInt(p.amountAtomic), 0n);
+  const waiting = payables.filter(p => p.intent?.status === "proposed" && !p.approval).length;
+  const broken = exceptions.filter(e => e.stillDetected && e.disposition?.status !== "resolved").length;
+  const rows: { href: string; status: Gate["status"]; text: ReactNode }[] = [
+    { href: "/dashboard/payables", status: open.length ? "warn" : "ok",
+      text: open.length ? <>{open.length} {open.length === 1 ? "payout" : "payouts"} owed, <Amount value={owed} /></> : "Nothing owed to contributors" },
+    ...(waiting ? [{ href: "/dashboard/inbox", status: "warn" as const, text: `${waiting} ${waiting === 1 ? "proposal waits" : "proposals wait"} on approval` }] : []),
+    { href: "/dashboard/ledger", status: "ok", text: <>Books balance at <Amount value={statements.trialBalance.totalDebitAtomic} /></> },
+    { href: "/dashboard/reconciliation", status: broken ? "fail" : "ok", text: broken ? `${broken} reconciliation ${broken === 1 ? "exception" : "exceptions"}` : "Chain, bank and ledger agree" },
+  ];
+  return (
+    <ul className="flex flex-col divide-y divide-line-faint overflow-hidden rounded-panel border border-line-faint bg-paper sm:flex-row sm:divide-x sm:divide-y-0">
+      {rows.map(row => (
+        <li key={row.href} className="min-w-0 sm:flex-1">
+          <Link href={row.href} className="flex items-center gap-2 px-3 py-2.5 type-body-sm hover:bg-hover-row"><StatusMark status={row.status} />{row.text}</Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+type ScenarioResult = FunctionReturnType<typeof api.scenarios.run>;
+
+/** The real refusal path, run on a disposable lab copy of this order: the agent tries to approve its own proposal. */
+function SelfApproval({ result, onPropose }: { result: ScenarioResult | "running"; onPropose: () => void }) {
+  if (result === "running") return (
+    <div className="flex items-center gap-3"><ThinkingOrb state="solving" size={20} /><span className="type-body text-text-2">Agent is trying to approve its own payout</span></div>
+  );
+  const missing = !result.passed && result.observedOutcome.startsWith("requires ");
+  return (
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      className={cn("rounded-panel border p-4", missing ? "border-line-faint" : result.passed ? "border-fail-text/40 bg-fail-text/5" : "border-warn-text/40")}>
+      {missing ? <>
+        <p className="type-label">The agent needs a payout proposal to try this on.</p>
+        <button type="button" onClick={onPropose} className="mt-2 type-label-sm underline underline-offset-4">Ask it to propose payouts</button>
+      </> : result.passed ? <>
+        <p className="flex items-center gap-2 type-heading-sm"><StatusMark status="fail" />Refused: the agent cannot approve its own payout</p>
+        <p className="mt-1.5 type-body-sm text-text-2">Nothing was approved or sent. The refusal is in the audit log.</p>
+        <Link href="/dashboard/audit" className="mt-2 inline-block type-label-sm underline underline-offset-4">Open audit log</Link>
+      </> : <>
+        <p className="flex items-center gap-2 type-heading-sm"><StatusMark status="warn" />The control did not hold</p>
+        <p className="mt-1.5 type-body-sm text-text-2">{readable(result.observedOutcome)}</p>
+        <Link href="/dashboard/scenarios" className="mt-2 inline-block type-label-sm underline underline-offset-4">Open scenario lab</Link>
+      </>}
+    </motion.div>
+  );
+}
+const readable = (text: string) => text.charAt(0).toUpperCase() + text.slice(1).replace(/_/g, " ");
 
 type Recognition = { start(): void; stop(): void; continuous: boolean; interimResults: boolean; lang: string;
   onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null };
@@ -161,6 +286,9 @@ export function Agent() {
   const orderId = useOrderId();
   const runs = useRuns(orderId);
   const run = useAction(api.financeAgent.run);
+  const runScenario = useAction(api.scenarios.run);
+  const { payables } = useOrderData(orderId);
+  const [selfTest, setSelfTest] = useState<ScenarioResult | "running" | null>(null);
   const mic = useMicrophone();
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
@@ -173,7 +301,7 @@ export function Agent() {
   // Oldest first, like any chat; runs arrive newest first.
   const thread = [...(runs ?? [])].reverse();
 
-  useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [thread.length, pending]);
+  useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [thread.length, pending, selfTest]);
   useEffect(() => {
     const el = input.current;
     if (!el) return;
@@ -197,34 +325,50 @@ export function Agent() {
     setPending(text.trim()); setPrompt(""); setBusy(true);
     try {
       // One stable id per deliberate request, so a retry replays instead of running twice.
-      await run({ demoIdentity: BUYER, orderId, requestId: `ui-${crypto.randomUUID()}`, prompt: text.trim() });
+      await run({ demoIdentity: BUYER, orderId, requestId: `ui-${crypto.randomUUID()}`, prompt: withHistory(text.trim(), runs ?? []) });
     } catch (error) {
       toast.fail("The agent could not answer", { description: error instanceof Error ? error.message : undefined });
       setPrompt(text);
     } finally { setBusy(false); setPending(null); }
   }
 
-  const empty = runs !== undefined && thread.length === 0 && !pending;
+  async function trySelfApproval() {
+    if (!orderId || selfTest === "running") return;
+    setSelfTest("running");
+    try { setSelfTest(await runScenario({ demoIdentity: BUYER, scenario: "agent_self_approval", orderId })); }
+    catch (error) {
+      setSelfTest(null);
+      toast.fail("Could not run the test", { description: error instanceof Error ? error.message : undefined });
+    }
+  }
+
+  const chips = (
+    <div className="flex flex-wrap justify-center gap-2">
+      {SUGGESTIONS.map(s => (
+        <button key={s.label} type="button" disabled={busy} onClick={() => void send(s.prompt)} title={s.prompt}
+          className="rounded-pill border border-line-control px-3.5 py-1.5 type-label-sm text-text-2 hover:bg-hover hover:text-text-1 disabled:opacity-50">{s.label}</button>
+      ))}
+      <button type="button" disabled={selfTest === "running"} onClick={() => void trySelfApproval()}
+        className="rounded-pill border border-fail-text/40 px-3.5 py-1.5 type-label-sm text-fail-text hover:bg-fail-text/5 disabled:opacity-50">Make it approve itself</button>
+    </div>
+  );
+  const empty = runs !== undefined && thread.length === 0 && !pending && !selfTest;
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-9rem)] w-full max-w-3xl flex-col">
+      {orderId && <div className="pb-6 pt-2"><Brief orderId={orderId} /></div>}
       <div className="flex-1">
         {runs === undefined ? <Loading rows={3} /> : empty ? (
           <div className="flex min-h-[50dvh] flex-col items-center justify-center gap-5 text-center">
             <ThinkingOrb state="breathing" size={64} />
             <h1 className="type-title">What should we check in the books?</h1>
-            <div className="flex flex-wrap justify-center gap-2">
-              {SUGGESTIONS.map(s => (
-                <button key={s.label} type="button" onClick={() => void send(s.prompt)} title={s.prompt}
-                  className="rounded-pill border border-line-control px-3.5 py-1.5 type-label-sm text-text-2 hover:bg-hover hover:text-text-1">{s.label}</button>
-              ))}
-            </div>
+            {chips}
           </div>
         ) : (
           <div className="flex flex-col gap-8 pb-6 pt-2">
             {thread.map((item, index) => (
               <div key={item._id} className="flex flex-col gap-4">
-                {item.prompt && <UserMessage text={item.prompt} />}
-                <AgentMessage run={item} live={index === thread.length - 1} />
+                {item.prompt && <UserMessage text={shown(item.prompt)} />}
+                <AgentMessage run={item} live={index === thread.length - 1} payables={payables} />
               </div>
             ))}
             {pending && (
@@ -233,12 +377,14 @@ export function Agent() {
                 <div className="flex items-center gap-3"><ThinkingOrb state="solving" size={20} /><span className="type-body text-text-2">Reading the books</span></div>
               </div>
             )}
+            <AnimatePresence>{selfTest && <SelfApproval result={selfTest} onPropose={() => void send(PROPOSE)} />}</AnimatePresence>
             <div ref={end} />
           </div>
         )}
       </div>
 
-      <div className="sticky bottom-0 bg-page pb-4 pt-2">
+      <div className="sticky bottom-0 flex flex-col gap-3 bg-page pb-4 pt-2">
+        {!empty && chips}
         <VoiceBeam stream={mic.stream} motion={busy ? workingMotion : null} colors={BRAND_GLOW} theme="light" active={listening || busy} className="rounded-[24px]">
           <div className="flex items-end gap-2 rounded-[24px] border border-line-control bg-paper py-2 pe-2 ps-4 focus-within:border-line-focus">
             <textarea ref={input} value={prompt} onChange={event => setPrompt(event.target.value)} rows={1} maxLength={2000}
