@@ -1,3 +1,4 @@
+"use node";
 import type { MessageParam, Tool } from "@anthropic-ai/sdk/resources/messages";
 import { claudeModel, ClaudeFailure, requestClaude } from "./claude";
 import { financeModel, GeminiFailure, GEMINI_REQUEST_TIMEOUT_MS, requestInteraction } from "./gemini";
