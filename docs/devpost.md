@@ -87,7 +87,7 @@ Convex is the system of record and agent memory. Its transactions keep acceptanc
 
 | Feature | File paths and concrete role | Evidence |
 | --- | --- | --- |
-| Live queries | [dashboard.ts](../convex/dashboard.ts), [contribute-flow.tsx](../apps/web/features/contributor/contribute-flow.tsx): `useQuery` subscriptions to orders, submissions and payables. | Query data observed live; no measured cross-browser propagation latency claimed. |
+| Live queries | [dashboard.ts](../convex/dashboard.ts), [contributor data.ts](../apps/web/features/contributor/data.ts): `useQuery` subscriptions to orders, submissions and payables. | Query data observed live; no measured cross-browser propagation latency claimed. |
 | Workflow component | [convex.config.ts](../convex/convex.config.ts), [approvalWorkflow.ts](../convex/approvalWorkflow.ts): durable approval event, revalidation, one dispatch. | Component installed; wait/resume/refusal proven with component tests; live payout pending. |
 | Scheduler | [submissions.ts](../convex/submissions.ts): transactionally queue verification and interrupted-job checks. | Scheduled negative-smoke inference ran live. |
 | Crons | [crons.ts](../convex/crons.ts), [scheduledJobs.ts](../convex/scheduledJobs.ts): bounded settlement observation and finance review; report-attestation sweep. | Attestation cron observed live at 03:50/03:52; settlement/finance cron runs remain unverified in status. No blind resend. |

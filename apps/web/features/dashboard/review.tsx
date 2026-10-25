@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/glaze/ui/alert";
 import { Badge } from "@/components/glaze/ui/badge";
 import { Button } from "@/components/glaze/ui/button";
@@ -12,9 +12,9 @@ import { cn } from "@/lib/glaze/utils";
 import { api, BUYER, useOrderData, useOrderId, type Id } from "./data";
 import { formatMs, humanize, shortHash } from "./format";
 import { SubmissionStatus } from "./submissions";
+import { WitnessReceipt } from "./witnesses";
 import { ConfirmDialog, Loading, PageHeader, Unavailable } from "./ui";
 import { toast } from "@/components/glaze/ui/toast";
-import { SubmissionWitnesses } from "./witnesses";
 
 type Evidence = { modality: "video" | "audio" | "text"; startMs: number; endMs: number; claim: string };
 type Finding = { criterionId: string; status: "supported" | "contradicted" | "unobservable"; evidence: Evidence[]; reason: string };
@@ -38,6 +38,7 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
   const { summary, submissions } = useOrderData(orderId);
   const report = useQuery(api.submissions.getReport, { demoIdentity: BUYER, submissionId });
   const media = useQuery(api.media.submissionEvidence, { demoIdentity: BUYER, submissionId });
+  const attestation = useQuery(api.attestations.forSubmission, { submissionId });
   const submission = submissions?.find(s => s._id === submissionId);
   const video = useRef<HTMLVideoElement>(null);
   const stopAt = useRef<number | null>(null);
@@ -83,10 +84,11 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
         description={<span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
           <SubmissionStatus value={report.status} />
           {report.verificationOnly && <Badge variant="outline">Test upload, not licensed</Badge>}
-          {parsed && <span>AI recommends {humanize(parsed.recommendation)}</span>}
+          {parsed && parsed.recommendation !== "needs_review" && <span>AI recommends {humanize(parsed.recommendation).toLowerCase()}</span>}
           {parsed?.pipeline.modelRuns.map(run => <span key={run.model} className="text-text-3">{run.model}{run.elapsedMs ? ` ${formatMs(run.elapsedMs)}` : ""}</span>)}
         </span>}
         actions={<>
+          {attestation && <a href={attestation.easscanUrl} target="_blank" rel="noreferrer" className="type-label text-text-2 underline underline-offset-4">Verify on-chain</a>}
           <Link href={`/dashboard/submissions/${submissionId}/receipt`} className="type-label text-text-2 underline underline-offset-4">Receipt</Link>
           <Link href="/dashboard/submissions" className="type-label text-text-2 underline underline-offset-4">All submissions</Link>
         </>} />
@@ -101,8 +103,10 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
               : <div className="flex aspect-video items-center justify-center type-body-sm text-text-inverse">No playable clip. The original is missing or quarantined.</div>}
           </div>
           <EvidenceTrack criteria={criteria.map(c => c.finding).filter((f): f is Finding => !!f)} durationMs={durationMs} now={now}
-            focus={focus} onFocus={setFocus} onSeek={seek} />
+            focus={focus} onFocus={setFocus} onSeek={seek} motion={media.sensorTrace?.motionSummary?.bins ?? null} />
           <Transcript segments={segments} now={now} onSeek={seek} />
+          <Capture trace={media.sensorTrace} liveness={submission?.liveness ?? null}
+            livenessPassed={!!parsed?.criteria.some(c => c.evidence.some(e => e.claim.startsWith("Spoken liveness matched")))} />
           {report.capture && <div className="rounded-panel border border-line-faint p-3">
             <h2 className="mb-2 type-heading-sm">Capture context</h2>
             <p className="type-body-sm text-text-2">{report.capture.device.model} · {report.capture.device.cameraFacing} camera
@@ -118,12 +122,12 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
             {report.capture.segments.length ? <ol className="mt-3 flex flex-col gap-2">
               {report.capture.segments.map((segment, index) => <li key={index}>
                 <button type="button" className="type-body-sm text-text-2 underline underline-offset-4" onClick={() => seek(segment.startMs, segment.endMs)}>
-                  {segment.label} · {formatMs(segment.startMs)}–{formatMs(segment.endMs)}
+                  {segment.label} · {formatMs(segment.startMs)} to {formatMs(segment.endMs)}
                 </button>
               </li>)}
             </ol> : <p className="mt-2 type-label-sm text-text-3">No contributor step markers.</p>}
           </div>}
-          {parsed?.warnings?.length ? <ul className="flex flex-col gap-1">{parsed.warnings.map(w => <li key={w} className="type-body-sm text-text-2">{w}</li>)}</ul> : null}
+          {!report.verificationOnly && parsed?.warnings?.length ? <ul className="flex flex-col gap-1">{parsed.warnings.map(w => <li key={w} className="type-body-sm text-text-2">{w}</li>)}</ul> : null}
         </div>
         <aside className="flex flex-col gap-3 lg:sticky lg:top-16 lg:self-start">
           <h2 className="type-heading-sm">Criteria</h2>
@@ -144,26 +148,29 @@ export function Review({ submissionId }: { submissionId: Id<"submissions"> }) {
                         {finding.evidence.map((e, i) => (
                           <button key={i} type="button" onClick={() => seek(e.startMs, e.endMs)} title={e.claim}
                             className="rounded-pill border border-line-control px-2 py-0.5 type-label-sm text-text-2 tabular-nums hover:bg-hover hover:text-text-1">
-                            {humanize(e.modality)} {formatMs(e.startMs)}&ndash;{formatMs(e.endMs)}
+                            {humanize(e.modality)} {formatMs(e.startMs)} to {formatMs(e.endMs)}
                           </button>
                         ))}
                       </div>
-                    ) : finding ? <p className="type-label-sm text-text-3">No timestamped evidence. Nothing was invented to fill it.</p> : null}
+                    ) : null}
                   </li>
                 );
               })}
             </ol>
           )}
+          <WitnessReceipt submissionId={submissionId} />
           <Decision submissionId={submissionId} status={report.status} report={parsed} verificationOnly={report.verificationOnly} />
         </aside>
       </div>
-      <div className="mt-6"><SubmissionWitnesses submissionId={submissionId} /></div>
     </>
   );
 }
 
-function EvidenceTrack({ criteria, durationMs, now, focus, onFocus, onSeek }: {
+type MotionBin = { startMs: number; endMs: number; gyroRmsRadPerSec: number | null; active: boolean };
+
+function EvidenceTrack({ criteria, durationMs, now, focus, onFocus, onSeek, motion }: {
   criteria: Finding[]; durationMs: number; now: number; focus: string | null; onFocus: (id: string | null) => void; onSeek: (start: number, end?: number) => void;
+  motion: MotionBin[] | null;
 }) {
   if (!durationMs) return null;
   const pct = (ms: number) => `${Math.min(100, Math.max(0, (ms / durationMs) * 100))}%`;
@@ -173,7 +180,7 @@ function EvidenceTrack({ criteria, durationMs, now, focus, onFocus, onSeek }: {
   return (
     <div className="rounded-panel border border-line-faint p-3" aria-label="Evidence timeline">
       <div className="mb-2 flex items-baseline justify-between type-label-sm text-text-3">
-        <span>Evidence by modality</span><span className="tabular-nums">{formatMs(now)} / {formatMs(durationMs)}</span>
+        <span className="ms-auto tabular-nums">{formatMs(now)} / {formatMs(durationMs)}</span>
       </div>
       <div className="relative flex flex-col gap-2">
         {lanes.map(lane => (
@@ -191,7 +198,49 @@ function EvidenceTrack({ criteria, durationMs, now, focus, onFocus, onSeek }: {
             </div>
           </div>
         ))}
+        {motion && motion.length > 0 && (() => {
+          const peak = Math.max(...motion.map(b => b.gyroRmsRadPerSec ?? 0), 0.01);
+          return (
+            <div className="flex items-center gap-3">
+              <span className="w-12 shrink-0 type-label-sm text-text-2">Motion</span>
+              <div className="relative h-6 flex-1 overflow-hidden rounded-tag bg-field">
+                {motion.map(bin => (
+                  <button key={bin.startMs} type="button" onClick={() => onSeek(bin.startMs)} title={`${formatMs(bin.startMs)}: ${bin.gyroRmsRadPerSec?.toFixed(2) ?? "no data"} rad/s${bin.active ? ", moving" : ""}`}
+                    className={cn("absolute bottom-0", bin.active ? "bg-ink" : "bg-line-strong")}
+                    style={{ left: pct(bin.startMs), width: `calc(${pct(bin.endMs)} - ${pct(bin.startMs)})`, height: `${Math.max(6, ((bin.gyroRmsRadPerSec ?? 0) / peak) * 100)}%` }} />
+                ))}
+                <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-px bg-ink" style={{ left: pct(now) }} />
+              </div>
+            </div>
+          );
+        })()}
       </div>
+    </div>
+  );
+}
+
+type Trace = { sampleRateHz: number; sampleCount: number; sensors: string[]; device: { model: string; os: string; osVersion: string; appVersion: string };
+  motionSummary?: { steadinessRatio?: number | null; meanTiltDegrees?: number | null } } | null | undefined;
+
+/** What the phone recorded alongside the video. Client-reported; it never changes acceptance on its own. */
+function Capture({ trace, liveness, livenessPassed }: { trace: Trace; liveness: { words: string[] } | null; livenessPassed: boolean }) {
+  if (!trace && !liveness) return null;
+  const rows: [string, React.ReactNode][] = [];
+  if (trace) {
+    rows.push(["Device", `${trace.device.model} \u00b7 ${trace.device.os} ${trace.device.osVersion}`]);
+    rows.push(["Sensors", `${trace.sensors.length} channels at ${Math.round(trace.sampleRateHz)} Hz`]);
+    if (trace.motionSummary?.steadinessRatio != null) rows.push(["Steady", `${Math.round(trace.motionSummary.steadinessRatio * 100)}% of the take`]);
+    if (trace.motionSummary?.meanTiltDegrees != null) rows.push(["Tilt", `${trace.motionSummary.meanTiltDegrees.toFixed(1)}\u00b0`]);
+  }
+  if (liveness) rows.push(["Spoken words", <span key="l" className="flex flex-wrap items-baseline gap-2">
+    <Status status={livenessPassed ? "ok" : "warn"} size="sm">{livenessPassed ? "Matched" : "Not matched"}</Status>
+    <span className="text-text-2">{liveness.words.join(" ")}</span></span>]);
+  return (
+    <div className="rounded-panel border border-line-faint p-3">
+      <p className="mb-2 type-label-sm text-text-3">Capture</p>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 type-body-sm">
+        {rows.map(([label, value]) => <Fragment key={label}><dt className="text-text-2">{label}</dt><dd>{value}</dd></Fragment>)}
+      </dl>
     </div>
   );
 }
@@ -199,7 +248,7 @@ function EvidenceTrack({ criteria, durationMs, now, focus, onFocus, onSeek }: {
 function Transcript({ segments, now, onSeek }: { segments: { startMs: number; endMs: number; text: string }[]; now: number; onSeek: (start: number) => void }) {
   return (
     <div className="rounded-panel border border-line-faint p-3">
-      <p className="mb-2 type-label-sm text-text-3">Narration, transcribed separately from the video</p>
+      <p className="mb-2 type-label-sm text-text-3">Narration</p>
       {segments.length === 0 ? <p className="type-body-sm text-text-2">No narration was transcribed.</p> : (
         <p className="type-body leading-7">
           {segments.map((segment, i) => {
@@ -309,7 +358,7 @@ function Decision({ submissionId, status, report, verificationOnly }: { submissi
         <Button size="sm" disabled={!!busy || !!acceptBlock} onClick={() => decide("accept")}>Accept</Button>
       </div>
       <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Accept this clip?" actionLabel="Accept and create payable"
-        description="This records your decision, delivers the sample to the buyer and accrues what the contributor is owed. It cannot be silently undone; a correction is a new, audited entry."
+        description="This delivers the sample to the buyer and creates what the contributor is owed."
         onConfirm={() => send("accept")}>
         <p className="type-body-sm text-text-2">Your note: <span className="text-text-1">{note.trim()}</span></p>
       </ConfirmDialog>

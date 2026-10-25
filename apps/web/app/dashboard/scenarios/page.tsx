@@ -1,7 +1,7 @@
 "use client";
-import { ScenarioLab } from "@/features/dashboard/scenario-lab";
+import { Scenarios } from "@/features/dashboard/scenarios";
 import { RequireConvex } from "@/features/dashboard/ui";
 
 export default function ScenariosPage() {
-  return <RequireConvex><ScenarioLab /></RequireConvex>;
+  return <RequireConvex><Scenarios /></RequireConvex>;
 }

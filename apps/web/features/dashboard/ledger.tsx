@@ -6,7 +6,6 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { useExceptions, useJournal, useOrderId, useStatements } from "./data";
 import { formatTime, formatUsdc, humanize } from "./format";
 import { JournalReceipt } from "./receipt";
-import { FourWayReconciliation } from "./witnesses";
 import { Amount, Loading, PageHeader, Section, Unavailable } from "./ui";
 
 const ACCOUNT_LABEL: Record<string, string> = {
@@ -24,21 +23,20 @@ export function Ledger() {
   const statements = useStatements(orderId);
   const journal = useJournal(orderId);
   const exceptions = useExceptions(orderId);
-  const [tab, setTab] = useState<"books" | "journal" | "reconciliation" | "exceptions">("books");
+  const [tab, setTab] = useState<"books" | "journal" | "exceptions">("books");
   const openExceptions = (exceptions ?? []).filter(item => item.stillDetected && item.disposition?.status !== "resolved").length;
   if (orderId === null) return <Unavailable title="No staged order" description="Run pnpm seed to stage the demo order." />;
   return (
     <>
-      <PageHeader title="Ledger" description="Double-entry books for this order, computed from posted journals. Corrections are new entries, never edits." />
+      <PageHeader title="Ledger" />
       <Tabs value={tab} onValueChange={value => setTab(value as typeof tab)}>
         <TabsList size="sm">
           <TabsTrigger value="books">Books</TabsTrigger>
           <TabsTrigger value="journal">Journal<TabsCount>{journal?.length ?? 0}</TabsCount></TabsTrigger>
-          <TabsTrigger value="reconciliation">Reconciliation</TabsTrigger>
           <TabsTrigger value="exceptions">Exceptions<TabsCount>{openExceptions}</TabsCount></TabsTrigger>
         </TabsList>
         <TabsContent value="books">
-      <Section title="Trial balance" meta={statements ? (statements.trialBalance.balanced ? "Debits equal credits" : "Out of balance") : undefined} className="mt-2">
+      <Section title="Trial balance" className="mt-2">
         {statements === undefined ? <Loading rows={4} /> : (
           <>
             <div className="mb-3"><Status status={statements.trialBalance.balanced ? "ok" : "fail"}>{statements.trialBalance.balanced ? "Balanced" : "Not balanced"}</Status></div>
@@ -56,18 +54,17 @@ export function Ledger() {
               <TableFooter><TableRow><TableCell>Total</TableCell><TableCell numeric>{formatUsdc(statements.trialBalance.totalDebitAtomic)}</TableCell><TableCell numeric>{formatUsdc(statements.trialBalance.totalCreditAtomic)}</TableCell></TableRow></TableFooter>
             </Table>
             <dl className="mt-4 grid grid-cols-2 gap-y-3 md:grid-cols-4">
-              {([["Cash", statements.cashAtomic], ["Deferred revenue", statements.deferredRevenueAtomic], ["Revenue", statements.revenueAtomic], ["Net income", statements.netIncomeAtomic]] as const).map(([label, value]) => (
+              {([["Revenue", statements.revenueAtomic], ["Net income", statements.netIncomeAtomic]] as const).map(([label, value]) => (
                 <div key={label}><dt className="type-label-sm text-text-2">{label}</dt><dd><Amount value={value} className="type-heading-sm" /></dd></div>
               ))}
             </dl>
-            <p className="mt-2 type-label-sm text-text-3">Net income excludes inference, network fees and tax, which are not posted.</p>
           </>
         )}
       </Section>
 
         </TabsContent>
         <TabsContent value="journal">
-      <Section className="mt-2" title="Journal" meta={journal ? `${journal.length} posted ${journal.length === 1 ? "entry" : "entries"}` : undefined}>
+      <Section className="mt-2" title="Journal">
         {journal === undefined ? <Loading rows={3} /> : journal.length === 0 ? <p className="type-body-sm text-text-2">Nothing posted yet.</p> : (
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="flex flex-col gap-3">
@@ -99,9 +96,8 @@ export function Ledger() {
         )}
       </Section>
         </TabsContent>
-        <TabsContent value="reconciliation"><FourWayReconciliation orderId={orderId} /></TabsContent>
         <TabsContent value="exceptions">
-      <Section className="mt-2" title="Reconciliation exceptions" meta="Order terms, ledger and chain compared">
+      <Section className="mt-2" title="Reconciliation exceptions">
         {exceptions === undefined ? <Loading rows={2} /> : exceptions.length === 0
           ? <p className="type-body-sm text-text-2">No exceptions. Every imported transfer matches an expected obligation.</p>
           : (

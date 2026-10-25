@@ -1,7 +1,6 @@
 "use client";
-import { actorName } from "./activity";
 import Link from "next/link";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import type { EIP1193Provider } from "viem";
 import { Button } from "@/components/glaze/ui/button";
@@ -10,11 +9,14 @@ import { Status } from "@/components/glaze/ui/status";
 import { cn } from "@/lib/glaze/utils";
 import { usePayout } from "@/lib/payments/use-payout";
 import { executePayablePayout, getPayablePayoutRecovery } from "./payable-payout";
-import { api, BUYER, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type PayableRow } from "./data";
-import { basescanAddress, basescanTx, formatTime, humanize, parseChainIdentity, shortHash } from "./format";
+import { api, BUYER, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type Id, type PayableRow } from "./data";
+import { basescanAddress, basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
+import { actorName } from "./activity";
+import { executeApprovedRefund } from "@/lib/payments/refund";
+import { Textarea } from "@/components/glaze/ui/textarea";
 import { ReceiptRule } from "@/components/ui/payment-receipt-printer";
 import { Receipt } from "./receipt";
-import { Amount, ConfirmDialog, Loading, PageHeader, Unavailable } from "./ui";
+import { Amount, ConfirmDialog, Loading, PageHeader, QueryBoundary, Unavailable } from "./ui";
 import { toast } from "@/components/glaze/ui/toast";
 
 const STEPS = ["Accrued", "Proposed", "Approved", "Submitted", "Paid"] as const;
@@ -35,11 +37,13 @@ export function Payables() {
   if (orderId === null) return <Unavailable title="No staged order" description="Run pnpm seed to stage the demo order." />;
   return (
     <>
-      <PageHeader title="Payables" description="What each contributor is owed, and where its payout stands. Paid means a confirmed USDC transfer on Base Sepolia, nothing less." />
+      <PageHeader title="Payables" />
+      <RefusalHero audit={audit ?? []} />
       {payables === undefined ? <Loading rows={3} /> : payables.length === 0
-        ? <Unavailable title="No payables yet" description="A payable is created only when a licensed clip is accepted and delivered. Test uploads never create one." />
+        ? <Unavailable title="No payables yet" description="One appears when you accept a licensed clip." />
         : <div className="flex flex-col gap-4">{payables.map(p => <PayableCard key={p._id} payable={p} audit={audit ?? []}
             matches={reconciliation?.matches ?? []} />)}</div>}
+      {orderId && <QueryBoundary><Refund orderId={orderId} /></QueryBoundary>}
     </>
   );
 }
@@ -72,12 +76,12 @@ function PayableCard({ payable, audit, matches }: { payable: PayableRow; audit: 
           ))}
         </ol>
         {payable.approval && (
-          <p className="type-body-sm text-text-2">Approval {humanize(payable.approval.status).toLowerCase()} under the buyer’s rule or by buyer review. Expires {formatTime(payable.approval.expiresAt)}. The amount and recipient are bound to it; any change voids it.</p>
+          <p className="type-body-sm text-text-2">{humanize(payable.approval.status)} &middot; expires {formatTime(payable.approval.expiresAt)}</p>
         )}
         {refusals.map(event => (
           <div key={event._id} className="flex items-start gap-3 rounded-panel border border-fail bg-fail-tint px-3 py-2">
             <Status status="fail" className="shrink-0">Refused</Status>
-            <p className="type-body-sm"><span className="type-label">{humanize(event.reason)}</span> <span className="text-text-2">{actorName(event.actor.identity)} tried to {humanize(event.action.replace(/_refused$/, "")).toLowerCase()}. Separation of duties held. {formatTime(event.occurredAt)}</span></p>
+            <p className="type-body-sm"><span className="type-label">{humanize(event.reason)}</span> <span className="text-text-2">{event.actor.identity} tried to {humanize(event.action.replace(/_refused$/, "")).toLowerCase()}. Separation of duties held. {formatTime(event.occurredAt)}</span></p>
           </div>
         ))}
         {chain && payable.status === "paid" && (
@@ -109,8 +113,8 @@ function useInjectedWallet(): EIP1193Provider | null {
 }
 
 function Actions({ payable, step }: { payable: PayableRow; step: number }) {
-  const approve = useMutation(api.finance.approve);
   const reject = useMutation(api.finance.reject);
+  const approve = useMutation(api.finance.approve);
   const provider = useInjectedWallet();
   const payout = usePayout({ demoIdentity: BUYER, provider });
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -136,7 +140,7 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   let buttons: React.ReactNode = null;
   if (payable.status === "paid") buttons = <span className="me-auto type-label-sm text-text-2">Confirmed on chain and posted to the journal.</span>;
   else if (step === 0) buttons = <>
-    <span className="me-auto type-label-sm text-text-3">Waiting for the finance agent to propose this payout.</span>
+    <span className="me-auto type-label-sm text-text-3">Not proposed yet</span>
     <Link href="/dashboard/agent" className="type-label-sm underline underline-offset-4">Open finance agent</Link>
   </>;
   else if (step === 1 && intentId) buttons = <>
@@ -144,7 +148,7 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
       onClick={() => act(() => reject({ demoIdentity: BUYER, intentId, reason: "Buyer rejected the payout exception." }), "Payout rejected.")}>Reject payout</Button>
     <Button size="sm" disabled={busy} onClick={() => setConfirming(true)}>Approve payout</Button>
     <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Approve this payout?" actionLabel="Approve payout"
-      description="Your approval binds this exact amount, recipient and network. Any change voids it. The configured executor sends it after workflow validation."
+      description="The configured executor sends it after workflow validation."
       onConfirm={async () => {
         const result = await act(() => approve({ demoIdentity: BUYER, intentId }), "Approved. Waiting for the workflow and executor.", "Approval refused");
         if (!result.ok) throw new Error(`Refused: ${humanize(result.code ?? "refused")}.`);
@@ -162,7 +166,7 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
       onClick={() => executePayablePayout(payable.intent!, payout.execute).catch(() => undefined)}>{payout.busy ? humanize(payout.status) : "Manual wallet recovery"}</Button>
   </>;
   else if (step === 3 && payable.intent) buttons = <>
-    <span className="me-auto type-label-sm text-text-3">Submitted. Waiting for confirmations. A timeout is not a failure, so nothing is resent.</span>
+    <span className="me-auto type-label-sm text-text-3">Submitted. Waiting for confirmations.</span>
     <Button variant="secondary" size="sm" disabled={payout.busy} onClick={() => {
       try {
         const saved = getPayablePayoutRecovery(payable.intent!, payout.recovery);
@@ -181,5 +185,78 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
       {payout.error && <p role="alert" className="type-label-sm text-fail-text">{payout.error.message}</p>}
       {payout.result && <a href={payout.result.explorerUrl} target="_blank" rel="noreferrer" className="type-label-sm underline underline-offset-4">View submitted transaction</a>}
     </div>
+  );
+}
+
+/** The separation-of-duties moment: an approval the system refused, shown first because it is the proof. */
+function RefusalHero({ audit }: { audit: AuditEvent[] }) {
+  const refusals = audit.filter(e => e.action.endsWith("_refused") && /approv/.test(`${e.action} ${e.reason}`));
+  const latest = refusals[0];
+  if (!latest) return null;
+  return (
+    <div className="mb-6 flex flex-wrap items-start gap-3 rounded-panel border border-fail bg-fail-tint px-4 py-3">
+      <Status status="fail" className="shrink-0">Refused</Status>
+      <div className="min-w-0 flex-1">
+        <p className="type-label">{actorName(latest.actor.identity)} tried to approve a payout and was refused.</p>
+        <p className="type-body-sm text-text-2">{readableReason(latest.reason)} &middot; {formatTime(latest.occurredAt)}{refusals.length > 1 ? ` \u00b7 ${refusals.length} refusals in total` : ""}</p>
+      </div>
+      <Link href="/dashboard/audit" className="type-label-sm underline underline-offset-4">Audit log</Link>
+    </div>
+  );
+}
+
+/** A buyer's cancelled remainder: refund proposal, independent approval, wallet signature, observed transfer. */
+function Refund({ orderId }: { orderId: Id<"orders"> }) {
+  const refund = useQuery(api.refunds.forOrder, { demoIdentity: BUYER, orderId });
+  const approve = useMutation(api.refunds.approve);
+  const provider = useInjectedWallet();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [signing, setSigning] = useState(false);
+  if (!refund) return null;
+  const approved = refund.approval?.status === "approved";
+  async function sign() {
+    if (!provider || !refund) return;
+    setSigning(true);
+    try {
+      await executeApprovedRefund({ commandId: refund.commandId, demoIdentity: BUYER, provider });
+      toast.success("Refund submitted", { description: "Waiting for confirmations." });
+    } catch (error) {
+      toast.fail("Refund not sent", { description: error instanceof Error ? error.message : "Check the wallet before trying again." });
+    } finally { setSigning(false); }
+  }
+  return (
+    <section className="mt-8" aria-label="Buyer refund">
+      <h2 className="mb-3 type-heading-sm">Buyer refund</h2>
+      <article className="shell">
+        <div className="panel flex flex-wrap items-baseline gap-3 p-4">
+          <Amount value={refund.amountAtomic} className="type-heading" />
+          <span className="type-body-sm text-text-2">to <span className="mono">{shortHash(refund.recipientAddress, 8, 6)}</span></span>
+          <Status status={refund.txHash ? "running" : approved ? "waiting" : "idle"} className="ms-auto">{humanize(refund.status)}</Status>
+          {refund.explorerUrl && <a href={refund.explorerUrl} target="_blank" rel="noreferrer" className="basis-full type-label-sm underline underline-offset-4">View transfer on BaseScan</a>}
+        </div>
+        <div className="shell-foot flex items-center gap-2">
+          {!approved && !refund.txHash && <>
+            <span className="me-auto type-label-sm text-text-3">Needs an independent controller approval</span>
+            <Button size="sm" onClick={() => setOpen(true)}>Approve refund</Button>
+          </>}
+          {refund.executionAvailable && <>
+            <span className="me-auto type-label-sm text-text-3">{provider ? "Approved. Sign in the treasury wallet." : "Connect the treasury wallet in this browser to sign."}</span>
+            <Button size="sm" disabled={!provider || signing} onClick={() => void sign()}>{signing ? "Signing" : "Sign refund"}</Button>
+          </>}
+        </div>
+      </article>
+      <ConfirmDialog open={open} onOpenChange={setOpen} title="Approve this refund?" actionLabel="Approve refund"
+        description="The configured executor sends it after workflow validation."
+        onConfirm={async () => {
+          if (!reason.trim()) throw new Error("Add a reason first.");
+          const result = await approve({ demoIdentity: BUYER, commandId: refund.commandId as Id<"paymentCommands">, reason: reason.trim() });
+          if (result && typeof result === "object" && "ok" in result && !result.ok) throw new Error(`Refused: ${humanize(String((result as { code?: string }).code ?? "refused"))}.`);
+          toast.success("Refund approved");
+        }}>
+        <label className="mb-1 block type-label" htmlFor="refund-reason">Reason</label>
+        <Textarea id="refund-reason" rows={2} value={reason} onChange={event => setReason(event.target.value)} />
+      </ConfirmDialog>
+    </section>
   );
 }

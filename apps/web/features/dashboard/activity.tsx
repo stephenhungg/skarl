@@ -32,8 +32,8 @@ function describe(event: AuditEvent): { verb: string; outcome?: string; status: 
       const decision = reason.split(":")[0]!;
       return { verb: "reviewed the clip", outcome: humanize(decision), status: decision.startsWith("accept") ? "ok" : decision === "rejected" || decision === "reject" ? "fail" : "warn" };
     }
-    case "finance_chat_requested": return { verb: "asked the finance agent a question", outcome: "Read only", status: "idle" };
-    case "demo_seeded": return { verb: "seeded the demo order", outcome: "Synthetic identities, no money moved", status: "idle" };
+    case "finance_chat_requested": return { verb: "asked the finance agent a question", status: "idle" };
+    case "demo_seeded": return { verb: "seeded the demo order", status: "idle" };
     default: return { verb: humanize(event.action).toLowerCase(), outcome: undefined, status: "idle" };
   }
 }
@@ -100,7 +100,7 @@ function Story({ group: g }: { group: Group }) {
   return (
     <li className="px-4 py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <Status status={headline.status} className="shrink-0">{headline.outcome ?? humanize(last.action)}</Status>
+        {headline.outcome && <Status status={headline.status} className="shrink-0">{headline.outcome}</Status>}
         {clip
           ? <Link href={g.href!} className="type-label underline-offset-4 hover:underline">{g.title}</Link>
           : <span className="type-label">{actorName(last.actor.identity)} {headline.verb}</span>}

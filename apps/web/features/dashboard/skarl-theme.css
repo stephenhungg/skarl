@@ -43,3 +43,8 @@
   --glass-core: 0.06;
   --glass-core-held: 0.14;
 }
+
+/* Montreal's tabular figures are spaced as if monospaced ("1 8m ago", "1 0.00"). Use its proportional digits. */
+.glaze.skarl-theme, .glaze.skarl-theme * {
+  font-variant-numeric: normal !important;
+}

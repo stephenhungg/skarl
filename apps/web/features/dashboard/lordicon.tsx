@@ -14,7 +14,7 @@ declare module "react" {
 
 export type LordiconName =
   | "bar-chart-vertical-grow" | "badge-ribbon" | "file-pencil" | "coins" | "layers" | "browser-terminal"
-  | "fingerprint-circle" | "wrench" | "globe" | "check" | "clock" | "arrow-out-square";
+  | "fingerprint-circle" | "wrench" | "globe" | "check" | "clock" | "arrow-out-square" | "desktop" | "folder" | "arrows-down";
 
 let defined: Promise<void> | null = null;
 const define = () => (defined ??= import("@lordicon/element").then(m => m.defineElement()));
