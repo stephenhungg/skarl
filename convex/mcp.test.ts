@@ -56,7 +56,7 @@ async function guestCall(t: Test, name: string, arguments_: unknown = {}, extraH
 }
 
 describe("keyless guest MCP", () => {
-  it("exposes only the four explicit guest tools without a key or seeded data", async () => {
+  it("exposes only the explicit guest tools (discovery, ordering, personal-agent onboarding) without a key or seeded data", async () => {
     const t = convexTest(schema, modules);
     vi.stubEnv("SKARL_MCP_KEYS", "");
     const response = await t.fetch("/mcp", { method: "POST", headers: protocolHeaders, body: JSON.stringify(rpc("tools/list")) });
@@ -64,6 +64,7 @@ describe("keyless guest MCP", () => {
     const body = await response.json();
     expect(body.result.tools.map((tool: { name: string }) => tool.name)).toEqual([
       "skarl_about", "skarl_list_tasks_public", "skarl_create_order_public", "skarl_public_order_status",
+      "skarl_onboard", "skarl_wallet_status", "skarl_request_testnet_usdc",
     ]);
     // Check the entire advertised tool schema, not just operation names.
     expect(JSON.stringify(body.result.tools)).not.toMatch(/approve|accept|sign|payout/i);
@@ -238,7 +239,7 @@ describe("MCP transport and bearer boundary", () => {
       expect((await request(t, rpc("tools/list"))).status).toBe(401);
       const guest = await t.fetch("/mcp", { method: "POST", headers: protocolHeaders, body: JSON.stringify(rpc("tools/list")) });
       expect(guest.status).toBe(200);
-      expect((await guest.json()).result.tools).toHaveLength(4);
+      expect((await guest.json()).result.tools).toHaveLength(7);
     }
   });
 

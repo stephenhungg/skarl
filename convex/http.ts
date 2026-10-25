@@ -46,12 +46,13 @@ http.route({ path: "/jira/feed", method: "GET", handler: httpAction(async (ctx, 
 export default http;
 
 // Public agent discovery is served by Convex so it does not need a web deployment.
-import { llms, card, mcp as mcpDiscovery, apiSpec, preflight } from "./agentDiscovery";
+import { llms, card, mcp as mcpDiscovery, apiSpec, preflight, skill } from "./agentDiscovery";
 http.route({ path: "/llms.txt", method: "GET", handler: llms });
+http.route({ path: "/skill.md", method: "GET", handler: skill });
 http.route({ path: "/.well-known/agent-card.json", method: "GET", handler: card });
 http.route({ path: "/.well-known/mcp.json", method: "GET", handler: mcpDiscovery });
 http.route({ path: "/openapi.json", method: "GET", handler: apiSpec });
-for (const path of ["/llms.txt", "/.well-known/agent-card.json", "/.well-known/mcp.json", "/openapi.json"]) {
+for (const path of ["/llms.txt", "/skill.md", "/.well-known/agent-card.json", "/.well-known/mcp.json", "/openapi.json"]) {
   http.route({ path, method: "OPTIONS", handler: preflight });
 }
 

@@ -1,12 +1,13 @@
 import { appOrigin, paymentOrigin, agentOrigin } from "./lib/config";
 import { httpAction, type ActionCtx } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { PAYMENT_NETWORK } from "../packages/contracts/src/chain";
 import { DEMO_ORDER_GLOBAL_LIMIT, DEMO_ORDER_IP_LIMIT } from "../packages/payments/src/demo-order";
 import { makeFunctionReference, type ApiFromModules, type FunctionArgs, type FunctionReturnType } from "convex/server";
 import type * as publicQueries from "./mcpPublic";
 import { serializeUntrustedToolData } from "./lib/untrustedToolData";
+import { onboardingSteps } from "./lib/onboardingSteps";
 import { checkPublicRateLimit } from "./lib/publicRateLimit";
 
 type PublicApi = ApiFromModules<{ mcpPublic: typeof publicQueries }>;
@@ -61,6 +62,12 @@ const tools = [
     description: "Create an unfunded testnet order using a selected public template order’s stored rubric, price and quantity. Read the returned exact quote before paying. Public per-IP and global limits apply. Auto-pay defaults to the template clip price; optionally set or disable its rule. Supply a stable idempotencyKey to replay after a timeout.", inputSchema: object({ templateOrderId: id, autoPay: autoPayInput, idempotencyKey: string(128, "^[A-Za-z0-9._:-]{8,128}$") }, []) },
   { name: "skarl_public_order_status", role: "guest", readOnly: true,
     description: "Read a public demo order's funding state and delivery progress. Reconcile uncertain payments before another charge.", inputSchema: scope },
+  { name: "skarl_onboard", role: "guest", readOnly: true,
+    description: "Start here. Step-by-step onboarding for a personal buyer agent: connect a wallet (Coinbase Wallet MCP or any x402 wallet), get testnet USDC, pick a task, create an order and pay it with x402. Optionally pass the agent's wallet address to get its live readiness.", inputSchema: object({ walletAddress: string(42, "^0x[0-9a-fA-F]{40}$") }, []) },
+  { name: "skarl_wallet_status", role: "guest", readOnly: true,
+    description: "Read a wallet's Base Sepolia test-USDC balance and whether it can pay an x402 order now. Read-only RPC; no keys involved.", inputSchema: object({ walletAddress: string(42, "^0x[0-9a-fA-F]{40}$") }) },
+  { name: "skarl_request_testnet_usdc", role: "guest", readOnly: false,
+    description: "Send Base Sepolia TEST USDC (no real value) from the Coinbase CDP faucet to your agent's wallet so it can pay a Skarl order. Rate limited per address, per caller and globally. Ask your human before calling.", inputSchema: object({ walletAddress: string(42, "^0x[0-9a-fA-F]{40}$") }) },
   { name: "skarl_list_tasks", role: "buyer", readOnly: true,
     description: "List your orders and frozen task rubrics. Pass the returned cursor for the next page.",
     inputSchema: object({ cursor: string(4096) }, []) },
@@ -166,6 +173,14 @@ async function executeGuest(ctx: ActionCtx, request: Request, name: string, args
     };
     case "skarl_list_tasks_public": return ctx.runQuery(catalogRef, {});
     case "skarl_public_order_status": return ctx.runQuery(statusRef, { orderId: args.orderId as string });
+    case "skarl_onboard": {
+      const address = typeof args.walletAddress === "string" ? args.walletAddress : null;
+      return { steps: onboardingSteps(), ...(address ? { wallet: await ctx.runAction(internal.onboarding.walletStatus, { address }) } : {}),
+        skill: `${agentOrigin()}/skill.md`, network: PAYMENT_NETWORK, demoOnly: true };
+    }
+    case "skarl_wallet_status": return ctx.runAction(internal.onboarding.walletStatus, { address: args.walletAddress as string });
+    case "skarl_request_testnet_usdc": return ctx.runAction(internal.onboarding.requestTestnetUsdc,
+      { address: args.walletAddress as string, ipDigest: await guestIpDigest(request) });
     case "skarl_create_order_public": {
       const serviceSecret = process.env.SKARL_PAYMENTS_SERVICE_SECRET;
       if (!serviceSecret || serviceSecret.length < 32) return { ok: false, code: "demo_orders_unavailable" };

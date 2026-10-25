@@ -1,6 +1,7 @@
 import { agentOrigin, appOrigin as configuredAppOrigin, paymentOrigin as configuredPaymentOrigin } from "./lib/config";
 import { httpAction } from "./_generated/server";
 import { checkPublicRateLimit } from "./lib/publicRateLimit";
+import { skarlBuyerSkill } from "./lib/onboardingSteps";
 import { PAYMENT_NETWORK, PAYMENT_RAILS } from "@skarl/contracts/chain";
 
 export const AGENT_ORIGIN = agentOrigin();
@@ -26,7 +27,7 @@ export const llmsText = `# Skarl
 - Agent docs and client configuration: ${docsUrl}
 - Claude skill: https://github.com/stephenhungg/skarl/tree/main/integrations/claude-skill/skarl
 
-## One prompt for any agent
+## Onboard a personal agent\nInstall the skill: ${AGENT_ORIGIN}/skill.md (save as ~/.claude/skills/skarl-buyer/SKILL.md), or call the MCP tool skarl_onboard. It covers connecting Coinbase Wallet MCP, getting test USDC (skarl_request_testnet_usdc), checking readiness (skarl_wallet_status), creating an order and paying with x402.\n\n## One prompt for any agent
 Paste into any MCP-capable agent:
 "Connect yourself to Skarl. Add the remote MCP server named skarl (Streamable HTTP, no API key): ${AGENT_ORIGIN}/mcp. If you can't add MCP servers yourself, give me the exact steps for my app. Then call skarl_about and show me the open tasks and what each pays. Ask me before creating an order or paying anything; only the buyer-signed policy or the buyer in review approves payouts."
 
@@ -189,6 +190,9 @@ function discoveryResponse(body: string | object, plainText = false) {
 }
 
 // Static metadata remains public; the only write consumes an anonymous abuse budget.
+export const skill = httpAction(async (ctx, request) => await checkPublicRateLimit(ctx, request, "discovery") ??
+  new Response(skarlBuyerSkill(`${AGENT_ORIGIN}/mcp`, PAYMENT_NETWORK), { status: 200, headers: {
+    "Content-Type": "text/markdown; charset=utf-8", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=300", "X-Content-Type-Options": "nosniff" } }));
 export const llms = httpAction(async (ctx, request) => await checkPublicRateLimit(ctx, request, "discovery") ?? discoveryResponse(llmsText, true));
 export const card = httpAction(async (ctx, request) => await checkPublicRateLimit(ctx, request, "discovery") ?? discoveryResponse(agentCard));
 export const mcp = httpAction(async (ctx, request) => await checkPublicRateLimit(ctx, request, "discovery") ?? discoveryResponse(mcpDiscovery));
