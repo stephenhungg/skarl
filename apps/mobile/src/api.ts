@@ -34,6 +34,7 @@ export const api = {
   me: makeFunctionReference<'query', Record<string, never>, Membership>('auth/memberships:me'),
   claimContributor: makeFunctionReference<'mutation', { role: 'contributor' }, { roles: string[] }>('auth/memberships:claimRole'),
   context: makeFunctionReference<'query', Identity, Context>('dashboard:demoContext'),
+  openTasks: makeFunctionReference<'query', Identity, string[]>('dashboard:openTasks'),
   summary: makeFunctionReference<'query', Identity & { orderId: string }, Summary>('dashboard:orderSummary'),
   submissions: makeFunctionReference<'query', Identity & { orderId: string }, SubmissionRow[]>('dashboard:submissions'),
   earnings: makeFunctionReference<'query', Identity, EarningRow[]>('datasets:contributorEarnings'),

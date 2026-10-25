@@ -1,11 +1,11 @@
 # Skarl Build Documentation
 
-For judging, start with the [Coinbase submission](coinbase-submission.md),
+Start with the [track-to-evidence review guide](review-guide.md) for source files, isolated checks, dated proof and remaining gaps. For the submission materials, see the [Coinbase submission](coinbase-submission.md),
 [Devpost text](devpost.md), [two-minute demo script](demo-script.md), and
 [exported architecture](architecture.svg). The dated [build status](status.md)
 separates observed integrations from implemented or planned behavior.
 
-Research checked October 24, 2026; updated October 25 after the audit and the move to Base Sepolia. This directory is the team's implementation handoff. It distinguishes **implemented scaffold**, **agreed design** and **unverified sponsor eligibility**. Treat the product and architecture below as the target, not a claim that the code already implements it.
+Research checked October 24, 2026; updated October 25 after the audit and the move to Base Sepolia. This directory is the team's implementation handoff. It distinguishes source implementation, agreed design, recorded external observations and unverified sponsor eligibility. Historical plans remain as handoff context; the review guide and dated status identify what has actually been implemented and demonstrated.
 
 ## Read in this order
 

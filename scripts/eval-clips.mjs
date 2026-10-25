@@ -8,12 +8,12 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { setTimeout as sleep } from "node:timers/promises";
 import { validateVerificationReportForRubric } from "@skarl/contracts/verification";
-import { EVALUATION_VIDEO_MODELS } from "../convex/lib/verificationReport.ts";
+import { EVALUATION_VIDEO_MODELS, applyContentEvaluationGuard, CONTENT_EVALUATION_PROJECTION_VERSION } from "../convex/lib/verificationReport.ts";
 
 const execute = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCORER = join(ROOT, "evals/evaluate.py");
-export const RUNNER_VERSION = "real-clips-v2";
+export const RUNNER_VERSION = "real-clips-v3-content-scope";
 export const COMPARISON_VIDEO_MODELS = EVALUATION_VIDEO_MODELS;
 export const CRITERIA = ["red-cup-pickup", "coaster-placement", "narration-alignment"];
 export const LICENSING_WARNING = "Verification-only development upload; no training license, dataset sale, or payable may be created.";
@@ -60,9 +60,10 @@ export async function preflightManifest(manifestPath, split = "test") {
 }
 
 export function validateStoredReport(response, item, run, rubricIds = CRITERIA) {
-  if (response.verificationOnly !== true || response.evalRunId !== run.evalRunId || response.evalVideoModel !== run.videoModel) throw new Error("report evaluation scope mismatch");
+  if (response.verificationOnly !== true || response.evalRunId !== run.evalRunId || response.evalVideoModel !== run.videoModel || !!response.evalContentOnly !== !!run.contentOnly) throw new Error("report evaluation scope mismatch");
   const evaluation = response.observations?.evaluation;
-  if (evaluation?.evaluationOnly !== true || evaluation.projectionVersion !== "prelicensing-advisory-v1") throw new Error("missing advisory evaluation projection");
+  if (evaluation?.evaluationOnly !== true || evaluation.projectionVersion !== (run.contentOnly ? CONTENT_EVALUATION_PROJECTION_VERSION : "prelicensing-advisory-v1") ||
+    (run.contentOnly ? evaluation.contentOnly !== true || evaluation.livenessTested !== false : evaluation.contentOnly === true || evaluation.livenessTested === false)) throw new Error("missing advisory evaluation projection");
   const quality = evaluation.qualityReport;
   const validation = validateVerificationReportForRubric(quality, rubricIds);
   if (!validation.valid || !sameIds(quality?.criteria?.map(c => c.criterionId))) throw new Error(`invalid quality report: ${validation.errors.join("; ")}`);
@@ -74,13 +75,17 @@ export function validateStoredReport(response, item, run, rubricIds = CRITERIA) 
     operational.source?.sha256 !== item.contentSha256 || operational.recommendation !== "needs_review" || operational.pipeline?.status === "completed") {
     throw new Error("verification-only operational report is not review-only");
   }
-  if (!operational.warnings?.includes(LICENSING_WARNING) || quality.warnings.includes(LICENSING_WARNING) ||
-    canonical(operational.warnings.filter(warning => warning !== LICENSING_WARNING)) !== canonical(quality.warnings)) {
+  if (!operational.warnings?.includes(LICENSING_WARNING) || quality.warnings.includes(LICENSING_WARNING)) {
+    throw new Error("quality projection changed licensing warnings");
+  }
+  if (!run.contentOnly && canonical(operational.warnings.filter(warning => warning !== LICENSING_WARNING)) !== canonical(quality.warnings)) {
     throw new Error("quality projection changed non-licensing warnings");
   }
-  const guarded = { ...quality, pipeline: { ...quality.pipeline, status: quality.pipeline.status === "failed" ? "failed" : "needs_review" },
+  const guarded = run.contentOnly ? applyContentEvaluationGuard(quality) : {
+    ...quality, pipeline: { ...quality.pipeline, status: quality.pipeline.status === "failed" ? "failed" : "needs_review" },
     recommendation: "needs_review", warnings: [...new Set([...quality.warnings, LICENSING_WARNING])] };
-  if (canonical(operational) !== canonical(guarded)) throw new Error("operational report differs beyond the licensing guard");
+  if (canonical(operational) !== canonical(guarded)) throw new Error(run.contentOnly
+    ? "operational report differs beyond declared content-evaluation guards" : "operational report differs beyond the licensing guard");
   if (run.provenance?.pipelineVersion && run.provenance.pipelineVersion !== quality.pipeline.version) throw new Error("pipeline version changed within evaluation run");
   const failureCode = response.observations?.failureCode;
   const video = response.observations?.video, audio = response.observations?.audio;
@@ -129,7 +134,7 @@ export function riskCoverage(pairs, total) {
     risk: decided.length ? errors / decided.length : null };
 }
 
-export function computeMetrics(cases) {
+export function computeMetrics(cases, { contentOnly = false } = {}) {
   const successful = cases.filter(item => item.successfulAnalysis === true);
   const correct = successful.filter(item => item.qualityReport.recommendation === item.expected.recommendation).length;
   const negative = cases.filter(item => item.expected.recommendation !== "accept");
@@ -140,7 +145,13 @@ export function computeMetrics(cases) {
   const visual = cases.flatMap(item => item.qualityReport?.pipeline?.modelRuns ?? [])
     .filter(model => model.promptVersion === "timestamped-frames-visible-events-v1").map(model => model.elapsedMs);
   const pairs = successful.flatMap(item => (item.qualityReport.criteria ?? []).map(criterion => [item.expected.criteria[criterion.criterionId], criterion.status]));
-  return { caseCount: cases.length, successfulAnalysisCount: successful.length, failedOrIncompleteCount: cases.length - successful.length,
+  const operationalReports = cases.map(item => item.rawResponse?.report).filter(Boolean);
+  return { measurement: { scope: contentOnly ? "prerecorded_content_only" : "capture_quality_with_liveness",
+      liveness: contentOnly ? "not_tested" : "included", payoutAccuracyMeasured: false },
+    operational: { verificationOnly: true, acceptanceEligibleCount: 0, storedReportCount: operationalReports.length,
+      reviewCount: operationalReports.filter(report => report.recommendation === "needs_review").length,
+      failedCount: operationalReports.filter(report => report.pipeline?.status === "failed").length },
+    caseCount: cases.length, successfulAnalysisCount: successful.length, failedOrIncompleteCount: cases.length - successful.length,
     correctSuccessfulDecisions: correct, failureAdjustedDecisionAccuracy: cases.length ? correct / cases.length : null,
     failureAdjustedDecisionAccuracyCi95: wilson(correct, cases.length),
     conditionalDecisionAccuracy: successful.length ? correct / successful.length : null,
@@ -201,6 +212,7 @@ function markdown(run) {
   const percent = value => value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
   const ci = value => value ? `[${value.map(percent).join(", ")}]` : "n/a";
   return `# Clip evaluation ${run.evalRunId}\n\nPrivate verification-only evaluation; advisory quality before licensing. No acceptance, dataset sale or payment requested.\n\n` +
+    `Measurement: **${run.contentOnly ? "CONTENT QUALITY ONLY — liveness not tested" : "Capture quality including actual liveness"}**. All cases are verification-only and operationally ineligible for acceptance/payment. Stored operational reviews: ${m.operational.reviewCount}/${m.operational.storedReportCount}; failed operational reports: ${m.operational.failedCount}. These decision/false-accept metrics do not measure payout accuracy.\n\n` +
     `Requested video model: ${run.videoModel ?? "deployment default (see stored modelRuns)"}. Status: ${run.status}. Manifest SHA-256: \`${run.manifestSha256}\`. Split: ${run.split}.\n\n` +
     `Successful analyses: ${m.successfulAnalysisCount}/${m.caseCount}. Failure-adjusted decision accuracy: ${percent(m.failureAdjustedDecisionAccuracy)} (Wilson 95% CI ${ci(m.failureAdjustedDecisionAccuracyCi95)}). Conditional accuracy: ${percent(m.conditionalDecisionAccuracy)} (Wilson 95% CI ${ci(m.conditionalDecisionAccuracyCi95)}). Inference coverage: ${percent(m.successfulAnalysisCoverage)}.\n\n` +
     `False accepts: ${m.falseAcceptance.count}/${m.falseAcceptance.negativeCaseCount} negative cases (${percent(m.falseAcceptance.rate)}; Wilson 95% CI ${ci(m.falseAcceptance.ci95)}). Stored-report review rate over all cases: ${percent(m.reviewRate)}. Review rate among successful analyses: ${percent(m.conditionalReviewRate)}. Provider fallback reviews do not earn correct decisions.\n\n` +
@@ -218,6 +230,8 @@ function markdown(run) {
 
 export async function runEvaluation(options, injected = {}) {
   const now = injected.now ?? Date.now, wait = injected.sleep ?? sleep;
+  if (options.contentOnly !== undefined && typeof options.contentOnly !== "boolean") throw new Error("invalid content-only mode");
+  const contentOnly = options.contentOnly === true;
   if (options.videoModel !== undefined && !COMPARISON_VIDEO_MODELS.includes(options.videoModel)) throw new Error("unsupported evaluation video model");
   const preflight = await preflightManifest(options.manifestPath, options.split ?? "test");
   if (options.frozenManifestSha256 && preflight.manifestSha256 !== options.frozenManifestSha256) throw new Error("comparison frozen manifest differs");
@@ -228,8 +242,8 @@ export async function runEvaluation(options, injected = {}) {
   if (options.resume) {
     resultPath = resolve(options.resume);
     run = JSON.parse(await readFile(resultPath, "utf8"));
-    if (run.runnerVersion !== RUNNER_VERSION || run.manifestSha256 !== preflight.manifestSha256 || run.frozenManifestRaw !== preflight.raw || run.split !== preflight.split || run.videoModel !== options.videoModel) {
-      throw new Error("resume rejected: frozen manifest/version/split/model differs");
+    if (run.runnerVersion !== RUNNER_VERSION || run.manifestSha256 !== preflight.manifestSha256 || run.frozenManifestRaw !== preflight.raw || run.split !== preflight.split || run.videoModel !== options.videoModel || run.contentOnly !== contentOnly) {
+      throw new Error("resume rejected: frozen manifest/version/split/model/content mode differs");
     }
     if (run.provenance?.runnerSha256 !== runnerSha256) throw new Error("resume rejected: runner source differs");
     if (!/^eval-[0-9a-f-]{36}$/.test(run.evalRunId) || run.cases.length !== preflight.cases.length || run.cases.some((item, index) => item.sampleId !== preflight.cases[index].sampleId ||
@@ -246,7 +260,7 @@ export async function runEvaluation(options, injected = {}) {
       gitHead = (await execute("git", ["rev-parse", "HEAD"], { cwd: ROOT, timeout: 5000 })).stdout.trim();
       gitDirty = !!(await execute("git", ["status", "--porcelain"], { cwd: ROOT, timeout: 5000, maxBuffer: 1024 * 1024 })).stdout.trim();
     } catch {}
-    run = { runnerVersion: RUNNER_VERSION, ...(options.videoModel ? { videoModel: options.videoModel } : {}), evalRunId: `eval-${id}`, startedAt, split: preflight.split,
+    run = { runnerVersion: RUNNER_VERSION, contentOnly, ...(options.videoModel ? { videoModel: options.videoModel } : {}), evalRunId: `eval-${id}`, startedAt, split: preflight.split,
       manifestSha256: preflight.manifestSha256, frozenManifestRaw: preflight.raw, frozenManifest: preflight.manifest,
       provenance: { gitHead, gitDirty, runnerSha256, nodeVersion: process.version, scorerSha256: sha(await readFile(SCORER)), labelsFrozenAt: startedAt },
       cloud: { backend: "Convex", attempted: false, licensing: "verification-only; no training license or payment", resumeCount: 0 },
@@ -255,7 +269,7 @@ export async function runEvaluation(options, injected = {}) {
   const manifestFile = resultPath.replace(/\.json$/, ".manifest.json"), predictionsFile = resultPath.replace(/\.json$/, ".predictions.json");
   await writeFile(manifestFile, preflight.raw, { mode: 0o600 });
   const save = async () => {
-    run.updatedAt = new Date(now()).toISOString(); run.metrics = computeMetrics(run.cases);
+    run.updatedAt = new Date(now()).toISOString(); run.metrics = computeMetrics(run.cases, { contentOnly });
     await atomicJson(resultPath, run);
     await writeFile(resultPath.replace(/\.json$/, ".md"), markdown(run), { mode: 0o600 });
   };
@@ -291,7 +305,7 @@ export async function runEvaluation(options, injected = {}) {
       for (const row of inventory.submissions) {
         const item = run.cases.find(item => item.clientRequestId === row.clientRequestId);
         if (!item || seen.has(row.clientRequestId) || typeof row._id !== "string" || (item.submissionId && item.submissionId !== row._id) ||
-          (row.sourceHash !== undefined && row.sourceHash !== item.contentSha256) || row.evalVideoModel !== run.videoModel) throw new Error("evaluation scope contaminated");
+          (row.sourceHash !== undefined && row.sourceHash !== item.contentSha256) || row.evalVideoModel !== run.videoModel || !!row.evalContentOnly !== contentOnly) throw new Error("evaluation scope contaminated");
         item.submissionId = row._id; seen.add(row.clientRequestId);
       }
       if (run.cases.some(item => item.submissionId && !seen.has(item.clientRequestId))) throw new Error("evaluation scope missing existing submission");
@@ -312,7 +326,7 @@ export async function runEvaluation(options, injected = {}) {
           }
           item.firstCreateAt ??= now(); await save();
           const created = await client.mutation("submissions:create", { ...identity, orderId: run.orderId, storageId: item.storageId,
-            clientRequestId: item.clientRequestId, consentAcknowledged: true, verificationOnly: true, evalRunId: run.evalRunId, ...(run.videoModel ? { evalVideoModel: run.videoModel } : {}) });
+            clientRequestId: item.clientRequestId, consentAcknowledged: true, verificationOnly: true, evalRunId: run.evalRunId, ...(run.videoModel ? { evalVideoModel: run.videoModel } : {}), ...(contentOnly ? { evalContentOnly: true } : {}) });
           if (typeof created.submissionId !== "string") throw new Error("create omitted submissionId");
           item.submissionId = created.submissionId; item.state = "submitted"; await save();
         }
@@ -359,6 +373,8 @@ export async function runEvaluation(options, injected = {}) {
 /** Paired, frozen-source evaluation; independent duplicate scope for each model. */
 export async function runModelComparison(options, injected = {}) {
   if (options.videoModel !== undefined) throw new Error("choose --video-model or --compare-video-models");
+  if (options.contentOnly !== undefined && typeof options.contentOnly !== "boolean") throw new Error("invalid content-only mode");
+  const contentOnly = options.contentOnly === true;
   const preflight = await preflightManifest(options.manifestPath, options.split ?? "test");
   const now = injected.now ?? Date.now;
   const outputDir = resolve(options.outputDir ?? join(ROOT, "evals/results"));
@@ -369,14 +385,14 @@ export async function runModelComparison(options, injected = {}) {
     resultPath = resolve(options.resume);
     run = JSON.parse(await readFile(resultPath, "utf8"));
     if (run.comparisonVersion !== RUNNER_VERSION || run.manifestSha256 !== preflight.manifestSha256 ||
-      run.frozenManifestRaw !== preflight.raw || run.split !== preflight.split || run.runnerSha256 !== runnerSha256 ||
+      run.frozenManifestRaw !== preflight.raw || run.split !== preflight.split || run.contentOnly !== contentOnly || run.runnerSha256 !== runnerSha256 ||
       canonical(run.models?.map(item => item.videoModel)) !== canonical(COMPARISON_VIDEO_MODELS)) {
-      throw new Error("comparison resume rejected: frozen manifest/version/split/models differs");
+      throw new Error("comparison resume rejected: frozen manifest/version/split/models differs or content mode differs");
     }
   } else {
     const id = randomUUID(), startedAt = new Date(now()).toISOString();
     resultPath = join(outputDir, `${startedAt.replaceAll(/[:.]/g, "-")}-comparison-${id}.json`);
-    run = { comparisonVersion: RUNNER_VERSION, comparisonId: `comparison-${id}`, startedAt, split: preflight.split,
+    run = { comparisonVersion: RUNNER_VERSION, contentOnly, comparisonId: `comparison-${id}`, startedAt, split: preflight.split,
       manifestSha256: preflight.manifestSha256, frozenManifestRaw: preflight.raw, runnerSha256,
       models: COMPARISON_VIDEO_MODELS.map(videoModel => ({ videoModel, status: "pending" })) };
   }
@@ -388,12 +404,12 @@ export async function runModelComparison(options, injected = {}) {
     const latency = value => `${value?.p50 ?? "n/a"}/${value?.p95 ?? "n/a"}`;
     const rows = run.models.map(item => {
       const m = item.metrics;
-      return `| ${item.videoModel} | ${item.status} | ${m?.caseCount ?? "—"} | ${percent(m?.successfulAnalysisCoverage)} | ${percent(m?.failureAdjustedDecisionAccuracy)} ${ci(m?.failureAdjustedDecisionAccuracyCi95)} | ${m ? `${m.falseAcceptance.count}/${m.falseAcceptance.negativeCaseCount}` : "—"} | ${percent(m?.falseAcceptance.rate)} ${ci(m?.falseAcceptance.ci95)} | ${percent(m?.reviewRate)} | ${percent(m?.riskCoverage.coverage)} / ${percent(m?.riskCoverage.risk)} | ${m?.criterionAgreement.cohenKappa ?? "n/a"} | ${latency(m?.latency.videoRequestMs)} | ${latency(m?.latency.backendProcessingMs)} | ${latency(m?.latency.clientTerminalReportMs)} |`;
+      return `| ${item.videoModel} | ${item.status} | ${m?.caseCount ?? "—"} | ${percent(m?.successfulAnalysisCoverage)} | ${percent(m?.failureAdjustedDecisionAccuracy)} ${ci(m?.failureAdjustedDecisionAccuracyCi95)} | ${m ? `${m.falseAcceptance.count}/${m.falseAcceptance.negativeCaseCount}` : "—"} | ${percent(m?.falseAcceptance.rate)} ${ci(m?.falseAcceptance.ci95)} | ${percent(m?.reviewRate)} | ${m ? `${m.operational.reviewCount}/${m.operational.storedReportCount}` : "—"} | ${percent(m?.riskCoverage.coverage)} / ${percent(m?.riskCoverage.risk)} | ${m?.criterionAgreement.cohenKappa ?? "n/a"} | ${latency(m?.latency.videoRequestMs)} | ${latency(m?.latency.backendProcessingMs)} | ${latency(m?.latency.clientTerminalReportMs)} |`;
     });
     await writeFile(resultPath.replace(/\.json$/, ".md"),
-      `# Paired video-model evaluation\n\nStatus: ${run.status}. Frozen manifest SHA-256: \`${run.manifestSha256}\`. Split: ${run.split}.\n\n` +
+      `# Paired video-model evaluation\n\nMeasurement: **${contentOnly ? "CONTENT QUALITY ONLY — liveness not tested" : "Capture quality including actual liveness"}**. Every operational submission remains verification-only and ineligible for acceptance/payment.\n\nStatus: ${run.status}. Frozen manifest SHA-256: \`${run.manifestSha256}\`. Split: ${run.split}.\n\n` +
       "Same frozen source bytes and labels in both arms; distinct evaluation scopes prevent cross-model copies from contaminating results. Labels are never sent to models. Both arms are verification-only. No global model environment is changed.\n\n" +
-      "| Video model | Status | Cases | Inference coverage | Decision accuracy [Wilson 95% CI] (failures incorrect) | False accepts / negatives | False-accept rate [Wilson 95% CI] | Review rate | Auto-decided coverage / risk | Criterion kappa | Video p50/p95 ms | Backend p50/p95 ms | Client p50/p95 ms |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+      "| Video model | Status | Cases | Inference coverage | Decision accuracy [Wilson 95% CI] (failures incorrect) | False accepts / negatives | False-accept rate [Wilson 95% CI] | Review rate | Operational reviews / stored (eligible: 0) | Auto-decided coverage / risk | Criterion kappa | Video p50/p95 ms | Backend p50/p95 ms | Client p50/p95 ms |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n" +
       rows.join("\n") + "\n\nPercentiles use nearest rank. Failed or incomplete analysis earns no correct-decision credit. Provider fallback reviews remain in review rate; timeouts are censored in child results. Video latency counts timed visual responses, including responses that later fail another stage. Models run sequentially (Argon, then Flash); this is a paired clip comparison, not a randomized latency experiment. Child reports include criterion confusion matrices (human rows, predicted columns). Kappa is undefined for empty or single-class perfect agreement. Auto-decided coverage excludes failures and reviews; risk is error among successful accept/request_correction recommendations. Intervals are descriptive binomial Wilson intervals, not independence or conformal guarantees. Child JSON preserves actual modelRuns, reports, scorer output and provenance.\n",
       { mode: 0o600 });
   };
@@ -433,10 +449,11 @@ async function main(argv) {
       if (!value) throw new Error(`missing ${arg} value`);
       options[arg === "--timeout-ms" ? "timeoutMs" : arg === "--video-model" ? "videoModel" : arg.slice(2)] = arg === "--timeout-ms" ? Number(value) : value;
     } else if (arg === "--compare-video-models") options.compareVideoModels = true;
+    else if (arg === "--content-only") options.contentOnly = true;
     else if (!arg.startsWith("-") && !options.manifestPath) options.manifestPath = arg;
     else throw new Error(`unknown argument: ${arg}`);
   }
-  if (!options.manifestPath) throw new Error("usage: pnpm eval:clips <manifest.json> [--split test] [--resume results.json] [--timeout-ms 360000] [--video-model MODEL | --compare-video-models]");
+  if (!options.manifestPath) throw new Error("usage: pnpm eval:clips <manifest.json> [--split test] [--resume results.json] [--timeout-ms 360000] [--video-model MODEL | --compare-video-models] [--content-only]");
   const result = await (options.compareVideoModels ? runModelComparison : runEvaluation)(options);
   console.log(`${result.run.status}: ${result.resultPath}\n${JSON.stringify(result.run.metrics ?? result.run.models, null, 2)}`);
   return result.exitCode;

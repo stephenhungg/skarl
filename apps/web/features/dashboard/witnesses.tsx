@@ -4,15 +4,8 @@ import { useState } from "react";
 import { Status } from "@/components/glaze/ui/status";
 import { cn } from "@/lib/glaze/utils";
 import { api, CONTROLLER, type Id } from "./data";
+import { publicEvidenceUrl, witnessPresentation } from "./witness-presentation";
 
-type StatusValue = "idle" | "queued" | "running" | "ok" | "warn" | "fail" | "waiting";
-const STATUS: Record<string, { status: StatusValue; label: string }> = {
-  agree: { status: "ok", label: "Agrees" },
-  disagree: { status: "fail", label: "Disagrees" },
-  pending: { status: "waiting", label: "Pending" },
-  missing: { status: "idle", label: "Missing" },
-  not_applicable: { status: "idle", label: "Not applicable" },
-};
 const GROUPS = [
   { kind: "work", title: "Work" },
   { kind: "judgment", title: "Judgment" },
@@ -30,7 +23,7 @@ export function WitnessReceipt({ submissionId }: { submissionId: Id<"submissions
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line-faint px-3 py-2.5">
         <h2 className="me-auto type-label">Witnesses</h2>
         {(["agree", "disagree", "pending", "missing"] as const).filter(k => counts[k]).map(k => (
-          <Status key={k} status={STATUS[k]!.status} size="sm">{`${counts[k]} ${STATUS[k]!.label.toLowerCase()}`}</Status>
+          <Status key={k} status={witnessPresentation(k).status} size="sm">{`${counts[k]} ${witnessPresentation(k).label.toLowerCase()}`}</Status>
         ))}
       </div>
       {GROUPS.map(group => {
@@ -42,7 +35,7 @@ export function WitnessReceipt({ submissionId }: { submissionId: Id<"submissions
             <p className="mb-1 type-label-sm text-text-3">{group.title}</p>
             <ul className="flex flex-col">
               {rows.map(w => {
-                const s = STATUS[w.status] ?? STATUS.missing!;
+                const s = witnessPresentation(w.status), url = publicEvidenceUrl(w.evidenceUrl);
                 const expanded = open === w.key;
                 return (
                   <li key={w.key}>
@@ -54,7 +47,7 @@ export function WitnessReceipt({ submissionId }: { submissionId: Id<"submissions
                     {expanded && (
                       <p className="mb-1.5 ms-30 type-body-sm text-text-2">
                         {w.detail}
-                        {w.evidenceUrl && <> <a href={w.evidenceUrl} target="_blank" rel="noreferrer" className="text-text-1 underline underline-offset-4">Open evidence</a></>}
+                        {url && <> <a href={url} target="_blank" rel="noopener noreferrer" className="text-text-1 underline underline-offset-4">Open evidence</a></>}
                       </p>
                     )}
                   </li>

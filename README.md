@@ -1,21 +1,32 @@
 # Skarl
 
-**Every claim has a witness.**<br>
-Skarl is the autonomous settlement desk for human-data companies: independent witnesses must agree before anything moves.<br>
-Agents propose, a rule the buyer signed approves, the AI never approves itself. The buyer reviews exceptions; there is no separate controller in the user flow.
-
-[The thesis and live/simulated witness table](docs/thesis.md) map work evidence, money evidence, judgment and the Convex nervous system. The complete duplicate-to-payout moment remains pending in [build status](docs/status.md).
+**Evidence-backed settlement for human-data companies.** Skarl fills two finance seats: settlement accountant and accounts-payable clerk. It connects multimodal work evidence to exact USDC obligations, buyer-authorized policy, exception review and observed settlement.
 
 **[Open the live demo](https://skarl.devshardat.work)** · [Coinbase submission](docs/coinbase-submission.md) · [Devpost text](docs/devpost.md) · [Two-minute demo and judging runbook](docs/demo-script.md) · [Architecture SVG](docs/architecture.svg)
 
-**Testnet · test USDC · demo identities.** Demonstrated funding uses Base Sepolia and optional Solana Devnet; payouts remain Base-only; operator-owned test assets, no real customer funds. The hosted demo uses impersonable identities, not production authentication.
+The demo moment: an accepted original earns a payable; a copied submission cannot earn a second one; the finance agent can propose payment but cannot approve its own request. Required source, consent, duplicate and financial controls gate progress. Optional witnesses expose disagreements without granting authority.
+
+**Start here: [track-to-evidence review guide](docs/review-guide.md).** It maps sponsor requirements to real code, isolated checks, recorded live evidence and remaining gaps. [Sponsor criteria](docs/sponsor-tracks.md) · [Architecture](docs/architecture.svg) · [Dated build status](docs/status.md) · [Demo runbook](docs/demo-script.md).
+
+The [public web demo](https://skarl.devshardat.work) and payment origins may serve different deployed versions; verify them separately against `main`. **Testnet and test USDC only.** Base Sepolia supports funding and payouts; Solana Devnet supports funding. Optional Google/Convex Auth is implemented, but anonymous demo identities remain impersonable while demo mode is enabled. Deployment and provider configuration must be checked separately.
+
+## Review the controls
+
+| Surface | What to inspect |
+| --- | --- |
+| `/dashboard/submissions` → a clip | Timestamped rubric evidence, independent visual observations, narration, liveness and the work/money/judgment witness receipt. Missing witnesses remain missing. |
+| `/dashboard/scenarios` | Eight explicitly simulated exception probes with expected/observed outcomes and audit IDs. Runs require an explicit owning-buyer or legacy-controller action; missing prerequisites remain blocked. |
+| `/dashboard/agent` → `/dashboard/payables` | Bounded tool calls, refusal records, immutable amount/recipient, buyer-signed auto-pay rules, exception review and safe manual recovery. CDP execution remains bound to approved intents and wallet caps. |
+| `/dashboard/ledger` → Reconciliation | Order, exact ledger, chain and Nessie mock-bank comparison. A mock-bank entry is not fiat movement or payout authority. |
+
+These screens are implemented in source, not a claim that the complete live demo has run. The central remaining proof is a licensed, liveness-valid human clip → policy acceptance/approval or buyer exception review → actual contributor payout and reconciliation. Funding and negative verification have run; the table below links the evidence.
 
 ## User flow
 
 1. The buyer posts a task, funds it and sets an auto-pay rule.
 2. The contributor films.
 3. AI checks the work with proof.
-4. If every check passes, the rule auto-approves; otherwise the buyer reviews.
+4. If every required check passes, the rule auto-approves; otherwise the buyer reviews.
 5. USDC lands in the contributor’s wallet and the books balance.
 
 The rule defaults on with a cap equal to the per-clip price and requires every check. The buyer can change or disable it. The CDP wallet cap independently guards execution; unconfirmed transfers remain pending. Policy code still requires operator deployment and a live eligible-payout check.
@@ -92,25 +103,25 @@ video, narration and device motion, using Bun. [Sensor evidence and limits](docs
 
 | Owner | Workstream | Primary folders |
 | --- | --- | --- |
-| MatthewKim323 | Web dashboard and dashboard data integration | `apps/web/app/dashboard`, `apps/web/features/dashboard` (to create) |
-| silaswu4 | Shared UI, app shell and contributor recording flow | `apps/web/components`, `apps/web/features/contributor` (to create), root web layout/page/styles |
+| MatthewKim323 | Web dashboard and dashboard data integration | `apps/web/app/dashboard`, `apps/web/features/dashboard` |
+| silaswu4 | Shared UI, app shell and contributor recording flow | `apps/web/components`, `apps/web/features/contributor`, root web layout/page/styles |
 | Stephen | Backend, demo identities, AI verification, finance logic and shared contracts | `convex`, `services/verifier`, `evals`, `fixtures`, `packages/contracts`, `packages/ledger` |
-| qtzx06 | x402 on Base Sepolia, Coinbase for Agents (Wallet MCP), onchain settlement | `packages/payments`, `apps/web/lib/payments` (to create), payment API routes (to create) |
+| qtzx06 | x402 on Base Sepolia, Coinbase for Agents (Wallet MCP), onchain settlement | `packages/payments`, `apps/web/lib/payments`, payment API routes |
 
-These assignments reflect Stephen's requested split. Folder paths describe ownership boundaries; some are implementation targets rather than existing routes. [Workstreams](docs/workstreams.md) is the 8-hour plan to the 9:00 AM PDT deadline; [the docs index](docs/README.md) covers product, architecture, APIs, sponsors, research and the demo.
+These assignments reflect Stephen's requested split. Folder paths describe ownership boundaries. [Workstreams](docs/workstreams.md) is the 8-hour plan to the 9:00 AM PDT deadline; [the docs index](docs/README.md) covers product, architecture, APIs, sponsors, research and the demo.
 
 ## Repository map
 
 ```text
 apps/mobile/            Standalone Bun / Expo Go iPhone contributor app (outside pnpm)
 apps/web/               Next.js contributor recorder and payment API routes
-convex/                 Demo finance API, uploads, scheduled Gemini verification and generated types
+convex/                 Role-checked finance, auth, media verification, workflows, crons and live queries
 packages/contracts/    Shared statuses, Base Sepolia chain constants and verification schema
 packages/ledger/       Exact USDC arithmetic and pure double-entry journal replay
 packages/payments/     x402 funding, receipt checks, reconciliation and wallet adapters
 services/verifier/     Python report validator (the Railway inference worker is deferred)
 fixtures/              Instructions for consented media; no private recordings
-evals/                 Evaluation scoring scaffolding (split protocol deferred)
+evals/                 Frozen-label evaluation, paired models and explicit content-only metrics
 docs/                  Build specification, research and ownership
 scripts/               Repository validation
 ```

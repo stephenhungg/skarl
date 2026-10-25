@@ -24,7 +24,8 @@ See [the full protocol](../docs/evaluation.md) for media collection, ablations, 
    placeholder path/hash and label each recording before running. Include the
    exact frozen rubric criterion IDs. Keep the recordings private. Set
    `syntheticMetadata: false`; synthetic scoring fixtures cannot run inference.
-2. Run `pnpm eval:clips /absolute/path/to/labeled-manifest.json`. The runner
+2. For prerecorded **content-quality** labels, explicitly opt in with
+   `pnpm eval:clips /absolute/path/to/labeled-manifest.json --content-only`. The runner
    validates the complete manifest and all source hashes locally, then freezes
    labels/provenance into a dated result before any network work. Expected labels
    never enter a submission or model request. All uploads are verification-only.
@@ -39,13 +40,43 @@ submissions in its scope. Normal production submissions exclude evaluation
 cases from their analysis corpus; the accepted-work financial duplicate gate
 remains global.
 
-The operational report remains review-only because evaluation clips have no
-sale/training license. The nested, schema-validated
-`observations.evaluation.qualityReport` is an **advisory content-quality
-projection** computed before adding that licensing warning. Every inference,
-media, injection, ambiguity and duplicate warning is retained. This report
-cannot create a payable; `finance.acceptAndPublish` still refuses the entire
-verification-only submission.
+### Choose the measurement protocol before freezing labels
+
+**Default (no `--content-only`): capture quality including actual liveness.** The
+normal liveness policy is unchanged. This local-file runner does not attach or
+invent per-take challenges; an ordinary prerecorded upload therefore receives a
+missing-challenge warning and `needs_review`, even when the cup actions are
+supported. Use this mode to measure the full gate's review behavior. It cannot
+establish a fresh spoken-liveness pass or positive acceptance accuracy from old
+recordings.
+
+**Explicit `--content-only`: prerecorded content quality; liveness NOT TESTED.**
+Freeze labels for the visible/narrated red-cup task and copy detection only. The
+submission persists immutable `evalContentOnly:true` alongside verification-only
+scope and `evalRunId`; the backend refuses ordinary/unscoped use, supplied
+liveness challenges, changed replays or mixed capture/content corpora. No
+challenge is fabricated after recording. This is a versioned
+`content-only-no-liveness-v1` advisory projection with `contentOnly:true` and
+`livenessTested:false` in `observations.evaluation`.
+
+The backend independently constructs the full operational report with the real
+missing-liveness warning and licensing guard. Both reports use identical source,
+rubric, model runs, criteria and evidence. The only permitted difference is adding
+the genuine missing-challenge warning plus the verification-only licensing guard,
+forcing operational `needs_review` (or retaining failure). Every other inference,
+media, injection, ambiguity and duplicate warning is preserved verbatim; content
+mode never clears a warning-bearing report into acceptance.
+
+All uploads remain operationally ineligible for acceptance, dataset publication,
+training licensing and payment. `finance.acceptAndPublish` refuses the entire
+verification-only submission, including explicit human overrides. A content
+recommendation named `accept` means its measured content checks passed; it is
+not an accepted contribution, a liveness result or a payout decision.
+
+JSON and Markdown label the measurement scope and whether liveness is included
+or not tested. Operational stored-report/review/failure counts and zero
+acceptance eligibility are shown separately. Content false-acceptance measures
+content-label errors, **not payout accuracy or production fraud resistance**.
 
 Metrics include failure-adjusted decision accuracy, conditional accuracy and
 coverage, false-acceptance count/rate, review rate and nearest-rank p50/p95
@@ -62,19 +93,24 @@ exercise only scoring plumbing and remain unchanged.
 
 ## Compare Argon and Flash on the same clips
 
-Video verification defaults to `gemini-4-argon`. Finance and `askAgent` keep
-`gemini-3.8-flash`. To compare video models, use the same private, pre-labeled
+Ordinary verification defaults to an Argon/Flash visual jury with separate
+audio. Explicit model comparisons remain single-model arms. The single visual
+default (`VERIFIER_JURY=off`) is `gemini-4-argon`; Gemini finance and `askAgent`
+default to `gemini-3.8-flash`. To compare video models, use the same private, pre-labeled
 manifest in both arms:
 
 ```sh
-pnpm eval:clips /absolute/path/to/labeled-manifest.json --compare-video-models
+pnpm eval:clips /absolute/path/to/labeled-manifest.json --compare-video-models --content-only
 # Resume the parent comparison, including incomplete child submissions:
-pnpm eval:clips /absolute/path/to/labeled-manifest.json --compare-video-models --resume /absolute/path/to/comparison.json
+pnpm eval:clips /absolute/path/to/labeled-manifest.json --compare-video-models --content-only --resume /absolute/path/to/comparison.json
 # Or request one specific video model:
-pnpm eval:clips /absolute/path/to/labeled-manifest.json --video-model gemini-4-argon
+pnpm eval:clips /absolute/path/to/labeled-manifest.json --video-model gemini-4-argon --content-only
 ```
 
-The parent freezes the model list, exact manifest bytes and source hashes before
+These examples explicitly measure prerecorded content. Omit `--content-only` in
+both the original and resume invocations to measure the full liveness gate.
+
+The parent freezes the measurement mode, model list, exact manifest bytes and source hashes before
 network access. Both arms must use the same frozen order/rubric and pipeline
 version. Argon runs first, then Flash, each with a distinct `evalRunId` duplicate
 corpus; reference/copy relationships remain within that arm. This avoids counting
@@ -97,8 +133,9 @@ receives no correct-decision credit. A partial arm remains partial and resumable
 completed submissions are not uploaded again. Parent checkpoint paths are saved
 before child network work so interruption can resume the existing submissions.
 
-Runner version `real-clips-v2` refuses older checkpoints or changed runner sources,
-labels, splits or model selections. To resume an explicit single-model run, pass
-its original `--video-model` again. All artifacts and recordings remain ignored
+Runner version `real-clips-v3-content-scope` refuses older checkpoints or changed
+runner sources, labels, splits, model selections or measurement modes. To resume an explicit single-model run, pass
+its original `--video-model` again, and repeat `--content-only` when that mode
+was frozen. All artifacts and recordings remain ignored
 and private. No labeled multi-clip A/B accuracy benchmark has been measured by
 this implementation; mocked tests validate orchestration and metric computation.

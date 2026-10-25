@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { prepareMedia, MediaPreparationError } from "./lib/media";
 import { GeminiFailure } from "./lib/gemini";
 import { observeEvidence, type VisualJury } from "./lib/visualJury";
-import { buildVerificationReports, EVALUATION_PROJECTION_VERSION, type AudioObservation, type VideoObservation, type ModelRun } from "./lib/verificationReport";
+import { buildVerificationReports, EVALUATION_PROJECTION_VERSION, CONTENT_EVALUATION_PROJECTION_VERSION, type AudioObservation, type VideoObservation, type ModelRun } from "./lib/verificationReport";
 import { validateVerificationReportForRubric } from "../packages/contracts/src/verification";
 import { canonical, digest } from "./lib/finance";
 import type { Id } from "./_generated/dataModel";
@@ -48,7 +48,7 @@ export const run = internalAction({
       duplicate=await ctx.runQuery(internal.submissions.copies,{submissionId:submission._id});
 
       const observed=await observeEvidence(media,{submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,
-        criteria:rubric.criteria,liveness:submission.liveness,duplicate,warnings,reportId:`analysis:${job._id}:${generation}`},submission.evalVideoModel);
+        criteria:rubric.criteria,liveness:submission.liveness,duplicate,warnings,reportId:`analysis:${job._id}:${generation}`},submission.evalVideoModel, submission.evalContentOnly ? {verificationOnly:true,evalRunId:submission.evalRunId!,evalContentOnly:true} : undefined);
       ({video,audio,failure,jury}=observed);
       runs.push(...observed.modelRuns); warnings.splice(0,warnings.length,...observed.warnings);
     } catch(error) {
@@ -60,7 +60,7 @@ export const run = internalAction({
           frameDHashes:submission.clientFrameDHashes,perceptualHash:submission.clientFrameDHashes.map(f=>f.hash).join(""),perceptualHashSource:"clientReported"});
       }
     }
-    const scope={verificationOnly:submission.verificationOnly,evalRunId:submission.evalRunId};
+    const scope={verificationOnly:submission.verificationOnly,evalRunId:submission.evalRunId,evalContentOnly:submission.evalContentOnly};
     let reports=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash,durationMs,criteria:rubric.criteria,liveness:submission.liveness,
       video,audio,modelRuns:runs,duplicate,warnings,...(failure ? {failure} : {}),reportId:`analysis:${job._id}:${generation}`},scope);
     const validReports=()=>[reports.report,...(reports.qualityReport ? [reports.qualityReport] : [])]
@@ -72,7 +72,8 @@ export const run = internalAction({
       if (!validReports()) throw new Error("fallback_report_invalid");
     }
     const {report,qualityReport}=reports;
-    const evaluation=qualityReport ? {evaluationOnly:true,projectionVersion:EVALUATION_PROJECTION_VERSION,
+    const evaluation=qualityReport ? {evaluationOnly:true,projectionVersion:submission.evalContentOnly ? CONTENT_EVALUATION_PROJECTION_VERSION : EVALUATION_PROJECTION_VERSION,
+      ...(submission.evalContentOnly ? {contentOnly:true,livenessTested:false} : {}),
       qualityReport,qualityReportHash:digest(qualityReport)} : undefined;
     const reportJson=canonical(report);
     const reportStorageId=await ctx.storage.store(new Blob([reportJson],{type:"application/json"}));
@@ -98,12 +99,13 @@ export const interrupted = internalAction({
     const {report,qualityReport}=buildVerificationReports({submissionId:submission._id,taskVersionId:rubric._id,sourceHash:job.sourceHash,
       durationMs:asset?.durationMs ?? 0,criteria:rubric.criteria,liveness:submission.liveness,modelRuns:[],duplicate:{status:"not_checked",matches:[]},
       failure:"verification_interrupted",reportId:`analysis:${job._id}:${args.generation}`},
-      {verificationOnly:submission.verificationOnly,evalRunId:submission.evalRunId});
+      {verificationOnly:submission.verificationOnly,evalRunId:submission.evalRunId,evalContentOnly:submission.evalContentOnly});
     report.pipeline.version=job.pipelineVersion;
     if(qualityReport) qualityReport.pipeline.version=job.pipelineVersion;
     if(![report,...(qualityReport ? [qualityReport] : [])].every(value=>
       validateVerificationReportForRubric(value,rubric.criteria.map(c=>c.criterionId)).valid)) throw new Error("timeout_report_invalid");
-    const evaluation=qualityReport ? {evaluationOnly:true,projectionVersion:EVALUATION_PROJECTION_VERSION,
+    const evaluation=qualityReport ? {evaluationOnly:true,projectionVersion:submission.evalContentOnly ? CONTENT_EVALUATION_PROJECTION_VERSION : EVALUATION_PROJECTION_VERSION,
+      ...(submission.evalContentOnly ? {contentOnly:true,livenessTested:false} : {}),
       qualityReport,qualityReportHash:digest(qualityReport)} : undefined;
     const reportJson=canonical(report),reportStorageId=await ctx.storage.store(new Blob([reportJson],{type:"application/json"}));
     try {
