@@ -4,6 +4,7 @@ import { coachTables } from "./coachSchema";
 import { attestationTables } from "./attestationsSchema";
 import { v } from "convex/values";
 import { sensorTrace } from "./sensorTraceValidators";
+import { diversityValidator } from "./lib/diversity";
 import { vWorkflowId } from "@convex-dev/workflow";
 import {
   actor,
@@ -143,6 +144,7 @@ export default defineSchema({
     buyerTokenIdentifier: tokenIdentifier,
     buyerWalletAddress: evmAddress,
     title: v.string(),
+    diversity: v.optional(diversityValidator),
     status: orderStatus,
     taskVersionId: v.optional(v.id("rubricVersions")),
     quantityRequested: count,
@@ -196,6 +198,8 @@ export default defineSchema({
     orderId: v.id("orders"),
     taskVersionId: v.id("rubricVersions"),
     contributorTokenIdentifier: tokenIdentifier,
+    environment: v.optional(v.string()),
+    variant: v.optional(v.string()),
     status: submissionStatus,
     clientRequestId: v.string(),
     originalAssetId: v.optional(v.id("mediaAssets")),

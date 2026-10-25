@@ -8,6 +8,7 @@ import { actorFor, audit, digest, normalizeAddress, loadLedger, paymentBinding, 
 import { MAX_ATOMIC_USDC, parseAtomicUsdc, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
 
 import { accountBalance, createRefundReservedJournal } from "../packages/ledger/src/index";
+import { diversityValidator, normalizeDiversity } from "./lib/diversity";
 
 const criterion = v.object({ criterionId: v.string(), description: v.string(),
   modality: v.union(v.literal("visual"), v.literal("audio"), v.literal("cross_modal"), v.literal("temporal")) });
@@ -16,7 +17,7 @@ const criterion = v.object({ criterionId: v.string(), description: v.string(),
 export const createOrder = mutation({
   args: { demoIdentity: v.string(), requestId: v.string(), title: v.string(), buyerWalletAddress: v.string(),
     quantityRequested: v.string(), pricePerSampleAtomic: v.string(), contributorRateAtomic: v.string(),
-    deadlineAt: v.number(), taskPrompt: v.string(), criteria: v.array(criterion) },
+    deadlineAt: v.number(), taskPrompt: v.string(), criteria: v.array(criterion), diversity: v.optional(diversityValidator) },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, "buyer");
     if (principal.roles.includes("finance-agent")) throw new Error("human_buyer_required");
@@ -29,11 +30,13 @@ export const createOrder = mutation({
       contributorRateAtomic = parseAtomicUsdc(args.contributorRateAtomic), budgetAtomic = quantityRequested * pricePerSampleAtomic;
     if (quantityRequested <= 0n || pricePerSampleAtomic <= 0n || contributorRateAtomic <= 0n || contributorRateAtomic > pricePerSampleAtomic ||
       budgetAtomic > MAX_ATOMIC_USDC) throw new Error("invalid_order_amounts");
+    const diversity = normalizeDiversity(args.diversity, quantityRequested);
     const buyerWalletAddress = normalizeAddress(args.buyerWalletAddress);
     if (buyerWalletAddress === `0x${"0".repeat(40)}`) throw new Error("invalid_buyer_wallet");
     const contentHash = digest({ version: 1, taskPrompt, criteria: args.criteria });
     const termsHash = digest({ title, quantityRequested, pricePerSampleAtomic, contributorRateAtomic, budgetAtomic,
-      deadlineAt: args.deadlineAt, buyerWalletAddress, contentHash, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS });
+      deadlineAt: args.deadlineAt, buyerWalletAddress, contentHash, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
+      ...(diversity !== undefined ? { diversity } : {}) });
     const publicId = `order-${digest({ organizationId: principal.organizationId, buyer: principal.tokenIdentifier, requestId: args.requestId })}`;
     const existing = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", publicId)).unique();
     if (existing) {
@@ -44,6 +47,7 @@ export const createOrder = mutation({
     const now = Date.now();
     const orderId = await ctx.db.insert("orders", { organizationId: principal.organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
       publicId, buyerTokenIdentifier: principal.tokenIdentifier, buyerWalletAddress, title, status: "awaiting_funding",
+      ...(diversity !== undefined ? { diversity } : {}),
       quantityRequested, pricePerSampleAtomic, contributorRateAtomic, budgetAtomic, acceptedCount: 0n, deadlineAt: args.deadlineAt, termsHash, updatedAt: now });
     const taskVersionId = await ctx.db.insert("rubricVersions", { organizationId: principal.organizationId, orderId, version: 1,
       taskPrompt, criteria: args.criteria, contentHash, createdByTokenIdentifier: principal.tokenIdentifier, frozenAt: now });
@@ -52,6 +56,39 @@ export const createOrder = mutation({
       action: "order_created", entityType: "orders", entityId: orderId,
       reason: "Buyer froze the rubric and exact terms; funding is still required.", evidenceReferences: [taskVersionId, termsHash] });
     return { orderId, taskVersionId, publicId, status: "awaiting_funding" as const, budgetAtomic: budgetAtomic.toString(), replayed: false };
+  },
+});
+
+/** Coverage counts accepted samples only. Tags remain explicitly self-reported. */
+export const diversityCoverage = query({
+  args: { demoIdentity: v.string(), orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("order_not_found");
+    requireTenant(principal, order);
+    if (!principal.roles.includes("controller") && !principal.roles.includes("finance-agent") &&
+      order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+    const accepted = (await ctx.db.query("submissions").withIndex("by_order_status", q =>
+      q.eq("orderId", order._id).eq("status", "accepted")).collect())
+      .filter(sample => sample.organizationId === order.organizationId);
+    const counts = (labels: (string | undefined)[]) => {
+      const buckets = new Map<string, bigint>();
+      for (const label of labels) if (label !== undefined) buckets.set(label, (buckets.get(label) ?? 0n) + 1n);
+      return [...buckets].sort(([a], [b]) => a.localeCompare(b)).map(([label, count]) => ({ label, count: count.toString() }));
+    };
+    const required = order.diversity?.requiredVariants ?? [];
+    const covered = new Set(accepted.map(sample => sample.variant));
+    return { orderId: order._id, diversity: order.diversity ?? null, tagsSource: "contributor_self_reported" as const,
+      acceptedCount: order.acceptedCount.toString(), remainingQuantity: (order.quantityRequested - order.acceptedCount).toString(),
+      contributorKeySource: "order_scoped_sha256" as const,
+      contributors: counts(accepted.map(sample => digest({ orderId: order._id,
+        contributorTokenIdentifier: sample.contributorTokenIdentifier }))).map(({ label, count }) => ({ contributorKey: label, count })),
+      environments: counts(accepted.map(sample => sample.environment)), variants: counts(accepted.map(sample => sample.variant)),
+      untaggedEnvironmentCount: accepted.filter(sample => sample.environment === undefined).length.toString(),
+      untaggedVariantCount: accepted.filter(sample => sample.variant === undefined).length.toString(),
+      requiredVariants: required.map(variant => ({ variant, covered: covered.has(variant) })),
+      missingVariants: required.filter(variant => !covered.has(variant)) };
   },
 });
 

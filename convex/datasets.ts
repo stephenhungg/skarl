@@ -10,6 +10,38 @@ import { PAYMENT_NETWORK, PAYMENT_RAILS, USDC_ADDRESS } from "../packages/contra
 import { validateTransfer } from "../packages/payments/src/reconciliation";
 import { createDatasetMediaToken } from "../packages/payments/src/dataset-media-token";
 import { service } from "./payments";
+import { deriveSampleQuality } from "./lib/sampleQuality";
+
+/** A confirmed commitment must match the evidence being scored, not just exist. */
+function attestationMatches(attestation: Doc<"attestations"> | null, submission: Doc<"submissions">,
+  analysis: Doc<"analysisResults"> | null, rubric: Doc<"rubricVersions">) {
+  const hash = (value: string | undefined) => !!value && /^0x[a-fA-F0-9]{64}$/.test(value);
+  return !!analysis && attestation?.analysisId === analysis._id && attestation.submissionId === submission._id &&
+    attestation.status === "confirmed" && hash(attestation.attestationUid) && hash(attestation.txHash) &&
+    attestation.fields?.reportHash.replace(/^0x/, "") === analysis.reportHash &&
+    attestation.fields.sourceSha256.replace(/^0x/, "") === submission.sourceHash &&
+    attestation.fields.rubricHash.replace(/^0x/, "") === rubric.contentHash &&
+    attestation.fields.pipelineVersion === analysis.pipelineVersion &&
+    attestation.fields.recommendation === analysis.recommendation && attestation.fields.licensed === true;
+}
+
+/** JSON is stored evidence, not authority: discard corrupt or rebound reports. */
+function boundReport(analysis: Doc<"analysisResults"> | null, submission: Doc<"submissions">,
+  rubric: Doc<"rubricVersions">): VerificationReport | null {
+  try {
+    if (!analysis?.reportJson || analysis.organizationId !== submission.organizationId ||
+      analysis.submissionId !== submission._id || analysis.taskVersionId !== rubric._id ||
+      analysis.sourceHash !== submission.sourceHash) return null;
+    const report = JSON.parse(analysis.reportJson) as VerificationReport;
+    if (digest(report) !== analysis.reportHash || report.submissionId !== submission._id || report.taskVersionId !== rubric._id ||
+      report.source.sha256 !== submission.sourceHash || report.pipeline.version !== analysis.pipelineVersion ||
+      report.pipeline.implementation !== analysis.implementation || report.pipeline.status !== analysis.pipelineStatus ||
+      report.recommendation !== analysis.recommendation || !Array.isArray(report.criteria) ||
+      !report.duplicate || !Array.isArray(report.duplicate.matches) || report.criteria.some(row => !row ||
+        typeof row.criterionId !== "string" || !Array.isArray(row.evidence) || row.evidence.some(item => !item))) return null;
+    return report;
+  } catch { return null; }
+}
 
 /** A broadcast hash or approval is not proof of payment. */
 async function payout(ctx: QueryCtx, payable: Doc<"payables"> | undefined) {
@@ -73,17 +105,16 @@ async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Do
   const machine = decision.decisionKey === `accept:${submission._id}`;
   if (machine ? !analysis || analysis.implementation !== "inference" || analysis.pipelineStatus !== "completed" ||
     analysis.recommendation !== "accept" : !decision.decisionKey.startsWith("human:")) return null;
-  let report: VerificationReport | null = null;
+  const report = boundReport(analysis, submission, rubric);
+  if (analysis?.reportJson && !report) return null;
   let audio: AudioObservation | undefined;
+  let jury: unknown;
   try {
-    if (analysis?.reportJson) {
-      report = JSON.parse(analysis.reportJson) as VerificationReport;
-      if (digest(report) !== analysis.reportHash || report.submissionId !== submission._id || report.taskVersionId !== rubric._id ||
-        report.source.sha256 !== submission.sourceHash || report.pipeline.implementation !== analysis.implementation ||
-        report.pipeline.status !== analysis.pipelineStatus || report.recommendation !== analysis.recommendation ||
-        !Array.isArray(report.criteria)) return null;
+    if (analysis?.observationsJson) {
+      const observations = JSON.parse(analysis.observationsJson);
+      audio = observations?.audio;
+      jury = observations?.jury;
     }
-    if (analysis?.observationsJson) audio = JSON.parse(analysis.observationsJson).audio;
   } catch { return null; }
   // Select only rubric findings and timestamps, never model text or arbitrary fields.
   const criteria = rubric.criteria.map(({ criterionId }) => {
@@ -93,10 +124,14 @@ async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Do
   });
   const transcriptSegments = (audio?.segments ?? []).map(({ startMs, endMs, text }) => ({ startMs, endMs, text }));
   const attestation = analysis ? await ctx.db.query("attestations").withIndex("by_analysis", q => q.eq("analysisId", analysis._id)).unique() : null;
-  const attested = attestation?.submissionId === submission._id && attestation.status === "confirmed" &&
-    !!attestation.attestationUid && !!attestation.txHash && attestation.fields?.reportHash.replace(/^0x/, "") === analysis?.reportHash &&
-    attestation.fields?.sourceSha256.replace(/^0x/, "") === submission.sourceHash;
+  const attested = attestationMatches(attestation, submission, analysis, rubric);
   const trace = submission.sensorTrace;
+  const rawTraceExists = trace ? !!await ctx.db.system.get(trace.storageId) : false;
+  const durationMs = original.durationMs ?? report?.source.durationMs ?? null;
+  const liveness = submission.liveness ? checkSpokenLiveness(submission.liveness, audio, durationMs ?? 0) : null;
+  const quality = deriveSampleQuality({ status: submission.status, durationMs,
+    criterionIds: rubric.criteria.map(row => row.criterionId), report, analysis, jury, liveness,
+    sensorSummary: rawTraceExists ? trace?.motionSummary : null, attested });
   const samplePayables = payables.filter(row => row.submissionId === submission._id && row.organizationId === order.organizationId &&
     row.decisionId === decision._id && row.contributorTokenIdentifier === submission.contributorTokenIdentifier);
   if (samplePayables.length > 1) throw new Error("duplicate_payable_reference");
@@ -111,17 +146,20 @@ async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Do
     expiresAt = grant.expiresAt;
     mediaUrl = `https://skarl.vercel.app/api/orders/${order._id}/dataset/media?token=${encodeURIComponent(grant.token)}`;
   }
-  return { submissionId: submission._id, sourceSha256: submission.sourceHash, durationMs: original.durationMs ?? report?.source.durationMs ?? null,
-    task: { id: rubric._id, version: rubric.version, criterionIds: rubric.criteria.map(row => row.criterionId) },
+  return { submissionId: submission._id, sourceSha256: submission.sourceHash, durationMs,
+    task: { id: rubric._id, version: rubric.version, languageInstruction: rubric.taskPrompt, criterionIds: rubric.criteria.map(row => row.criterionId) },
     acceptedAt: decision.decidedAt, acceptance: { basis: machine ? "machine" as const : "human_controller" as const, decisionId: decision._id },
     license: { version: consent.licenseVersion, scope: consent.scope },
-    criteria, transcriptSegments,
-    sensorTrace: trace ? { rawTraceExists: !!await ctx.db.system.get(trace.storageId), sampleRateHz: trace.sampleRateHz,
+    diversity: { environment: submission.environment ?? null, variant: submission.variant ?? null,
+      source: "contributor_self_reported" as const },
+    criteria, transcriptSegments, ...quality,
+    sensorTrace: trace ? { rawTraceExists, rawTraceDownload: null, source: "clientReported" as const, sampleRateHz: trace.sampleRateHz,
       sampleCount: trace.sampleCount, durationMs: trace.durationMs, sensors: trace.sensors, motionSummary: trace.motionSummary } : null,
-    liveness: submission.liveness ? checkSpokenLiveness(submission.liveness, audio, original.durationMs ?? report?.source.durationMs ?? 0) : null,
+    liveness,
     duplicate: { status: report?.duplicate.status ?? "not_checked" },
-    attestation: attested ? { uid: attestation.attestationUid!, ...attestationLinks(attestation.attestationUid!, attestation.txHash!) } : null,
-    payout: await payout(ctx, samplePayables[0]), media: { url: mediaUrl, mimeType: original.mimeType, binding, expiresAt } };
+    attestation: attested ? { uid: attestation!.attestationUid!, ...attestationLinks(attestation!.attestationUid!, attestation!.txHash!) } : null,
+    payout: await payout(ctx, samplePayables[0]), media: { url: mediaUrl, mimeType: original.mimeType, binding, expiresAt,
+      fps: null, clientReportedFps: trace?.device.fps ?? null } };
 }
 
 async function orderScope(ctx: QueryCtx, args: { demoIdentity: string; orderId: Id<"orders"> }) {
@@ -157,8 +195,60 @@ export const forOrder = query({
       if (sample) { samples.push(sample); seen.add(sample.submissionId); }
     }
     return { schema: "skarl.dataset.v1" as const, orderId: order._id,
-      task: rubric ? { id: rubric._id, version: rubric.version, criterionIds: rubric.criteria.map(row => row.criterionId) } : null,
+      task: rubric ? { id: rubric._id, version: rubric.version, languageInstruction: rubric.taskPrompt, criterionIds: rubric.criteria.map(row => row.criterionId) } : null,
       generatedAt: Date.now(), samples };
+  },
+});
+
+/** Companion to witnessReceipt: advisory evidence only, with no media grants. */
+export const sampleQuality = query({
+  args: { demoIdentity: v.string(), submissionId: v.id("submissions") },
+  handler: async (ctx, args) => {
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "contributor"]);
+    if (args.demoIdentity === "finance-agent" || principal.roles.includes("finance-agent")) throw new Error("forbidden");
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) throw new Error("submission_not_found");
+    requireTenant(principal, submission);
+    const order = await ctx.db.get(submission.orderId);
+    if (!order) throw new Error("order_not_found");
+    requireTenant(principal, order);
+    if (!principal.roles.includes("controller") &&
+      !(principal.roles.includes("buyer") && order.buyerTokenIdentifier === principal.tokenIdentifier) &&
+      !(principal.roles.includes("contributor") && submission.contributorTokenIdentifier === principal.tokenIdentifier)) throw new Error("submission_not_owned");
+    const rubric = await ctx.db.get(submission.taskVersionId);
+    if (!rubric || rubric.organizationId !== order.organizationId || rubric.orderId !== order._id) throw new Error("task_version_mismatch");
+    // Accepted samples use their published analysis snapshot, just like the export.
+    const deliveries = submission.status === "accepted" ? await ctx.db.query("deliveries")
+      .withIndex("by_submission", q => q.eq("submissionId", submission._id)).collect() : [];
+    const delivery = deliveries.find(row => row.organizationId === order.organizationId && row.orderId === order._id &&
+      row.manifest && digest(row.manifest) === row.manifestHash && row.termsHash === order.termsHash &&
+      row.manifest.sourceHash === submission.sourceHash && row.manifest.taskVersionId === rubric._id &&
+      row.manifest.originalAssetId === submission.originalAssetId && row.manifest.decisionId === row.decisionId);
+    const analysisId = delivery ? delivery.manifest?.analysisResultId : submission.currentAnalysisId;
+    const selectedAnalysis = analysisId ? await ctx.db.get(analysisId) : null;
+    const analysis = selectedAnalysis && selectedAnalysis.organizationId === submission.organizationId &&
+      selectedAnalysis.submissionId === submission._id && selectedAnalysis.taskVersionId === rubric._id &&
+      selectedAnalysis.sourceHash === submission.sourceHash ? selectedAnalysis : null;
+    const report = boundReport(analysis, submission, rubric);
+    const original = submission.originalAssetId ? await ctx.db.get(submission.originalAssetId) : null;
+    const durationMs = original?.organizationId === order.organizationId && original.submissionId === submission._id &&
+      original.contentHash === submission.sourceHash && original.status === "verified" && original.purpose === "original"
+      ? original.durationMs ?? report?.source.durationMs ?? null : report?.source.durationMs ?? null;
+    let audio: AudioObservation | undefined, jury: unknown;
+    try {
+      const observations = JSON.parse(analysis?.observationsJson ?? "{}");
+      audio = observations?.audio; jury = observations?.jury;
+    } catch { /* Corrupt observations cannot earn witness credit. */ }
+    const attestation = analysis ? await ctx.db.query("attestations")
+      .withIndex("by_analysis", q => q.eq("analysisId", analysis._id)).unique() : null;
+    const trace = submission.sensorTrace;
+    const rawTraceExists = trace ? !!await ctx.db.system.get(trace.storageId) : false;
+    return { submissionId: submission._id, submissionStatus: submission.status, analysisId: analysis?._id ?? null,
+      evidenceBasis: delivery ? "published_delivery" as const : "current_analysis" as const,
+      ...deriveSampleQuality({ status: submission.status, durationMs, criterionIds: rubric.criteria.map(row => row.criterionId),
+        report, analysis, jury, liveness: submission.liveness ? checkSpokenLiveness(submission.liveness, audio, durationMs ?? 0) : null,
+        sensorSummary: rawTraceExists ? trace?.motionSummary : null,
+        attested: attestationMatches(attestation, submission, analysis, rubric) }) };
   },
 });
 

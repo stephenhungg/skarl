@@ -8,6 +8,31 @@ const input = () => ({ demoIdentity: "buyer", requestId: "new-order", title: "Re
   quantityRequested: "3", pricePerSampleAtomic: "9007199254740993", contributorRateAtomic: "1000000", deadlineAt: Date.now() + 3600000,
   taskPrompt: "Place the cup upright", criteria: [{ criterionId: "cup", description: "Cup is upright", modality: "visual" as const }] });
 describe("buyer orders", () => {
+  it("freezes optional diversity terms in the replay binding so funding cannot buy silently changed coverage", async () => {
+    const t = await setup(), args = { ...input(), diversity: { maxPerContributor: 1, maxPerEnvironment: 2,
+      requiredVariants: [" low-light ", "left-hand"] } };
+    const created = await t.mutation(api.orders.createOrder, args);
+    expect(await t.run(ctx => ctx.db.get(created.orderId))).toMatchObject({ diversity: { maxPerContributor: 1,
+      maxPerEnvironment: 2, requiredVariants: ["left-hand", "low-light"] } });
+    expect(await t.mutation(api.orders.createOrder, { ...args, diversity: { ...args.diversity, requiredVariants: ["left-hand", "low-light"] } }))
+      .toMatchObject({ orderId: created.orderId, replayed: true });
+    await expect(t.mutation(api.orders.createOrder, { ...args, diversity: { maxPerContributor: 2 } })).rejects.toThrow("order_request_conflict");
+    const coverage = await t.query(api.orders.diversityCoverage, { demoIdentity: "buyer", orderId: created.orderId });
+    expect(coverage).toMatchObject({ acceptedCount: "0", missingVariants: ["left-hand", "low-light"], environments: [] });
+    await expect(t.query(api.orders.diversityCoverage, { demoIdentity: "contributor", orderId: created.orderId })).rejects.toThrow("forbidden");
+    await t.run(ctx => ctx.db.patch(created.orderId, { buyerTokenIdentifier: "another-buyer" }));
+    await expect(t.query(api.orders.diversityCoverage, { demoIdentity: "buyer", orderId: created.orderId })).rejects.toThrow("order_not_owned");
+    expect(await t.query(api.orders.diversityCoverage, { demoIdentity: "controller", orderId: created.orderId })).toBeDefined();
+  });
+
+  it("rejects impossible or ambiguous quotas before freezing terms", async () => {
+    const t = await setup();
+    for (const diversity of [{ maxPerContributor: 0 }, { maxPerEnvironment: 1.5 }, { maxPerEnvironment: Number.MAX_SAFE_INTEGER + 1 },
+      { requiredVariants: ["same", " same "] }, { requiredVariants: ["a", "b", "c", "d"] }, { requiredVariants: [""] }]) {
+      await expect(t.mutation(api.orders.createOrder, { ...input(), diversity })).rejects.toThrow(/invalid_diversity/);
+    }
+  });
+
   it("freezes a rubric, computes exact money beyond Number precision, and replays once", async () => {
     const t = await setup(), args = input(), first = await t.mutation(api.orders.createOrder, args);
     expect(first).toMatchObject({ status: "awaiting_funding", budgetAtomic: "27021597764222979", replayed: false });

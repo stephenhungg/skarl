@@ -71,6 +71,8 @@ async function submission(fixture: Fixture, options: {
   sourceHash?: string;
   perceptualHash?: string;
   unavailableAnalysis?: boolean;
+  environment?: string;
+  variant?: string;
 } = {}) {
   const sequence = ++fixture.sequence;
   const sourceHash = options.sourceHash ?? sequence.toString(16).padStart(64, "0");
@@ -79,6 +81,8 @@ async function submission(fixture: Fixture, options: {
     const submissionId = await ctx.db.insert("submissions", {
       organizationId: fixture.organizationId, orderId: fixture.orderId, taskVersionId: fixture.taskVersionId,
       contributorTokenIdentifier: CONTRIBUTOR, status: "needs_review", clientRequestId: `fixture-submission-${sequence}`,
+      ...(options.environment !== undefined ? { environment: options.environment } : {}),
+      ...(options.variant !== undefined ? { variant: options.variant } : {}),
       expectedSourceHash: sourceHash, sourceHash,
       ...(options.perceptualHash ? { perceptualHash: options.perceptualHash } : {}), updatedAt: now,
     });
@@ -178,6 +182,75 @@ async function recordHumanDecision(fixture: Fixture, submissionId: Id<"submissio
 }
 
 describe("demo finance mutations against isolated Convex state", () => {
+  it("caps contributor concentration before creating obligations and keeps acceptance replay safe", async () => {
+    const f = await setup();
+    await f.t.run(ctx => ctx.db.patch(f.orderId, { diversity: { maxPerContributor: 1 } }));
+    const firstId = await submission(f), secondId = await submission(f);
+    const first = await f.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "controller", submissionId: firstId });
+    expect(first.ok).toBe(true);
+    expect(await f.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "controller", submissionId: firstId })).toEqual({ ...first, replayed: true });
+    const before = await snapshot(f);
+    const args = { demoIdentity: "controller", submissionId: secondId };
+    expect(await f.t.mutation(api.finance.acceptAndPublish, args)).toEqual({ ok: false, code: "diversity_quota_exceeded" });
+    await f.t.mutation(api.finance.acceptAndPublish, args);
+    const after = await snapshot(f);
+    // A quality-approved clip outside collection terms must accrue no payable,
+    // revenue, or delivery; retaining the refusal explains why it was excluded.
+    expect(after.payables).toEqual(before.payables);
+    expect(after.deliveries).toEqual(before.deliveries);
+    expect(after.entries).toEqual(before.entries);
+    expect(after.order?.acceptedCount).toBe(1n);
+    expect(after.audits.filter(event => event.entityId === secondId && event.reason === "diversity_quota_exceeded"))
+      .toMatchObject([{ action: "acceptance_refused", evidenceReferences: [f.orderId, "maxPerContributor"] }]);
+    expect(await f.t.run(ctx => ctx.db.get(secondId))).toMatchObject({ status: "needs_review" });
+  });
+
+  it("requires an environment bucket so omitted tags cannot bypass its cap", async () => {
+    const f = await setup();
+    await f.t.run(ctx => ctx.db.patch(f.orderId, { diversity: { maxPerEnvironment: 1 } }));
+    for (const environment of [undefined, "kitchen-a", "kitchen-a", "kitchen-b"]) {
+      const id = await submission(f, { environment });
+      const result = await f.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "controller", submissionId: id });
+      expect(result.ok).toBe(environment === "kitchen-b" || (environment === "kitchen-a" && f.sequence === 2));
+      if (!result.ok) expect(result.code).toBe("diversity_quota_exceeded");
+    }
+    const coverage = await f.t.query(api.orders.diversityCoverage, { demoIdentity: "buyer", orderId: f.orderId });
+    expect(coverage).toMatchObject({ acceptedCount: "2", tagsSource: "contributor_self_reported",
+      environments: [{ label: "kitchen-a", count: "1" }, { label: "kitchen-b", count: "1" }], untaggedEnvironmentCount: "0" });
+    expect(coverage.contributors).toMatchObject([{ contributorKey: expect.stringMatching(/^[a-f0-9]{64}$/), count: "2" }]);
+    expect(JSON.stringify(coverage)).not.toContain(CONTRIBUTOR);
+  });
+
+  it("reserves slots for each required variant because a full but homogeneous order misses the buyer's target", async () => {
+    const f = await setup();
+    await f.t.run(ctx => ctx.db.patch(f.orderId, { quantityRequested: 2n, budgetAtomic: 20_000_000n,
+      diversity: { requiredVariants: ["left-hand", "low-light"] } }));
+    const accept = async (variant?: string) => {
+      const submissionId = await submission(f, { variant });
+      return f.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "controller", submissionId });
+    };
+    expect(await accept("left-hand")).toMatchObject({ ok: true });
+    expect(await accept("left-hand")).toEqual({ ok: false, code: "diversity_quota_exceeded" });
+    expect(await accept()).toEqual({ ok: false, code: "diversity_quota_exceeded" });
+    const partial = await f.t.query(api.orders.diversityCoverage, { demoIdentity: "controller", orderId: f.orderId });
+    expect(partial.missingVariants).toEqual(["low-light"]);
+    expect(await accept("low-light")).toMatchObject({ ok: true });
+    const complete = await f.t.query(api.orders.diversityCoverage, { demoIdentity: "buyer", orderId: f.orderId });
+    expect(complete.missingVariants).toEqual([]);
+    expect(complete.acceptedCount).toBe("2");
+    expect((await snapshot(f)).order?.status).toBe("fulfilled");
+  });
+
+  it("serializes racing accepts so two distinct clips cannot consume the same diversity allowance", async () => {
+    const f = await setup();
+    await f.t.run(ctx => ctx.db.patch(f.orderId, { diversity: { maxPerContributor: 1 } }));
+    const ids = [await submission(f), await submission(f)];
+    const results = await Promise.all(ids.map(submissionId => f.t.mutation(api.finance.acceptAndPublish, { demoIdentity: "controller", submissionId })));
+    expect(results.filter(result => result.ok)).toHaveLength(1);
+    expect(results.filter(result => !result.ok)).toEqual([{ ok: false, code: "diversity_quota_exceeded" }]);
+    expect((await snapshot(f)).payables).toHaveLength(1);
+  });
+
   it("seeds one unfunded order and identities idempotently without claiming a real payment", async () => {
     const fixture = await setup(false);
     const replay = await fixture.t.mutation(internal.seed.demo, {});
