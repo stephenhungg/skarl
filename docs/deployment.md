@@ -2,11 +2,13 @@
 
 ## What exists now
 
-The repository is a development scaffold. The Convex schema and a public scaffold
-health query exist; live marketplace APIs, authentication, private file routes,
-worker HTTP authentication, payment execution, and operational recovery are not
-implemented. No Convex, Vercel, CDP or Gemini resource has been provisioned by
-this scaffold.
+The Task 1 demo finance backend is deployed at **https://keen-marmot-986.convex.cloud**
+with seeded identities/order/rubric, role-checked financial mutations and live
+queries. See [setup](setup.md) and the [callable API](backend.md#task-1-client-contract).
+The web remains a scaffold. Production authentication, uploads/private file
+routes, Gemini inference, funding confirmation, wallet execution and chain
+reconciliation remain unimplemented. No Vercel, CDP or Gemini resource was
+provisioned by Task 1.
 
 The demo deployment target is **Next.js on Vercel (HTTPS) + Convex**, with Gemini
 called from a Convex action. The Railway Python worker is deferred. Only Base
@@ -65,8 +67,8 @@ gateway secret should make a missing configuration appear functional.
 
 Run `corepack pnpm convex:dev` only when ready to connect to or create the
 intended development deployment. It can authenticate, provision/sync deployment
-state, and generate `_generated` files; it is not an offline typecheck. Do not
-create hand-written generated files or run it solely to silence an import.
+state, and regenerate the committed `_generated` files; it is not an offline typecheck.
+Teammates can typecheck using the committed files without provisioning a deployment.
 
 After configuration, the following is a useful narrow read-back:
 
@@ -74,8 +76,8 @@ After configuration, the following is a useful narrow read-back:
 corepack pnpm exec convex run health:status
 ```
 
-Expected health is still `stage: "scaffold"` with financial mutations, worker
-gateway, and live payments reported as unimplemented. It does not exercise
+Expected backend health is `stage: "demo_backend"` with financial mutations implemented,
+`demoIdentityOnly: true`, and inference/worker gateway/live payments false. It does not exercise
 application data, authentication, or money movement.
 
 Identity for the demo is seeded demo users with server-side role checks (see

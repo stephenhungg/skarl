@@ -2,11 +2,12 @@
 
 ## Implementation status
 
-This repository contains a **scaffold**, not a working marketplace backend.
-`convex/schema.ts` defines storage types and indexes. `convex/health.ts` exposes
-only a non-sensitive scaffold query. Authentication, uploads, worker gateways,
-domain mutations, scheduling, financial posting, and chain reconciliation still
-need implementation and integration tests. No cloud deployment is implied.
+Task 1 is deployed to **https://keen-marmot-986.convex.cloud** with an idempotent
+internal seed, persisted demo-role checks, server finance mutations and dashboard
+queries. The generated API/data-model files are committed. Production auth,
+uploads/private-media serving, Gemini inference, real funding confirmation,
+wallet verification and chain execution/reconciliation remain unimplemented.
+The seed creates an **unfunded** order; it performs no transfer or inference.
 
 The architecture targets Hyphenate, meaningful Convex use, Coinbase Best Use of
 x402 (Base Sepolia, Wallet MCP) and Gemini. **Tonight's build** follows
@@ -16,6 +17,92 @@ and `acceptAndPublish` / `proposePayment` / `approve`.
 **Deferred** (design kept below for later): the Python worker, its HMAC
 gateway and job leasing (`claimJob`, `heartbeatJob`, fencing), faster-whisper,
 refunds (`cancelRemainder`) and period close.
+
+## Task 1 client contract
+
+Initialize a Convex client with `https://keen-marmot-986.convex.cloud`. Browser
+projects use `NEXT_PUBLIC_CONVEX_URL`; server clients use `CONVEX_URL`. Put these
+in your own ignored `.env.local`. No deploy key is needed for public API calls.
+Use generated imports from `convex/_generated/api`; relative import depth depends
+on your folder. Nothing under `apps/web` was implemented by this backend task.
+
+```ts
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "../convex/_generated/api";
+
+const client = new ConvexHttpClient("https://keen-marmot-986.convex.cloud");
+const context = await client.query(api.dashboard.demoContext, { demoIdentity: "controller" });
+if (!context) throw new Error("Run the internal demo seed first");
+const summary = await client.query(api.dashboard.orderSummary, {
+  demoIdentity: "controller", orderId: context.orderId,
+});
+```
+
+Public `demoIdentity` values are `buyer`, `contributor`, `controller`,
+`finance-agent`; their stored token identifiers are `demo:skarl:<identity>`.
+These selectors are intentionally impersonable demo credentials, **not auth**.
+`requireRole` checks active memberships and organization status; finance-agent
+cannot act as controller even if misprovisioned with that role. The internal
+seed bootstrap is CLI/operator-only and provisions the initial roles before its
+controller check. Do not use real funds or private user data on this demo API.
+
+| Function | Arguments (in addition to `demoIdentity`) | Result / permission |
+| --- | --- | --- |
+| `dashboard.demoContext` | None | Organization/order/rubric IDs and `demoOnly`; any seeded member |
+| `dashboard.orderSummary` | `orderId` | `order`, frozen `rubric`, exact account `balances`; any seeded member in that org |
+| `dashboard.submissions` | `orderId` | Submissions with analysis projection, decision and inline delivery manifest; controller/agent see order, contributor sees own, buyer sees accepted work |
+| `dashboard.payables` | `orderId` | Obligations with outgoing intent, command and approval; controller/agent see order, contributor sees own; buyer sees none |
+| `dashboard.journal` | `orderId` | Entries and ordered journal lines; controller/finance-agent only |
+| `dashboard.auditEvents` | `orderId` | Order-linked decision/refusal events, newest first; controller/finance-agent only |
+| `finance.acceptAndPublish` | `submissionId` | Controller only; `{ok:true,payableId,deliveryId,journalEntryId,replayed}` or refusal |
+| `finance.proposePayment` | `payableId` | Finance-agent/controller; `{ok:true,intentId,paymentCommandId,replayed}`; requester comes from membership |
+| `finance.approve` | `intentId` (a `paymentIntents` document ID) | Independent controller only; `{ok:true,approvalId,paymentCommandId,replayed}` or refusal |
+
+Dashboard monetary fields and counters are decimal integer strings, for example
+`amountAtomic: "7500000"`, not floating dollars. Mutations store/compute `bigint`
+Int64 money. The order's seed budget is 100,000,000 micro-USDC; quota is 10,
+sample price 10,000,000 and contributor rate 7,500,000. Budget is not funded cash.
+
+Acceptance requires an open funded order, remaining quota, verified original
+asset and contributor wallet record, consent, frozen matching rubric and a
+matching stored completed-inference `accept` projection. Alternatively it honors
+a recorded, evidence-bound decision by an active independent human controller.
+No public manual-decision recording endpoint is supplied in Task 1. Full model
+report validation/rubric membership belongs to the upcoming analysis action;
+this task consumes its trusted stored projection. It does not run inference.
+
+Acceptance publishes an inline licensed manifest and records its hash together
+with delivery/payable/journal in one mutation. Media serving is still a separate
+integration. Matching SHA-256 or canonical perceptual-hash values against an
+already accepted submission in the same organization blocks a second payable,
+including across orders. Perceptual-hash **computation** is not implemented here;
+a producer must populate it from verified bytes. This is an equality gate, not
+a demonstrated robust copy-detection model.
+
+Refusals return `{ok:false,code}`. A duplicate also returns
+`matchingSubmissionId` and writes `acceptance_refused` with that ID as evidence.
+`self_approval_refused` and `agent_approval_refused` write
+`payment_approval_refused`. Identical refusals are audit-idempotent. Callers must
+inspect `ok`; these returns preserve the audit instead of rolling it back by
+throwing. Invalid query authorization throws. Cross-tenant mutations return
+`not_found` and do not write into the foreign organization's audit.
+
+Outgoing `paymentIntents.kind === "contributor_payout"` rows contain
+`requesterTokenIdentifier`, `payableId`, `paymentCommandId`, fixed amount,
+recipient, source-version/binding hash and one-hour expiry. Existing funding
+intents retain their original shape (`kind` absent or `funding`); payment owners
+must narrow this discriminant. Proposal replay returns the original intent and
+requester. The intended demo flow is finance-agent proposal followed by controller approval. A controller-created proposal cannot be self-approved; expired or blocked proposals require a separate explicit recovery path (not implemented in Task 1), rather than silently rewriting the requester. Approval checks the exact payable/command/intent bindings, refuses
+changed or expired proposals, updates intent/command and writes one dispatch
+outbox event. The payable becomes `payout_in_progress`, **not paid**. Replaying
+approval creates no second approval or dispatch. No wallet call occurs.
+
+The payment integration must consume an approved command, validate its binding
+and expiry again before execution, store the attempt, and independently observe
+the transfer before posting a payout. For funding, a future trusted confirmation
+mutation must use `lib/finance.recordJournal` with `createFundingJournal` and
+mark the order funded atomically. No public caller-supplied funding-success
+mutation is included. The seed does not invent funds or a wallet proof.
 
 ## Runtime boundaries
 
@@ -87,14 +174,14 @@ and business idempotency identifiers are separate fields.
 | `journalEntries`, `journalLines` | Balanced accounting events and reversals |
 | `outboxEvents`, `auditEvents`, `serviceRequests` | Durable side-effect requests, accountability, signed-request replay handling |
 
-The schema is intentionally explicit about these responsibilities. It does not
-make any of the planned transitions executable. All indexes are lookup indexes,
+The schema is intentionally explicit about these responsibilities. Task 1 implements the acceptance/proposal/approval transitions above; other
+transitions remain planned. All indexes are lookup indexes,
 **not unique constraints**. The future mutation must read an indexed business
 key and perform all dependent writes within the same serializable transaction.
 
 ## Planned mutation boundaries
 
-These names describe work to implement; they are not callable functions yet.
+`acceptAndPublish`, `proposePayment` and `approve` are implemented in `finance.ts`. Other names below remain integration targets.
 
 | Mutation | Required atomic changes |
 | --- | --- |
@@ -181,9 +268,9 @@ Amounts in this explanatory table are USDC, while persisted values are integer
 atomic units. The final 2.50 USDC spread excludes inference, infrastructure,
 facilitator, network, and other costs. It is not net profit.
 
-Account and journal-kind names match `packages/ledger/src/index.ts`. The future
+Account and journal-kind names match `packages/ledger/src/index.ts`. The implemented
 storage adapter maps that package's `eventId` to `journalEntries.eventKey` and
-each line's `debit`/`credit` bigint values to `debitAtomic`/`creditAtomic`. Adding
+each line's positive `debit` or `credit` to `side` plus `amountAtomic`, preserving `lineNumber`. Adding
 verification or fee expense accounts requires extending both the ledger and
 storage validators; those postings are not implemented here.
 

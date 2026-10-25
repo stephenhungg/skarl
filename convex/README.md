@@ -1,39 +1,67 @@
-# Convex backend scaffold
+# Convex Demo Backend
 
-Convex is the authoritative application and financial backend for Skarl. The
-schema is present; the domain mutations, authentication integration, scheduler,
-worker HTTP gateway, and payment reconciliation are **not implemented**.
+Shared cloud development deployment: **https://keen-marmot-986.convex.cloud**.
+Dashboard: https://dashboard.convex.dev/d/keen-marmot-986.
 
-The only callable function in this directory is the non-sensitive `health:status`
-query. It reports `stage: "scaffold"` and explicitly reports unimplemented
-capabilities. There are no fake successful financial or AI endpoints.
+This backend implements the Task 1 demo finance path: internal idempotent seed,
+persisted role checks, atomic acceptance/delivery/payable/journal posting,
+outgoing payment proposals, independent approval and dashboard queries.
+It does not implement production auth, uploads, Gemini inference, wallet
+verification, funding confirmation, payout execution or chain reconciliation.
 
-- `schema.ts`: tables, typed references, indexes, and `v.int64()` monetary fields.
-- `validators.ts`: storage validators, using the canonical Base Sepolia/USDC
-  constants from `packages/contracts/src/chain.ts` and the shared status lists
-  from `packages/contracts/src/index.ts`.
-- `health.ts`: compileable before Convex-generated API files exist, using
-  `queryGeneric` without reading application data.
-- `../docs/backend.md`: transaction boundaries and the work still required.
-- `../docs/deployment.md`: local validation and manual deployment prerequisites.
-- `../docs/security.md`: human/service trust boundaries and the proposed signed
-  worker gateway contract.
+## Files and API
 
-Indexes are **not unique constraints**. Schema types do not enforce balanced
-journals, authorization, state transitions, positive amounts, independent
-approval, or exactly-once financial effects. Those checks belong in the future
-atomic mutations and their regression tests.
+- `seed.ts`: internal `seed:demo`; `pnpm seed`. One organization, four identities,
+  one unfunded 100-USDC order and the frozen red-cup rubric. No fabricated funding.
+- `lib/demoAuth.ts`: `requireRole`; **demo-only, impersonable identity selectors**.
+- `lib/finance.ts`: deterministic binding hashes, audits and atomic persistence
+  of the pure `packages/ledger` journals.
+- `finance.ts`: `acceptAndPublish`, `proposePayment`, `approve`.
+- `dashboard.ts`: `demoContext`, `orderSummary`, `submissions`, `payables`,
+  `journal`, `auditEvents`. Financial JSON fields are decimal integer strings.
+- `finance.test.ts`: isolated `convex-test` regressions; synthetic data only.
+- `health.ts`: public capability metadata, `stage: "demo_backend"`.
 
-Do not create hand-written `_generated` stubs. A configured `convex dev` generates
-the real API/data-model files; `convex/_generated` is gitignored until the team
-creates the shared deployment, because each `convex dev` regenerates it.
+Use `api` / `internal` from `_generated/api` and generated types from
+`_generated/dataModel` / `_generated/server`. `_generated` is **committed** so
+teammates can typecheck immediately. Never hand-edit it: regenerate using the
+Convex CLI when exported functions or the schema change. No deployment URL,
+credential or secret belongs in generated code.
 
-CI validates the schema against a throwaway anonymous local backend (no login,
-no cloud deployment):
+## Important boundaries
+
+Public mutations accept `demoIdentity` as one of `buyer`, `contributor`,
+`controller`, `finance-agent`. These are public demo selectors, **not secret
+tokens or production authentication**. Roles and organization membership are
+checked on the server, but anyone knowing a selector can impersonate that demo
+user. Use only disposable synthetic data and test assets. The agent is denied
+controller authority even if its membership is accidentally misprovisioned.
+
+Refused duplicate acceptance and approval attempts return `{ ok: false, code }`
+after writing an audit record. Callers must inspect `ok`; no thrown error is
+required for a refusal. Throwing after writing would roll the audit back.
+Queries throw on unauthorized access.
+
+`paymentIntents` has funding and `contributor_payout` variants. Outgoing intents
+store `requesterTokenIdentifier` and point to a `paymentCommands` record. Both
+are created atomically; `approve` takes the **paymentIntents ID**. Approval only
+queues execution: it does not sign a transaction or mark the payable paid.
+
+See [setup](../docs/setup.md), [call examples](../docs/backend.md#task-1-client-contract)
+and [current status](../docs/status.md). No Auth0 or production identity provider
+is configured.
+
+## Checks
 
 ```sh
-CONVEX_AGENT_MODE=anonymous pnpm exec convex dev --once --typecheck enable
+pnpm test:convex
+pnpm check
+# Cloud dev deploy/typecheck (requires project access):
+pnpm exec convex dev --once --typecheck enable
+# Offline CI uses a throwaway anonymous local backend instead:
+pnpm check:convex
 ```
 
-`convex/tsconfig.json` deliberately omits DOM and Node types so browser or Node
-APIs fail typechecking in the default Convex runtime.
+The native backend enforces schemas/indexes; indexes are not unique constraints.
+Idempotency reads and writes are in the same mutation. `convex-test` checks the
+application logic, not real inference, wallet proofs or chain transfers.

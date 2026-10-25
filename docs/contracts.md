@@ -33,7 +33,7 @@ Status strings are not a queue or a security policy. Every transition needs an a
 
 ## Planned endpoints
 
-Only web `GET /api/health` and the Convex scaffold health query exist today. Names here are integration targets and may be refined jointly before implementation.
+Task 1 implements `finance.acceptAndPublish`, `finance.proposePayment`, `finance.approve` and the dashboard queries. See the [current callable contract](backend.md#task-1-client-contract); other names below remain integration targets. Web `GET /api/health` is still scaffold-only.
 
 | Target | Actor | Request / invariant |
 | --- | --- | --- |

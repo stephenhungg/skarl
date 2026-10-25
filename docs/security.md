@@ -2,10 +2,12 @@
 
 ## Current status
 
-The repository is a scaffold. No demo-identity seeding, role-checking
-domain mutation, HMAC gateway (deferred), private-media delivery endpoint, controller-wallet
-integration, or live payment path is implemented. The public `health:status`
-query exposes only scaffold metadata. The schema is not an authorization layer.
+Task 1 implements internal demo seeding, persisted server role checks,
+acceptance/payable/journal posting, independent approval and refusal audits on
+the shared development deployment. Public demo selectors are impersonable and
+are not authentication: only disposable synthetic data/test assets belong here.
+Production identity, private-media serving, wallet verification, Gemini inference,
+HMAC gateways and actual funding/payout execution remain unimplemented.
 
 ## Human identities and permissions
 
@@ -16,9 +18,11 @@ submission. Auth0 is not used (there is no Auth0 prize at Cal Hacks 13.0); a rea
 identity provider is a post-event decision. The finance agent's identity can
 propose but never approve.
 
-Verify tokens through Convex's configured identity provider. Resolve the issuer
-and subject to an active organization membership on the server. Roles in a form,
-URL, model response, or frontend selector never confer authority.
+For Task 1, `requireRole` resolves a demo selector to its active stored membership
+and organization. It rejects finance-agent controller authority even if the role
+is misprovisioned. There is no verified external token. A future production
+identity provider must verify issuer/subject before this membership lookup;
+role checks alone do not secure the intentionally impersonable demo selectors.
 
 | Principal | Allowed future authority | Excluded authority |
 | --- | --- | --- |

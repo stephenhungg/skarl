@@ -41,13 +41,73 @@ See [the verifier README](../services/verifier/README.md) for exact report-valid
 
 The demo calls Gemini from a Convex action, so no Python inference stack is needed tonight. FFmpeg, model weights and the ASR/copy-model extras belong to the deferred worker. Do not install large GPU packages merely to make a placeholder worker start. Production Python dependencies should be locked once the live adapter and target hardware are chosen; the core editable scaffold install is not a reproducible ML deployment.
 
-## Cloud services — integration work
+## Shared Convex dev deployment
 
-1. Use a team-controlled Convex account/development deployment. `pnpm convex:dev` will prompt for login/setup and generates `convex/_generated`; it is intentionally not required for local scaffold checks.
-2. Seed demo identities (buyer, contributor, controller, agent) with server-checked roles. No external identity provider for the demo.
-3. Set `GEMINI_API_KEY` in the Convex deployment's environment variables (analysis runs in a Convex action; the Railway worker is deferred). See [deployment](deployment.md).
-4. For payments: a CDP API key (server-only) for the x402 facilitator, a controller Coinbase Wallet, and Base Sepolia USDC plus Sepolia ETH for gas. No signing key on the server.
+The Task 1 backend is deployed and seeded at:
 
-Each service has its own example (`apps/web/.env.example`, `services/verifier/.env.example`; Convex variables are listed in the root `.env.example` and set with `pnpm exec convex env set`). Fill only the fields that service needs. It documents planned variables; values alone do not enable unimplemented integrations. `NEXT_PUBLIC_*` is browser-visible. Use server-only secret configuration for Gemini and CDP keys. Never put signing material in any environment file.
+```dotenv
+CONVEX_URL=https://keen-marmot-986.convex.cloud
+NEXT_PUBLIC_CONVEX_URL=https://keen-marmot-986.convex.cloud
+```
 
-Do not create cloud resources or make paid inference/real-fund transactions as part of merely running this scaffold.
+Put these values in your own ignored `.env.local` (`apps/web/.env.local` for
+Next.js). The URL is public configuration, not a secret. Use `CONVEX_URL` in
+server clients and `NEXT_PUBLIC_CONVEX_URL` in the browser provider. No deploy key
+is needed to call public APIs; deploying requires team/project access.
+
+`convex/_generated` is committed so a teammate can install and typecheck without
+running codegen or creating another project. Import `api` from its generated API
+module. Use `dashboard.demoContext({ demoIdentity: "controller" })` to discover
+the seeded order/rubric IDs; see [the API contract](backend.md#task-1-client-contract).
+The web provider/dashboard are still for their assigned owners to implement.
+
+The demo selectors `buyer`, `contributor`, `controller`, `finance-agent` select
+server-stored memberships. They are public and impersonable, **not production
+authentication**. No Auth0 setup is needed. Use disposable synthetic data and
+Base Sepolia test assets only. The finance-agent cannot approve a proposal.
+
+Operators with project access can seed idempotently or deploy changed functions:
+
+```sh
+# Root ignored .env.local written by the CLI contains:
+# CONVEX_DEPLOYMENT=dev:keen-marmot-986
+pnpm seed
+pnpm exec convex dev --once --typecheck enable
+pnpm exec convex run health:status
+pnpm test:convex
+```
+
+If configuring another authorized checkout for this existing project, use:
+
+```sh
+pnpm exec convex dev --once --configure existing --team stephenhung --project skarl --dev-deployment cloud
+```
+
+The CLI may select that developer's own cloud dev deployment. To use the shared
+backend, retain the shared client URL above and coordinate backend writes;
+operator deployment selection must explicitly point at `dev:keen-marmot-986`.
+Do not commit root or app `.env.local`, and do not create a second project merely
+to typecheck. `pnpm check:convex` remains the anonymous local-backend CI check;
+for this task, the equivalent cloud deploy/typecheck was exercised instead.
+
+The seed creates one org, the four memberships, a frozen red-cup rubric and an
+**unfunded** order for 10 samples at 10 USDC each (7.5 contributor rate). It does
+not seed submissions, verified wallet proofs, fake analysis, chain receipts or
+cash. Acceptance stays blocked until the upload/analysis, wallet verification
+and trusted funding integrations supply their real prerequisites. Convex tests
+supply explicitly synthetic fixtures for these boundaries.
+
+## Remaining integrations
+
+- Set `GEMINI_API_KEY` in the Convex deployment environment when implementing the
+  upcoming analysis action. The Railway/Python inference worker remains deferred.
+- Implement private upload/media and verified contributor-wallet provisioning.
+- The payment owner needs a server-only CDP key, controller Coinbase Wallet and
+  Base Sepolia test USDC/ETH. No server-side signing key is part of this design.
+- Approval records enqueue a dispatch command; they do not execute or confirm a
+  payment. Wallet execution and `(network, txHash, logIndex)` reconciliation remain
+  payment-owner work.
+
+Each service has its own environment example. `NEXT_PUBLIC_*` is browser-visible;
+keep model/CDP/service secrets server-only. Ordinary local scaffold startup does
+not require creating cloud resources, paid inference or real-fund transactions.
