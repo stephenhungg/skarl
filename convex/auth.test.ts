@@ -226,6 +226,33 @@ describe("safe human role onboarding", () => {
 });
 
 describe("action authentication propagation", () => {
+  it.each(["on", "off"])("keeps the self-approval scenario refusal-only for a signed-in controller with demo mode %s", async demoMode => {
+    const f = await setup(), u = await user(f.t, CONTROLLER_EMAIL, true);
+    workflowTest.register(f.t);
+    await u.signedIn.mutation(memberships.claimRole, { role: "controller" });
+    const payout = await proposedIntent(f);
+    vi.stubEnv("SKARL_DEMO_IDENTITIES", demoMode);
+    const result = await u.signedIn.action(api.scenarios.run, {
+      demoIdentity: "controller", orderId: f.orderId, scenario: "agent_self_approval",
+    });
+    const state = await f.t.run(async ctx => ({
+      intent: await ctx.db.get(payout.intentId), command: await ctx.db.get(payout.paymentCommandId),
+      approvals: await ctx.db.query("approvals").collect(), attempts: await ctx.db.query("paymentAttempts").collect(),
+      dispatch: await ctx.db.query("outboxEvents").collect(), audits: await ctx.db.query("auditEvents").collect(),
+    }));
+    expect(state.approvals).toEqual([]);
+    expect(state.attempts).toEqual([]);
+    expect(state.dispatch).toEqual([]);
+    expect(state.intent?.status).toBe("proposed");
+    expect(state.command?.status).toBe("proposed");
+    expect(result).toMatchObject({ passed: true, simulated: true, scenario: "agent_self_approval" });
+    expect(result.observedOutcome).toContain("self_approval_refused");
+    expect(state.audits).toEqual(expect.arrayContaining([expect.objectContaining({
+      entityId: payout.intentId, action: "payment_approval_refused", reason: "self_approval_refused",
+      actor: { kind: "service", identity: demoToken("finance-agent") },
+    })]));
+  });
+
   it("passes signed-in identity to runMutation so demo controller cannot authorize a contributor", async () => {
     const f = await setup(), u = await user(f.t, "contributor@example.test");
     await u.signedIn.mutation(memberships.claimRole, { role: "contributor" });

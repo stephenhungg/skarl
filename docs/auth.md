@@ -144,6 +144,15 @@ tool always refuses, even when a signed-in controller started the run. The
 approval Workflow and stored-intent executor resolve this internal service
 without depending on anonymous demo mode; they still validate the independent
 human approval and exact stored payment bindings.
+The scenario console's agent self-approval test uses the same service-only
+refusal path, so starting it as a real controller never approves the source intent.
+
+Scheduled verification does not retain browser auth. Its internal claim, facts,
+completion and watchdog operations resolve the active contributor membership
+stored on the job's submission instead of selecting the demo contributor. This
+supports real contributor accounts with demo mode on or off, while preserving
+job generation, tenant, media and report bindings. These are internal worker
+operations; public uploads and reads still require the caller's own role.
 
 An unsigned call can continue to use the four labeled selectors `buyer`,
 `contributor`, `controller` and `finance-agent` while `SKARL_DEMO_IDENTITIES` is
@@ -190,3 +199,5 @@ Setup follows the official [manual setup](https://labs.convex.dev/auth/setup/man
 [Next.js integration](https://labs.convex.dev/auth/setup) documentation. Convex
 [actions documentation](https://docs.convex.dev/functions/actions#action-context)
 confirms propagation of authentication to queries and mutations.
+The [scheduled-functions auth contract](https://docs.convex.dev/scheduling/scheduled-functions#auth)
+explains why scheduled jobs resolve stored scope separately.
