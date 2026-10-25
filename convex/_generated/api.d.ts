@@ -16,6 +16,7 @@ import type * as analytics from "../analytics.js";
 import type * as attestations from "../attestations.js";
 import type * as attestationsNode from "../attestationsNode.js";
 import type * as approvalWorkflow from "../approvalWorkflow.js";
+import type * as bankWitness from "../bankWitness.js";
 import type * as chainWitness from "../chainWitness.js";
 import type * as coach from "../coach.js";
 import type * as coachData from "../coachData.js";
@@ -70,6 +71,7 @@ declare const fullApi: ApiFromModules<{
   attestations: typeof attestations;
   attestationsNode: typeof attestationsNode;
   approvalWorkflow: typeof approvalWorkflow;
+  bankWitness: typeof bankWitness;
   chainWitness: typeof chainWitness;
   coach: typeof coach;
   coachData: typeof coachData;

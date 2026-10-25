@@ -1057,3 +1057,35 @@ Validation: `pnpm check` passed (TypeScript, Node/Convex/payment tests,
 documentation links and production build). Live evidence above comes from
 Convex, EASScan and Base Sepolia RPC, not fixtures. This follow-up made no
 Convex deployment or environment change and uploaded no media.
+
+## Capital One Nessie bank witness — October 25, 2026
+
+The bank-witness slice adds a fourth reconciliation source beside the order,
+ledger and chain: **simulated bank (Capital One Nessie mock)**. It models a
+Treasury deposit after confirmed x402 funding and a contributor off-ramp
+transfer after an observed payout, using the original intent ID as the bank
+description. Exact micro-USDC amounts and account direction bind the match;
+missing evidence stays visible and disagreements enter the exception queue. No bank record
+posts a journal or grants payment authority.
+
+The implementation provides an idempotent Treasury/contributor account seed,
+durable intents before external requests, a two-minute activity sweep, and a
+controller/finance-agent four-way query. Contributors must be active and have a
+verified wallet before account seeding. Ambiguous writes are observed rather
+than resent. Refund and standalone evidence-sale bank simulation is outside
+this slice's scope. The one-dollar-per-USDC mapping is a demo assumption.
+
+**Live integration blocked at the implementation check:**
+`~/.config/skarl/nessie.env` was absent. No live Nessie customer, bank account,
+deposit or transfer is claimed. The client and reconciliation are exercised
+with mocked provider data; that does not prove a successful hosted Nessie call
+or real fiat movement. A valid-key startup guard requires a successful POST
+probe or a known account ID because invalid-key GET requests can silently
+return an empty array with HTTP 200.
+
+**Rollout:** the deployment owner must deploy the merged `origin/main` backend
+and configure `NESSIE_API_KEY` and `NESSIE_ENABLED=true`. This task performs no
+Convex deployment. The exact signup steps and operator entry points are in the
+[bank-witness dashboard handoff](dashboard-api.md#bank-witness--capital-one-nessie).
+Keep the simulation label after activation: Nessie's hosted mock bank is still
+not a real bank transfer or custody integration.

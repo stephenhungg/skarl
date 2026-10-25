@@ -160,3 +160,32 @@ created to test the cron.
 
 See [Coinbase controls and provenance](coinbase-submission.md#verify-on-chain)
 and the [official EAS deployments](https://docs.attest.org/docs/quick--start/contracts).
+
+## Capital One — Nessie bank witness
+
+**Completeness:** Skarl adds a fourth settlement witness, labeled **simulated
+bank (Capital One Nessie mock)**, to compare each funding or contributor-payout
+obligation across the order, ledger, chain and modeled bank activity. Confirmed
+x402 funding is modeled as a Treasury deposit; observed contributor payouts
+are modeled as Treasury-to-contributor transfers. Account seeding, activity
+polling and exception projection are implemented against a mocked client.
+Live Nessie integration remains blocked on an API key and backend rollout;
+no hosted Nessie transaction or real fiat movement is claimed.
+
+**Creativity:** “Every claim has a witness” connects agent commerce with the
+settlement desk's ordinary question: do the independent records agree? The
+bank view gives a human-data company a modeled fiat-side witness beside its
+USDC books. Agents can explain the disagreement, deterministic code identifies
+the mismatch, and humans retain exception review and payment authority. The
+mock bank demonstrates that workflow; it is not independent proof of actual
+fiat settlement.
+
+**Complexity:** Durable business intent precedes external writes, and repeated
+requests reuse the original records. An uncertain response does not authorize
+a second transfer. Matching uses the intent ID, exact micro-USDC amount and
+account direction, with explicit missing and mismatch states. Startup also
+handles Nessie's silent invalid-key behavior: a GET returning HTTP 200 and an
+empty array cannot validate credentials. A successful POST probe or a known
+account ID is required. The bank witness never changes the ledger or signs a
+payment. See the dated [integration status](status.md#capital-one-nessie-bank-witness--october-25-2026)
+and [dashboard contract](dashboard-api.md#bank-witness--capital-one-nessie).

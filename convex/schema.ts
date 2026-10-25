@@ -1,4 +1,5 @@
 import { defineSchema, defineTable } from "convex/server";
+import { bankWitnessTables } from "./bankWitnessSchema";
 import { coachTables } from "./coachSchema";
 import { attestationTables } from "./attestationsSchema";
 import { v } from "convex/values";
@@ -60,6 +61,7 @@ const analysisContext = {
 export default defineSchema({
   ...coachTables,
   ...attestationTables,
+  ...bankWitnessTables,
   // Trusted web ingress supplies a keyed IP digest, never a raw IP. Atomic with order creation.
   demoOrderLimits: defineTable({ key: v.string(), windowStart: v.number(), count: v.number() })
     .index("by_key", ["key"]),

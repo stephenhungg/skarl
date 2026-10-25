@@ -774,3 +774,74 @@ coach failures include `coach_invalid_output`, `coach_source_changed`,
 `coach_interrupted` and `coach_unavailable`; provider failures use the Claude
 codes above. Do not display a mock fallback as a live Claude response or describe
 an unavailable coach as successful inference.
+
+## Bank witness — Capital One Nessie
+
+**Deployment required.** The additive bank witness exposes
+`bankWitness.reconciliation4Way({demoIdentity, orderId})` to `controller` and
+`finance-agent` identities in the order's organization. All bank evidence must
+carry the label **simulated bank (Capital One Nessie mock)**, including when
+requests reach Nessie's hosted API. Nessie models a bank; it does not establish
+real fiat custody, a fiat sweep, or a contributor off-ramp.
+
+The query composes the existing payment reconciliation and chain witness with
+bank activity. Render each obligation as `order | ledger | chain | bank`, with
+`match`, `missing`, or `mismatch` states and the supplied explanation. Monetary
+amounts at JSON boundaries are decimal integer micro-USDC strings. Display bank
+mismatches in the exception queue; do not turn missing, stale, unavailable, or
+out-of-scope evidence into a green match. Refunds and standalone evidence sales
+are outside this bank simulation's funding/payout scope. Their bank column is
+`missing` with reason `outside_bank_simulation_scope`.
+
+The response contains `label`, `simulated: true`, `rows`, `exceptions`,
+`bankAvailable`, `bankFetchedAt`, and `reconciliation`. Each row has `intentId`,
+`kind`, `order`, `ledger`, `chain`, `bank`, and `activityIds`; each column has a
+`status`, optional `amountAtomic`, and optional `reason`. The `chain` column
+checks the canonical receipt; `reconciliation.witnesses` retains the separate
+CDP SQL witness results. `reconciliation.matches[].amountAtomic` is serialized
+as a decimal integer string. A bank snapshot expires after five minutes.
+`bank_mismatch` items also appear in `exceptions.list` and use the existing
+controller acknowledgment/resolution APIs. Unmatched Treasury activity is
+explicitly Treasury-wide and is not assigned to an arbitrary order.
+
+A confirmed x402 funding intent produces a simulated Treasury deposit; an
+observed contributor payout produces a simulated Treasury-to-contributor
+transfer. Each bank description is the original funding or payout intent ID.
+Matching requires that ID, the exact amount, and the expected account/direction;
+an equal amount alone is insufficient. The simulation uses one dollar per USDC
+as an explicit demo assumption, not an exchange-rate quotation. The projection
+never posts another journal, alters a payout destination, or approves/signs a
+payment. Bank agreement is corroborating evidence, not payment authority.
+
+Internal `bankWitness:seed` provisions one Treasury account and one account per
+active, wallet-verified contributor. `bankWitness:sweep` runs on a two-minute
+cron after deployment and configuration. Durable local intent precedes external
+requests; repeated seeds and sweeps reuse the original records. An ambiguous
+request outcome remains unresolved and is reconciled by observation rather
+than sent again. An operator must investigate unresolved account creation.
+
+### Configuration and live setup
+
+The implementation starts disabled. Enable only after the deployment owner
+has deployed `origin/main` and privately configured `NESSIE_API_KEY` plus
+`NESSIE_ENABLED=true` in the target Convex deployment. No Convex deployment or
+live Nessie request was performed by this implementation task.
+
+At the October 25 implementation check, `~/.config/skarl/nessie.env` was absent.
+To unblock live mock-provider integration:
+
+1. Open [Capital One Nessie](https://nessieisreal.com).
+2. Sign in using GitHub OAuth and complete the requested authorization.
+3. Create or copy the API key shown for the signed-in account.
+4. Save `NESSIE_API_KEY=<your key>` in the private local file
+   `~/.config/skarl/nessie.env`; do not commit or paste it into reports.
+5. Have the deployment owner configure the key and enable flag in Convex,
+   deploy the merged backend, then invoke `bankWitness:seed` and
+   `bankWitness:sweep` and inspect reconciliation results.
+
+The adapter uses `https://prod-api.nessieisreal.com` with its key query
+parameter. A bad key can return HTTP 200 and `[]` on GET; that response is not
+credential validation or proof of an empty account. Startup requires a
+successful customer POST probe or verification of a known account ID before
+accepting activity reads. Hosted-provider success must be recorded separately
+from mocked test results and must retain the simulated-bank label.
