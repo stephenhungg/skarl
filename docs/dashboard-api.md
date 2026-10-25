@@ -381,3 +381,92 @@ Validation note: `CONVEX_AGENT_MODE=anonymous` does not override an already
 configured cloud deployment. Local validation used a separate checkout with no
 cloud `.env.local` or deployment variables; it selected `127.0.0.1:3210`.
 No cloud function deployment was performed by this extension.
+
+## CDP webhooks + SQL witness
+
+Implemented in source with **simulated local tests**; cloud deployment, webhook
+subscription creation and live SQL evidence require the deployment operator.
+These endpoints add independent evidence without changing payment authority.
+
+| Function | Kind | Arguments | Result |
+| --- | --- | --- | --- |
+| `chainWitness.reconciliationWithWitness` | Q | `{demoIdentity,orderId}` | Existing `payments.reconciliation` fields, plus `matches[].witness`, `witnesses[]`, and top-level `witness`. |
+| `chainWitness.refresh` | A | `{demoIdentity,orderId}` | `{status:"available" \| "witness_unavailable" \| "cached_or_rate_limited"}`. Refreshes the stored SQL snapshot; never pays or posts journals. |
+| `chainWitness.webhookExceptions` | Q | `{demoIdentity,orderId}` | Treasury-wide `unknown_transfer` exceptions, also included in `exceptions.list` and the witness reconciliation query. |
+
+All three require controller or finance-agent membership and enforce organization
+scope. The underlying `payments.reconciliation` remains available unchanged.
+Use `useQuery` for the witness query and call the refresh action on opening the
+reconciliation view or clicking refresh. Do not call the action every render.
+The deployment operator must regenerate Convex API types from merged main; until
+then a typed `makeFunctionReference("chainWitness:reconciliationWithWitness")`
+can reference the new endpoint without editing generated files from a stale tree.
+
+Each `matches[].witness` and `witnesses[]` row has `chainIdentity` and a status:
+
+- `match`: CDP and the stored RPC observation agree on transaction/log, token,
+  sender, recipient, exact amount, block number and block hash.
+- `missing`: a successful, bounded SQL query returned no corresponding log.
+  This may be indexing lag; it is not proof that settlement failed.
+- `mismatch`: the same transaction/log exists but evidence differs.
+- `witness_unavailable`: no fresh snapshot, missing client key, rate limit,
+  timeout or invalid provider response. Keep the original reconciliation visible.
+
+A match/mismatch may include `indexedTransfer` with `network`, `tokenAddress`,
+`txHash`, `logIndex`, `fromAddress`, `toAddress`, `amountAtomic`, `blockHash` and
+`blockNumber`. Indexed amounts and block numbers are decimal strings. Existing
+reconciliation `matches[].amountAtomic` remains bigint; use the existing formatter.
+Top-level `witness` has `status:"available"|"witness_unavailable"`, `fetchedAt`
+(milliseconds or null), and optional safe `reason`. `available` means the provider
+query worked, not that every row matches. Snapshots become unavailable after two
+minutes. Refreshes reuse each order's snapshot for 30 seconds, and a durable
+global 15-second reservation keeps concurrent Convex actions below the CDP rate
+limit. Queries cover at most 100 observed transaction hashes / 10,000 indexed
+rows; overflows are unavailable rather than falsely complete.
+
+`POST /api/webhooks/cdp` verifies the v0 HMAC over the raw body and timestamp
+(with a five-minute past/future tolerance). `HEAD` returns 200 for subscription
+validation. Configure `CDP_WEBHOOK_SECRET_TO` and `CDP_WEBHOOK_SECRET_FROM` in the
+web server; `CDP_WEBHOOK_SECRET` is also accepted for a single subscription.
+It reuses `paymentService()` and the existing RPC observation/confirmation path.
+The webhook cannot set a payee, approve an intent, sign or send a transaction.
+
+Receipts deduplicate by authenticated body event ID (body digest fallback) and
+`(network,txHash,logIndex)`. `X-Event-Id` alone is not trusted because v0 does not
+sign headers. Known funding candidates must prove the saved authorization nonce;
+payouts must already have a signer-reported hash. Pending RPC/confirmation errors
+return 503 so CDP can retry; processed/unknown receipts return 200. Unknown
+transfers are advisory exceptions, not cash or new obligations. They share the
+existing acknowledge/resolve workflow. They disappear from active detection if
+later reconciled, while disposition history remains.
+
+Treasury ownership is derived from stored funding intents. An unbound treasury
+or one shared across organizations is refused rather than assigned to an arbitrary
+tenant. Unknown exceptions apply to the treasury as a whole and appear on each
+funded order using it; they do not claim allocation to that particular order.
+No durable background RPC retry worker is introduced: operator reconciliation is
+still needed if CDP exhausts its retries or a payout hash was never reported.
+
+Setup commands (private credentials loaded from `~/.config/skarl/cdp.env`):
+
+```sh
+SKARL_TREASURY_ADDRESS=0x8408a922ea400af33d7c2080a9edd5d3495b695f \
+  node scripts/cdp-webhooks-create.mjs https://skarl.vercel.app
+node scripts/cdp-sql-witness.mjs
+```
+
+The subscription script creates both directions and saves secrets only to
+`~/.config/skarl/cdp-webhook.env` with mode 600. It prints variable names to set
+in Vercel, never their values. An uncertain create response leaves a private
+`creating` marker: inspect CDP before retrying, rather than create duplicates.
+Set `CDP_CLIENT_API_KEY` in **Convex** for the refresh action. The read-only live
+command compares the specified funding transaction against RPC and exits 2 when
+unavailable or not matching; it never sends a transaction. The requested root
+alias `cdp:webhooks:create` should invoke `node scripts/cdp-webhooks-create.mjs`;
+adding that `package.json` entry is pending ownership approval.
+
+Primary references: [webhook signatures](https://docs.cdp.coinbase.com/webhooks/verify-signatures),
+[onchain subscription filters](https://docs.cdp.coinbase.com/webhooks/onchain-activity/overview),
+[subscription API](https://docs.cdp.coinbase.com/api-reference/v2/rest-api/webhooks/create-webhook-subscription),
+[SQL client authentication](https://docs.cdp.coinbase.com/data/sql-api/quickstart),
+and [SQL schema](https://docs.cdp.coinbase.com/data/sql-api/schema).

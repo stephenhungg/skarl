@@ -304,3 +304,36 @@ The flag is not isolation when the checkout already selects `CONVEX_DEPLOYMENT`.
 The orchestrator must redeploy merged `origin/main`; this worktree will not run
 that command again. Use `pnpm test:convex` for isolated tests. See
 [deployment](deployment.md) for reproducible hosting and environment setup.
+
+## CDP webhooks + SQL witness — October 25, 2026
+
+Implemented signed POST/HEAD `/api/webhooks/cdp`, durable event/transfer
+idempotency, reuse of trusted RPC payment confirmation, treasury-scoped
+`unknown_transfer` exceptions, and cached `chainWitness.reconciliationWithWitness`
+with `match`, `missing`, `mismatch` and `witness_unavailable` states. SQL is
+advisory; an outage never changes the original reconciliation or authorizes money.
+See the [dashboard contract](dashboard-api.md#cdp-webhooks--sql-witness).
+
+Local verification: `pnpm check` passed (100 Node tests, 229 Convex tests, 28
+payment-route tests, TypeScript, documentation and production build). New tests
+use **simulated** signatures, receipts and provider responses. `pnpm check:convex`
+also passed against an isolated temporary copy with deployment environment
+variables removed and a newly selected anonymous backend at `127.0.0.1:3240`.
+No cloud Convex deploy/dev command was run from the cloud-linked worktree.
+
+Live witness command: `node scripts/cdp-sql-witness.mjs`. At the verification
+attempt, `~/.config/skarl/cdp.env` was absent. The command exited 2 and returned
+`evidence:"not_verified"`, `sql.status:"witness_unavailable"`,
+`sql.reason:"client_key_not_configured"` for treasury
+`0x8408a922ea400af33d7c2080a9edd5d3495b695f` and existing funding transaction
+[`0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757`](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757).
+This is a local missing-configuration result, **not a CDP API response or SQL
+match**. No new chain transaction was submitted by this work.
+
+Remaining: deploy merged backend/web source, set the Convex client API key, run
+the live witness command, create both subscriptions with
+`node scripts/cdp-webhooks-create.mjs https://skarl.vercel.app` (set the treasury
+environment variable), then install the returned signing secrets in Vercel and
+redeploy. This worktree has no `apps/web/.vercel/project.json`; the subscription
+script supplies environment instructions instead of changing an unlinked project.
+Root `package.json` alias ownership approval is pending; the node command is ready.
