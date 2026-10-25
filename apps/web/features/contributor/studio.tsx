@@ -6,8 +6,6 @@ import { Button } from "@/components/glaze/ui/button";
 import { Checkbox } from "@/components/glaze/ui/checkbox";
 import { Progress } from "@/components/glaze/ui/progress";
 import { Status } from "@/components/glaze/ui/status";
-import { LogoMark } from "@/components/logo-mark";
-import { GlazePortalProvider } from "@/lib/glaze/portal";
 import { cn } from "@/lib/glaze/utils";
 import { formatUsdc, isDuplicate, type OrderSummary, type Payable, type Submission } from "./api";
 import { CONSENT_ITEMS, type ConsentId } from "./consent";
@@ -62,45 +60,24 @@ export function clipStatus(submission: Submission, payable?: Payable): { status:
 }
 
 export function Studio(props: StudioProps) {
-  const { summary, history, payables } = props;
-  const earned = (payables ?? []).reduce((sum, p) => sum + BigInt(p.amountAtomic), 0n);
-  const paid = (payables ?? []).filter(p => p.status === "paid").reduce((sum, p) => sum + BigInt(p.amountAtomic), 0n);
+  const { summary } = props;
   return (
-    <div className="glaze skarl-theme min-h-dvh bg-page font-sans text-text-1">
-      <GlazePortalProvider>
-        <header className="sticky top-0 z-(--z-sticky) border-b border-line-faint bg-page">
-          <div className="mx-auto flex h-12 max-w-6xl items-center gap-3 px-4 md:px-6">
-            <Link href="/" className="flex items-center gap-2 text-text-1" aria-label="Skarl home"><LogoMark size={12} /><span className="type-label">Skarl</span></Link>
-            <span className="type-label-sm text-text-3">Contributor</span>
-            <span className="ms-auto hidden type-label-sm text-text-2 sm:inline">Base Sepolia &middot; test USDC</span>
-            {payables && payables.length > 0 && (
-              <span className="type-label tabular-nums" title="Earned across accepted clips; paid once a transfer confirms">
-                {formatUsdc(earned.toString())} earned{paid > 0n ? `, ${formatUsdc(paid.toString())} paid` : ""}
-              </span>
-            )}
-          </div>
-        </header>
-        <main className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
-          <div className="mb-6 max-w-2xl">
-            <h1 className="type-title">{summary?.order.title ?? "Record a task"}</h1>
-            <p className="mt-1 type-body text-text-2">{summary?.rubric?.taskPrompt ?? "Film one short take of the task while you say what you are doing."}</p>
-          </div>
-          {props.unavailable && (
-            <Alert status={props.live ? "neutral" : "warn"} className="mb-6">
-              <AlertTitle>{props.unavailable.title}</AlertTitle>
-              <AlertDescription>{props.unavailable.body}</AlertDescription>
-            </Alert>
-          )}
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="flex min-w-0 flex-col gap-6">
-              <RecorderCard {...props} />
-              <YourClips history={history} payables={payables} current={props.current} />
-            </div>
-            <TaskRail summary={summary} />
-          </div>
-        </main>
-      </GlazePortalProvider>
-    </div>
+    <>
+      <div className="mb-6 max-w-2xl">
+        <h1 className="type-title">{summary?.order.title ?? "Record a task"}</h1>
+        <p className="mt-1 type-body text-text-2">{summary?.rubric?.taskPrompt ?? "Film one short take of the task while you say what you are doing."}</p>
+      </div>
+      {props.unavailable && (
+        <Alert status={props.live ? "neutral" : "warn"} className="mb-6">
+          <AlertTitle>{props.unavailable.title}</AlertTitle>
+          <AlertDescription>{props.unavailable.body}</AlertDescription>
+        </Alert>
+      )}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <RecorderCard {...props} />
+        <TaskRail summary={summary} />
+      </div>
+    </>
   );
 }
 
@@ -224,7 +201,7 @@ function RecorderCard({ recorder, consent, onConsent, submitState, onSubmit, onR
         {submitState.phase === "error" && (
           <Alert status="fail"><AlertTitle>Not submitted</AlertTitle><AlertDescription>{SUBMIT_ERROR[submitState.kind]}{submitState.detail ? ` ${submitState.detail}` : ""}</AlertDescription></Alert>
         )}
-        {done && <Alert status="ok"><AlertTitle>Submitted</AlertTitle><AlertDescription>Your clip is in the queue. Follow it below; this page updates on its own.</AlertDescription></Alert>}
+        {done && <Alert status="ok"><AlertTitle>Submitted</AlertTitle><AlertDescription>Track it in <Link href="/contribute/clips" className="underline underline-offset-4">My clips</Link>.</AlertDescription></Alert>}
       </div>
 
       <div className="shell-foot flex flex-wrap items-center gap-2">
@@ -254,19 +231,19 @@ function RecorderCard({ recorder, consent, onConsent, submitState, onSubmit, onR
   );
 }
 
-function YourClips({ history, payables, current }: { history?: Submission[]; payables?: Payable[]; current: Submission | null }) {
+export function ClipList({ history, payables, current }: { history?: Submission[]; payables?: Payable[]; current?: Submission | null }) {
   if (!history) return null;
-  const rows = [...history].sort((a, b) => b._creationTime - a._creationTime).slice(0, 8);
+  const rows = [...history].sort((a, b) => b._creationTime - a._creationTime);
   return (
     <section aria-label="Your clips">
-      <h2 className="mb-3 type-heading-sm">Your clips</h2>
-      {rows.length === 0 ? <p className="type-body-sm text-text-2">Nothing yet. Your first clip shows up here the moment it uploads.</p> : (
+      {rows.length === 0 ? <p className="type-body-sm text-text-2">No clips yet. <Link href="/contribute" className="underline underline-offset-4">Record one</Link>.</p> : (
         <ul className="divide-y divide-line-faint rounded-panel border border-line-faint">
           {rows.map(submission => {
             const view = clipStatus(submission, payables?.find(p => p.submissionId === submission._id));
             return (
               <li key={submission._id} className={cn("flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3", current?._id === submission._id && "bg-hover-row")}>
                 <Status status={view.status} className="shrink-0 sm:w-36">{view.label}</Status>
+                <span className="mono text-text-2">{submission._id.slice(0, 8)}</span>
                 <span className="order-last min-w-0 basis-full type-body-sm text-text-2 sm:order-none sm:basis-auto sm:flex-1">{view.note}</span>
                 <span className="ms-auto type-label-sm text-text-3 tabular-nums sm:ms-0">{new Date(submission._creationTime).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
               </li>
