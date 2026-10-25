@@ -20,7 +20,6 @@ export function HowItWorks() {
               <LandingFigure name={s.fig} />
               <div className="flex flex-col gap-1 px-1">
                 <p className="m-0 flex items-baseline gap-2 text-[15px] leading-[1.3] text-deep">
-                  <span className="mono text-[12px] leading-none text-slate-500">{s.n}</span>
                   <span className="cut-regular">{s.title}</span>
                 </p>
                 <p className="cut-book m-0 text-[14px] leading-[1.4] text-slate-500">{s.body}</p>

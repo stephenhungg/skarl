@@ -79,7 +79,7 @@ export function Stepper({ steps, current, onStepChange, orientation = "horizonta
                 />
               </svg>
             ) : (
-              i + 1
+              <span className="size-1.5 rounded-full bg-current" aria-hidden />
             )}
           </span>
         );
