@@ -105,6 +105,27 @@ describe("deterministic red-cup report builder", () => {
     expect(report.criteria.every(item => item.status === "supported")).toBe(true);
     expectCanonical(report);
   });
+  // Exact spec the live extractor froze for the funded order (Oct 25). Fixtures said "Narrate each action",
+  // so every real clip fell through to unobservable and nothing could ever auto-accept or pay.
+  it("supports a clip against the spec shape the production extractor actually emits", () => {
+    const liveSpec = { object: "red_cup", distractors: ["blue_cup"], target: "marked_coaster",
+      steps: ["Pick up the red cup, not the blue cup", "Place the red cup on the marked coaster"], narration: ["Narration agrees with visible actions and object"] };
+    const liveAudio = audioFromTranscriptSegments([
+      { startMs: 0, endMs: 800, text: "Apple, river, cloud." },
+      { startMs: 1_000, endMs: 3_000, text: "I pick up the red cup." },
+      { startMs: 5_000, endMs: 7_000, text: "I place the red cup on the marked coaster." },
+    ], DURATION, liveSpec);
+    const live = { ...input(), taskSpec: liveSpec, audio: liveAudio,
+      video: { visibility: "clear" as const, observations: video().observations.map(item => item.action === "place" ? { ...item, target: "marked_coaster" } : item) } };
+    const report = buildVerificationReport(live);
+    expect(report.criteria.map(item => item.status)).toEqual(["supported", "supported", "supported"]);
+    expect(report.recommendation).toBe("accept");
+  });
+  it("still refuses narration requirements the comparator cannot check", () => {
+    const report = buildVerificationReport({ ...input(), taskSpec: { ...RED_CUP_TASK_SPEC, narration: ["Say the cup's price out loud"] } });
+    expect(report.criteria.every(item => item.status === "unobservable")).toBe(true);
+    expect(report.recommendation).not.toBe("accept");
+  });
   it("requests correction when narration says red but video shows blue", () => {
     const value = input(); value.video!.observations.forEach(item => { item.object = "blue_cup"; });
     const report = buildVerificationReport(value);
