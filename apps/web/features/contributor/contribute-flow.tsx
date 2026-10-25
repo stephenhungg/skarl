@@ -34,7 +34,7 @@ function unavailableCopy(backend: Backend): { title: string; body: ReactNode } |
     };
     case "invalid": return { title: "The Convex URL is invalid", body: <>NEXT_PUBLIC_CONVEX_URL is <span className="mono text-[12px]">{backend.url}</span>, which the client rejected: {backend.reason}</> };
     case "unreachable": return { title: "Can't reach the backend", body: <>No connection to <span className="mono text-[12px]">{host(backend.url)}</span> after {UNREACHABLE_AFTER_MS / 1000} seconds. Check your network. Nothing has been uploaded.</> };
-    case "not_seeded": return { title: "The demo order doesn't exist yet", body: <>The deployment answered, but the red-cup order isn&apos;t seeded. Run <span className="mono text-[12px]">pnpm seed</span> against it.</> };
+    case "not_seeded": return { title: "The demo order doesn't exist yet", body: <>The deployment answered, but the demo order isn&apos;t seeded. Run <span className="mono text-[12px]">pnpm seed</span> against it.</> };
     case "error": return { title: "The backend returned an error", body: <span className="mono break-words text-[12px]">{backend.detail}</span> };
     case "connecting": return { title: "Connecting to the backend", body: "Hold on while the live order loads." };
     default: return undefined;
@@ -88,7 +88,7 @@ function Shell({ backend, summary, history, payables, submitter }: ShellProps) {
         <motion.header initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: SETTLE }} className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="max-w-[640px]">
             <Eyebrow>Contribute</Eyebrow>
-            <h1 className="cut-regular mt-1.5 text-[32px] leading-[1.2] tracking-[-0.015em] text-ink md:text-[42px] xl:text-[48px]">Record the red-cup task</h1>
+            <h1 className="cut-regular mt-1.5 text-[32px] leading-[1.2] tracking-[-0.015em] text-ink md:text-[42px] xl:text-[48px]">Record a task</h1>
             <p className="mt-3 text-[14px] leading-[1.35] tracking-[0.01em] text-slate-500 md:text-[18px]">
               Read the brief, agree to the terms, then film one 10 to 30 second take while you narrate. You can follow the clip from upload to review on this page.
             </p>

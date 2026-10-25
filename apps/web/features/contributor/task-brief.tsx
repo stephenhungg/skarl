@@ -4,7 +4,7 @@ import { Card, CardTitle, Pill, shortHash } from "./ui";
 
 // Mirrors convex/seed.ts. Shown only when the live rubric can't be read, and labeled as such.
 const DOC_TASK = {
-  title: "Red-cup narrated demonstrations",
+  title: "Move a cup onto a coaster",
   taskPrompt: "Pick up the red cup and place it on the marked coaster while you narrate each action, with a fixed camera, red and blue cups and a 10 to 30 second clip.",
   criteria: [
     { criterionId: "red-cup-pickup", description: "Pick up the red cup", modality: "visual" },
