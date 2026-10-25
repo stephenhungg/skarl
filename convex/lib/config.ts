@@ -29,7 +29,8 @@ export const configuredAudioModel = () => envString("GEMINI_AUDIO_MODEL", "gemin
 export const configuredClaudeModel = () => envString("ANTHROPIC_MODEL", "claude-sonnet-5-5");
 export const transcriptionModel = () => envString("GEMINI_TRANSCRIPTION_MODEL", "gemini-3.5-transcribe");
 export const evaluationVideoModels = () => {
-  const models = envList("GEMINI_EVALUATION_MODELS", [configuredVideoModel(), configuredFinanceModel()]);
+  // The jury is its own pair (pre-config behaviour); deriving it from GEMINI_VIDEO_MODEL collapsed it to one model.
+  const models = envList("GEMINI_EVALUATION_MODELS", ["gemini-4-argon", "gemini-3.8-flash"]);
   if (models.length < 2 || models.length > 16 || new Set(models).size !== models.length || models.some(model => !/^[a-z0-9][a-z0-9._-]{0,80}$/.test(model))) throw new Error("invalid_config:GEMINI_EVALUATION_MODELS");
   return models;
 };
