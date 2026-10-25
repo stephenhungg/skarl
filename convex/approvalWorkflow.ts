@@ -6,7 +6,7 @@ import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { demoToken } from "./lib/demoAuth";
 import { requireFinanceService } from "./lib/serviceAuth";
-import { actorFor, audit, normalizeAddress, paymentBinding, sourceVersion } from "./lib/finance";
+import { actorFor, audit, normalizeAddress, paymentBinding, sourceVersion, isOrderApprover } from "./lib/finance";
 
 export const workflow = new WorkflowManager(components.workflow);
 
@@ -71,8 +71,8 @@ export const queueApprovedDispatch = internalMutation({
     }
     const approver = await ctx.db.query("memberships").withIndex("by_token_identifier", (q) =>
       q.eq("tokenIdentifier", approval.approverTokenIdentifier)).unique();
-    if (!approver || approver.organizationId !== intent.organizationId || approver.status !== "active" ||
-      !approver.roles.includes("controller") || approver.roles.includes("finance-agent") || approver.roles.includes("contributor")) {
+    const order = await ctx.db.get(intent.orderId);
+    if (!order || !isOrderApprover(approver, order)) {
       throw new Error("independent_controller_required");
     }
 
@@ -94,7 +94,7 @@ export const queueApprovedDispatch = internalMutation({
       action: "payment_dispatch_queued", entityType: "paymentIntents", entityId: intent._id,
       reason: "Durable workflow released the independently approved payout for wallet execution; no money sent.",
       evidenceReferences: [args.workflowId, approval._id, command._id, outboxEventId] });
-    if (process.env.PAYOUT_EXECUTOR === "cdp_agent") {
+    if (process.env.PAYOUT_EXECUTOR === "cdp_agent" && !order.publicId.startsWith("scenario:")) {
       await ctx.scheduler.runAfter(0, makeFunctionReference<"action", { intentId: typeof intent._id }>("agentWallet:execute"), { intentId: intent._id });
     }
     return { outboxEventId, replayed: false };

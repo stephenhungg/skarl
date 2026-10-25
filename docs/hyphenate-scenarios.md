@@ -1,6 +1,6 @@
 # Hyphenate Scenario Playbook
 
-**Every claim has a witness.** Skarl fills the **settlement accountant + AP clerk** seats: agents argue the case, deterministic code enforces the boundary, and humans approve exceptions and money movement. Judges may bring their own scenario; this playbook makes the expected behavior inspectable.
+**Every claim has a witness.** Skarl fills the **settlement accountant + AP clerk** seats: agents argue the case, deterministic code enforces the boundary, and the buyer’s signed rule approves eligible payouts. The buyer reviews exceptions. Judges may bring their own scenario; this playbook makes the expected behavior inspectable.
 
 Eight scenarios cover all nine requested cases: scenario 1 has separate duplicate re-upload and trimmed-copy variants. Run commands from the repository root after installing the pinned pnpm dependencies. Commands below exercise isolated tests; they do not mutate the hosted deployment or send payments. Label each local test segment **SIMULATED CONTROL TEST — NO TRANSFER**. A passing assertion proves the stated boundary under its fixture, not model accuracy, a deployed integration, or settlement.
 
@@ -22,7 +22,7 @@ Eight scenarios cover all nine requested cases: scenario 1 has separate duplicat
 
 **Expected:** `duplicate_submission` with `matchingSubmissionId`; exactly one payable and one delivery remain. The exact/perceptual case also checks `acceptance_refused` and unchanged fulfillment accounting. The trimmed case supplies synthetic shifted frame hashes; it does not measure real-world trim recall. Local FFmpeg re-encode coverage is separate. Crop, flip, overlay, screen recapture and independent-retake false positives are uncalibrated.
 
-**Live variant, only when eligible:** upload the consented original through the contributor flow, finish source-bound verification, accept it as the controller, then upload its consented duplicate or trim and attempt acceptance. Display matched frames, refusal, audit and before/after payable count. If the detector misses a live trim, record that failure; do not substitute the fixture result as live evidence.
+**Live variant, only when eligible:** upload the consented original through the contributor flow, finish source-bound verification, accept it with the buyer-signed rule or buyer review, then upload its consented duplicate or trim and attempt acceptance. Display matched frames, refusal, audit and before/after payable count. If the detector misses a live trim, record that failure; do not substitute the fixture result as live evidence.
 
 ## 2. Narration Mismatch
 
@@ -52,18 +52,18 @@ Eight scenarios cover all nine requested cases: scenario 1 has separate duplicat
 
 **Claim challenged:** “I proposed this payout, so I can approve it.” **Witnesses:** stored proposer, authenticated role, independent approval and immutable intent bindings.
 
-1. Run both the forced model-tool refusal and the independent-controller transition:
+1. Run both the forced model-tool refusal and the independent approval transition (legacy controller compatibility):
    ```sh
    pnpm exec vitest run --config test/convex.config.mts convex/financeAgent.test.ts -t 'routes a forced approve call'
    pnpm exec vitest run --config test/convex.config.mts convex/finance.test.ts -t "persists refusal of the agent's own approval"
    ```
-2. Display the refused tool result, `payment_approval_refused` audit, then the separate controller approval assertion.
+2. Display the refused tool result, `payment_approval_refused` audit, then the separate approval assertion; this legacy test retains the controller selector.
 
-**Expected:** `self_approval_refused`; the agent creates no approval or transfer. Independent controller approval binds the exact stored intent. It is still not payment: Workflow dispatch and a controller-signed Coinbase Wallet transfer with a reconciled receipt are separate gates. A natural-language prompt does not guarantee a live model will attempt the forbidden tool; the first command deliberately injects that attempt.
+**Expected:** `self_approval_refused`; the agent creates no approval or transfer. Buyer-signed policy or buyer review binds the exact stored intent. It is still not payment: Workflow dispatch, the independently capped CDP executor and receipt reconciliation are separate gates. A natural-language prompt does not guarantee a live model will attempt the forbidden tool; the first command deliberately injects that attempt.
 
 ## 5. Payout Over the CDP Cap
 
-**Claim challenged:** application approval alone can bypass the wallet's independent policy. **Witness:** CDP Policy Engine on the optional CDP executor account; it is distinct from the default controller browser-wallet path.
+**Claim challenged:** application approval alone can bypass the wallet's independent policy. **Witness:** CDP Policy Engine on the CDP executor account; its cap independently constrains an application approval. The browser-wallet path remains a compatibility option.
 
 1. Open [the October 25, 03:05 PDT evidence](status.md#live-retry-after-recovery-deployment--october-25-2026-0305-pdt), labeled **RECORDED LIVE TESTNET**.
 2. Show the active 2-USDC per-transfer cap and the actual 2.000001-USDC send request to the verified recipient.
@@ -113,3 +113,13 @@ The Base-only refund execution adapter exists but has no recorded live refund. I
 ## What to Capture After Any Judge-Selected Scenario
 
 Record the commit/deployment, fixture or real input, before/after authoritative state, refusal or pending code, audit reference and evidence label. For live money, retain the real network/transaction/log identity and matching journal. Never show a funding transaction as a payout, a mock bank record as a real bank transfer, or a green test as provider execution. [The demo runbook](demo-script.md) contains the live prerequisites and signing handoff; [status](status.md) remains the evidence authority.
+
+## Buyer Policy Scenarios
+
+The deployed lab exposes eight named controls through `pnpm scenario all`. It now also includes `over_cap_payout` (an accepted obligation above the buyer cap stays unapproved in Review) and `policy_auto_pay` (completed licensed evidence replay is accepted and approved by `policy-engine`). Run their local controls with:
+
+```sh
+pnpm exec vitest run --config test/convex.config.mts convex/policy.test.ts convex/scenarios.test.ts
+```
+
+The over-cap replay needs an existing accepted source and payable; the auto-pay replay needs an unaccepted licensed completed-inference source with a passing jury. Missing prerequisites are reported as failures. Replay accounting is confined to labeled scenario orders, excluded from ordinary copy checks and aggregate balances, and blocked from every payout executor. No model call or transfer is invented by a passing replay.

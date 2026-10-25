@@ -22,10 +22,18 @@ const orientationTrace = () => ({ ...trace(), sensors: [...trace().sensors, "att
     { sensor: "gravity", timestampMs: 500, x: 0, y: -9.81, z: 0 },
   ] });
 
+const traceV2 = () => ({ ...orientationTrace(), version: 2,
+  videoStartOffsetMs: 100, videoStopOffsetMs: 900, syncSource: "expo-recording-progress-estimate", syncAccuracy: "approximate",
+  unavailableSensors: ["magnetometer"],
+  context: { mount: "chest", dominantHand: "right", environment: "kitchen", lighting: "bright" },
+  segments: [{ label: "Pick up the cup", startMs: 0, endMs: 400 }, { label: "Place on coaster", startMs: 400, endMs: 800 }],
+  device: { ...trace().device, codec: null, requestedCodec: "avc1", zoom: 0, metadataSource: "unavailable", videoDurationMs: null, intrinsics: null },
+});
+
 // Synthetic storage only. Never calls a model, device sensor, or chain.
 beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
-async function setup(input = trace()) {
+async function setup(input: unknown = trace()) {
   const t = convexTest(schema, modules), seeded = await t.mutation(internal.seed.demo, {});
   const video = await t.run(ctx => ctx.storage.store(new Blob(["synthetic"], { type: "video/mp4" })));
   const { submissionId } = await t.mutation(api.submissions.create, { demoIdentity: "contributor", orderId: seeded.orderId,
@@ -35,6 +43,34 @@ async function setup(input = trace()) {
 }
 
 describe("sensor trace validation and untrusted motion summary", () => {
+  it("validates explicit approximate v2 sync and optional step boundaries without upgrading v1 alignment", () => {
+    const validated = validateSensorTrace(traceV2());
+    expect(validated).toMatchObject({ version: 2, videoStartOffsetMs: 100, videoStopOffsetMs: 900,
+      syncAccuracy: "approximate", segments: traceV2().segments, context: traceV2().context });
+    expect(validateSensorTrace(trace())).not.toHaveProperty("videoStartOffsetMs");
+    expect(validateSensorTrace({ ...traceV2(), segments: [] }).segments).toEqual([]);
+  });
+  it("missing magnetic readings remain unavailable, while real field readings do not imply phone movement", () => {
+    expect(summarizeMotion(validateSensorTrace(traceV2())).magneticFieldRmsMicroTesla).toBeNull();
+    const valid = validateSensorTrace({ ...traceV2(), sensors: ["magnetometer"],
+      unavailableSensors: ["accelerometer", "gyroscope", "deviceMotion", "attitude", "gravity"],
+      samples: [{ sensor: "magnetometer", timestampMs: 100, x: 30, y: 40, z: 0 }] });
+    expect(summarizeMotion(valid)).toMatchObject({ magneticFieldRmsMicroTesla: 50, activeMotionIntervals: [], gyroRmsRadPerSec: null });
+    for (const patch of [{ unavailableSensors: [] }, { unavailableSensors: ["magnetometer", "gravity"] },
+      { unavailableSensors: ["magnetometer", "magnetometer"] }]) {
+      expect(() => validateSensorTrace({ ...traceV2(), ...patch })).toThrow("invalid_sensor_trace");
+    }
+  });
+  it("rejects invented exact sync, reversed offsets, overlapping steps and out-of-video boundaries", () => {
+    for (const patch of [{ syncAccuracy: "frame-accurate" }, { syncSource: "hardware" }, { videoStartOffsetMs: 901 },
+      { videoStopOffsetMs: null }, { videoStartOffsetMs: -1 },
+      { segments: [{ label: "outside", startMs: 0, endMs: 801 }] },
+      { segments: [{ label: "a", startMs: 0, endMs: 500 }, { label: "b", startMs: 400, endMs: 800 }] },
+      { context: { ...traceV2().context, location: "private" } }]) {
+      expect(() => validateSensorTrace({ ...traceV2(), ...patch })).toThrow("invalid_sensor_trace");
+    }
+    expect(validateSensorTrace({ ...traceV2(), videoStartOffsetMs: null, videoStopOffsetMs: null, segments: [] }).videoStartOffsetMs).toBeNull();
+  });
   it("keeps version 1 so both old three-channel clients and new five-channel captures validate", () => {
     for (const input of [trace(), orientationTrace()]) {
       const validated = validateSensorTrace(input);
@@ -113,6 +149,15 @@ describe("sensor trace validation and untrusted motion summary", () => {
 });
 
 describe("private sensor attachment", () => {
+  it("surfaces v2 context and segments on reports while keeping all evidence advisory", async () => {
+    const f = await setup(traceV2());
+    await f.t.action(api.sensorTraces.attachSensorTrace, f.args);
+    const report = await f.t.query(api.submissions.getReport, { demoIdentity: "controller", submissionId: f.submissionId });
+    expect(report.capture).toMatchObject({ version: 2, context: traceV2().context, segments: traceV2().segments,
+      videoStartOffsetMs: 100, syncAccuracy: "approximate", unavailableSensors: ["magnetometer"] });
+    expect(report.status).toBe("queued");
+    expect(await f.t.run(ctx => ctx.db.query("payables").collect())).toEqual([]);
+  });
   it("persists five-channel evidence through Convex validators without changing acceptance authority", async () => {
     const f = await setup(orientationTrace());
     await f.t.action(api.sensorTraces.attachSensorTrace, f.args);
@@ -135,19 +180,21 @@ describe("private sensor attachment", () => {
     const evidence = await f.t.query(api.media.submissionEvidence, { demoIdentity: "controller", submissionId: f.submissionId });
     expect(evidence.sensorTrace?.motionSummary).toEqual(legacySummary);
   });
-  it("reads stored JSON, attaches once, exposes bounded evidence to owner/controller, and never accepts or pays", async () => {
+  it("reads stored JSON, attaches once, exposes bounded evidence to the owning buyer/contributor and legacy controller, and never accepts or pays", async () => {
     const f = await setup();
     expect(await f.t.action(api.sensorTraces.attachSensorTrace, f.args)).toEqual({ submissionId: f.submissionId, replayed: false });
     expect(await f.t.action(api.sensorTraces.attachSensorTrace, f.args)).toEqual({ submissionId: f.submissionId, replayed: true });
-    for (const demoIdentity of ["contributor", "controller"]) {
+    for (const demoIdentity of ["buyer", "contributor", "controller"]) {
       const evidence = await f.t.query(api.media.submissionEvidence, { demoIdentity, submissionId: f.submissionId });
       expect(evidence.sensorTrace).toMatchObject({ storageId: f.storageId, sampleCount: 6, sampleRateHz: 50, durationMs: 1000,
         motionSummary: { source: "clientReported", activeMotionIntervals: [{ startMs: 250, endMs: 750 }] } });
       expect(evidence.sensorTrace?.url).toMatch(/^https?:/);
     }
-    for (const demoIdentity of ["buyer", "finance-agent"]) {
+    for (const demoIdentity of ["finance-agent"]) {
       await expect(f.t.query(api.media.submissionEvidence, { demoIdentity, submissionId: f.submissionId })).rejects.toThrow("forbidden");
     }
+    await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
+    await expect(f.t.query(api.media.submissionEvidence, {demoIdentity: "buyer", submissionId: f.submissionId})).rejects.toThrow("submission_not_owned");
     const state = await f.t.run(async ctx => ({ submission: await ctx.db.get(f.submissionId), payables: await ctx.db.query("payables").collect(),
       audits: await ctx.db.query("auditEvents").collect(), decisions: await ctx.db.query("reviewDecisions").collect() }));
     expect(state.submission?.status).toBe("queued");

@@ -6,7 +6,7 @@ import { skarlMono, skarlSans } from "@/features/dashboard/fonts";
 import { DashboardAccess } from "@/features/auth/dashboard-access";
 import { DashboardShell } from "@/features/dashboard/shell";
 
-export const metadata: Metadata = { title: "Controller · Skarl", description: "Review evidence, approve payouts and reconcile the books." };
+export const metadata: Metadata = { title: "Review · Skarl", description: "Review exceptions to your auto-pay rule." };
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (

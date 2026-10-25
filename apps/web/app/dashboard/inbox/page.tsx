@@ -1,21 +1,7 @@
 "use client";
-import { ConsentRevocations } from "@/features/dashboard/consent-revocations";
-import { NeedsYouList } from "@/features/dashboard/overview";
-import { useOrderData, useOrderId } from "@/features/dashboard/data";
-import { Loading, PageHeader, QueryBoundary, RequireConvex } from "@/features/dashboard/ui";
-
-function Inbox() {
-  const orderId = useOrderId();
-  const { submissions, payables } = useOrderData(orderId);
-  return (
-    <>
-      <PageHeader title="Needs you" />
-      {orderId ? <NeedsYouList standalone orderId={orderId} submissions={submissions} payables={payables} /> : <Loading />}
-      <QueryBoundary><ConsentRevocations /></QueryBoundary>
-    </>
-  );
-}
+import { BuyerReview } from "@/features/dashboard/buyer-review";
+import { RequireConvex } from "@/features/dashboard/ui";
 
 export default function InboxPage() {
-  return <RequireConvex><Inbox /></RequireConvex>;
+  return <RequireConvex><BuyerReview /></RequireConvex>;
 }

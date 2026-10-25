@@ -9,7 +9,8 @@ export { api };
 export type { Id };
 
 /** Demo selector from docs/dashboard-api.md. Impersonable on purpose; this is not authentication. */
-export const CONTROLLER = "controller" as const;
+// Keep the old symbol for route compatibility; the happy-path persona is the buyer.
+export const CONTROLLER = "buyer" as const;
 export const FINANCE_AGENT = "finance-agent" as const;
 
 export type OrderSummary = FunctionReturnType<typeof api.dashboard.orderSummary>;
@@ -26,7 +27,12 @@ const listeners = new Set<() => void>();
 let chosen: string | null = null;
 let loaded = false;
 function readChosen() {
-  if (!loaded) { loaded = true; try { chosen = localStorage.getItem(ORDER_KEY); } catch { chosen = null; } }
+  if (!loaded) {
+    loaded = true;
+    // A shared link with ?orderId= wins, so evidence links open the right order.
+    const fromUrl = new URL(window.location.href).searchParams.get("orderId");
+    try { chosen = fromUrl && /^[a-zA-Z0-9_-]+$/.test(fromUrl) ? fromUrl : localStorage.getItem(ORDER_KEY); } catch { chosen = null; }
+  }
   return chosen;
 }
 export function chooseOrder(orderId: Id<"orders">) {
@@ -69,12 +75,12 @@ export const useStatements = (orderId: Id<"orders"> | null | undefined) => useQu
 export const useReconciliation = (orderId: Id<"orders"> | null | undefined) => useQuery(api.payments.reconciliation, scoped(orderId));
 export const useExceptions = (orderId: Id<"orders"> | null | undefined) => useQuery(api.exceptions.list, scoped(orderId));
 
-/** What a controller has to act on. Counts drive the only loud badges in the nav. */
+/** What a buyer has to act on. Counts drive the only loud badges in the nav. */
 export function needsYou(submissions: SubmissionRow[] | undefined, payables: PayableRow[] | undefined) {
   // Test uploads can be reviewed but never accepted or paid, so they do not drive the loud count.
   const review = (submissions ?? []).filter(s => s.status === "needs_review" && !s.verificationOnly);
   const testUploads = (submissions ?? []).filter(s => s.status === "needs_review" && s.verificationOnly);
   const approve = (payables ?? []).filter(p => p.intent?.status === "proposed" && !p.approval);
-  const sign = (payables ?? []).filter(p => p.dispatchReady);
+  const sign: PayableRow[] = []; // Approved payouts are dispatched by the configured executor.
   return { review, approve, sign, testUploads, total: review.length + approve.length + sign.length };
 }

@@ -3,21 +3,28 @@ import { secp256k1 } from "@noble/curves/secp256k1";
 import { getAddress, hashMessage, type Hex } from "viem";
 import { publicKeyToAddress } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
-import { mutation, type MutationCtx } from "./_generated/server";
+import { mutation, query, type MutationCtx } from "./_generated/server";
 import { PAYMENT_CHAIN_ID } from "../packages/contracts/src/chain";
 import { requireRole } from "./lib/demoAuth";
 import { actorFor, audit, digest, normalizeAddress, requireTenant } from "./lib/finance";
 
-const DOMAIN = "skarl.vercel.app";
-const URI = `https://${DOMAIN}`;
+const DEFAULT_ORIGIN = "https://skarl.devshardat.work";
+const WALLET_ORIGINS = [DEFAULT_ORIGIN, "https://skarl.vercel.app"];
+
+function walletOrigin(origin: string = DEFAULT_ORIGIN) {
+  // Exact HTTPS origins only: never echo arbitrary hosts into a signing request.
+  if (!WALLET_ORIGINS.includes(origin)) throw new Error("untrusted_wallet_origin");
+  return { domain: new URL(origin).host, uri: origin };
+}
 const CHALLENGE_TTL_MS = 5 * 60_000;
 
 async function contributorFor(ctx: MutationCtx, demoIdentity: string, tokenIdentifier: string) {
-  const controller = await requireRole(ctx, demoIdentity, "controller");
+  const controller = await requireRole(ctx, demoIdentity, ["controller", "contributor"]);
   const contributor = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
     q.eq("tokenIdentifier", tokenIdentifier)).unique();
   if (!contributor) throw new Error("contributor_not_found");
   requireTenant(controller, contributor);
+  if (!controller.roles.includes("controller") && controller.tokenIdentifier !== contributor.tokenIdentifier) throw new Error("contributor_not_owned");
   if (contributor.status !== "active" || !contributor.roles.includes("contributor") ||
     contributor.roles.includes("controller") || contributor.roles.includes("finance-agent")) {
     throw new Error("active_contributor_required");
@@ -25,12 +32,23 @@ async function contributorFor(ctx: MutationCtx, demoIdentity: string, tokenIdent
   return { controller, contributor };
 }
 
-/** Demo controller role is persisted but impersonable; this is not production authentication. */
+/** A contributor reads only its own payout wallet; the address is never secret, the key never leaves the device. */
+export const mine = query({
+  args: { demoIdentity: v.string() },
+  handler: async (ctx, args) => {
+    const contributor = await requireRole(ctx, args.demoIdentity, "contributor");
+    return { tokenIdentifier: contributor.tokenIdentifier, walletAddress: contributor.walletAddress ?? null,
+      verifiedAt: contributor.walletVerification?.verifiedAt ?? null };
+  },
+});
+
+/** Contributors verify their own wallet; the legacy operator selector remains compatible. */
 export const challenge = mutation({
-  args: { demoIdentity: v.string(), contributorTokenIdentifier: v.string(), walletAddress: v.string() },
+  args: { demoIdentity: v.string(), contributorTokenIdentifier: v.string(), walletAddress: v.string(), origin: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const { contributor } = await contributorFor(ctx, args.demoIdentity, args.contributorTokenIdentifier);
     if (contributor.walletVerification) throw new Error("wallet_already_verified");
+    const { domain, uri } = walletOrigin(args.origin);
     const walletAddress = normalizeAddress(args.walletAddress);
     if (walletAddress === "0x0000000000000000000000000000000000000000") throw new Error("invalid_evm_address");
     const now = Date.now(), expiresAt = now + CHALLENGE_TTL_MS;
@@ -38,7 +56,7 @@ export const challenge = mutation({
     // distinguishes challenges; the persisted exact message and consumption prevent replay.
     const nonce = digest({ membership: contributor._id, now, random: Math.random() });
     const message = createSiweMessage({
-      domain: DOMAIN, uri: URI, version: "1", chainId: PAYMENT_CHAIN_ID,
+      domain, uri, version: "1", chainId: PAYMENT_CHAIN_ID,
       address: getAddress(walletAddress), nonce,
       statement: `Register this Base Sepolia payout wallet for Skarl contributor ${contributor.tokenIdentifier}.`,
       requestId: contributor._id, issuedAt: new Date(now), expirationTime: new Date(expiresAt),
@@ -83,7 +101,7 @@ export const verify = mutation({
     });
     await audit(ctx, { organizationId: contributor.organizationId, eventKey: `wallet-verified:${contributor._id}:${challenge.nonce}`,
       actor: actorFor(controller), action: "contributor_wallet_verified", entityType: "memberships", entityId: contributor._id,
-      reason: "Controller registered a Base Sepolia contributor payout wallet after EIP-191 verification of a one-use SIWE challenge.",
+      reason: "Contributor or legacy operator registered a Base Sepolia contributor payout wallet after EIP-191 verification of a one-use SIWE challenge.",
       evidenceReferences: [hashMessage(challenge.message)] });
     return { verified: true as const, replayed: false, walletAddress: challenge.walletAddress, chainId: PAYMENT_CHAIN_ID, verifiedAt };
   },

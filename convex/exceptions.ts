@@ -8,8 +8,9 @@ import type { ReconciliationException as PaymentReconciliationException } from "
 import { makeFunctionReference } from "convex/server";
 const webhookExceptions = makeFunctionReference<"query", { demoIdentity: string; orderId: Id<"orders"> }, ReconciliationException[]>("chainWitness:webhookExceptions");
 
+import type { PolicyException } from "./lib/policyReview";
 import type { BankException } from "./bankWitness";
-type ReconciliationException = PaymentReconciliationException | BankException;
+type ReconciliationException = PaymentReconciliationException | BankException | PolicyException;
 const bankExceptions = makeFunctionReference<"query", { demoIdentity: string; orderId: Id<"orders"> }, BankException[]>("bankWitness:bankExceptions");
 
 const scope = { demoIdentity: v.string(), orderId: v.id("orders") };
@@ -23,10 +24,11 @@ type QueueItem = {
 export const list = query({
   args: scope,
   handler: async (ctx, args): Promise<QueueItem[]> => {
-    const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
     requireTenant(principal, order);
+    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
     const result: { exceptions: ReconciliationException[] } = await ctx.runQuery(api.payments.reconciliation, args);
     result.exceptions.push(...await ctx.runQuery(webhookExceptions, args));
     result.exceptions.push(...await ctx.runQuery(bankExceptions, args));
@@ -37,7 +39,7 @@ export const list = query({
       ...[...current].map(([key, exception]) => ({ exceptionKey: key, exception, stillDetected: true,
         disposition: dispositions.find(row => row.exceptionKey === key) ?? null })),
       ...dispositions.filter(row => !current.has(row.exceptionKey)).map(row => ({ exceptionKey: row.exceptionKey,
-        exception: JSON.parse(row.snapshotJson) as ReconciliationException, stillDetected: false, disposition: row })),
+        exception: JSON.parse(row.snapshotJson) as ReconciliationException, stillDetected: JSON.parse(row.snapshotJson).code === "policy_review" && row.status !== "resolved", disposition: row })),
     ];
   },
 });
@@ -56,10 +58,11 @@ import type { Id } from "./_generated/dataModel";
 async function setDisposition(ctx: MutationCtx, args: {
   demoIdentity: string; orderId: Id<"orders">; exceptionKey: string; reason: string;
 }, status: "acknowledged" | "resolved"): Promise<{ dispositionId: Id<"reconciliationDispositions">; replayed: boolean }> {
-  const principal = await requireRole(ctx, args.demoIdentity, "controller");
+  const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller"]);
   const order = await ctx.db.get(args.orderId);
   if (!order) throw new Error("order_not_found");
   requireTenant(principal, order);
+    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
   const reason = args.reason.trim();
   if (!reason || reason.length > 2000 || !/^[a-f0-9]{64}$/.test(args.exceptionKey)) throw new Error("invalid_exception_disposition");
   const prior = await ctx.db.query("reconciliationDispositions").withIndex("by_exception", q =>

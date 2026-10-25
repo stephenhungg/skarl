@@ -21,12 +21,26 @@ describe("public demo orders (synthetic database, no chain payment)", () => {
       const order = (await ctx.db.get(result.orderId))!;
       const rubric = (await ctx.db.get(order.taskVersionId!))!;
       expect(order).toMatchObject({ buyerTokenIdentifier: "demo:skarl:buyer", status: "awaiting_funding", network: "eip155:84532",
+        autoPay: { enabled: true, maxPerClipAtomic: 1_000_000n, requireAllChecks: true, setBy: "demo:skarl:buyer", setAt: 1_800_000_000_000 },
         budgetAtomic: 1_000_000n, pricePerSampleAtomic: 1_000_000n, quantityRequested: 1n, contributorRateAtomic: 750_000n });
       expect(order.title).toContain("DEMO / TESTNET");
       expect(rubric.taskPrompt).toContain("Pick up the red cup");
       expect(rubric.frozenAt).toBe(order.updatedAt);
       expect(await ctx.db.query("paymentIntents").collect()).toHaveLength(0);
       expect(await ctx.db.query("journalEntries").collect()).toHaveLength(0);
+    });
+  });
+  it("records a changed buyer cap and disable switch without granting caller-selected authority", async () => {
+    const t = await setup();
+    const result = await t.mutation(api.payments.createDemoOrder, { ...input(),
+      autoPay: { enabled: false, maxPerClipAtomic: "500000", requireAllChecks: true } });
+    if (!result.ok) throw new Error("creation failed");
+    await t.run(async ctx => {
+      expect((await ctx.db.get(result.orderId))?.autoPay).toEqual({ enabled: false, maxPerClipAtomic: 500_000n,
+        requireAllChecks: true, setBy: "demo:skarl:buyer", setAt: 1_800_000_000_000 });
+      expect(await ctx.db.query("auditEvents").collect()).toContainEqual(expect.objectContaining({
+        entityId: result.orderId, action: "auto_pay_policy_set", actor: { kind: "human", identity: "demo:skarl:buyer" } }));
+      expect(await ctx.db.query("approvals").collect()).toHaveLength(0);
     });
   });
   it("enforces per-IP limits without inserting orders or consuming global capacity on refusals, then resets next hour", async () => {

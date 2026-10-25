@@ -8,7 +8,7 @@ import { demoToken, requireRole } from "./lib/demoAuth";
 import { paymentBinding, sourceVersion } from "./lib/finance";
 import schema from "./schema";
 
-// In-memory authorization fixtures only: no OAuth exchange, password hashing,
+// In-memory authorization fixtures only: no OAuth exchange,
 // email verification, inference, wallet signing, or chain transfer happens here.
 const modules = import.meta.glob(["./**/*.{js,ts}", "!./**/*.test.ts"]);
 type Test = TestConvex<typeof schema>;
@@ -118,6 +118,18 @@ describe("signed-in principals and optional demo identities", () => {
     await expect(u.signedIn.query(api.dashboard.journal, { demoIdentity: "controller", orderId: f.orderId })).rejects.toThrow();
     expect(await u.signedIn.query(memberships.me, {})).toMatchObject({ email: "new@example.test", roles: [], demoMode: true });
     expect(await f.t.query(api.dashboard.journal, { demoIdentity: "controller", orderId: f.orderId })).toEqual([]);
+  });
+
+  it("never falls back to demo contributor when a signed-in membership is revoked", async () => {
+    const f = await setup(), u = await user(f.t, "revoked@example.test");
+    await u.signedIn.mutation(memberships.claimRole, { role: "contributor" });
+    await f.t.run(async ctx => {
+      const member = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
+        q.eq("tokenIdentifier", u.tokenIdentifier)).unique();
+      await ctx.db.patch(member!._id, { status: "revoked" });
+    });
+    await expect(u.signedIn.run(ctx => requireRole(ctx, "contributor", "contributor"))).rejects.toThrow("inactive_membership");
+    expect((await f.t.run(ctx => requireRole(ctx, "contributor", "contributor"))).tokenIdentifier).toBe(demoToken("contributor"));
   });
 
   it("refuses unauthenticated role claims while preserving default demo reads", async () => {
@@ -349,4 +361,13 @@ describe("action authentication propagation", () => {
       requestedBy: { kind: "service", identity: demoToken("finance-agent") } }]);
     expect(state.approvals).toEqual([]);
   });
+});
+
+it("never exposes the internal policy-engine role through self-service onboarding", async () => {
+  const f = await setup(), buyer = await user(f.t, "buyer-policy@example.test");
+  await buyer.signedIn.mutation(memberships.claimRole, { role: "buyer" });
+  await expect(buyer.signedIn.mutation(memberships.claimRole, { role: "policy-engine" as never })).rejects.toThrow();
+  expect((await buyer.signedIn.query(memberships.me, {})).roles).toEqual(["buyer"]);
+  expect(await f.t.run(ctx => ctx.db.query("memberships").withIndex("by_token_identifier", q =>
+    q.eq("tokenIdentifier", "service:skarl:policy-engine")).unique())).toBeNull();
 });

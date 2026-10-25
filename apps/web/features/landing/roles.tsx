@@ -13,7 +13,7 @@ const NODES: Node[] = [
   { id: "contributor", label: "Contributor", tag: "Person", x: 1050, y: 80, kind: "person" },
   { id: "verifier", label: "Verifier", tag: "AI", x: 600, y: 240, kind: "ai" },
   { id: "agent", label: "Finance agent", tag: "AI", x: 200, y: 380, kind: "ai" },
-  { id: "controller", label: "Controller", tag: "Person", x: 1000, y: 380, kind: "person" },
+  { id: "policy", label: "Buyer-signed rule", tag: "Deterministic", x: 1000, y: 380, kind: "thing" },
   { id: "payout", label: "Payout", x: 1000, y: 500, kind: "thing" },
 ];
 
@@ -75,7 +75,7 @@ export function Roles() {
         <SectionHeader id="roles-title" eyebrow="Roles" title="Who can do what on Skarl" />
         <div ref={root} className="mt-10 overflow-x-auto">
           <svg viewBox={`0 0 ${W} ${H}`} className="block w-full min-w-[720px]" role="img"
-            aria-label="Buyer funds a task, a contributor records a clip, the AI verifier sends evidence to a person who is the controller, the finance agent drafts a payout, the controller approves it and the contributor is paid. The finance agent can't approve its own payout.">
+            aria-label="Buyer funds a task, a contributor records a clip, the AI verifier supplies evidence, the finance agent drafts a payout, the buyer-signed deterministic rule approves it within its cap and the contributor is paid. The finance agent can't approve its own payout.">
             <defs>
               <marker id="roles-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                 <path d="M0,1 L9,5 L0,9" fill="none" stroke="rgb(var(--slate-300))" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

@@ -3,8 +3,8 @@
 ## Current status
 
 Server role checks protect acceptance/payable/journal posting, independent
-approval and refusal audits. Additive Convex Auth password and optional GitHub
-sign-in is implemented in source; operator configuration and deployment are
+approval and refusal audits. Convex Auth with Google-only real sign-in
+on web and mobile is implemented in source; operator configuration and deployment are
 required before live authentication is claimed. See [authentication](auth.md).
 Unsigned demo selectors remain impersonable when demo mode is enabled (the
 default); only intended demo assets and testnet funds belong on that path.
@@ -21,17 +21,18 @@ The UI labels that fallback as a demo identity. Turning it off also refuses
 unsigned role-gated demo scripts and integrations.
 
 Signed-in humans may claim buyer or contributor in the demo organization.
-Controller claims require both an allowlisted email and verified email ownership;
-password signup alone does not prove ownership. Humans cannot claim finance-agent.
+Legacy controller claims require both an allowlisted email and verified email ownership;
+Google's `email_verified` claim must be exactly `true`. Humans cannot claim finance-agent or the internal policy-engine role.
 Contributor/controller role conflicts, agent-approval refusals and independent
 self-approval checks remain server-enforced. See [controller onboarding](auth.md#membership-and-onboarding-api)
-for the operator verification process and remaining password reset limitation.
+for Google setup and the operator allowlist policy.
 
 | Principal | Allowed authority | Excluded authority |
 | --- | --- | --- |
-| Buyer | Create/fund own order, read licensed deliveries, request cancellation | Approve contributor settlement merely by being a buyer |
+| Buyer | Create/fund own order, set/change auto-pay rule, review own order’s exceptions, read licensed deliveries, request cancellation | Review another buyer’s order, approve their own proposal, rewrite posted journals |
 | Contributor | Read offered terms, upload own contribution, view own earnings | Accept own work, alter rates, access others' originals, approve/pay |
-| Controller | Review evidence and authorize exact settlement proposals | Rewrite posted journals or approve a request made by the same principal |
+| Legacy controller | Compatibility evidence review and authorization of exact settlement proposals | Rewrite posted journals or approve a request made by the same principal |
+| Internal policy-engine | Apply buyer-signed rule to eligible acceptance and bound within-cap payouts | Model-selected authority, public identity selection, approval above buyer cap |
 | Finance agent | Read projections, create payment proposals, submit an already approved intent via Wallet MCP | Approve any proposal (including its own), change recipient/amount, hold a signing key |
 | AI analysis (Convex action; deferred: worker service) | Read job-scoped input, attach evidence and recommendations | Accept deliveries, post journals, create payables, sign or approve transfers |
 | Payment gateway service | Record verified payment attempts/observations through narrow operations | Invent buyer authorization, change order terms, grant controller membership |
@@ -43,10 +44,7 @@ decision. Keep authorization checks inside the mutation that changes the state.
 
 An approval binds chain ID, token address, amount, recipient, source obligation, source
 version, expiry, and proposal identity. Any material change requires a new
-approval. The proposed independent signer is the controller's browser wallet;
-no worker, agent or web runtime ever receives a treasury or controller
-private key. A Wallet MCP `send` still requires the controller's approval in
-Coinbase Wallet.
+approval. The internal policy approver is distinct from the proposer. The CDP executor independently constrains execution; browser Wallet/MCP signing remains a compatibility path. No worker, model agent or web runtime receives a treasury private key. Wallet MCP approval mode requires the connected human’s confirmation, so it is not the auto-pay happy path.
 
 ## Proposed worker/payment gateway protocol
 

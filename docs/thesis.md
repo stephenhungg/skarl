@@ -1,8 +1,8 @@
 # Every claim has a witness
 
-**Skarl is the autonomous settlement desk for human-data companies. Independent witnesses must agree before anything moves: agents argue the case, deterministic code decides, and humans approve exceptions.** Every payout requires independent human approval.
+**Skarl is the autonomous settlement desk for human-data companies. Independent witnesses must agree before anything moves.** Agents propose, a rule the buyer signed approves, the AI never approves itself. Only exceptions need buyer review.
 
-Seats: **settlement accountant + AP clerk**. Did the work happen, is it a new obligation, and did payment settle?
+Seats: **settlement accountant + AP clerk**, performed by the finance agent and buyer-signed policy. Did the work happen, is it a new obligation, and did payment settle?
 
 ## The witness table
 
@@ -20,13 +20,13 @@ Seats: **settlement accountant + AP clerk**. Did the work happen, is it a new ob
 | MONEY | **Bank = Capital One Nessie mock:** compare funding activity. | **Live mock API:** 10-USDC order/ledger/chain/bank match. No fiat movement or payout match. |
 | JUDGMENT | **Deterministic judge:** rubric, consent, source and financial invariants. | **Live:** negative inference stays review-only; duplicate/payable refusals simulated. |
 | JUDGMENT | **Claude + Gemini finance agents:** argue/explain; cannot approve. | **Both live:** stored read-only tool loops; neither proposed or paid in those runs. |
-| JUDGMENT | **CDP Policy Engine; human controller in Coinbase Wallet.** | **Policy live:** actual cap/recipient `403`s. **Payout pending:** independent approval and signing still required. |
+| JUDGMENT | **Buyer-signed policy approver + independent CDP wallet cap.** | **CDP policy live:** actual cap/recipient `403`s. **Application auto-pay:** source implementation; deployment and an eligible live payout remain unverified. |
 | NERVOUS SYSTEM | **Convex live queries, Workflow component, scheduler, crons, storage, Node actions, typed validators.** | **Live:** stored queries/uploads/scheduled inference/finance action/EAS cron. Workflow installed; wait/resume tested. Settlement/finance cron observations pending. |
 
 Cartesia and physical iPhone IMU remain unverified. EAS proves recorded provenance, not correctness. Same-family models and shared infrastructure can fail together: separated checks are not statistical independence.
 
 ## The moment
 
-**Duplicate caught → second payable blocked → agent self-approval refused → controller approves in Coinbase Wallet → chain + ledger agree.** Full live sequence: **pending**. Label simulations and funding receipts explicitly. Funding also matches the **mock bank**; payout agreement remains pending.
+**Duplicate caught → second payable blocked → agent self-approval refused → buyer-signed policy approves eligible work → CDP cap guards execution → chain + ledger agree.** Full live sequence: **pending**. Label simulations and funding receipts explicitly. Funding also matches the **mock bank**; payout agreement remains pending.
 
 Target: fewer duplicate obligations and less reconciliation work. No measured savings or customer adoption claimed. Preserve private originals, evaluate consented clips, and replace impersonable demo identities before production. [Submission](devpost.md) · [Demo](demo-script.md) · [Judge scenarios](hyphenate-scenarios.md).

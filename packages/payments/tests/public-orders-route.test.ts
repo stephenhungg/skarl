@@ -33,8 +33,25 @@ describe("public order HTTP contract", () => {
     expect(args.ipDigest).toBe(createHmac("sha256", secret).update("203.0.113.1").digest("hex"));
     expect(args.ipDigest).not.toContain("203.0.113.1");
   });
-  it.each(['{"budgetAtomic":"9999999"}', '{"taskPrompt":"injected"}', '{"payTo":"attacker"}', "[]", "null", "false", "invalid", " ".repeat(257)])("refuses arbitrary body %s", async body => {
+  it.each(['{"budgetAtomic":"9999999"}', '{"taskPrompt":"injected"}', '{"payTo":"attacker"}', "[]", "null", "false", "invalid", " ".repeat(513)])("refuses arbitrary body %s", async body => {
     expect((await POST(request(body))).status).toBe(400);
+    expect(mocks.mutation).not.toHaveBeenCalled();
+  });
+  it("records the buyer-selected cap and disable switch without accepting arbitrary terms", async () => {
+    const autoPay = { enabled: false, maxPerClipAtomic: "500000", requireAllChecks: true };
+    const response = await POST(request(JSON.stringify({ autoPay })));
+    expect(response.status).toBe(201);
+    expect(mocks.mutation.mock.calls[0]![1].autoPay).toEqual(autoPay);
+    expect(await response.json()).toMatchObject({ autoPay });
+  });
+  it.each([
+    { enabled: true, maxPerClipAtomic: "1.5", requireAllChecks: true },
+    { enabled: true, maxPerClipAtomic: "0", requireAllChecks: true },
+    { enabled: true, maxPerClipAtomic: "1000000", requireAllChecks: false },
+    { enabled: true, maxPerClipAtomic: "1000000", requireAllChecks: true, setBy: "policy-engine" },
+    { enabled: true, maxPerClipAtomic: "9223372036854775808", requireAllChecks: true },
+  ])("refuses invalid or caller-forged policy fields: %j", async autoPay => {
+    expect((await POST(request(JSON.stringify({ autoPay })))).status).toBe(400);
     expect(mocks.mutation).not.toHaveBeenCalled();
   });
   it("does not trust forwarded headers outside Vercel", async () => {

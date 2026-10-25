@@ -1,11 +1,13 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { workflow, controllerApproved } from "./approvalWorkflow";
-import { mutation } from "./_generated/server";
+import { makeFunctionReference } from "convex/server";
+import { mutation, internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { DemoRoleError, demoToken, requireRole, type DemoPrincipal, type DemoRole } from "./lib/demoAuth";
-import { actorFor, audit, digest, normalizeAddress, paymentBinding, recordJournal, sourceVersion } from "./lib/finance";
+import { actorFor, audit, digest, normalizeAddress, paymentBinding, recordJournal, sourceVersion, requireBuyerOrder } from "./lib/finance";
+import { resolvePolicyReview } from "./lib/policyReview";
 import { compareFrameHashes } from "./lib/copyDetection";
 import { createFulfillmentJournal } from "../packages/ledger/src/index";
 import { MAX_ATOMIC_USDC, PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
@@ -30,13 +32,17 @@ export async function refuse(ctx: MutationCtx, principal: DemoPrincipal, entity:
 }
 
 
-export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity: string; submissionId: Id<"submissions"> }) {
-    const auth = await authorize(ctx, args.demoIdentity, "controller");
+export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity: string; submissionId: Id<"submissions"> }, servicePrincipal?: DemoPrincipal) {
+    const auth = servicePrincipal ? { principal: servicePrincipal, denied: undefined } : await authorize(ctx, args.demoIdentity, ["buyer", "controller"]);
     if (!auth.principal) return { ok: false as const, code: auth.denied! };
     const principal = auth.principal;
     const submission = await ctx.db.get(args.submissionId);
     if (!submission || submission.organizationId !== principal.organizationId) return { ok: false as const, code: "not_found" };
     if (auth.denied) return refuse(ctx, principal, submission, "acceptance", auth.denied);
+    const ownedOrder = await ctx.db.get(submission.orderId);
+    if (!ownedOrder) return { ok: false as const, code: "not_found" };
+    requireBuyerOrder(principal, ownedOrder);
+    if (principal.roles.includes("finance-agent") || principal.tokenIdentifier === demoToken("finance-agent")) return refuse(ctx, principal, submission, "acceptance", "agent_approval_refused");
     if (submission.contributorTokenIdentifier === principal.tokenIdentifier) return refuse(ctx, principal, submission, "acceptance", "self_review_refused");
     if (submission.verificationOnly) return refuse(ctx, principal, submission, "acceptance", "verification_only_not_licensed");
     const eventKey = `fulfillment:${submission._id}`;
@@ -59,9 +65,17 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
     const perceptual = submission.perceptualHash ? await ctx.db.query("submissions").withIndex("by_perceptual_hash", q =>
       q.eq("organizationId", submission.organizationId).eq("perceptualHash", submission.perceptualHash)).collect() : [];
     const frameCandidates = submission.frameDHashes?.length ? await ctx.db.query("submissions")
-      .withIndex("by_org_status", q => q.eq("organizationId", submission.organizationId).eq("status", "accepted")).take(201) : [];
+      .withIndex("by_org_status", q => q.eq("organizationId", submission.organizationId).eq("status", "accepted"))
+      .filter(q => q.neq(q.field("simulationOnly"), true)).take(201) : [];
     if (frameCandidates.length > 200) return refuse(ctx, principal, submission, "acceptance", "copy_check_capacity_exceeded");
-    const matching = [...exact, ...perceptual, ...frameCandidates].find(candidate => candidate._id !== submission._id && candidate.status === "accepted" &&
+    // Simulated replay obligations must never poison the real duplicate pool.
+    const eligibleCandidates = [];
+    for (const candidate of [...exact, ...perceptual, ...frameCandidates]) {
+      const candidateOrder = candidate.orderId === ownedOrder._id ? ownedOrder : await ctx.db.get(candidate.orderId);
+      if (candidateOrder?.publicId.startsWith("scenario:") && candidate.orderId !== submission.orderId) continue;
+      eligibleCandidates.push(candidate);
+    }
+    const matching = eligibleCandidates.find(candidate => candidate._id !== submission._id && candidate.status === "accepted" &&
       (candidate.sourceHash === submission.sourceHash || (!!candidate.perceptualHash && candidate.perceptualHash === submission.perceptualHash) ||
         compareFrameHashes(submission.frameDHashes ?? [], candidate.frameDHashes ?? []) !== null));
     if (matching) {
@@ -105,7 +119,7 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
       const reviewer = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
         q.eq("tokenIdentifier", humanDecision.reviewerTokenIdentifier)).unique();
       humanAccepted = !!reviewer && reviewer.organizationId === submission.organizationId && reviewer.status === "active" &&
-        reviewer.roles.includes("controller") && !reviewer.roles.includes("finance-agent") && !reviewer.roles.includes("contributor") &&
+        (reviewer.roles.includes("controller") || reviewer.roles.includes("buyer") && reviewer.tokenIdentifier === order.buyerTokenIdentifier) && !reviewer.roles.includes("finance-agent") && !reviewer.roles.includes("contributor") &&
         reviewer.tokenIdentifier !== submission.contributorTokenIdentifier && reviewer.tokenIdentifier !== demoToken("finance-agent");
     }
     const machineAccepted = analysis?.implementation === "inference" && analysis.pipelineStatus === "completed" && analysis.recommendation === "accept";
@@ -131,7 +145,7 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
     const decisionId = humanAccepted ? humanDecision!._id : await ctx.db.insert("reviewDecisions", {
       organizationId: submission.organizationId, submissionId: submission._id, analysisResultId: analysis!._id,
       taskVersionId: rubric._id, decisionKey: `accept:${submission._id}`, decision: "accepted",
-      reviewerTokenIdentifier: principal.tokenIdentifier, reason: "Controller accepted the stored completed inference report.",
+      reviewerTokenIdentifier: principal.tokenIdentifier, reason: servicePrincipal ? "Buyer-signed policy accepted all stored verification checks." : "Buyer accepted the stored evidence report.",
       evidenceHash: analysis!.reportHash, decidedAt: now,
     });
     const journalEntryId = await recordJournal(ctx, submission.organizationId, createFulfillmentJournal({
@@ -158,7 +172,7 @@ export async function acceptAndPublishFor(ctx: MutationCtx, args: { demoIdentity
 }
 export const acceptAndPublish = mutation({
   args: { demoIdentity: v.string(), submissionId: v.id("submissions") },
-  handler: acceptAndPublishFor,
+  handler: (ctx, args) => acceptAndPublishFor(ctx, args),
 });
 
 export async function proposePaymentFor(ctx: MutationCtx, args: { demoIdentity: string; payableId: Id<"payables"> }) {
@@ -202,7 +216,8 @@ async function proposeAuthorizedPayment(ctx: MutationCtx, args: { payableId: Id<
     await ctx.db.patch(intentId, { approvalWorkflowId });
     await audit(ctx, { organizationId: payable.organizationId, eventKey: `proposed:${payable._id}`, actor: actorFor(principal),
       action: "payment_proposed", entityType: "paymentIntents", entityId: intentId,
-      reason: "Proposal derived from the stored payable; independent controller approval required.", evidenceReferences: [payable._id, paymentCommandId] });
+      reason: "Proposal derived from the stored payable; buyer-signed policy or buyer review approval required.", evidenceReferences: [payable._id, paymentCommandId] });
+    await ctx.scheduler.runAfter(0, makeFunctionReference<"mutation", { intentId: Id<"paymentIntents"> }>("policy:policyApproval"), { intentId });
     return { ok: true as const, intentId, paymentCommandId, replayed: false };
 }
 export const proposePayment = mutation({
@@ -220,15 +235,18 @@ export async function refuseAgentApprovalFor(ctx: MutationCtx, intentId: Id<"pay
       intent.requesterTokenIdentifier === principal.tokenIdentifier ? "self_approval_refused" : "agent_approval_refused", [intent.paymentCommandId]);
 }
 
-export async function approveFor(ctx: MutationCtx, args: {demoIdentity: string; intentId: Id<"paymentIntents">}) {
-    const auth = await authorize(ctx, args.demoIdentity, "controller");
+export async function approveFor(ctx: MutationCtx, args: {demoIdentity: string; intentId: Id<"paymentIntents">; reason?: string}, servicePrincipal?: DemoPrincipal) {
+    const auth = servicePrincipal ? { principal: servicePrincipal, denied: undefined } : await authorize(ctx, args.demoIdentity, ["buyer", "controller"]);
     if (!auth.principal) return { ok: false as const, code: auth.denied! };
     const principal = auth.principal;
     const intent = await ctx.db.get(args.intentId);
     if (!intent || intent.organizationId !== principal.organizationId) return { ok: false as const, code: "not_found" };
     if (intent.kind !== "contributor_payout") return refuse(ctx, principal, intent, "payment_approval", "not_a_payout_intent");
     if (intent.requesterTokenIdentifier === principal.tokenIdentifier) return refuse(ctx, principal, intent, "payment_approval", "self_approval_refused", [intent.paymentCommandId]);
-    if (auth.denied) return refuse(ctx, principal, intent, "payment_approval", auth.denied, [intent.paymentCommandId]);
+    if (auth.denied || principal.roles.includes("finance-agent") || principal.tokenIdentifier === demoToken("finance-agent")) return refuse(ctx, principal, intent, "payment_approval", principal.roles.includes("finance-agent") || principal.tokenIdentifier === demoToken("finance-agent") ? "agent_approval_refused" : auth.denied!, [intent.paymentCommandId]);
+    const order = await ctx.db.get(intent.orderId);
+    if (!order) return refuse(ctx, principal, intent, "payment_approval", "order_not_found");
+    requireBuyerOrder(principal, order);
     const command = await ctx.db.get(intent.paymentCommandId);
     const payable = await ctx.db.get(intent.payableId);
     if (!command || !payable || command.organizationId !== intent.organizationId || payable.organizationId !== intent.organizationId ||
@@ -256,10 +274,12 @@ export async function approveFor(ctx: MutationCtx, args: {demoIdentity: string; 
     if (intent.status !== "proposed" || command.status !== "proposed" || payable.status !== "accrued" || command.attemptCount !== 0) {
       return refuse(ctx, principal, intent, "payment_approval", "payment_not_approvable");
     }
+    const reviewReason = args.reason?.trim();
+    if (args.reason !== undefined && (!reviewReason || args.reason.length > 2000)) return refuse(ctx, principal, intent, "payment_approval", "invalid_approval_reason");
     const now = Date.now();
     const approvalId = await ctx.db.insert("approvals", { organizationId: intent.organizationId, paymentCommandId: command._id,
       requestedBy: command.requestedBy, approverTokenIdentifier: principal.tokenIdentifier, bindingHash: intent.bindingHash,
-      status: "approved", reason: "Independent demo controller approved exact stored payout terms.", decidedAt: now, expiresAt: intent.expiresAt });
+      status: "approved", reason: servicePrincipal ? "Buyer-signed policy approved exact stored payout terms within the cap." : reviewReason ?? "Buyer review approved exact stored payout terms.", decidedAt: now, expiresAt: intent.expiresAt });
     await ctx.db.patch(command._id, { status: "approved", approvalId, updatedAt: now });
     await ctx.db.patch(intent._id, { status: "approved", updatedAt: now });
     await ctx.db.patch(payable._id, { status: "payout_in_progress" });
@@ -269,10 +289,38 @@ export async function approveFor(ctx: MutationCtx, args: {demoIdentity: string; 
       value: { approvalId, bindingHash: intent.bindingHash } });
     await audit(ctx, { organizationId: intent.organizationId, eventKey: `approved:${intent._id}`, actor: actorFor(principal),
       action: "payment_approved", entityType: "paymentIntents", entityId: intent._id,
-      reason: "Independent approval recorded; wallet execution and chain reconciliation remain separate.", evidenceReferences: [approvalId, command._id] });
+      reason: reviewReason ?? "Independent approval recorded; wallet execution and chain reconciliation remain separate.", evidenceReferences: [approvalId, command._id] });
+    await resolvePolicyReview(ctx, order._id, intent._id, principal.tokenIdentifier, "Payout approved with exact stored terms.");
     return { ok: true as const, approvalId, paymentCommandId: command._id, replayed: false };
 }
 export const approve = mutation({
-  args: {demoIdentity: v.string(), intentId: v.id("paymentIntents")},
-  handler: approveFor,
+  args: {demoIdentity: v.string(), intentId: v.id("paymentIntents"), reason: v.optional(v.string())},
+  handler: (ctx, args) => approveFor(ctx, args),
+});
+
+/** Same finance-service proposal path used by the typed agent tools. */
+export const proposeAccepted = internalMutation({
+  args: { payableId: v.id("payables") },
+  handler: (ctx, args) => proposeAgentPaymentFor(ctx, args),
+});
+export const reject = mutation({
+  args: { demoIdentity: v.string(), intentId: v.id("paymentIntents"), reason: v.string() },
+  handler: async (ctx, args) => {
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller"]);
+    if (principal.roles.includes("finance-agent")) throw new Error("agent_approval_refused");
+    const intent = await ctx.db.get(args.intentId);
+    if (!intent || intent.kind !== "contributor_payout") throw new Error("payout_not_found");
+    const order = await ctx.db.get(intent.orderId);
+    if (!order) throw new Error("order_not_found");
+    requireBuyerOrder(principal, order);
+    if (!args.reason.trim() || args.reason.length > 2000) throw new Error("invalid_rejection_reason");
+    const command = await ctx.db.get(intent.paymentCommandId);
+    if (!command || command.attemptCount || !["proposed", "cancelled"].includes(command.status)) throw new Error("payment_not_rejectable");
+    await ctx.db.patch(intent._id, { status: "cancelled", updatedAt: Date.now() });
+    await ctx.db.patch(command._id, { status: "cancelled", updatedAt: Date.now() });
+    await audit(ctx, { organizationId: order.organizationId, eventKey: `payment_rejected:${intent._id}`, actor: actorFor(principal),
+      action: "payment_rejected", entityType: "paymentIntents", entityId: intent._id, reason: args.reason.trim(), evidenceReferences: [command._id] });
+    await resolvePolicyReview(ctx, order._id, intent._id, principal.tokenIdentifier, args.reason.trim());
+    return { ok: true as const };
+  },
 });

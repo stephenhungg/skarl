@@ -11,8 +11,8 @@ import { useSession } from '../session';
 import { Empty, H1, Pill, Section, t } from '../components/Primitives';
 import { PressableScale } from '../components/PressableScale';
 import { TaskArt } from '../components/TaskArt';
-import { ChevronRight, ClockIcon } from '../components/Icons';
-import type { TabProps } from '../navigation';
+import { ChevronRight, ClockIcon, ProfileIcon } from '../components/Icons';
+import type { RootProps } from '../navigation';
 
 type Chip = 'Category' | 'Pay' | 'Time';
 const CHIPS: Chip[] = ['Category', 'Pay', 'Time'];
@@ -38,7 +38,7 @@ function TaskCard({ task, onPress, index }: { task: LiveTask; onPress(): void; i
   </Animated.View>;
 }
 
-export function TasksScreen({ navigation }: TabProps<'Tasks'>) {
+export function TasksScreen({ navigation }: RootProps<'Tasks'>) {
   const insets = useSafeAreaInsets();
   const { task, loading, missing, live } = useLiveTask();
   const { draft } = useSession();
@@ -57,12 +57,15 @@ export function TasksScreen({ navigation }: TabProps<'Tasks'>) {
   }, [tasks, category, chip]);
   const pendingTake = draft && !draft.attached && !draft.attachmentClosed;
 
-  return <ScrollView style={s.screen} contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 120, paddingHorizontal: gutter }}>
+  return <ScrollView style={s.screen} contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40, paddingHorizontal: gutter }}>
     <Animated.View entering={FadeIn.duration(400)} style={s.header}>
       <View style={{ flex: 1, gap: 14 }}>
         <Wordmark size={18} />
         <H1>Tasks</H1>
       </View>
+      <PressableScale accessibilityRole="button" accessibilityLabel="Profile" onPress={() => navigation.navigate('Profile')} style={s.profile}>
+        <ProfileIcon size={20} />
+      </PressableScale>
     </Animated.View>
 
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -gutter, marginTop: 18 }} contentContainerStyle={{ paddingHorizontal: gutter, gap: 8 }}>
@@ -114,6 +117,8 @@ export function TasksScreen({ navigation }: TabProps<'Tasks'>) {
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: c.paper },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  profile: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginTop: -10,
+    backgroundColor: c.card, borderWidth: StyleSheet.hairlineWidth, borderColor: c.hairline },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, paddingHorizontal: 15, borderRadius: radius.pill,
     backgroundColor: c.card, borderWidth: StyleSheet.hairlineWidth, borderColor: c.hairline },
   chipActive: { backgroundColor: c.ink, borderColor: c.ink },

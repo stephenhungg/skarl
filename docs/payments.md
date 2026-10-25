@@ -2,9 +2,13 @@
 
 Updated October 25, 2026. **Base Sepolia primary; optional Solana Devnet funding; test funds.** Implementation and tests do not establish a live transfer.
 
+## Buyer-signed auto-pay
+
+The happy path uses the order’s buyer-signed rule for deterministic approval, then the existing CDP executor (`PAYOUT_EXECUTOR=cdp_agent`). The internal policy service is distinct from the proposing finance agent; its per-clip cap and the independent CDP wallet cap both apply. Exceptions go to the order’s buyer in Review. Browser-wallet and Wallet MCP payout signing below remain compatibility paths, not required human controller steps. Deployment and a live eligible payout remain unverified; the operator configures Convex separately.
+
 ## Current implementation boundary
 
-Implemented: dynamic x402 funding, durable nonce claims, receipt verification, atomic funding/payout journals, three-way reconciliation, a testnet buyer CLI, and a controller browser-wallet payout library. The HTTP payment service authenticates to Convex with a shared secret. Existing intents, attempts, approvals, observations and journals are reused. Funding-related network/token validators accept both rails; payout validators stay Base-only. Solana message hashes have a dedicated deduplication index.
+Implemented: dynamic x402 funding, durable nonce claims, receipt verification, atomic funding/payout journals, three-way reconciliation, a testnet buyer CLI, and a legacy browser-wallet payout library. The HTTP payment service authenticates to Convex with a shared secret. Existing intents, attempts, approvals, observations and journals are reused. Funding-related network/token validators accept both rails; payout validators stay Base-only. Solana message hashes have a dedicated deduplication index.
 
 Prior live funding evidence is recorded in [build status](status.md), including the v2 order's reconciled 10 USDC funding. A later live Solana funding retry is recorded below; no live payout is claimed. A fresh public facilitator `/supported` read on October 25 returned V2 `exact`, `upto`, and `batch-settlement` on `eip155:84532`, plus `builder-code`, `eip2612GasSponsoring`, and `erc20ApprovalGasSponsoring` extensions. Skarl still enables **exact only**. Buyer ETH is unnecessary for EIP-3009 funding: the buyer signs an authorization and the facilitator pays transaction gas. Wallet MCP execution requires a connected human wallet and approval.
 
@@ -19,12 +23,12 @@ Default facilitator: `https://x402.org/facilitator`, which needs no CDP key for 
 ## Setup
 
 1. Run `pnpm install`. Use the shared Convex deployment specified in [setup](setup.md). The deployment owner deploys the merged backend from `origin/main`; individual payment worktrees must not deploy to the cloud. Run `pnpm check:convex` only in an isolated checkout without cloud deployment configuration.
-2. Configure `apps/web/.env.local`: `NEXT_PUBLIC_CONVEX_URL`, `SKARL_PAYMENTS_SERVICE_SECRET`, and `SKARL_TREASURY_ADDRESS` (the human controller's receiving/signing address). Optional: `BASE_SEPOLIA_RPC_URL`, facilitator override or CDP keys. Never put a treasury private key in any app or agent configuration.
+2. Configure `apps/web/.env.local`: `NEXT_PUBLIC_CONVEX_URL`, `SKARL_PAYMENTS_SERVICE_SECRET`, and `SKARL_TREASURY_ADDRESS` (the treasury receiving address; legacy browser-wallet signing uses its wallet). Optional: `BASE_SEPOLIA_RPC_URL`, facilitator override or CDP keys. Never put a treasury private key in any app or agent configuration.
 3. The generated payment service secret is stored only in `~/.config/skarl/payments.env` and the gitignored `apps/web/.env.local`, both mode 600. The same value has been set in the shared Convex dev deployment with `convex env set`. For another deployment, install that value privately via your environment manager; never paste it into source or logs.
 4. Start the app with `pnpm dev`. The default seeded order, `skarl-red-cup-demo-v2`, costs **10 USDC**: four samples at 2.50 USDC (`4n * 2_500_000n = 10_000_000n` micro-USDC). Its contributor rate is 1.875 USDC per sample, preserving the 75% ratio. The unchanged 100 USDC v1 order remains available explicitly for compatibility. Faucet allowances and wallet balances must be checked at runtime; a single CDP USDC faucet claim may not cover the 10 USDC order. Buyer ETH is not required.
 5. Run `SKARL_APP_URL=http://localhost:3000 pnpm agent:fund skarl-red-cup-demo-v2`. For remote use, `SKARL_APP_URL` must be HTTPS. Omitting the order argument also selects v2. The script checks chain ID and USDC balance before signing, pins the returned quote, and prints a BaseScan link when a hash is available. It never queries or requires buyer ETH. If `SKARL_TREASURY_ADDRESS` is unset or invalid on the web server, GET/POST return HTTP 503 with configuration guidance; the buyer reports the missing receiving address before signing. The original local-key buyer reads the treasury from the quote. The CDP buyer requires the approved treasury locally as an independent payee allowlist.
 
-Buyer address: `0xa54DABc8583B869d488d63d691EC5d6a256c1a9D`. The CLI generates and retains its testnet-only key in `~/.config/skarl/buyer.env` (600). `pnpm agent:fund --address` shows the address without the key. Do not copy this key into the web environment. [Circle USDC faucet](https://faucet.circle.com). Controller payout gas is separate from gasless buyer funding.
+Buyer address: `0xa54DABc8583B869d488d63d691EC5d6a256c1a9D`. The CLI generates and retains its testnet-only key in `~/.config/skarl/buyer.env` (600). `pnpm agent:fund --address` shows the address without the key. Do not copy this key into the web environment. [Circle USDC faucet](https://faucet.circle.com). Payout gas is separate from gasless buyer funding.
 
 ## CDP buyer and paid sample evidence
 
@@ -112,7 +116,7 @@ SDK integration traps verified locally: `@coinbase/cdp-sdk/x402` imports its opt
 
 ## Solana rail
 
-Solana Devnet is a second **funding-only** rail targeting MLH Best Use of Solana. Coinbase/CDP and Base remain primary. Canonical network is `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`; USDC mint is `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, six decimals. There is no bridge or Solana payout flow: controller-approved browser-wallet payouts still require Base USDC liquidity.
+Solana Devnet is a second **funding-only** rail targeting MLH Best Use of Solana. Coinbase/CDP and Base remain primary. Canonical network is `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`; USDC mint is `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, six decimals. There is no bridge or Solana payout flow: all payouts still require Base USDC liquidity.
 
 The CDP receive-only account `skarl-treasury-devnet` is `5vrHh4EG9dChLEEAkgedPUEq2gjYj95822kSjsCXPshh`. Its canonical USDC associated token account (ATA), `CtgPLBxHZU1UZcyovafXuQR2cVAFvpHksPh5HCBDJWHY`, was initialized through the USDC faucet and independently observed on Devnet before enabling payment. Its public address is configured as `SKARL_SOLANA_TREASURY_ADDRESS` in Vercel production and Convex. No treasury signing operation is used by this integration.
 

@@ -257,7 +257,7 @@ function ExceptionRow({ orderId, item }: { orderId: Id<"orders">; item: Exceptio
   const [reason, setReason] = useState("");
   const disposition = item.disposition?.status;
   const resolved = disposition === "resolved";
-  const chain = chainRef(item.exception.chainIdentity);
+  const chain = chainRef("chainIdentity" in item.exception ? item.exception.chainIdentity : undefined);
   const bank = item.exception.code === "bank_mismatch";
 
   async function submit() {

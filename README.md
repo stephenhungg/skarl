@@ -2,13 +2,23 @@
 
 **Every claim has a witness.**<br>
 Skarl is the autonomous settlement desk for human-data companies: independent witnesses must agree before anything moves.<br>
-Agents argue the case, deterministic code decides, and humans approve exceptions. Every payout currently requires independent human approval and wallet signing.
+Agents propose, a rule the buyer signed approves, the AI never approves itself. The buyer reviews exceptions; there is no separate controller in the user flow.
 
 [The thesis and live/simulated witness table](docs/thesis.md) map work evidence, money evidence, judgment and the Convex nervous system. The complete duplicate-to-payout moment remains pending in [build status](docs/status.md).
 
-**[Open the live demo](https://skarl.vercel.app)** · [Coinbase submission](docs/coinbase-submission.md) · [Devpost text](docs/devpost.md) · [Two-minute demo and judging runbook](docs/demo-script.md) · [Architecture SVG](docs/architecture.svg)
+**[Open the live demo](https://skarl.devshardat.work)** · [Coinbase submission](docs/coinbase-submission.md) · [Devpost text](docs/devpost.md) · [Two-minute demo and judging runbook](docs/demo-script.md) · [Architecture SVG](docs/architecture.svg)
 
 **Testnet · test USDC · demo identities.** Demonstrated funding uses Base Sepolia and optional Solana Devnet; payouts remain Base-only; operator-owned test assets, no real customer funds. The hosted demo uses impersonable identities, not production authentication.
+
+## User flow
+
+1. The buyer posts a task, funds it and sets an auto-pay rule.
+2. The contributor films.
+3. AI checks the work with proof.
+4. If every check passes, the rule auto-approves; otherwise the buyer reviews.
+5. USDC lands in the contributor’s wallet and the books balance.
+
+The rule defaults on with a cap equal to the per-clip price and requires every check. The buyer can change or disable it. The CDP wallet cap independently guards execution; unconfirmed transfers remain pending. Policy code still requires operator deployment and a live eligible-payout check.
 
 ## Use Skarl from your agent in 3 steps
 
@@ -51,7 +61,7 @@ The 0.25 USDC evidence-purchase endpoint is implemented, with Bazaar discovery m
 | Finance agent | Live Gemini and Claude read-only tool loops with persisted explanations; zero proposed amount in the observed runs. |
 | CDP wallet policy | Live contributor signature verification, an applied 2 USDC per-transfer cap, and actual CDP rejections for over-cap and non-allowlisted sends. Three faucet receipts funded 3 test USDC; these are not payouts. |
 | Nessie mock-bank witness | Live hosted mock-API deposits; order/ledger/chain/bank match for 10-USDC funding at the [04:40 refresh](docs/status.md#submission-evidence-refresh--october-25-2026-0440-pdt). No real fiat or payout match. |
-| Duplicate, approval and payout controls | Implemented with synthetic regression coverage. A licensed accepted contribution, independently approved payout and Wallet MCP execution remain unverified. |
+| Duplicate, approval and payout controls | Implemented with synthetic regression coverage. A licensed accepted contribution, policy-approved live payout and Wallet MCP execution remain unverified. |
 
 [Build status](docs/status.md) records the dated evidence and limitations. Video defaults to `gemini-4-argon`; finance reasoning uses `gemini-3.8-flash`; independent audio uses `gemini-3.5-transcribe`. Historical Flash measurements keep their actual model attribution. [Model choices](docs/ai-verification.md#models-and-configuration).
 
@@ -69,6 +79,14 @@ The local UI uses the public demo Convex URL and treasury in the example; no pri
 
 Record from an iPhone with the standalone [Expo Go mobile app](apps/mobile/README.md):
 video, narration and device motion, using Bun. [Sensor evidence and limits](docs/mobile.md).
+
+## For robotics labs
+
+- Export licensed, accepted episodes as LeRobot-style manifests or RLDS JSON with task instructions and narration transcripts.
+- Mobile v2 preserves six available phone sensor channels, including magnetic field, and an explicit approximate video sync offset; unavailable channels stay absent. Expo Go cannot establish native frame accuracy.
+- Optional rubric step markers provide sub-task boundaries; remembered mount, dominant hand, environment and lighting accompany client-read camera metadata and explicitly estimated iPhone intrinsics.
+- Frame-grid IMU state and saved advisory hand keypoints support conversion experiments. Phone motion and model keypoints are not robot controls, calibrated poses or verified action labels.
+- See [dataset field mapping and limits](docs/datasets.md), [mobile timing contract](docs/mobile.md), and the [human device checklist](apps/mobile/README.md). Convex deployment and physical capture verification remain required.
 
 ## Team handoffs
 
@@ -97,4 +115,4 @@ docs/                  Build specification, research and ownership
 scripts/               Repository validation
 ```
 
-The payment target is **Base Sepolia USDC** (`eip155:84532`), using x402 V2 `exact` via the public x402.org facilitator by default (CDP when configured) for funding and controller-approved USDC transfers (Coinbase Wallet / Wallet MCP) for payouts. There is no custom token or escrow contract. Sponsor eligibility is not implied by a placeholder integration: [sponsor evidence and limitations](docs/sponsor-tracks.md).
+The payment target is **Base Sepolia USDC** (`eip155:84532`), using x402 V2 `exact` via the public x402.org facilitator by default (CDP when configured) for funding and buyer-policy-approved USDC transfers through the CDP executor for payouts; browser Wallet / Wallet MCP signing remains a compatibility path. There is no custom token or escrow contract. Sponsor eligibility is not implied by a placeholder integration: [sponsor evidence and limitations](docs/sponsor-tracks.md).

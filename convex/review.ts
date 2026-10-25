@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 import { acceptAndPublishFor, authorize, refuse } from "./finance";
-import { actorFor, audit, digest } from "./lib/finance";
+import { resolvePolicyReview } from "./lib/policyReview";
+import { actorFor, audit, digest, requireBuyerOrder } from "./lib/finance";
 
 /** Human review is evidence-bound. Acceptance uses the same transactional gate as finance. */
 export const reviewSubmission = mutation({
@@ -9,11 +10,15 @@ export const reviewSubmission = mutation({
     decision: v.union(v.literal("accept"), v.literal("reject"), v.literal("request_correction")),
     reasonCode: v.string(), note: v.string() },
   handler: async (ctx, args) => {
-    const auth = await authorize(ctx, args.demoIdentity, "controller");
+    const auth = await authorize(ctx, args.demoIdentity, ["buyer", "controller"]);
     if (!auth.principal) return { ok: false as const, code: auth.denied! };
     const principal = auth.principal, submission = await ctx.db.get(args.submissionId);
     if (!submission || submission.organizationId !== principal.organizationId) return { ok: false as const, code: "not_found" };
+    const order = await ctx.db.get(submission.orderId);
+    if (!order) throw new Error("order_not_found");
     if (auth.denied) return refuse(ctx, principal, submission, "review", auth.denied);
+    requireBuyerOrder(principal, order);
+    if (principal.roles.includes("finance-agent")) return refuse(ctx, principal, submission, "review", "agent_approval_refused");
     if (principal.roles.includes("contributor") || submission.contributorTokenIdentifier === principal.tokenIdentifier) {
       return refuse(ctx, principal, submission, "review", "self_review_refused");
     }
@@ -47,7 +52,12 @@ export const reviewSubmission = mutation({
     await audit(ctx, { organizationId: submission.organizationId, eventKey: decisionKey, actor: actorFor(principal),
       action: "submission_human_reviewed", entityType: "submissions", entityId: submission._id,
       reason: `${decision}: ${reasonCode}: ${note}`, evidenceReferences: [decisionId, evidenceHash, ...(analysis ? [analysis._id] : [])] });
-    if (decision === "accepted") return { ...await acceptAndPublishFor(ctx, args), decisionId };
+    if (decision === "accepted") {
+      const result = await acceptAndPublishFor(ctx, args);
+      if (result.ok) await resolvePolicyReview(ctx, order._id, submission._id, principal.tokenIdentifier, note);
+      return { ...result, decisionId };
+    }
+    await resolvePolicyReview(ctx, order._id, submission._id, principal.tokenIdentifier, note);
     return { ok: true as const, decisionId, replayed: false };
   },
 });

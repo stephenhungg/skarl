@@ -8,6 +8,16 @@ const input = () => ({ demoIdentity: "buyer", requestId: "new-order", title: "Re
   quantityRequested: "3", pricePerSampleAtomic: "9007199254740993", contributorRateAtomic: "1000000", deadlineAt: Date.now() + 3600000,
   taskPrompt: "Place the cup upright", criteria: [{ criterionId: "cup", description: "Cup is upright", modality: "visual" as const }] });
 describe("buyer orders", () => {
+  it("discovers an owning buyer's order instead of sending them to a foreign demo order", async () => {
+    const t = await setup();
+    await t.run(async ctx => {
+      for (const order of await ctx.db.query("orders").collect()) await ctx.db.patch(order._id, { buyerTokenIdentifier: "another-buyer" });
+    });
+    expect(await t.query(api.dashboard.demoContext, { demoIdentity: "buyer" })).toBeNull();
+    const created = await t.mutation(api.orders.createOrder, input());
+    expect(await t.query(api.dashboard.demoContext, { demoIdentity: "buyer" })).toMatchObject({ orderId: created.orderId });
+  });
+
   it("freezes optional diversity terms in the replay binding so funding cannot buy silently changed coverage", async () => {
     const t = await setup(), args = { ...input(), diversity: { maxPerContributor: 1, maxPerEnvironment: 2,
       requiredVariants: [" low-light ", "left-hand"] } };
@@ -45,7 +55,7 @@ describe("buyer orders", () => {
       expect(rubric!.orderId).toBe(first.orderId);
       expect(await ctx.db.query("paymentIntents").collect()).toHaveLength(0);
       expect(await ctx.db.query("journalEntries").collect()).toHaveLength(0);
-      expect((await ctx.db.query("auditEvents").collect()).filter(e => e.entityId === first.orderId)).toHaveLength(1);
+      expect((await ctx.db.query("auditEvents").collect()).filter(e => e.entityId === first.orderId)).toHaveLength(2);
     });
   });
   it.each(["contributor", "controller", "finance-agent"])("refuses %s", async demoIdentity => {
@@ -71,6 +81,8 @@ describe("buyer orders", () => {
     });
     const page = await t.query(api.orders.listOrders, { demoIdentity: "buyer", paginationOpts: { numItems: 100, cursor: null } });
     expect(page.page.some(o => o._id === created.orderId)).toBe(true);
+    expect(page.page.find(o => o._id === created.orderId)?.autoPay?.maxPerClipAtomic).toBe("9007199254740993");
+    expect(() => JSON.stringify(page)).not.toThrow();
     expect(page.page.every(o => o.buyerTokenIdentifier === "demo:skarl:buyer")).toBe(true);
     expect(page.page.every(o => typeof o.budgetAtomic === "string")).toBe(true);
     await expect(t.query(api.orders.listOrders, { demoIdentity: "contributor", paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow();

@@ -27,9 +27,9 @@ async function foreignOrganization(f: Fixture) {
 // Journal fixtures exercise posting/projection only. No funding, acceptance or
 // onchain payout is performed, and there are intentionally no payable rows.
 describe("ledger-derived order statements", () => {
-  it("returns an exact, serializable empty trial balance for each finance role", async () => {
+  it("returns an exact, serializable empty trial balance for the owning buyer and each finance role", async () => {
     const f = await setup();
-    for (const identity of ["controller", "finance-agent"]) {
+    for (const identity of ["buyer", "controller", "finance-agent"]) {
       const result = await statements(f, identity);
       expect(result).toMatchObject({ orderId: f.orderId, currency: "USDC", network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
         trialBalance: { balanced: true, totalDebitAtomic: "0", totalCreditAtomic: "0", accounts: [] },
@@ -116,12 +116,14 @@ describe("ledger-derived order statements", () => {
     await expect(statements(f)).rejects.toThrow("unbalanced_journal");
   });
 
-  it("refuses non-finance roles and cross-tenant order access", async () => {
+  it("refuses contributors, another buyer’s order and cross-tenant statement access", async () => {
     const f = await setup();
-    for (const identity of ["contributor", "buyer"]) await expect(statements(f, identity)).rejects.toThrow("forbidden");
+    await expect(statements(f, "contributor")).rejects.toThrow("forbidden");
+    await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
+    await expect(statements(f, "buyer")).rejects.toThrow("order_not_owned");
     const organizationId = await foreignOrganization(f);
     await f.t.run(ctx => ctx.db.patch(f.orderId, { organizationId }));
-    for (const identity of ["controller", "finance-agent"]) await expect(statements(f, identity)).rejects.toThrow("cross_organization_access");
+    for (const identity of ["buyer", "controller", "finance-agent"]) await expect(statements(f, identity)).rejects.toThrow("cross_organization_access");
   });
 
   it("fails closed when an order journal or nested line belongs to another tenant", async () => {

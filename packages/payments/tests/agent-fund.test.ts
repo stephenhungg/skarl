@@ -64,6 +64,29 @@ afterEach(() => { process.exitCode = 0; vi.restoreAllMocks(); vi.unstubAllGlobal
 afterAll(() => { rmSync(mocks.home, { force: true, recursive: true }); });
 
 describe("buyer funding prerequisites", () => {
+  it.each([
+    { flags: [], expected: { enabled: true, maxPerClipAtomic: "1000000", requireAllChecks: true } },
+    { flags: ["--no-auto-pay", "--auto-pay-cap", "500000"], expected: { enabled: false, maxPerClipAtomic: "500000", requireAllChecks: true } },
+  ])("creates the buyer rule before funding: $expected", async ({ flags, expected }) => {
+    mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith("/api/orders")) {
+        expect(request.method).toBe("POST");
+        expect(await request.json()).toEqual({ autoPay: expected });
+        return Response.json({ orderId: "new-policy-order" }, { status: 201 });
+      }
+      expect(request.url).toBe("http://localhost:3000/api/orders/new-policy-order/fund");
+      return Response.json({ fundingStatus: "confirmed" });
+    });
+    await fundOrder(["--create", ...flags]);
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(mocks.getChainId).not.toHaveBeenCalled();
+  });
+  it.each(["0", "1.5", "9223372036854775808"])("refuses invalid buyer cap %s before creating or funding", async cap => {
+    await expect(fundOrder(["--create", "--auto-pay-cap", cap])).rejects.toThrow("positive integer micro-USDC");
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
   it("defaults to v2 and signs 10 USDC with 20 USDC and zero buyer ETH without reading ETH", async () => {
     await fundOrder([]);
     expect(mocks.fetch).toHaveBeenCalledTimes(3);
@@ -83,7 +106,7 @@ describe("buyer funding prerequisites", () => {
 
   it("explains missing server treasury configuration before RPC, signing or posting", async () => {
     mocks.fetch.mockResolvedValue(treasuryError());
-    await expect(fundOrder([])).rejects.toThrow("Set SKARL_TREASURY_ADDRESS in the web server environment to the human controller's Coinbase Wallet receiving address before funding.");
+    await expect(fundOrder([])).rejects.toThrow("Set SKARL_TREASURY_ADDRESS in the web server environment to the treasury wallet receiving address before funding.");
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
     expect(mocks.getChainId).not.toHaveBeenCalled();
     expect(existsSync(savedPath)).toBe(false);

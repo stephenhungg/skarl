@@ -35,7 +35,8 @@ export const contributors = query({
       if (row.kind === "payout" && line.side === "debit") total.paid += amount;
       totals.set(row.contributorTokenIdentifier, total);
     }
-    const tokens = new Set([...memberships.filter(row => row.roles.includes("contributor")).map(row => row.tokenIdentifier), ...totals.keys(), ...submissions.map(row => row.contributorTokenIdentifier)]);
+    const buyerOnly = scope.principal.roles.includes("buyer") && !scope.principal.roles.includes("controller");
+    const tokens = new Set([...(buyerOnly ? [] : memberships.filter(row => row.roles.includes("contributor")).map(row => row.tokenIdentifier)), ...totals.keys(), ...submissions.map(row => row.contributorTokenIdentifier)]);
     const result = [...tokens].map(tokenIdentifier => {
       const member = memberships.find(row => row.tokenIdentifier === tokenIdentifier), total = totals.get(tokenIdentifier);
       const own = submissions.filter(row => row.contributorTokenIdentifier === tokenIdentifier);
@@ -76,7 +77,7 @@ export const feed = query({
     const scope = await financeScope(ctx, input.demoIdentity, input.orderId), data = await orderRows(ctx, scope.orders);
     const entities = new Set<string>([...scope.orderIds, ...data.submissions.map(row => row._id), ...data.payables.map(row => row._id), ...data.intents.map(row => row._id), ...data.runs.map(row => row._id)]);
     const audits = (await ctx.db.query("auditEvents").withIndex("by_org_time", q => q.eq("organizationId", scope.principal.organizationId)).collect())
-      .filter(row => !input.orderId || entities.has(row.entityId));
+      .filter(row => (!input.orderId && !scope.principal.roles.includes("buyer")) || entities.has(row.entityId));
     const events: { id: string; occurredAt: number; source: "audit" | "chain" | "agent"; recordId: string; action: string; summary: string; evidenceReferences: string[]; amountAtomic?: string; txHash?: string; logIndex?: number; network?: string; explorerUrl?: string }[] = audits.map(row => ({
       id: `audit:${row._id}`, occurredAt: row.occurredAt, source: "audit", recordId: row._id, action: row.action, summary: row.reason, evidenceReferences: row.evidenceReferences }));
     const observations = await ctx.db.query("chainObservations").filter(q => q.eq(q.field("organizationId"), scope.principal.organizationId)).collect();
@@ -88,6 +89,7 @@ export const feed = query({
       if ((intent && intent.organizationId !== scope.principal.organizationId) || (command && command.organizationId !== scope.principal.organizationId)) throw new Error("cross_organization_reference");
       const orderId = intent?.orderId ?? command?.orderId;
       if (input.orderId && orderId !== input.orderId) continue;
+      if (scope.principal.roles.includes("buyer") && (!orderId || !scope.orderIds.has(orderId))) continue;
       events.push({ id: `chain:${row._id}`, occurredAt: row.observedAt, source: "chain", recordId: row._id,
         action: row.succeeded ? "transfer_observed" : "transfer_failed", summary: `${intent?.kind ?? command?.kind ?? "unlinked_transfer"}: ${row.confirmations} confirmations`,
         evidenceReferences: [row.paymentAttemptId, ...(intent ? [intent._id] : []), ...(command ? [command._id] : [])],

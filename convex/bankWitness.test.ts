@@ -366,9 +366,14 @@ describe("Nessie fourth witness projection", () => {
     });
   });
 
-  it("refuses buyer/contributor access and cross-tenant order reads", async () => {
+  it("lets the owning buyer review bank evidence while refusing contributors, other buyers and tenants", async () => {
     const f = await setup();
-    for (const demoIdentity of ["buyer", "contributor"]) {
+    expect(await f.t.query(ref("reconciliation4Way"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("reconciliation4Way"), f.scope));
+    expect(await f.t.query(ref("bankExceptions"), {...f.scope, demoIdentity: "buyer"})).toEqual(await f.t.query(ref("bankExceptions"), f.scope));
+    await f.t.run(ctx => ctx.db.patch(f.orderId, {buyerTokenIdentifier: "fixture:other-buyer"}));
+    await expect(f.t.query(ref("reconciliation4Way"), {...f.scope, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
+    await expect(f.t.query(ref("bankExceptions"), {...f.scope, demoIdentity: "buyer"})).rejects.toThrow("order_not_owned");
+    for (const demoIdentity of ["contributor"]) {
       await expect(f.t.query(ref("reconciliation4Way"), {...f.scope, demoIdentity})).rejects.toThrow("forbidden");
       await expect(f.t.query(ref("bankExceptions"), {...f.scope, demoIdentity})).rejects.toThrow("forbidden");
     }

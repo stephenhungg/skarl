@@ -1,20 +1,14 @@
-import GitHub from "@auth/core/providers/github";
-import { Password } from "@convex-dev/auth/providers/Password";
+import Google from "@auth/core/providers/google";
 import { convexAuth } from "@convex-dev/auth/server";
-import { ConvexError } from "convex/values";
-import { ensureAuthMembership, githubEnabled } from "./lib/authMemberships";
+import { ensureAuthMembership } from "./lib/authMemberships";
+import { authRedirect, clearUnverifiedGoogleEmail, googleProfile } from "./lib/authPolicy";
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-  providers: [Password({
-    profile(params) {
-      const email = typeof params.email === "string" ? params.email.trim().toLowerCase() : "";
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ConvexError("invalid_email");
-      // Ignore all submitted roles, verification flags, and destinations.
-      return { email };
-    },
-  }), ...(githubEnabled() ? [GitHub] : [])],
+  providers: [Google({ profile: googleProfile })],
   callbacks: {
-    async afterUserCreatedOrUpdated(ctx, { userId }) {
+    redirect: authRedirect,
+    async afterUserCreatedOrUpdated(ctx, { userId, provider, profile }) {
+      await clearUnverifiedGoogleEmail(ctx, userId, provider.id, profile);
       await ensureAuthMembership(ctx, userId);
     },
   },

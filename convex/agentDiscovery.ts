@@ -2,6 +2,7 @@ import { httpAction } from "./_generated/server";
 import { PAYMENT_NETWORK, PAYMENT_RAILS } from "@skarl/contracts/chain";
 
 export const AGENT_ORIGIN = "https://keen-marmot-986.convex.site";
+const appOrigin = "https://skarl.devshardat.work";
 const paymentOrigin = "https://skarl.vercel.app";
 const docsUrl = "https://github.com/stephenhungg/skarl/blob/main/docs/agents.md";
 const safety = "Agents cannot approve, accept submissions, or sign payouts. Independent humans accept work and approve payouts; the controller signs in their browser wallet. Existing Convex mutations and role checks remain authoritative.";
@@ -14,6 +15,7 @@ export const llmsText = `# Skarl
 > Every claim has a witness. Skarl is personal-AI-agent native: a settlement desk for verified robot-demonstration data, with independent work and money evidence recorded in Convex.
 
 ## Connect
+- Web app: ${appOrigin}
 - MCP JSON-RPC: ${AGENT_ORIGIN}/mcp (keyless guest access; omit Authorization; keys unlock role tools; initialize, then tools/list for current tool schemas).
 - Agent card: ${AGENT_ORIGIN}/.well-known/agent-card.json (A2A v0.3-style metadata only; no A2A message/send endpoint).
 - MCP discovery: ${AGENT_ORIGIN}/.well-known/mcp.json
@@ -36,7 +38,7 @@ As a guest, read public order terms through skarl_list_tasks_public and skarl_ab
 Use Coinbase Wallet MCP initiate_x402_request / complete_x402_request with a user-authorized cap and human wallet approval. Inspect the x402 V2 PAYMENT-REQUIRED header (base64 JSON): exact scheme, Base Sepolia ${PAYMENT_NETWORK}, canonical USDC asset, stored recipient and decimal-integer micro-USDC amount. PAYMENT-SIGNATURE is the wallet-produced payment payload; PAYMENT-RESPONSE is settlement metadata, not proof of reconciled delivery. Base is first; optional Solana Devnet is funding only. An eligible evidence purchase costs 250000 micro-USDC; a fresh fixed demo order costs 1000000. Verify current server terms before payment.
 
 ## Contributor flow
-Use the iOS capture app or web contributor flow at ${paymentOrigin}/contribute. Contributor keys unlock their scoped role tools. Read the rubric; help the contributor record an original, consented demonstration and submit through exposed MCP tools with their authorized contributor identity. Track verification, witness receipts, review and payment status. Report missing evidence or discrepancies; never treat a model recommendation as acceptance. Keep original media and expiring media URLs private.
+Use the iOS capture app or web contributor flow at ${appOrigin}/contribute. Contributor keys unlock their scoped role tools. Read the rubric; help the contributor record an original, consented demonstration and submit through exposed MCP tools with their authorized contributor identity. Track verification, witness receipts, review and payment status. Report missing evidence or discrepancies; never treat a model recommendation as acceptance. Keep original media and expiring media URLs private.
 
 ## Safety and truthful status
 ${safety}
@@ -66,7 +68,7 @@ export const agentCard = {
       description: "Read terms and licensed sample availability, fund an order or purchase evidence through capped Coinbase Wallet MCP x402 requests, and inspect reconciled delivery. No acceptance or payout approval authority.",
       examples: ["Find eligible robot-demonstration evidence and buy it for at most 0.25 test USDC on Base Sepolia."] },
     { id: "contributor", name: "Assist a demonstration contributor", tags: ["contributor", "evidence", "verification"],
-      description: "Explain the rubric, assist consented original submission through available contributor tools, and track witness evidence, human review and payout status. Cannot accept work, approve or sign payouts.",
+      description: `Explain the rubric, assist consented original submission at ${appOrigin}/contribute or through available contributor tools, and track witness evidence, human review and payout status. Cannot accept work, approve or sign payouts.`,
       examples: ["Help me contribute an original red-cup demonstration, then explain its verification and payment status."] },
   ],
 };

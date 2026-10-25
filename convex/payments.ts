@@ -3,13 +3,15 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
 import { v } from "convex/values";
 import { fundingNetwork } from "./validators";
 import type { Doc, Id } from "./_generated/dataModel";
+import { requireFinanceService } from "./lib/serviceAuth";
 import { requireRole } from "./lib/demoAuth";
-import { digest, normalizeAddress, paymentBinding, recordJournal, requireTenant } from "./lib/finance";
+import { digest, normalizeAddress, paymentBinding, recordJournal, requireTenant, isOrderApprover, requireBuyerOrder } from "./lib/finance";
 import { PAYMENT_NETWORK, paymentRail, SOLANA_PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { createFundingJournal, createPayoutJournal } from "../packages/ledger/src/index";
 import { chainIdentity, validateTransfer, reconcilePayments, type TransferObservation, type PaymentObligation, type PaymentJournal } from "../packages/payments/src/reconciliation";
 import { DEMO_ORDER_BUDGET, DEMO_ORDER_CONTRIBUTOR_RATE, DEMO_ORDER_GLOBAL_LIMIT, DEMO_ORDER_IP_LIMIT, DEMO_ORDER_WINDOW_MS } from "../packages/payments/src/demo-order";
 import { audit } from "./lib/finance";
+import { parseAtomicUsdc } from "../packages/contracts/src/index";
 
 // Trusted Next server reads RPC receipts; browsers cannot submit settlement facts directly.
 export function service(secret: string) {
@@ -21,16 +23,20 @@ export function service(secret: string) {
 }
 const secretArg = { serviceSecret: v.string() };
 
-/** Public HTTP entry point calls this with trusted ingress metadata. No caller-supplied terms. */
+/** Public HTTP entry point: fixed commercial terms, buyer-selected auto-pay rule. */
 export const createDemoOrder = mutation({
-  args: { ...secretArg, ipDigest: v.string(), requestId: v.string() },
+  args: { ...secretArg, ipDigest: v.string(), requestId: v.string(),
+    autoPay: v.optional(v.object({ enabled: v.boolean(), maxPerClipAtomic: v.string(), requireAllChecks: v.literal(true) })) },
   handler: async (ctx, args) => {
     service(args.serviceSecret);
     if (!/^[a-f0-9]{64}$/.test(args.ipDigest) || !/^[a-f0-9-]{36}$/.test(args.requestId)) throw new Error("invalid_demo_request");
     const buyer = await requireRole(ctx, "buyer", "buyer");
+    if (buyer.roles.includes("finance-agent")) throw new Error("human_buyer_required");
     const source = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", "skarl-red-cup-demo-v2")).unique();
     const rubric = source?.taskVersionId ? await ctx.db.get(source.taskVersionId) : null;
     if (!source || !rubric || source.organizationId !== buyer.organizationId || rubric.orderId !== source._id) throw new Error("demo_seed_required");
+    const maxPerClipAtomic = parseAtomicUsdc(args.autoPay?.maxPerClipAtomic ?? DEMO_ORDER_BUDGET.toString());
+    if (maxPerClipAtomic <= 0n) throw new Error("invalid_auto_pay_policy");
     const now = Date.now(), windowStart = Math.floor(now / DEMO_ORDER_WINDOW_MS) * DEMO_ORDER_WINDOW_MS;
     const limits = await Promise.all([
       { key: `ip:${args.ipDigest}`, limit: DEMO_ORDER_IP_LIMIT },
@@ -46,15 +52,18 @@ export const createDemoOrder = mutation({
       if (limit.row) await ctx.db.patch(limit.row._id, value);
       else await ctx.db.insert("demoOrderLimits", value);
     }
+    const autoPay = { enabled: args.autoPay?.enabled ?? true, maxPerClipAtomic, requireAllChecks: true as const,
+      setBy: buyer.tokenIdentifier, setAt: now };
     const publicId = `skarl-outsider-demo-${args.requestId}`;
     const termsHash = digest({ contentHash: rubric.contentHash, quantityRequested: 1n, pricePerSampleAtomic: DEMO_ORDER_BUDGET,
-      contributorRateAtomic: DEMO_ORDER_CONTRIBUTOR_RATE, licenseVersion: "demo-consent-v1" });
+      contributorRateAtomic: DEMO_ORDER_CONTRIBUTOR_RATE, licenseVersion: "demo-consent-v1",
+      autoPay: { enabled: autoPay.enabled, maxPerClipAtomic, requireAllChecks: true } });
     const orderId = await ctx.db.insert("orders", {
       organizationId: buyer.organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS, publicId,
       buyerTokenIdentifier: buyer.tokenIdentifier, buyerWalletAddress: "0x0000000000000000000000000000000000000001",
       title: "DEMO / TESTNET — red-cup narrated demonstration", status: "awaiting_funding", quantityRequested: 1n,
       pricePerSampleAtomic: DEMO_ORDER_BUDGET, contributorRateAtomic: DEMO_ORDER_CONTRIBUTOR_RATE,
-      budgetAtomic: DEMO_ORDER_BUDGET, acceptedCount: 0n, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS, termsHash, updatedAt: now,
+      budgetAtomic: DEMO_ORDER_BUDGET, autoPay, acceptedCount: 0n, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS, termsHash, updatedAt: now,
     });
     const taskVersionId = await ctx.db.insert("rubricVersions", {
       organizationId: buyer.organizationId, orderId, version: 1, taskPrompt: rubric.taskPrompt,
@@ -64,7 +73,12 @@ export const createDemoOrder = mutation({
     await audit(ctx, { organizationId: buyer.organizationId, eventKey: `outsider_demo_created:${orderId}`,
       actor: { kind: "service", identity: "public-demo-orders" }, action: "demo_order_created", entityType: "orders", entityId: orderId,
       reason: "Public 1 USDC testnet demo order; no payment or inference performed. Actual payer binds during funding.", evidenceReferences: [taskVersionId, termsHash] });
-    return { ok: true as const, orderId, publicId, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS };
+    await audit(ctx, { organizationId: buyer.organizationId, eventKey: `auto_pay_set:${orderId}`,
+      actor: { kind: "human", identity: buyer.tokenIdentifier }, action: "auto_pay_policy_set", entityType: "orders", entityId: orderId,
+      reason: `Buyer selected auto-pay ${autoPay.enabled ? "enabled" : "disabled"}; cap ${maxPerClipAtomic} micro-USDC; every check required.`,
+      evidenceReferences: [termsHash] });
+    return { ok: true as const, orderId, publicId, deadlineAt: now + 24 * DEMO_ORDER_WINDOW_MS,
+      autoPay: { ...autoPay, maxPerClipAtomic: maxPerClipAtomic.toString() } };
   },
 });
 const evidence = v.object({ network: v.string(), tokenAddress: v.string(), txHash: v.string(), logIndex: v.number(),
@@ -230,7 +244,9 @@ export const claimPayout = mutation({
   args: { ...secretArg, intentId: v.id("paymentIntents"), demoIdentity: v.string(), senderAddress: v.string(), treasuryAddress: v.string(), claimId: v.string() },
   handler: async (ctx, args) => {
     service(args.serviceSecret);
-    const member = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
+    const member = await ctx.auth.getUserIdentity()
+      ? await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"])
+      : await requireFinanceService(ctx);
     const intent = await ctx.db.get(args.intentId);
     if (!intent || intent.kind !== "contributor_payout") throw new Error("payout_not_found");
     requireTenant(member, intent);
@@ -257,8 +273,10 @@ export const claimPayout = mutation({
       throw new Error("approved_source_changed");
     }
     const approver = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", approval.approverTokenIdentifier)).unique();
-    if (!approver || approver.status !== "active" || approver.organizationId !== intent.organizationId || !approver.roles.includes("controller") ||
-      approver.roles.includes("finance-agent") || approver.roles.includes("contributor")) throw new Error("approval_invalidated");
+    const order = await ctx.db.get(intent.orderId);
+    if (!order || order.publicId.startsWith("scenario:")) throw new Error("simulated_payout_not_executable");
+    requireBuyerOrder(member, order);
+    if (!isOrderApprover(approver, order)) throw new Error("approval_invalidated");
     const dispatch = await ctx.db.query("outboxEvents").withIndex("by_event_key", q =>
       q.eq("organizationId", intent.organizationId).eq("eventKey", `dispatch:${command._id}`)).unique();
     if (!dispatch || dispatch.kind !== "dispatch_settlement" || dispatch.paymentCommandId !== command._id ||
@@ -283,10 +301,15 @@ export const payoutAttempt = query({
   args: { ...secretArg, intentId: v.id("paymentIntents"), demoIdentity: v.string(), claimId: v.string() },
   handler: async (ctx, args) => {
     service(args.serviceSecret);
-    const member = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
+    const member = await ctx.auth.getUserIdentity()
+      ? await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"])
+      : await requireFinanceService(ctx);
     const intent = await ctx.db.get(args.intentId);
     if (!intent || intent.kind !== "contributor_payout") throw new Error("payout_not_found");
     requireTenant(member, intent);
+    const order = await ctx.db.get(intent.orderId);
+    if (!order) throw new Error("order_not_found");
+    requireBuyerOrder(member, order);
     const attempt = await ctx.db.query("paymentAttempts").withIndex("by_intent", q => q.eq("paymentIntentId", intent._id)).unique();
     if (!attempt || attempt.attemptId !== args.claimId) throw new Error("claim_not_found");
     return { intent, attempt };

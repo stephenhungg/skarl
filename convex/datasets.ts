@@ -1,5 +1,9 @@
 import { v } from "convex/values";
-import { query, type QueryCtx } from "./_generated/server";
+import { action, internalQuery, query, type QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { MAX_SENSOR_TRACE_BYTES, validateSensorTrace } from "./lib/sensorTrace";
+import { MAX_ANNOTATION_BYTES, validateAnnotationFile } from "./lib/derivedAnnotations";
+import type { TrainingInputs } from "./lib/trainingFormats";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
 import { digest, requireTenant } from "./lib/finance";
@@ -167,7 +171,10 @@ async function deliveredSample(ctx: QueryCtx, order: Doc<"orders">, delivery: Do
       source: "contributor_self_reported" as const },
     criteria, transcriptSegments, ...quality,
     sensorTrace: trace ? { rawTraceExists, rawTraceDownload: null, source: "clientReported" as const, sampleRateHz: trace.sampleRateHz,
-      sampleCount: trace.sampleCount, durationMs: trace.durationMs, sensors: trace.sensors, motionSummary: trace.motionSummary } : null,
+      sampleCount: trace.sampleCount, durationMs: trace.durationMs, sensors: trace.sensors, motionSummary: trace.motionSummary,
+      device: trace.device, version: trace.version ?? 1, context: trace.context ?? null, segments: trace.segments ?? [],
+      videoStartOffsetMs: trace.videoStartOffsetMs ?? null, videoStopOffsetMs: trace.videoStopOffsetMs ?? null,
+      syncSource: trace.syncSource ?? null, syncAccuracy: trace.syncAccuracy ?? null, unavailableSensors: trace.unavailableSensors ?? [] } : null,
     liveness,
     duplicate: { status: report?.duplicate.status ?? "not_checked" },
     attestation: attested ? { uid: attestation!.attestationUid!, ...attestationLinks(attestation!.attestationUid!, attestation!.txHash!) } : null,
@@ -210,6 +217,55 @@ export const forOrder = query({
     return { schema: "skarl.dataset.v1" as const, orderId: order._id,
       task: rubric ? { id: rubric._id, version: rubric.version, languageInstruction: rubric.taskPrompt, criterionIds: rubric.criteria.map(row => row.criterionId) } : null,
       generatedAt: Date.now(), samples };
+  },
+});
+
+const trainingArgs = { demoIdentity: v.string(), orderId: v.id("orders"), submissionId: v.id("submissions"), binding: v.string() };
+/** Internal storage handles never cross the public dataset boundary. Reuses every publication/license check. */
+export const authorizeTrainingInputs = internalQuery({
+  args: trainingArgs,
+  handler: async (ctx, args) => {
+    const { order, rubric } = await orderScope(ctx, args);
+    if (!rubric) throw new Error("sample_not_available");
+    const deliveries = await ctx.db.query("deliveries").withIndex("by_submission", q => q.eq("submissionId", args.submissionId)).collect();
+    for (const delivery of deliveries) {
+      if (delivery.orderId !== order._id) continue;
+      const sample = await deliveredSample(ctx, order, delivery, rubric, [], args.demoIdentity, true);
+      if (!sample || sample.media.binding !== args.binding) continue;
+      const submission = (await ctx.db.get(args.submissionId))!;
+      const runs = await ctx.db.query("derivedAnnotations").withIndex("by_submission", q => q.eq("submissionId", submission._id)).order("desc").collect();
+      const hands = runs.find(run => run.organizationId === order.organizationId && run.advisory && run.kind === "hands");
+      return { sourceSha256: sample.sourceSha256!, durationMs: sample.durationMs,
+        traceStorageId: sample.sensorTrace?.rawTraceExists ? submission.sensorTrace!.storageId : null,
+        handsStorageId: hands?.storageId ?? null };
+    }
+    throw new Error("sample_not_available");
+  },
+});
+
+/** One bounded episode per call. Recheck consent/binding after storage I/O before returning private evidence. */
+export const trainingInputs = action({
+  args: trainingArgs,
+  handler: async (ctx, args): Promise<TrainingInputs> => {
+    const authorized = await ctx.runQuery(internal.datasets.authorizeTrainingInputs, args);
+    async function json(storageId: Id<"_storage"> | null, maxBytes: number): Promise<unknown> {
+      if (!storageId) return null;
+      const blob = await ctx.storage.get(storageId);
+      if (!blob || blob.size <= 0 || blob.size > maxBytes || blob.type.split(";")[0] !== "application/json") return null;
+      try { return JSON.parse(await blob.text()); } catch { return null; }
+    }
+    let trace: TrainingInputs["trace"] = null, hands: TrainingInputs["hands"] = null;
+    const traceJson = await json(authorized.traceStorageId, MAX_SENSOR_TRACE_BYTES);
+    if (traceJson) try { trace = validateSensorTrace(traceJson); } catch { /* Invalid evidence contributes no state. */ }
+    const handsJson = await json(authorized.handsStorageId, MAX_ANNOTATION_BYTES);
+    if (handsJson) try {
+      const file = validateAnnotationFile(handsJson);
+      if (file.kind === "hands" && file.submissionId === args.submissionId && file.sourceSha256 === authorized.sourceSha256 &&
+        file.frames.every(frame => authorized.durationMs === null || frame.tMs <= authorized.durationMs)) hands = file;
+    } catch { /* Invalid or rebound annotations contribute no action proxy. */ }
+    const current = await ctx.runQuery(internal.datasets.authorizeTrainingInputs, args);
+    if (digest(current) !== digest(authorized)) throw new Error("sample_not_available");
+    return { trace, hands, status: trace || hands ? "validated_storage" : "unavailable" };
   },
 });
 

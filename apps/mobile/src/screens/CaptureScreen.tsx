@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
@@ -14,6 +14,8 @@ import Svg, { Circle } from 'react-native-svg';
 import { colors as c, fonts as f } from '../../theme';
 import { api, identity, type LivenessChallenge } from '../api';
 import { availableSensors, startTrace, type Sensor } from '../sensors';
+import { inspectRecording } from '../cameraMetadata';
+import { contextChoices, defaultContext, loadCaptureContext, saveCaptureContext, type CaptureContext } from '../captureContext';
 import { createMotionCoach, type MotionCoaching } from '../motionCoach';
 import { clearDraft, saveDraft, submitDraft, type Draft } from '../upload';
 import { useLiveTask } from '../data';
@@ -88,6 +90,15 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
   const [now, setNow] = useState(Date.now());
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [recording, setRecording] = useState(false);
+  const [captureContext, setCaptureContext] = useState<CaptureContext>({ ...defaultContext });
+  const [contextReady, setContextReady] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+  useEffect(() => { void loadCaptureContext().then(setCaptureContext).catch(() => {}).finally(() => setContextReady(true)); }, []);
+  function chooseContext<K extends keyof CaptureContext>(key: K, value: CaptureContext[K]) {
+    const next = { ...captureContext, [key]: value };
+    setCaptureContext(next);
+    void saveCaptureContext(next).catch(() => setError('Capture settings could not be remembered. This take still uses your selection.'));
+  }
   const [coaching, setCoaching] = useState<MotionCoaching>({ steady: null, tilted: null });
   const motionCoach = useRef(createMotionCoach());
   const motionStartedAt = useRef(0);
@@ -169,14 +180,17 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
       return;
     }
     const takeChallenge = challenge;
-    captureBusy.current = true; interrupted.current = false; recordedDuration.current = 0; setError(null); setElapsed(0); setRecording(true);
+    captureBusy.current = true; interrupted.current = false; recordedDuration.current = 0; setError(null); setElapsed(0); setStepIndex(0); setRecording(true);
     try {
       motionCoach.current = createMotionCoach();
       setCoaching({ steady: null, tilted: null });
       motionStartedAt.current = performance.now();
-      trace.current = startTrace(sensors, sample => motionCoach.current.sample(sample));
+      trace.current = startTrace(sensors, sample => motionCoach.current.sample(sample), { context: captureContext,
+        stepLabels: task?.criteria.map(step => step.description) ?? [] });
       const result = await camera.current.recordAsync({ maxDuration: 30, maxFileSize: 24 * 1024 * 1024, codec: 'avc1', progressUpdateInterval: 0.1 });
-      const data = trace.current.stop();
+      trace.current.endRecording();
+      const metadata = result?.uri ? await inspectRecording(result.uri).catch(() => undefined) : undefined;
+      const data = trace.current.stop(metadata);
       if (interrupted.current) throw new Error('Recording was interrupted. Keep Skarl open and record a new take.');
       if (!result?.uri || recordedDuration.current < MIN_MS) throw new Error('Record at least 10 seconds.');
       const clientRequestId = Crypto.randomUUID();
@@ -217,7 +231,7 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
     const id = draft?.submissionId;
     if (!(await retake())) return;
     if (to === 'Submission' && id) navigation.replace('Submission', { submissionId: id });
-    else navigation.navigate('Tabs', { screen: 'Profile', params: { segment: 'Submissions' } });
+    else navigation.navigate('Profile', { segment: 'Submissions' });
   }
 
   const wordsFresh = !!challenge && challenge.expiresAt - now >= 60_000;
@@ -236,8 +250,8 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
 
     <View style={s.frame}>
       {draft && !draft.submissionId ? <Preview uri={draft.uri} />
-        : !draft && enabled && permitted && consent ? <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode="video" videoQuality="720p" videoBitrate={4_000_000} mute={false}
-          onRecordingProgress={event => { recordedDuration.current = event.duration * 1000; setElapsed(recordedDuration.current); }}
+        : !draft && enabled && permitted && consent ? <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode="video" videoQuality="720p" zoom={0} selectedLens="AVCaptureDeviceTypeBuiltInWideAngleCamera" videoStabilizationMode="off" videoBitrate={4_000_000} mute={false}
+          onRecordingProgress={event => { trace.current?.recordingProgress(event.duration * 1000); recordedDuration.current = event.duration * 1000; setElapsed(recordedDuration.current); }}
           onCameraReady={() => setReady(true)} onMountError={event => { setReady(false); setError(event.message); }} />
           : <View style={s.off}>
             <CaptureIcon size={40} color={c.nightMuted} width={1.4} />
@@ -266,6 +280,26 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
       </View>}
     </View>
 
+    {!draft && !recording && contextReady && <View style={s.context}>
+      {(Object.keys(contextChoices) as (keyof CaptureContext)[]).map(key => <View key={key} style={s.contextRow}>
+        <Text style={s.contextLabel}>{key === 'dominantHand' ? 'Hand' : key[0].toUpperCase() + key.slice(1)}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+          {contextChoices[key].map(value => <PressableScale key={value} accessibilityRole="button"
+            accessibilityLabel={`${key}: ${value}`} accessibilityState={{ selected: captureContext[key] === value }}
+            disabled={busy} onPress={() => chooseContext(key, value)} style={[s.contextChip, captureContext[key] === value && { backgroundColor: c.accent }]}>
+            <Text style={[s.contextText, captureContext[key] === value && { color: c.accentInk }]}>{value}</Text>
+          </PressableScale>)}
+        </ScrollView>
+      </View>)}
+    </View>}
+
+    {recording && !!task?.criteria.length && <View style={s.stepControls}>
+      <Text numberOfLines={2} style={s.stepLabel}>{stepIndex + 1}. {task.criteria[stepIndex]?.description}</Text>
+      <Button kind="accent" title="Next step" disabled={stepIndex >= task.criteria.length - 1 || elapsed <= 0}
+        onPress={() => { if (trace.current?.nextStep()) { setStepIndex(index => index + 1); haptic(); } }} />
+      <Text style={s.hint}>Optional · tap as you move to the next action</Text>
+    </View>}
+
     {!!error && <Animated.Text entering={FadeIn} accessibilityRole="alert" numberOfLines={3} style={s.error}>{error}</Animated.Text>}
     {expired && <Text style={s.error}>Words expired. Retake to get new ones.</Text>}
 
@@ -276,7 +310,7 @@ export function CaptureScreen({ navigation, route }: RootProps<'Capture'>) {
       </View>
         : !draft && !enabled ? <View style={s.centerRow}>
           <Button kind="accent" title={busy ? 'Starting' : 'Turn on camera'} icon={<CaptureIcon size={20} color={c.accentInk} />} loading={busy}
-            onPress={() => void enableCamera()} disabled={!consent || busy || !task || !!closed} style={{ paddingHorizontal: 28 }} />
+            onPress={() => void enableCamera()} disabled={!consent || busy || !task || !!closed || !contextReady} style={{ paddingHorizontal: 28 }} />
           {(!cameraPermission?.canAskAgain || !micPermission?.canAskAgain) && !permitted && cameraPermission && micPermission &&
             <Button kind="dark" title="Open Settings" onPress={() => void Linking.openSettings()} style={{ marginTop: 6 }} />}
         </View>
@@ -344,6 +378,13 @@ const s = StyleSheet.create({
   reviewInfo: { position: 'absolute', top: 12, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(14,15,13,0.72)' },
   reviewText: { fontFamily: f.mono, fontSize: 11, color: c.paper },
   error: { fontFamily: f.book, fontSize: 13, lineHeight: 18, color: '#ffb4ab', textAlign: 'center', marginTop: 10, paddingHorizontal: 20 },
+  context: { paddingHorizontal: 16, paddingTop: 10, gap: 6 },
+  contextRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  contextLabel: { width: 92, fontFamily: f.mono, fontSize: 11, color: c.nightMuted },
+  contextChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18, backgroundColor: c.nightCard },
+  contextText: { fontFamily: f.regular, fontSize: 12, color: c.paper },
+  stepControls: { paddingHorizontal: 16, paddingTop: 10, gap: 6 },
+  stepLabel: { fontFamily: f.medium, fontSize: 14, color: c.paper },
   controls: { minHeight: 132, justifyContent: 'center', paddingHorizontal: 16 },
   centerRow: { alignItems: 'center', gap: 8 },
   reviewRow: { flexDirection: 'row', gap: 10 },

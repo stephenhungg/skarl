@@ -1,6 +1,7 @@
 import { authenticateConvexRequest } from "../../../lib/auth/server";
 import { createHmac, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
+import { parseAtomicUsdc } from "@skarl/contracts";
 import { PAYMENT_NETWORK, PAYMENT_RAILS } from "@skarl/contracts/chain";
 import { DEMO_ORDER_BUDGET, DEMO_ORDER_GLOBAL_LIMIT, DEMO_ORDER_IP_LIMIT } from "../../../../../packages/payments/src/demo-order";
 import { api, paymentJson, paymentService, treasuryAddress } from "../../../lib/payments/server";
@@ -11,17 +12,19 @@ export const dynamic = "force-dynamic";
 const terms = { demo: true, testnet: true, price: "1.000000", amountAtomic: DEMO_ORDER_BUDGET.toString(),
   currency: "USDC", network: PAYMENT_NETWORK, asset: PAYMENT_RAILS[PAYMENT_NETWORK].token,
   task: "Pick up the red cup and place it on the marked coaster. Narrate each action.",
+  autoPay: { enabled: true, maxPerClipAtomic: DEMO_ORDER_BUDGET.toString(), requireAllChecks: true },
   limits: { perIpPerHour: DEMO_ORDER_IP_LIMIT, globalPerHour: DEMO_ORDER_GLOBAL_LIMIT } };
 
 /** Public documentation remains readable even without server configuration. */
 export function GET() {
-  return paymentJson({ ...terms, method: "POST", path: "/api/orders", body: {}, identityHeaderRequired: false,
-    instructions: "POST an empty body or {} to create a fresh demo order, then POST its fundUrl for an x402 challenge. Funding needs Base Sepolia test USDC; never pay a pending order again.",
+  return paymentJson({ ...terms, method: "POST", path: "/api/orders", body: { autoPay: terms.autoPay }, identityHeaderRequired: false,
+    instructions: "POST {} for the default auto-pay rule, or {autoPay:{enabled,maxPerClipAtomic,requireAllChecks:true}} to choose it. Then POST its fundUrl for an x402 challenge. Funding needs Base Sepolia test USDC; never pay a pending order again.",
     hostedUrl: "https://skarl.vercel.app/api/orders" });
 }
 
 export async function POST(request: Request) {
-  // Read at most a tiny empty JSON object; fields, arrays and primitives cannot override terms.
+  // Commercial terms stay fixed; the buyer can select only the auto-pay rule.
+  let autoPay: { enabled: boolean; maxPerClipAtomic: string; requireAllChecks: true } | undefined;
   const reader = request.body?.getReader();
   let raw = "";
   if (reader) {
@@ -31,7 +34,7 @@ export async function POST(request: Request) {
       const { done, value } = await reader.read();
       if (done) break;
       bytes += value.byteLength;
-      if (bytes > 256) { await reader.cancel(); return paymentJson({ error: "empty_body_required" }, 400); }
+      if (bytes > 512) { await reader.cancel(); return paymentJson({ error: "invalid_order_body" }, 400); }
       raw += decoder.decode(value, { stream: true });
     }
     raw += decoder.decode();
@@ -39,8 +42,15 @@ export async function POST(request: Request) {
   if (raw.trim()) {
     try {
       const body: unknown = JSON.parse(raw);
-      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length) throw new Error();
-    } catch { return paymentJson({ error: "empty_body_required", message: "Send no body or {}. Demo budget and red-cup task are fixed." }, 400); }
+      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(key => key !== "autoPay")) throw new Error();
+      if ("autoPay" in body) {
+        const rule = body.autoPay;
+        if (!rule || typeof rule !== "object" || Array.isArray(rule) || Object.keys(rule).sort().join(",") !== "enabled,maxPerClipAtomic,requireAllChecks" ||
+          !("enabled" in rule) || typeof rule.enabled !== "boolean" || !("maxPerClipAtomic" in rule) || typeof rule.maxPerClipAtomic !== "string" ||
+          !("requireAllChecks" in rule) || rule.requireAllChecks !== true || parseAtomicUsdc(rule.maxPerClipAtomic) <= 0n) throw new Error();
+        autoPay = { enabled: rule.enabled, maxPerClipAtomic: rule.maxPerClipAtomic, requireAllChecks: true };
+      }
+    } catch { return paymentJson({ error: "invalid_order_body", message: "Send {} or a valid autoPay rule. Demo budget and red-cup task are fixed." }, 400); }
   }
   try {
     const payTo = treasuryAddress();
@@ -52,7 +62,7 @@ export async function POST(request: Request) {
     const forwarded = process.env.VERCEL === "1" ? request.headers.get("x-forwarded-for")?.trim() : undefined;
     const ip = forwarded && isIP(forwarded) ? forwarded : "shared-untrusted-ingress";
     const ipDigest = createHmac("sha256", serviceSecret).update(ip).digest("hex");
-    const result = await db.mutation(api.payments.createDemoOrder, { serviceSecret, ipDigest, requestId: randomUUID() });
+    const result = await db.mutation(api.payments.createDemoOrder, { serviceSecret, ipDigest, requestId: randomUUID(), ...(autoPay ? { autoPay } : {}) });
     if (!result.ok) {
       const response = paymentJson({ error: result.code, retryAfterSeconds: result.retryAfterSeconds }, 429);
       response.headers.set("Retry-After", String(result.retryAfterSeconds));
@@ -60,6 +70,7 @@ export async function POST(request: Request) {
     }
     const fundUrl = new URL(`/api/orders/${result.orderId}/fund`, request.url).href;
     return paymentJson({ ...terms, orderId: result.orderId, publicId: result.publicId, fundUrl, payTo, deadlineAt: result.deadlineAt,
+      autoPay: result.autoPay ?? autoPay ?? terms.autoPay,
       explorer: { treasury: `https://sepolia.basescan.org/address/${payTo}`,
         transaction: "https://sepolia.basescan.org/tx/{txHash}" } }, 201);
   } catch {

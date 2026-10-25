@@ -1,3 +1,4 @@
+import { getStatus } from "@convex-dev/workflow";
 import workflowTest from "@convex-dev/workflow/test";
 import { convexTest } from "convex-test";
 import { makeFunctionReference } from "convex/server";
@@ -5,10 +6,12 @@ import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, erc20Abi } 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
 import { createFundingJournal, createFulfillmentJournal } from "../packages/ledger/src/index";
-import { api, internal } from "./_generated/api";
+import { api, components, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { requirePolicyService } from "./lib/serviceAuth";
 import { recordJournal } from "./lib/finance";
 import schema from "./schema";
+import { runScheduledUntil } from "../test/workflow";
 
 // Synthetic business records and mocked CDP/RPC only. These are not live payment evidence.
 const mocks = vi.hoisted(() => ({
@@ -87,7 +90,21 @@ async function fixture(approved = true) {
     const result = await t.mutation(api.finance.approve, { demoIdentity: "controller", intentId: proposal.intentId });
     if (!result.ok) throw new Error(result.code);
   }
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  const workflowId = await t.run(async ctx => {
+    const intent = await ctx.db.get(proposal.intentId);
+    if (!intent || intent.kind !== "contributor_payout" || !intent.approvalWorkflowId) throw new Error("synthetic approval workflow missing");
+    return intent.approvalWorkflowId;
+  });
+  // Workpool has recurring two-minute monitor timers. Draining all timers while
+  // imports/async work settle can move the clock past the one-hour approval.
+  // Pump only until the actual approval boundary is reached, while execution is disabled.
+  await runScheduledUntil(async () => {
+    const status = await t.run(ctx => getStatus(ctx, components.workflow, workflowId));
+    if (!approved) return status.type === "inProgress" && status.running.some(step => step.kind === "event");
+    const dispatch = await t.run(ctx => ctx.db.query("outboxEvents").withIndex("by_event_key", q =>
+      q.eq("organizationId", seeded.organizationId).eq("eventKey", `dispatch:${proposal.paymentCommandId}`)).unique());
+    return status.type === "completed" && dispatch?.status === "pending";
+  });
   vi.stubEnv("PAYOUT_EXECUTOR", "cdp_agent");
   const snapshot = () => t.run(async ctx => ({ attempt: await ctx.db.query("paymentAttempts").withIndex("by_intent", q => q.eq("paymentIntentId", proposal.intentId)).unique(),
     payable: await ctx.db.get(fields.payableId), intent: await ctx.db.get(proposal.intentId),
@@ -104,6 +121,21 @@ function receipt(amount = AMOUNT) {
 }
 
 describe("policy-bound CDP executor (simulated CDP and chain)", () => {
+  it("consumes a policy-service approval with demo selectors disabled and still requires chain observation to mark paid", async () => {
+    const f = await fixture();
+    // Synthetic downstream approval fixture. policy.test.ts separately tests the buyer cap and evidence gates.
+    await f.t.run(async ctx => {
+      const policy = await requirePolicyService(ctx, f.organizationId);
+      const command = (await ctx.db.get(f.paymentCommandId))!;
+      await ctx.db.patch(command.approvalId!, { approverTokenIdentifier: policy.tokenIdentifier });
+    });
+    vi.stubEnv("SKARL_DEMO_IDENTITIES", "off");
+    expect(await f.t.action(execute, f.args)).toMatchObject({ status: "submitted", txHash: TX_HASH });
+    expect(mocks.sendTransaction).toHaveBeenCalledOnce();
+    expect((await f.snapshot()).payable?.status).toBe("payout_in_progress");
+    expect((await f.snapshot()).observations).toHaveLength(0);
+  });
+
   it.each([undefined, "controller_wallet"])("stays disabled with flag %s and never claims", async flag => {
     const f = await fixture();
     vi.stubEnv("PAYOUT_EXECUTOR", flag);
@@ -190,11 +222,15 @@ describe("policy-bound CDP executor (simulated CDP and chain)", () => {
     mocks.waitForTransactionReceipt.mockResolvedValue(receipt());
     const approved = await f.t.mutation(api.finance.approve, { ...f.args, demoIdentity: "controller" });
     expect(approved.ok).toBe(true);
-    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+    await runScheduledUntil(async () => (await f.snapshot()).payable?.status === "paid");
     expect(mocks.sendTransaction).toHaveBeenCalledTimes(1);
     expect((await f.snapshot()).payable?.status).toBe("paid");
     await f.t.mutation(api.finance.approve, { ...f.args, demoIdentity: "controller" });
-    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+    await vi.advanceTimersByTimeAsync(0);
+    const replayed = await f.snapshot();
+    expect(replayed.payable?.status).toBe("paid");
+    expect(replayed.observations).toHaveLength(1);
+    expect(replayed.journals.filter(journal => journal.kind === "payout")).toHaveLength(1);
     expect(mocks.sendTransaction).toHaveBeenCalledTimes(1);
   });
 

@@ -48,8 +48,9 @@ mask outlines are browser-derived model estimates, not recorded robot states or
 human-verified labels. These outputs cannot change verdicts, acceptance,
 payables or quality scores. Model names and versions are client-declared
 provenance, not server-attested inference. All four export formats retain the
-same annotation metadata; LeRobot and RLDS exports do not materialize it into
-frame-aligned training columns.
+same annotation metadata. LeRobot and RLDS also read the latest saved, validated
+`hands` run into an explicitly advisory action proxy. Objects and masks remain
+annotation references; they are not robot action labels.
 
 `provenance.derivedAnnotations` lists the runs with model, summary, timestamp and
 `basis: "client_computed"`, without creator identities or download grants.
@@ -64,7 +65,8 @@ for upload limits and access checks.
 
 The manifest includes `info.codebase_version: "v2.1"`, `robot_type: "human_video"`,
 episode/task totals, `fps`, and `features`. Each episode includes
-`episode_index`, `task_index`, `language_instruction` from the frozen task prompt,
+`episode_index`, `task_index`, `language_instruction` from the frozen task prompt
+plus the delivered narration transcript (separated by a blank line),
 `success: true` from stored acceptance, `length` in video frames, and a private
 reference under `videos["observation.images.video"]`.
 
@@ -83,35 +85,78 @@ listed channels:
 | `deviceMotion` | `observation.imu.linear_acceleration` | m/s², excluding gravity |
 | `gravity` | `observation.imu.gravity` | m/s² |
 | `attitude` | `observation.orientation` | alpha/beta/gamma, radians |
+| `magnetometer` | `observation.imu.magnetometer` | µT |
 
 The global feature set is the union; each episode's `sensor_features` identifies
-its available channels. Sensors are asynchronous client-reported phone readings,
-not robot states or calibrated poses. No frame alignment is claimed. The export
-does not expose raw trace storage IDs or download URLs (`rawTraceDownload` and
-feature `download_url` are null). Access to the raw sensor bytes requires a
-separate authorized integration; descriptors are not materialized training columns.
+its available channels. These channel descriptors describe raw asynchronous
+readings. V2 traces additionally materialize `frames[].observation.state` using
+the explicit sync offset and client-reported native file FPS; see the field map
+below. V1 traces remain valid and summarized, with no fabricated alignment.
+Raw trace storage IDs and download URLs remain private (`rawTraceDownload` and
+feature `download_url` are null).
 
 `compatibility.directly_loadable` is false. A converter must download authorized
-video, verify FPS/dimensions/frame counts, produce per-frame Parquet and local
-videos, and separately obtain/align sensor traces if needed. The manifest does
-not pretend to be a complete `LeRobotDataset` archive. The reference layout uses
-`meta/info.json`, episode/task metadata, per-frame Parquet, and videos; see the
-[LeRobot v0.3.3 dataset utilities](https://github.com/huggingface/lerobot/blob/v0.3.3/src/lerobot/datasets/utils.py).
+video, verify FPS/dimensions/frame counts, decode actual frame timestamps, and
+write Parquet and local videos before loading a `LeRobotDataset`. The nominal
+grid is useful conversion input, not proof of exact frame PTS. The reference
+layout uses `meta/info.json`, episode/task metadata, per-frame Parquet, and videos;
+see the [LeRobot v0.3.3 dataset utilities](https://github.com/huggingface/lerobot/blob/v0.3.3/src/lerobot/datasets/utils.py).
 
 ### RLDS metadata
 
-Each episode has a stable `episode_id`, indexes, `language_instruction`, video
-reference, accepted `success`, and the same source/evidence/quality metadata.
-`steps: []` and `steps_status: "not_materialized"` explicitly record that frame
-steps have not been decoded. Top-level `step_metadata` describes the observation
-key and required `is_first`/`is_last` flags for a converter. No fake step
-observations, terminal signals, rewards, discounts or actions are emitted.
+Each episode has a stable `episode_id`, indexes, combined `language_instruction`,
+video reference, accepted `success`, and the same source/evidence/quality metadata.
+When V2 sync and file FPS are available, `steps` contains nominal timestamped
+video references plus resampled state, with `is_first`/`is_last` flags.
+`steps_status: "temporal_references_not_decoded"` makes clear that these steps
+contain references to video time, not decoded pixels. Missing sync/FPS or V1
+traces produce `steps: []`, `steps_status: "not_materialized"`, unless a saved
+hand run and known file FPS support a hand-only temporal grid. Such a grid has
+no IMU state columns.
+No terminal signals, environment rewards, discounts or robot controls are emitted.
 
-`compatibility.directly_loadable` is false: this is JSON conversion metadata,
-not TFDS. Populate observation-only steps from decoded video before training.
-Success means accepted delivery; it is not an environment reward or terminal
-signal. RLDS requires consistent step structure and permits optional actions,
-rewards and discounts; see the [RLDS dataset format](https://github.com/google-research/rlds#dataset-format).
+`compatibility.directly_loadable` is false: this JSON is not TFDS. Decode the
+video and verify actual frame timestamps before training. Success means accepted
+delivery, not an environment reward or terminal signal. See the
+[RLDS dataset format](https://github.com/google-research/rlds#dataset-format).
+
+### V2 robotics field map and alignment
+
+The training formats call `datasets.trainingInputs` once per licensed episode.
+That action reads bounded private trace and latest hand-annotation JSON, validates
+both contracts, checks annotation source/submission bindings, and repeats current
+publication/consent authorization after storage I/O. Invalid or missing bytes
+produce no state/action proxy; they never become zeros or detections. No new
+secret or database is needed. Raw hydration inputs are excluded from exports.
+
+| Episode field | Meaning and missing-data behavior |
+| --- | --- |
+| `language_instruction` | Frozen task prompt, then delivered narration text; narration remains untrusted language data |
+| `segments` | Optional contributor-tapped rubric sub-task boundaries `{label,startMs,endMs}` in video milliseconds; `[]` without taps |
+| `context` | Self-reported `mount`, `dominantHand`, `environment`, `lighting`; null for old captures |
+| `camera` | Client device metadata: model/OS/app, back facing, requested 720p/codec, measured file `resolution`/`fps`/`videoDurationMs` when available, actual codec null when unavailable, zoom, `metadataSource` |
+| `camera.intrinsics` | Model-FOV estimate `{estimated:true,width,height,fx,fy,cx,cy,horizontalFovDegrees,source}` in pixel coordinates; null for unknown models/dimensions; no calibration claim |
+| `sync` | `videoStartOffsetMs`, `videoStopOffsetMs`, `source`, `accuracy`; Expo progress synchronization is explicitly `approximate`, never hardware/frame-accurate |
+| `grid` | FPS and its provenance (`client_reported_file_metadata` or verified server metadata if later supplied), nearest-sample rule and 100 ms maximum gap; `native_frame_timestamps:false` |
+| `state_names`, `state_units` | Ordered channel/axis names and units for flattened state; absent channels are omitted |
+| LeRobot `frames` | `frame_index`, `timestamp` in video seconds, `observation.state`; nominal file-FPS grid, not decoded video |
+| RLDS `steps[].observation.state` | Same resampled vector, paired with `observation.video.{url,timestamp}`; video is an external temporal reference |
+| `action_proxy` | Latest validated saved hand run: model/version/runtime, `advisory:true`, `derived:true`, `robot_control:false`, normalized-image coordinates and original timestamped `keyframes`; null without saved hands |
+| Frame/step `action` | Advisory hand keypoints nearest video time within half an annotation period (at most 250 ms); null outside coverage; empty hands means an actual saved no-detection frame |
+
+For video frame time `t_ms`, the resampler looks up trace time
+`t_ms + videoStartOffsetMs`. It chooses each channel's nearest actual callback
+sample within 100 ms, preserving the original axis values; it does not synthesize
+missing channels, extrapolate through longer gaps, or extend past the recorded
+stop. Missing values are null. V1 invocation-relative traces have no trustworthy
+video offset, so their raw feature descriptors remain available but no state grid
+is generated. FPS is never inferred from the IMU or annotation sample rate.
+A nominal grid from native file-average FPS still needs re-alignment to decoded
+frame PTS for variable-frame-rate video and careful robot-learning use.
+
+Camera dimensions/intrinsics from iOS use encoded track pixel axes, while browser
+hand points use displayed-video coordinates. Apply the video's display rotation
+before combining them; the estimate supplies no calibrated camera-to-hand transform.
 
 ## Usable segment and quality
 
@@ -191,7 +236,8 @@ previously issued grants. It does not recall downloaded copies or erase earned
 payables and historical evidence.
 All responses are private and uncached. Never publish these bearer credentials.
 
-Deploy the optional Convex schema fields and functions, then the web route.
+Deploy the optional Convex sensor V2 schema fields, `datasets.trainingInputs`
+and its internal authorization query, then the updated web route.
 No data migration, backfill, new secrets, or inference rerun is required.
 The existing matching `SKARL_PAYMENTS_SERVICE_SECRET` is required for video grants.
 See [Dashboard API](dashboard-api.md#buyer-dataset-export) for query details.

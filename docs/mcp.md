@@ -213,12 +213,11 @@ For role-specific `skarl_create_order`, provide a stable `requestId`, `title`, `
 `deadlineAt` (Unix milliseconds), `taskPrompt`, and `criteria` entries containing
 `criterionId`, `description`, and `modality`. Quantities and amounts are integer
 strings. The existing mutation freezes terms and rejects reuse of a request ID
-with different terms. Retry the same logical request with the same ID.
+with different terms. Retry the same logical request with the same ID. Optional `autoPay` sets `{enabled,maxPerClipAtomic:string,requireAllChecks:true}`; its default is enabled with cap equal to the per-clip price.
 
 No role gets a tool to approve, accept, sign, or execute a payout. Contributor
 explanations and model output are evidence, never payment authority. Human
-controllers retain the existing independent review and browser-wallet signing
-path. A refusal is an MCP tool result with `isError: true` and a machine-readable
+buyers review exceptions on their own orders; the internal buyer-signed policy handles eligible automatic approval and the independent CDP cap guards execution. Legacy controllers retain the browser-wallet signing path. A refusal is an MCP tool result with `isError: true` and a machine-readable
 code; it is not permission to call a different role or bypass the application.
 
 ## Guest orders and request limits
@@ -228,7 +227,7 @@ code; it is not permission to call a different role or bypass the application.
 with `750000` micro-USDC contributor compensation. Guests cannot override price,
 quantity, rubric, buyer identity, or destination. A prompt requesting 0.01 USDC
 does not change the quote: report the mismatch and obtain authorization for the
-actual returned amount before payment. Creation does not fund or accept work.
+actual returned amount before payment. Creation does not fund or accept work. Its optional `autoPay` rule defaults on with a `1000000`-micro-USDC cap and every check required. The buyer authorizes those terms when funding; the rule never grants approval authority to the agent.
 
 The server passes its existing `SKARL_PAYMENTS_SERVICE_SECRET` only to the trusted
 mutation. Clients never receive it. `demoOrderLimits` enforces three new demo
@@ -330,7 +329,7 @@ IDs, server-initiated messages, or SSE streams. A GET returns
 HTTP `405`; use POST for discovery and tools.
 
 An absent `Origin` is allowed for native clients. A supplied `Origin` must match
-the Convex HTTP site's origin or `https://skarl.vercel.app`; other origins receive
+the Convex HTTP site's origin, `https://skarl.devshardat.work`, or `https://skarl.vercel.app`; other origins receive
 HTTP `403`. Guest reads do not need key configuration. A supplied credential
 fails closed if invalid; missing service/seed configuration makes public order
 creation unavailable rather than bypassing the existing mutation.

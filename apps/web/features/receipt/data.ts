@@ -90,7 +90,7 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 /** The contributing app has no audit page here, so its links go to the app itself. */
-const APP_HREF: Record<string, string> = { "/audit/skarl": "https://skarl.vercel.app" };
+const APP_HREF: Record<string, string> = { "/audit/skarl": "https://skarl.devshardat.work" };
 
 function toSkarl(r: AssetReceipt): AssetReceipt {
   const json = JSON.stringify(r).replace(/"(color|bg|href)":"([^"]*)"/g, (m, key: string, v: string) => {

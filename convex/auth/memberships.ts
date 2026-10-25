@@ -1,12 +1,12 @@
 import { v, ConvexError } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { membershipRole } from "../validators";
-import { authToken, controllerEmailAllowed, demoModeEnabled, ensureAuthMembership, githubEnabled, signedInMembership } from "../lib/authMemberships";
+import { authToken, controllerEmailAllowed, demoModeEnabled, ensureAuthMembership, signedInMembership } from "../lib/authMemberships";
 import { audit } from "../lib/finance";
 
 export const claimRole = mutation({
-  args: { role: membershipRole },
+  // Internal policy authority is never a self-service role claim.
+  args: { role: v.union(v.literal("buyer"), v.literal("contributor"), v.literal("controller"), v.literal("finance-agent")) },
   handler: async (ctx, { role }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new ConvexError("unauthenticated");
@@ -40,7 +40,7 @@ export const me = query({
     const org = member ? await ctx.db.get(member.organizationId) : null;
     const active = member?.status === "active" && org?.status === "active";
     return { userId, email: user?.email ?? null, roles: active ? member.roles : [],
-      demoMode: demoModeEnabled(), githubEnabled: githubEnabled(),
+      demoMode: demoModeEnabled(),
       canClaimController: controllerEmailAllowed(user) && !member?.roles.includes("contributor") && !member?.roles.includes("finance-agent"),
     };
   },

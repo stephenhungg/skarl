@@ -24,7 +24,7 @@ Research checked October 24, 2026; updated October 25 after the audit and the mo
 | [Evaluation](evaluation.md) | How do we demonstrate that engineering improves correctness? |
 | [Mobile capture](mobile.md) | How do iPhone video, audio and IMU uploads work, and what do sensors prove? |
 | [Backend](backend.md) | How do Convex transactions, jobs, media and auth work? |
-| [Authentication](auth.md) | How do real sign-in, membership claims, controller onboarding and demo identities coexist? |
+| [Authentication](auth.md) | How do real sign-in, membership claims, buyer authority, internal policy and legacy demo identities coexist? |
 | [Consent and provenance](provenance.md) | What witnesses a sample's license, privacy signal and revocation status, and what must the dataset owner integrate? |
 | [Market](market.md) | Which cited buyer and contributor needs support the positioning, and where does Skarl still fall short? |
 | [Dashboard API handoff](dashboard-api.md) | Exact live query/mutation contracts, demo identities, refusals and browser payout signing |

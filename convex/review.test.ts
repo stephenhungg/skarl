@@ -130,7 +130,7 @@ describe("human review", () => {
       expect((await ctx.db.get(f.orderId))!.acceptedCount).toBe(1n);
     });
   });
-  it.each(["buyer", "contributor", "finance-agent"])("refuses %s and audits without writing a decision", async demoIdentity => {
+  it.each(["contributor", "finance-agent"])("refuses %s and audits without writing a decision", async demoIdentity => {
     const f = await setup(), id = await submission(f);
     expect(await f.t.mutation(api.review.reviewSubmission, { ...review(id), demoIdentity })).toMatchObject({ ok: false });
     expect(await f.t.mutation(api.review.reviewSubmission, { ...review(id), demoIdentity })).toMatchObject({ ok: false });

@@ -19,14 +19,14 @@ function harness(respond = input => ({ status: 0, stdout: JSON.stringify({
   } };
 }
 
-test("calls only deployed scenarios:run as controller with optional order scope", () => {
+test("calls only deployed scenarios:run as buyer with optional order scope", () => {
   const h = harness();
   assert.equal(runScenarios(["wrong_amount_transfer", "source-order"], h.api), 0);
   assert.equal(h.calls.length, 1);
   const call = h.calls[0];
   assert.equal(call.command, "pnpm");
   assert.deepEqual(call.args.slice(0, 4), ["exec", "convex", "run", "scenarios:run"]);
-  assert.deepEqual(JSON.parse(call.args[4]), { demoIdentity: "controller", scenario: "wrong_amount_transfer", orderId: "source-order" });
+  assert.deepEqual(JSON.parse(call.args[4]), { demoIdentity: "buyer", scenario: "wrong_amount_transfer", orderId: "source-order" });
   assert.equal(call.options.shell, false);
   assert.deepEqual(call.options.stdio, ["ignore", "pipe", "pipe"]);
   assert.equal(h.tables[0][0].result, "PASS");
@@ -52,7 +52,7 @@ test("all runs every scenario after a recorded failure and returns nonzero", () 
 test("all returns zero only when every backend result passes", () => {
   const h = harness();
   assert.equal(runScenarios(["all"], h.api), 0);
-  assert.equal(h.tables[0].length, 6);
+  assert.equal(h.tables[0].length, 8);
   assert.ok(h.tables[0].every(row => row.result === "PASS"));
 });
 

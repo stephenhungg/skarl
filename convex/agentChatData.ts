@@ -2,15 +2,15 @@ import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireRole } from "./lib/demoAuth";
-import { actorFor, audit, requireTenant } from "./lib/finance";
+import { actorFor, audit, requireBuyerOrder, requireTenant } from "./lib/finance";
 
 export const begin = internalMutation({
   args: { demoIdentity: v.string(), orderId: v.id("orders"), requestId: v.string(), question: v.string(), model: v.string() },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
-    requireTenant(principal, order);
+    requireBuyerOrder(principal, order);
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(args.requestId) || !args.question.trim() || args.question.length > 2000 ||
       !/^[a-z0-9][a-z0-9._-]{0,80}$/.test(args.model)) throw new Error("invalid_chat_request");
     const prior = await ctx.db.query("agentChats").withIndex("by_request", q => q.eq("organizationId", principal.organizationId)
@@ -35,7 +35,7 @@ export const save = internalMutation({
     status: v.optional(v.union(v.literal("completed"), v.literal("failed"), v.literal("capped"))),
     answer: v.optional(v.string()), citedRecordIds: v.array(v.string()), failureCode: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
     const row = await ctx.db.get(args.chatId);
     if (!row) throw new Error("chat_not_found");
     requireTenant(principal, row);
@@ -59,10 +59,10 @@ export const save = internalMutation({
 export const history = query({
   args: { demoIdentity: v.string(), orderId: v.id("orders") },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
-    requireTenant(principal, order);
+    requireBuyerOrder(principal, order);
     const rows = await ctx.db.query("agentChats").withIndex("by_order", q => q.eq("orderId", order._id)).order("desc").take(50);
     for (const row of rows) requireTenant(principal, row);
     return rows.map(({ transcriptJson, ...row }) => ({ ...row, transcript: JSON.parse(transcriptJson) }));

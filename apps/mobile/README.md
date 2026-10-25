@@ -2,8 +2,9 @@
 
 A standalone Expo Go iPhone app for real, consented demo contributions: portrait
 back-camera video with narration, synchronized device sensors, private uploads,
-and live analysis/review status. **Base Sepolia testnet, test USDC, impersonable
-demo identities.** No production authentication or payout signing in this app.
+and live analysis/review status. **Base Sepolia testnet, test USDC.** Google is
+the only real sign-in; a labeled, unsigned demo contributor is also available.
+Payout signing is not part of this app.
 
 ## Run on your iPhone
 
@@ -34,6 +35,34 @@ EXPO_PUBLIC_CONVEX_URL=https://keen-marmot-986.convex.cloud
 Restart Expo after changing it. No private API key belongs in an `EXPO_PUBLIC_`
 variable. **The operator must deploy the sensor backend from main before sensor
 attachment works.** This work does not deploy Convex.
+
+## Google sign-in
+
+The operator must configure Google OAuth and deploy the backend before real
+sign-in works. Follow [authentication setup](../../docs/auth.md): use a Google
+OAuth client of type **Web application**, with the exact redirect URI
+`https://keen-marmot-986.convex.site/api/auth/callback/google`. Google client
+credentials stay on Convex; no secret belongs in this app.
+
+Choose “Continue with Google”, complete the browser flow, then claim contributor
+access for your own account. Profile signs out of Convex Auth. Tokens and the
+OAuth verifier use `expo-secure-store`; AsyncStorage is only for the demo choice
+and upload drafts. The separate demo button continues unsigned and remains
+subject to `SKARL_DEMO_IDENTITIES` on the backend.
+
+Expo Go uses the URL returned by
+`makeRedirectUri({ scheme: "skarl", path: "auth" })`, typically
+`exp://<metro-host>:8081/--/auth`. Keep the same Metro session reachable from the
+phone. `skarl://auth` applies when running an app that registers the `skarl`
+scheme; setting it in `app.json` does not add that scheme to Expo Go. Do not add
+these app-return URLs to Google's authorized redirect URIs: Google returns to
+the HTTPS Convex callback, then Convex redirects back to the app.
+
+With real credentials on a physical iPhone, test successful sign-in, browser
+cancellation, relaunch/session restoration, contributor onboarding, and sign-out.
+Confirm a signed-in account sees only its own contributions even when demo mode
+is enabled. These live OAuth/device checks are not established by local tests
+or an iOS export.
 
 ## Phone smoke test
 
@@ -104,3 +133,57 @@ existing web WOFF2 assets with FontTools (`TTFont`, `flavor = None`), preserving
 the existing font data/names. They load at runtime with `expo-font` in Expo Go.
 See the [390px screenshots and comparison](../../docs/mobile.md#visual-alignment).
 The web export is for layout inspection; video/IMU capture is an iPhone flow.
+
+## Robot-data capture v2 device checklist
+
+After the operator deploys the Convex changes from main, use a physical iPhone
+in Expo Go; fixture tests and Metro export do not prove recording synchronization.
+
+1. Before filming, confirm Mount, Hand, Environment and Lighting. Change them,
+   retake, and relaunch: the choices should persist. Confirm the recorded context
+   appears in the submission report and both dataset episode formats.
+2. Record a consenting visible action with a distinct phone movement and spoken
+   cue. Inspect v2 JSON: `videoStartOffsetMs` should reflect recording startup,
+   `videoStopOffsetMs` should match start plus the file duration (bounded by the
+   trace clock), and `clock` should be `js-callback-performance-now`.
+   Compare the cue and sensor peak on replay to estimate real timing error.
+   **This is approximate synchronization**, derived from Expo's native duration
+   progress callbacks; Expo Go exposes no native camera host/frame timestamps.
+   Do not label it frame accurate. Repeat while the phone is busy and report the
+   observed error before using it for time-sensitive training.
+3. Tap the large **Next step** button when moving to each rubric action. Confirm
+   the current label advances and saved segments share video-relative boundaries.
+   Retake without tapping: recording/upload should work and `segments` should be
+   empty. A haptic is requested on taps; iOS may suppress it while the camera is
+   active, so the visible label is the reliable confirmation.
+4. Inspect recorded metadata: actual encoded track resolution, nominal FPS and duration
+   from `expo-video` when available; requested 720p/AVC remain distinct from
+   measured metadata. Codec uses the track’s reported media subtype (for example,
+   `video/avc1`); it is null when unavailable.
+   Zoom is zero; the app requests the standard wide lens with stabilization off.
+   Known iPhone 14/15 models should have `intrinsics.estimated: true`; unknown
+   models and failed metadata inspection must have null intrinsics. The lookup
+   uses Apple's main-lens full-frame-equivalent focal lengths for
+   [iPhone 14](https://support.apple.com/en-us/111850),
+   [iPhone 15](https://support.apple.com/en-us/111831) and
+   [iPhone 15 Pro](https://support.apple.com/en-us/111829). It ignores video crop,
+   distortion, file display rotation and focus changes; it is a pinhole estimate
+   in the encoded track dimensions, not calibration. Apply the video display
+   transform before comparing it to decoded/display-oriented hand coordinates.
+5. Inspect magnetometer x/y/z in microteslas when available. Turn the phone away
+   from metal and compare changes; these are raw magnetic readings, not a
+   calibrated compass heading. Deny motion permission and verify no fabricated
+   channels, vectors or zero heading: all absent channels belong in
+   `unavailableSensors`. Confirm missing recording progress yields null sync
+   offsets and no invented segments.
+6. Export a licensed accepted take as LeRobot and RLDS. Check that frame time zero
+   uses sensor time `videoStartOffsetMs`, sub-task boundaries follow your taps,
+   camera metadata accompanies the episode, and any saved hand keypoints are
+   clearly marked advisory action proxies. Compare a legacy v1 sample: it must
+   still summarize, with unavailable frame alignment shown honestly.
+7. Background the app while filming; discard the interrupted take. Then test a
+   network-loss upload/relaunch and verify the same submission resumes with its
+   original v2 trace, context and segments.
+
+ARKit poses, LiDAR/depth and native camera/sensor host-clock synchronization are
+roadmap items requiring a custom native build; they are outside this Expo Go app.

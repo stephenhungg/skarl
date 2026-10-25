@@ -66,6 +66,10 @@ describe("public agent discovery", () => {
     expect(text).toContain("Keys unlock role tools");
     for (const name of ["skarl_about", "skarl_list_tasks_public", "skarl_create_order_public", "skarl_public_order_status"]) expect(text).toContain(name);
     expect(text).toContain("mcp-unknown");
+    expect(text).toContain("https://skarl.devshardat.work/contribute");
+    expect(text).not.toContain("https://skarl.vercel.app/contribute");
+    expect(text).toContain("https://skarl.vercel.app/api/orders/{orderId}/fund");
+    expect(text).toContain("https://skarl.vercel.app/api/samples/sample-{submissionId}/evidence");
   });
 
   it("uses v0.3 AgentCard names and MIME modes without promising A2A messaging or approval skills", async () => {
@@ -77,6 +81,7 @@ describe("public agent discovery", () => {
       securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } },
       security: [{}, { bearerAuth: [] }], defaultInputModes: ["text/plain"],
     });
+    expect(card.skills.find((skill: { id: string }) => skill.id === "contributor").description).toContain("https://skarl.devshardat.work/contribute");
     expect(card.defaultOutputModes).toContain("application/json");
     expect(card.description).toContain("not A2A messaging");
     expect(card.description).toContain("Agents cannot approve");

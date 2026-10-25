@@ -1,3 +1,4 @@
+import { makeFunctionReference } from "convex/server";
 import { v, type Infer } from "convex/values";
 import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -163,7 +164,8 @@ export const copies = internalQuery({
     validateEvaluationScope(submission.verificationOnly, submission.evalRunId);
     // An explicit undefined index value excludes every scoped evaluation row from the ordinary pool.
     const candidates = await ctx.db.query("submissions").withIndex("by_eval_run", q =>
-      q.eq("organizationId", submission.organizationId).eq("evalRunId", submission.evalRunId)).take(201);
+      q.eq("organizationId", submission.organizationId).eq("evalRunId", submission.evalRunId))
+      .filter(q => q.neq(q.field("simulationOnly"), true)).take(201);
     if (submission.evalRunId !== undefined && candidates.some(candidate => !candidate.verificationOnly ||
       candidate.orderId !== submission.orderId || candidate.contributorTokenIdentifier !== submission.contributorTokenIdentifier ||
       candidate.evalVideoModel !== submission.evalVideoModel)) throw new Error("evaluation_scope_contaminated");
@@ -171,6 +173,8 @@ export const copies = internalQuery({
     const matches = [];
     for (const candidate of candidates) {
       if (candidate._id === submission._id || !candidate.currentAnalysisId) continue;
+      const candidateOrder = await ctx.db.get(candidate.orderId);
+      if (candidateOrder?.publicId.startsWith("scenario:") && candidate.orderId !== submission.orderId) continue;
       const analysis = await ctx.db.get(candidate.currentAnalysisId);
       if (!analysis || analysis.organizationId !== submission.organizationId || analysis.submissionId !== candidate._id) continue;
       if (candidate.status !== "accepted" && ["failed", "ml_unavailable"].includes(analysis.pipelineStatus)) continue;
@@ -270,6 +274,7 @@ export async function completeFor(ctx: MutationCtx, args: Infer<typeof completeA
     await ctx.db.patch(job._id, { status: report.pipeline.status === "failed" ? "failed" : "completed", completedAt: Date.now(), ...(args.failureCode ? {lastErrorCode: args.failureCode} : {}) });
     await audit(ctx, { organizationId: job.organizationId, eventKey: `analysed:${job._id}:${args.generation}`, actor: {kind:"service",identity:"gemini-verifier"},
       action: "analysis_stored", entityType: "submissions", entityId: submission._id, reason: context.summary, evidenceReferences: [analysisId] });
+    if (!simulatedScenarioId && !submission.verificationOnly) await ctx.scheduler.runAfter(0, makeFunctionReference<"mutation", { submissionId: Id<"submissions"> }>("policy:evaluateSubmission"), { submissionId: submission._id });
     return analysisId;
 }
 export const complete = internalMutation({args: completeArgs.fields, handler: (ctx, args) => completeFor(ctx, args)});
@@ -289,16 +294,26 @@ export const expire = internalMutation({
 export const getReport = query({
   args: { demoIdentity: v.string(), submissionId: v.id("submissions") },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent", "contributor"]);
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent", "contributor"]);
     const submission = await ctx.db.get(args.submissionId);
     if (!submission) throw new Error("submission_not_found");
     requireTenant(principal, submission);
     if (principal.roles.includes("contributor") && submission.contributorTokenIdentifier !== principal.tokenIdentifier) throw new Error("submission_not_owned");
+    if (principal.roles.includes("buyer")) {
+      const order = await ctx.db.get(submission.orderId);
+      if (!order || order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
+    }
     const analysis = submission.currentAnalysisId ? await ctx.db.get(submission.currentAnalysisId) : null;
     if (analysis && (analysis.organizationId !== submission.organizationId || analysis.submissionId !== submission._id)) throw new Error("analysis_reference_mismatch");
     const decision = submission.currentDecisionId ? await ctx.db.get(submission.currentDecisionId) : null;
     if (decision && (decision.organizationId !== submission.organizationId || decision.submissionId !== submission._id)) throw new Error("decision_reference_mismatch");
     return { status: submission.status, sourceHash: submission.sourceHash, perceptualHashSource: submission.perceptualHashSource,
+      capture: submission.sensorTrace ? { version: submission.sensorTrace.version ?? 1, device: submission.sensorTrace.device,
+        context: submission.sensorTrace.context ?? null, segments: submission.sensorTrace.segments ?? [],
+        unavailableSensors: submission.sensorTrace.unavailableSensors ?? [],
+        videoStartOffsetMs: submission.sensorTrace.videoStartOffsetMs ?? null, videoStopOffsetMs: submission.sensorTrace.videoStopOffsetMs ?? null,
+        clock: submission.sensorTrace.clock, syncSource: submission.sensorTrace.syncSource ?? null,
+        syncAccuracy: submission.sensorTrace.syncAccuracy ?? null } : null,
       submittedAt: submission._creationTime, analysisCompletedAt: analysis?.completedAt ?? null,
       decision: decision ? { _id: decision._id, decision: decision.decision, reason: decision.reason, reasonCode: decision.reasonCode,
         note: decision.note, decidedAt: decision.decidedAt } : null,

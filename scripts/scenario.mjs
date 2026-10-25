@@ -11,6 +11,8 @@ export const SCENARIOS = [
   "agent_self_approval",
   "prompt_injection_narration",
   "bank_mismatch",
+  "over_cap_payout",
+  "policy_auto_pay",
 ];
 
 /** Calls only the deployed lab. No --push, dev, deploy, signing, or send command. */
@@ -20,12 +22,12 @@ export function runScenarios(args = process.argv.slice(2), { execute = spawnSync
     log(`usage: pnpm scenario <${SCENARIOS.join("|")}|all> [orderId]`);
     return 2;
   }
-  log("SIMULATED CONTROL TEST — NO TRANSFER | controller demo identity | deployed production controls");
+  log("SIMULATED CONTROL TEST — NO TRANSFER | buyer demo identity | deployed production controls");
   log("requires the scenario-lab backend deployment; this command does not deploy code");
   const rows = [];
   for (const scenario of name === "all" ? SCENARIOS : [name]) {
     log(`running ${scenario}...`);
-    const input = { demoIdentity: "controller", scenario, ...(orderId ? { orderId } : {}) };
+    const input = { demoIdentity: "buyer", scenario, ...(orderId ? { orderId } : {}) };
     const child = execute("pnpm", ["exec", "convex", "run", "scenarios:run", JSON.stringify(input)], {
       cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: false,
       timeout: 180_000, maxBuffer: 4 * 1024 * 1024,

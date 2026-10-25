@@ -27,6 +27,8 @@ export const context = internalQuery({
     const intent = await ctx.db.get(args.intentId);
     if (!intent || intent.kind !== "contributor_payout") throw new Error("payout_not_found");
     requireTenant(agent, intent);
+    const order = await ctx.db.get(intent.orderId);
+    if (!order || order.publicId.startsWith("scenario:")) throw new Error("simulated_payout_not_executable");
     const attempt = await ctx.db.query("paymentAttempts").withIndex("by_intent", q =>
       q.eq("paymentIntentId", intent._id)).unique();
     return { intent, attempt };

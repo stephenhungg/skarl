@@ -8,8 +8,8 @@ import { CopyButton } from "@/components/glaze/ui/copy-button";
 import { Status } from "@/components/glaze/ui/status";
 import { cn } from "@/lib/glaze/utils";
 import { usePayout } from "@/lib/payments/use-payout";
-import { getPayoutRecovery } from "@/lib/payments/payout";
-import { api, CONTROLLER, FINANCE_AGENT, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type Id, type PayableRow } from "./data";
+import { executePayablePayout, getPayablePayoutRecovery } from "./payable-payout";
+import { api, CONTROLLER, useAudit, useOrderData, useOrderId, useReconciliation, type AuditEvent, type Id, type PayableRow } from "./data";
 import { basescanAddress, basescanTx, formatTime, humanize, parseChainIdentity, readableReason, shortHash } from "./format";
 import { actorName } from "./activity";
 import { executeApprovedRefund } from "@/lib/payments/refund";
@@ -113,7 +113,7 @@ function useInjectedWallet(): EIP1193Provider | null {
 }
 
 function Actions({ payable, step }: { payable: PayableRow; step: number }) {
-  const propose = useMutation(api.finance.proposePayment);
+  const reject = useMutation(api.finance.reject);
   const approve = useMutation(api.finance.approve);
   const provider = useInjectedWallet();
   const payout = usePayout({ demoIdentity: CONTROLLER, provider });
@@ -141,16 +141,16 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
   if (payable.status === "paid") buttons = <span className="me-auto type-label-sm text-text-2">Confirmed on chain and posted to the journal.</span>;
   else if (step === 0) buttons = <>
     <span className="me-auto type-label-sm text-text-3">Not proposed yet</span>
-    <Button size="sm" disabled={busy} onClick={() => act(() => propose({ demoIdentity: FINANCE_AGENT, payableId: payable._id }), "The finance agent proposed this payout.")}>Ask agent to propose</Button>
+    <Link href="/dashboard/agent" className="type-label-sm underline underline-offset-4">Open finance agent</Link>
   </>;
   else if (step === 1 && intentId) buttons = <>
     <Button variant="secondary" size="sm" className="me-auto" disabled={busy}
-      onClick={() => act(() => approve({ demoIdentity: FINANCE_AGENT, intentId }), "Unexpected: the agent approval went through.", "Agent approval refused")}>Let the agent approve</Button>
+      onClick={() => act(() => reject({ demoIdentity: CONTROLLER, intentId, reason: "Buyer rejected the payout exception." }), "Payout rejected.")}>Reject payout</Button>
     <Button size="sm" disabled={busy} onClick={() => setConfirming(true)}>Approve payout</Button>
     <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Approve this payout?" actionLabel="Approve payout"
-      description="You sign the transfer in your wallet after this."
+      description="The configured executor sends it after workflow validation."
       onConfirm={async () => {
-        const result = await act(() => approve({ demoIdentity: CONTROLLER, intentId }), "Approved. Waiting for the workflow to release it for signing.", "Approval refused");
+        const result = await act(() => approve({ demoIdentity: CONTROLLER, intentId }), "Approved. Waiting for the workflow and executor.", "Approval refused");
         if (!result.ok) throw new Error(`Refused: ${humanize(result.code ?? "refused")}.`);
       }}>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 type-body-sm">
@@ -161,16 +161,20 @@ function Actions({ payable, step }: { payable: PayableRow; step: number }) {
     </ConfirmDialog>
   </>;
   else if (step === 2 && payable.intent) buttons = <>
-    <span className="me-auto type-label-sm text-text-3">{payable.dispatchReady ? (provider ? "Ready. Your wallet will show the same amount and recipient." : "Connect Coinbase Wallet in this browser to sign.") : "Approved. Waiting for the workflow to release it."}</span>
+    <span className="me-auto type-label-sm text-text-3">{payable.dispatchReady ? (provider ? "Approved for the configured executor; manual wallet recovery is also available." : "Approved for the configured executor.") : "Approved. Waiting for the workflow to release it."}</span>
     <Button size="sm" disabled={!payable.dispatchReady || !provider || payout.busy}
-      onClick={() => payout.execute(payable.intent!.intentId).catch(() => undefined)}>{payout.busy ? humanize(payout.status) : "Sign payout"}</Button>
+      onClick={() => executePayablePayout(payable.intent!, payout.execute).catch(() => undefined)}>{payout.busy ? humanize(payout.status) : "Manual wallet recovery"}</Button>
   </>;
   else if (step === 3 && payable.intent) buttons = <>
     <span className="me-auto type-label-sm text-text-3">Submitted. Waiting for confirmations.</span>
     <Button variant="secondary" size="sm" disabled={payout.busy} onClick={() => {
-      const saved = payout.recovery ?? getPayoutRecovery(payable.intent!.intentId);
-      if (saved?.txHash) payout.recover({ ...saved, txHash: saved.txHash }).catch(() => undefined);
-      else setMessage({ ok: false, text: "No saved transaction in this browser. Check the wallet before doing anything else." });
+      try {
+        const saved = getPayablePayoutRecovery(payable.intent!, payout.recovery);
+        if (saved?.txHash) payout.recover({ ...saved, txHash: saved.txHash }).catch(() => undefined);
+        else setMessage({ ok: false, text: "No saved transaction in this browser. Check the wallet before doing anything else." });
+      } catch (error) {
+        setMessage({ ok: false, text: error instanceof Error ? error.message : "Saved recovery could not be read. Reconcile the existing claim before continuing." });
+      }
     }}>Reconcile saved transaction</Button>
   </>;
 
@@ -243,7 +247,7 @@ function Refund({ orderId }: { orderId: Id<"orders"> }) {
         </div>
       </article>
       <ConfirmDialog open={open} onOpenChange={setOpen} title="Approve this refund?" actionLabel="Approve refund"
-        description="You sign the transfer in your wallet after this."
+        description="The configured executor sends it after workflow validation."
         onConfirm={async () => {
           if (!reason.trim()) throw new Error("Add a reason first.");
           const result = await approve({ demoIdentity: CONTROLLER, commandId: refund.commandId as Id<"paymentCommands">, reason: reason.trim() });

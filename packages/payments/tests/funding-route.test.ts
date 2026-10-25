@@ -117,7 +117,7 @@ describe("actual POST /api/orders/[id]/fund x402 adapter", () => {
       expect(response.status).toBe(503);
       expect(response.headers.get("PAYMENT-REQUIRED")).toBeNull();
       expect(await response.json()).toEqual({ ok: false, error: "treasury_not_configured",
-        message: "Set SKARL_TREASURY_ADDRESS in the web server environment to the human controller's Coinbase Wallet receiving address before funding." });
+        message: "Set SKARL_TREASURY_ADDRESS in the web server environment to the treasury wallet receiving address before funding." });
     }
     expect(mocks.query).not.toHaveBeenCalled();
     expect(mocks.fetch).not.toHaveBeenCalled();

@@ -4,7 +4,7 @@
 
 The target agent fills two financial seats: settlement accountant and accounts-payable clerk. It explains obligations, proposes bounded payments and identifies reconciliation exceptions (period close is deferred). It does not decide whether a clip contains the right action, approve its own payment, hold a wallet key or rewrite the ledger.
 
-The Convex `financeAgent.run` action implements a configurable Gemini/Claude function-calling loop over the same six allowlisted tools. Tool results, provider/model and the final advisory explanation persist in `financeAgentRuns` for the controller dashboard. Server mutations enforce cumulative exact proposal limits and existing independent-approval rules. A Convex Workflow waits for independent controller approval, revalidates the stored proposal and releases the execution outbox; wallet execution remains separate. Mocked responses test policy boundaries; live Gemini measurements are recorded in [status](status.md). Claude currently has synthetic provider coverage only; deployment, credentials and live inference remain pending in the [Anthropic handoff](anthropic.md).
+The Convex `financeAgent.run` action implements a configurable Gemini/Claude function-calling loop over the same six allowlisted tools. Tool results, provider/model and the final advisory explanation persist in `financeAgentRuns` for buyer Review. Server mutations enforce cumulative exact proposal limits and existing independent-approval rules. A Convex Workflow waits for separate policy or buyer exception approval, revalidates the stored proposal and releases the execution outbox; wallet execution remains separate. Mocked responses test policy boundaries; live Gemini measurements are recorded in [status](status.md). Claude currently has synthetic provider coverage only; deployment, credentials and live inference remain pending in the [Anthropic handoff](anthropic.md).
 
 ## Bounded tool surface
 
@@ -17,9 +17,9 @@ Implement tools as typed application operations, not arbitrary SQL, shell, gener
 | `getTrialBalance` | No arguments; sums stored journal lines and asserts each entry balances | Read only; exact integer strings |
 | `listReconciliationExceptions` | No arguments; reads the existing payment reconciliation query | Read only; bounded exceptions |
 | `proposePaymentBatch` | Up to 20 unique existing payable IDs; server resolves amounts and destinations atomically | Proposal only; cumulative per-run amount cap |
-| `requestApproval` | Existing payout intent ID | Records an independent-controller request; never approves |
+| `requestApproval` | Existing payout intent ID | Records an approval request; never approves |
 
-Do not expose signing or `approvePayment` as agent tools. The authenticated controller approves the exact proposal in Convex. The agent may then call Coinbase Wallet MCP `send` **only for that stored, approved intent** (exact recipient, amount and token; no other parameters), and Coinbase Wallet asks the controller to approve the write. The Coinbase retail MCP's x402 tools run on Base mainnet with a 5 USDC cap and are not used on the demo path. An attempt to approve its own proposal is refused and logged; this refusal is part of the demo moment. The payment executor consumes the approved command and stores the attempt before submission. Recipient, amount, token, network or payable-version changes invalidate the prior approval.
+Do not expose signing or `approvePayment` as agent tools. The internal `policy-engine` applies the buyer-signed rule to the exact proposal in Convex; failures go to the order’s buyer for review. The agent may then call Coinbase Wallet MCP `send` **only for that stored, approved intent** (exact recipient, amount and token; no other parameters), as a legacy signing path. The happy path uses the existing CDP executor with its independent wallet cap. The Coinbase retail MCP's x402 tools run on Base mainnet with a 5 USDC cap and are not used on the demo path. An attempt to approve its own proposal is refused and logged; this refusal is part of the demo moment. The payment executor consumes the approved command and stores the attempt before submission. Recipient, amount, token, network or payable-version changes invalidate the prior approval.
 
 ## Reasoning loop and persistence
 
@@ -27,7 +27,7 @@ Do not expose signing or `approvePayment` as agent tools. The authenticated cont
 2. Fetch small, explicit financial snapshots using read tools. Provide event IDs and integer amount strings, not raw media, secrets or an unbounded journal dump.
 3. Compute balances and policy findings deterministically. The model summarizes those outputs and identifies what evidence is missing.
 4. For money-related requests, create a proposal against current obligation versions. The backend recomputes the amount and checks available funding, duplicate commands, recipient verification, limits and pending attempts inside the transaction.
-5. Stop at approval-required/blocked status and explain the exact reason. A user's chat sentence cannot confer controller permission.
+5. Stop at approval-required/blocked status and explain the exact reason. A user’s chat sentence cannot confer approval authority.
 6. After external execution, retrieve reconciliation output. State `pending` or `unknown` when appropriate; never infer success from fluent prose or a timeout.
 7. Persist run ID, model/configuration, tool name, argument digest, source versions, sanitized result summary and terminal outcome. Separate this operational audit from immutable accounting journals.
 
@@ -35,7 +35,7 @@ Use a finite step count, bounded tool result sizes, explicit timeouts and limite
 
 ## Policy design for the demo
 
-The initial policy requires an independent controller approval for every payout/refund. Add a proposal amount/batch limit, configured recipient allowlist, expiry and source-obligation version checks. The concrete limits and controller identities must be set before connecting a signer; none is hard-coded as an implied production policy.
+The buyer signs an auto-pay rule when creating/funding the order: enabled by default, cap equal to per-clip price, every check required. Buyers can change or disable it; changes are audited. Legacy orders without a rule remain manual until the buyer enables one. `policy-engine` is a distinct internal service, never a model-selected identity. Acceptance and approval reuse existing ledger/Workflow logic; the agent’s self-approval attempt still refuses even if the rule would pass. The buyer cap and CDP wallet cap are independent guards. Failed checks and over-cap intents go to buyer Review. Refunds retain their separate stored-approval path.
 
 A duplicate detection finding blocks automatic fulfillment pending review. Existing earned compensation survives cancellation. A transfer with an unresolved original attempt blocks replacement. A model may suggest investigating or adjusting an error, but corrections require an authorized linked reversal/adjustment; the original journal remains unchanged.
 
@@ -105,12 +105,12 @@ it does not resume money-related tools automatically.
 
 `@convex-dev/workflow` starts one `approvalWorkflow.awaitController` per payout
 proposal. Proposal replay reuses its stored Workflow ID. `finance.approve` keeps
-its existing controller/independence/binding checks, records the approval and
+its buyer/legacy-controller authorization, independence and binding checks, records the approval and
 sends `controllerApproved` in the same transaction. An early event is retained
 until the Workflow reaches `awaitEvent`.
 
 The event is a wake-up signal. The queue mutation reloads the approval, current
-controller membership, exact recipient/amount/asset, source version and expiry
+policy service or authorized buyer/legacy-controller membership, exact recipient/amount/asset, source version and expiry
 before inserting `dispatch:<commandId>` once. The component never signs or
 sends a transfer. A changed, revoked or expired approval cannot release dispatch.
 Unanswered workflows remain suspended; payment expiry still blocks execution.

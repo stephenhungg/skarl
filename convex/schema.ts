@@ -147,6 +147,8 @@ export default defineSchema({
     buyerTokenIdentifier: tokenIdentifier,
     buyerWalletAddress: evmAddress,
     title: v.string(),
+    autoPay: v.optional(v.object({ enabled: v.boolean(), maxPerClipAtomic: amountAtomic,
+      requireAllChecks: v.literal(true), setBy: tokenIdentifier, setAt: v.number() })),
     diversity: v.optional(diversityValidator),
     status: orderStatus,
     taskVersionId: v.optional(v.id("rubricVersions")),
@@ -208,6 +210,8 @@ export default defineSchema({
     originalAssetId: v.optional(v.id("mediaAssets")),
     consentRecordId: v.optional(v.id("consentRecords")),
     sensorTrace: v.optional(sensorTrace),
+    // Internal lab replays never enter real copy-detection capacity or execution.
+    simulationOnly: v.optional(v.literal(true)),
     livenessChallengeId: v.optional(v.id("livenessChallenges")),
     liveness: v.optional(v.object({ words: v.array(v.string()), issuedAt: v.number(), consumedAt: v.number() })),
     expectedSourceHash: v.optional(v.string()),

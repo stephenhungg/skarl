@@ -32,8 +32,8 @@ export type Counts = Record<string, number>;
 
 const CONTROLLER_NAV: ShellConfig["nav"] = [
   { items: [
-    { href: "/dashboard", label: "Overview", icon: "bar-chart-vertical-grow" },
-    { href: "/dashboard/inbox", label: "Needs you", icon: "badge-ribbon", count: "needs", loud: true },
+    { href: "/dashboard", label: "Review", icon: "bar-chart-vertical-grow" },
+    { href: "/dashboard/inbox", label: "Exceptions", icon: "badge-ribbon", count: "needs", loud: true },
   ] },
   { group: "Work", items: [
     { href: "/dashboard/submissions", label: "Submissions", icon: "file-pencil", count: "review" },
@@ -49,9 +49,9 @@ const CONTROLLER_NAV: ShellConfig["nav"] = [
   ] },
 ];
 export const CONTROLLER_SHELL: ShellConfig = {
-  home: "/dashboard", role: "Controller", homeLabel: "Overview", nav: CONTROLLER_NAV,
+  home: "/dashboard", role: "Buyer", homeLabel: "Review", nav: CONTROLLER_NAV,
   mobile: [CONTROLLER_NAV[0]!.items[0]!, CONTROLLER_NAV[0]!.items[1]!, CONTROLLER_NAV[1]!.items[0]!, CONTROLLER_NAV[1]!.items[1]!],
-  titles: { receipt: "Receipt", inbox: "Needs you", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log", scenarios: "Scenario lab", reconciliation: "Reconciliation", integrations: "Integrations" },
+  titles: { receipt: "Receipt", inbox: "Exceptions", submissions: "Submissions", payables: "Payables", ledger: "Ledger", agent: "Finance agent", audit: "Audit log", scenarios: "Scenario lab", reconciliation: "Reconciliation", integrations: "Integrations" },
   switchTo: { label: "Open contributor view", href: "/contribute" },
 };
 const STORE = "skarl:dashboard:sidebar";

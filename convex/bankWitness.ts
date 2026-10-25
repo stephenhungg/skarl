@@ -4,6 +4,7 @@ import { internalAction, internalMutation, internalQuery, query, type QueryCtx }
 import type { Doc, Id } from "./_generated/dataModel";
 import { api } from "./_generated/api";
 import type * as chainWitness from "./chainWitness";
+import { requireFinanceService } from "./lib/serviceAuth";
 import { requireRole } from "./lib/demoAuth";
 import { audit, requireTenant } from "./lib/finance";
 import { BANK_WITNESS_LABEL, createNessieClient, compareBankWitness, type BankActivity } from "./lib/nessie";
@@ -25,10 +26,11 @@ async function account(ctx: QueryCtx, organizationId: Id<"organizations">, owner
   return ctx.db.query("bankAccounts").withIndex("by_owner", q => q.eq("organizationId", organizationId).eq("owner", owner)).unique();
 }
 async function orderScope(ctx: QueryCtx, args: Scope) {
-  const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
+  const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
   const order = await ctx.db.get(args.orderId);
   if (!order) throw new Error("order_not_found");
   requireTenant(principal, order);
+    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
   return { principal, order };
 }
 const safeError = (error: unknown) => error instanceof Error && /^nessie_[a-z_0-9]{1,80}$/.test(error.message)
@@ -114,13 +116,14 @@ export const storeSnapshot = internalMutation({ args: { organizationId: v.id("or
   scenarioOrderId: v.optional(v.id("orders")), scenarioId: v.optional(v.string()),
 }, handler: async (ctx, args) => {
   if (args.scenarioOrderId !== undefined || args.scenarioId !== undefined) {
-    const principal = await requireRole(ctx, "controller", "controller");
+    const principal = await requireFinanceService(ctx);
     const order = args.scenarioOrderId ? await ctx.db.get(args.scenarioOrderId) : null;
     if (!order || !args.scenarioId || order.organizationId !== args.organizationId ||
       order.publicId !== `scenario:${args.scenarioId}` || args.accountId !== `SIMULATED:${args.scenarioId}:treasury`) {
       throw new Error("scenario_bank_scope_invalid");
     }
     requireTenant(principal, order);
+    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
     await audit(ctx, { organizationId: order.organizationId, eventKey: `scenario-bank:${args.scenarioId}`,
       actor: { kind: "service", identity: "scenario-lab" }, action: "scenario_bank_snapshot", entityType: "orders", entityId: order._id,
       reason: JSON.stringify({ simulated: true, scenarioId: args.scenarioId, accountId: args.accountId,

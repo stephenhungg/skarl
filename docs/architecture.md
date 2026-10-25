@@ -15,13 +15,14 @@ flowchart LR
   Pay -->|Observed funding facts| DB
   DB -->|Convex action| Vision[Gemini: timestamped image call and separate audio call]
   Vision -->|Schema-validated report| DB
-  Agent[Finance agent] -->|Wallet MCP send of an approved intent| Controller[Controller's Coinbase Wallet]
-  Controller -->|Approves USDC transfer| Chain[Base Sepolia USDC]
+  Agent[Finance agent] -->|Proposal only| Policy[Internal buyer-signed policy approver]
+  Policy -->|Approved stored intent| Wallet[CDP executor: independent cap]
+  Wallet -->|USDC transfer| Chain[Base Sepolia USDC]
   Pay -->|Reconcile by txHash + logIndex| Chain
   DB --> Finance[Payables, journals, approvals and audit views]
 ```
 
-This is **tonight's target architecture** (see [workstreams](workstreams.md)). The current shell does not connect these services yet. The browser fetches media through an authenticated backend path rather than a long-lived unprotected storage URL. **Payouts are approved and signed in the human controller's Coinbase Wallet; there is no treasury hot key in the web runtime or the agent, and no custom Solidity or escrow contract.**
+This is **tonight's target architecture** (see [workstreams](workstreams.md)). The current shell does not connect these services yet. The browser fetches media through an authenticated backend path rather than a long-lived unprotected storage URL. **The buyer-signed deterministic rule approves eligible payouts; failed checks go to buyer Review. The CDP executor independently caps execution. Legacy browser-wallet signing remains available; no separate human controller is required. No treasury signing key enters the web runtime or agent, and there is no custom Solidity or escrow contract.**
 
 **Deferred design** (kept in the subsystem docs, not built for the demo): a Python verifier worker on Railway with an HMAC service gateway and leased jobs, faster-whisper transcription, SSCD temporal copy detection, and refunds.
 
@@ -29,7 +30,7 @@ This is **tonight's target architecture** (see [workstreams](workstreams.md)). T
 
 | Boundary | Choice | Reason / tradeoff |
 | --- | --- | --- |
-| Web | Next.js App Router, React, TypeScript | One app for buyer, contributor and controller views; Node routes accommodate x402. Server-render by default. |
+| Web | Next.js App Router, React, TypeScript | One app for buyer and contributor views, including buyer Review; Node routes accommodate x402. Server-render by default. |
 | Source of truth | Convex | Atomic mutations, reactive queries, scheduler, file storage and the Workflow component for the approval wait. |
 | Identity | Seeded demo identities with server-checked roles in Convex | Labeled as demo. Auth0 is not used: Cal Hacks 13.0 has no Auth0 prize and it costs setup time. |
 | AI runtime | Convex action calling Gemini | No second service to deploy. Two separate calls keep the visual and audio evidence independent. |
@@ -37,7 +38,7 @@ This is **tonight's target architecture** (see [workstreams](workstreams.md)). T
 | Finance reasoning and read-only `askAgent` | `gemini-3.8-flash`, model ID configurable | Keeps interactive latency lower. Billing-enabled probes succeed; earlier free-tier failures remain historical. |
 | Speech evidence | `gemini-3.5-transcribe`, model ID configurable | Separate verbatim audio observations; narration is withheld from the visual call. |
 | Duplicate detection | SHA-256 + sampled-frame perceptual hash | Catches exact and re-encoded copies. SSCD is deferred (an image model; calibrating it needs labeled data). |
-| Money | Base Sepolia USDC; x402 V2 `exact` via the CDP facilitator; Coinbase Wallet MCP | Machine-payable order funding and agent-initiated payouts, with a human approving every write. |
+| Money | Base Sepolia USDC; x402 V2 `exact` via the CDP facilitator; Coinbase Wallet MCP | Machine-payable order funding and agent-initiated payouts, with buyer-policy approval and an independent CDP wallet cap for automatic payouts. |
 | Accounting | Deterministic TypeScript journals (`packages/ledger`) | Exact arithmetic and audit trail; the agent reasons over the books instead of inventing them. |
 
 Core JavaScript dependencies are installed and locked. The x402 packages (`@x402/evm`, `@x402/next`, `@x402/paywall`) and the Gemini SDK are **integration choices, not installed working features**; see [payments](payments.md) for version and peer notes.
@@ -47,11 +48,11 @@ Core JavaScript dependencies are installed and locked. The x402 packages (`@x402
 1. Create an immutable task/rubric version and order using an authenticated mutation.
 2. Issue an x402 requirement for a short funding endpoint. The route checks ownership, state, quote expiry and exact amount before settlement. Its handler stages an intent; post-settlement confirmation records funding atomically. Never hold this paid HTTP response open while analysing a video.
 3. Record on a secure browser origin; negotiate MediaRecorder codecs. Upload one original (cap: 25 MB), hash it and pin the task version. Store consent scope separately from the media bytes.
-4. An atomic mutation creates the submission and schedules the analysis action. Before any model call, the SHA-256/perceptual hash is compared with accepted submissions; a match blocks a second payable and routes to the controller.
+4. An atomic mutation creates the submission and schedules the analysis action. Before any model call, the SHA-256/perceptual hash is compared with accepted submissions; a match blocks a second payable and routes to buyer Review.
 5. The action concurrently sends timestamped JPEG frames and separately extracted audio to independent Gemini calls, aligns the claims, and validates the report against the shared schema. A failed or invalid analysis routes to review.
 6. Publish immutable analysis metadata. An acceptance mutation checks authorization, current order state, source identity, rubric version, consent and remaining funded quota. Persist decision and outbox work atomically.
 7. Publish buyer delivery access/manifest. Revenue recognition follows delivery under the documented principal assumption. Accepted-but-not-delivered work must not silently become recognized revenue.
-8. The controller approves the payout in Coinbase Wallet, outside the Convex mutation. Store attempts and tx-hash observations, reconcile uncertain outcomes and post each financial event once.
+8. The finance agent proposes; the internal policy service approves the exact stored intent within the buyer’s cap. The CDP executor applies its independent wallet cap. Failed checks go to buyer Review. Store attempts and tx-hash observations, reconcile uncertain outcomes and post each financial event once.
 
 ## Consistency and failure handling
 

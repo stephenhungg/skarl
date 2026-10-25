@@ -33,6 +33,10 @@ const SCENARIOS: Scenario[] = [
     control: "The verifier flags the instruction and holds the clip for review." },
   { name: "bank_mismatch", title: "Bank disagrees with chain", injects: "A bank deposit off by 0.01 USDC from the chain transfer.",
     control: "Four-way reconciliation raises a bank mismatch exception." },
+  { name: "over_cap_payout", title: "Payout over the auto-pay cap", injects: "An agent payout proposal one micro-USDC above the buyer's per-clip cap.",
+    control: "The policy engine refuses it and opens a review exception. Nothing is approved or sent.", needs: "Needs an accepted clip on this order" },
+  { name: "policy_auto_pay", title: "Auto-pay within policy", injects: "An agent payout proposal that passes every buyer rule.",
+    control: "The policy engine approves it and the agent still cannot approve itself. No transfer is sent.", needs: "Needs an unaccepted clip on this order" },
 ];
 /** A missing prerequisite is a failed run, but not a control that let something through. */
 const blocked = (run: ScenarioRun) => !run.passed && run.observedOutcome.startsWith("requires ");

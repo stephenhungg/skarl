@@ -75,6 +75,6 @@ Labelling rule for every surface: testnet and simulated data carry a visible bad
 ## Demo order of screens (3-minute pitch)
 1. Submissions → duplicate caught (Hyphenate moment).
 2. Witness receipt of the good clip (thesis).
-3. Agent run → self-approval refused → controller approves → payout tx link (Hyphenate, Coinbase, Anthropic).
+3. Agent run → self-approval refused → buyer-signed policy approves → independent CDP cap → payout tx link (Hyphenate, Coinbase, Anthropic).
 4. 4-way reconciliation all green; then run the bank-mismatch scenario and watch it turn red live (Nessie, Convex).
 5. "Connect your agent" panel (agent-native, Coinbase MCP).

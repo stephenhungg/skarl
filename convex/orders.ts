@@ -1,4 +1,4 @@
-import { paginationOptsValidator } from "convex/server";
+import { makeFunctionReference, paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -17,7 +17,8 @@ const criterion = v.object({ criterionId: v.string(), description: v.string(),
 export const createOrder = mutation({
   args: { demoIdentity: v.string(), requestId: v.string(), title: v.string(), buyerWalletAddress: v.string(),
     quantityRequested: v.string(), pricePerSampleAtomic: v.string(), contributorRateAtomic: v.string(),
-    deadlineAt: v.number(), taskPrompt: v.string(), criteria: v.array(criterion), diversity: v.optional(diversityValidator) },
+    deadlineAt: v.number(), taskPrompt: v.string(), criteria: v.array(criterion), diversity: v.optional(diversityValidator),
+    autoPay: v.optional(v.object({ enabled: v.boolean(), maxPerClipAtomic: v.string(), requireAllChecks: v.literal(true) })) },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, "buyer");
     if (principal.roles.includes("finance-agent")) throw new Error("human_buyer_required");
@@ -30,12 +31,14 @@ export const createOrder = mutation({
       contributorRateAtomic = parseAtomicUsdc(args.contributorRateAtomic), budgetAtomic = quantityRequested * pricePerSampleAtomic;
     if (quantityRequested <= 0n || pricePerSampleAtomic <= 0n || contributorRateAtomic <= 0n || contributorRateAtomic > pricePerSampleAtomic ||
       budgetAtomic > MAX_ATOMIC_USDC) throw new Error("invalid_order_amounts");
+    const policyTerms = { enabled: args.autoPay?.enabled ?? true, maxPerClipAtomic: parseAtomicUsdc(args.autoPay?.maxPerClipAtomic ?? args.pricePerSampleAtomic), requireAllChecks: true as const };
+    if (policyTerms.maxPerClipAtomic <= 0n) throw new Error("invalid_auto_pay_cap");
     const diversity = normalizeDiversity(args.diversity, quantityRequested);
     const buyerWalletAddress = normalizeAddress(args.buyerWalletAddress);
     if (buyerWalletAddress === `0x${"0".repeat(40)}`) throw new Error("invalid_buyer_wallet");
     const contentHash = digest({ version: 1, taskPrompt, criteria: args.criteria });
     const termsHash = digest({ title, quantityRequested, pricePerSampleAtomic, contributorRateAtomic, budgetAtomic,
-      deadlineAt: args.deadlineAt, buyerWalletAddress, contentHash, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
+      deadlineAt: args.deadlineAt, buyerWalletAddress, contentHash, autoPay: policyTerms, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
       ...(diversity !== undefined ? { diversity } : {}) });
     const publicId = `order-${digest({ organizationId: principal.organizationId, buyer: principal.tokenIdentifier, requestId: args.requestId })}`;
     const existing = await ctx.db.query("orders").withIndex("by_public_id", q => q.eq("publicId", publicId)).unique();
@@ -46,6 +49,7 @@ export const createOrder = mutation({
     if (args.deadlineAt <= Date.now()) throw new Error("order_deadline_expired");
     const now = Date.now();
     const orderId = await ctx.db.insert("orders", { organizationId: principal.organizationId, network: PAYMENT_NETWORK, tokenAddress: USDC_ADDRESS,
+      autoPay: { ...policyTerms, setBy: principal.tokenIdentifier, setAt: now },
       publicId, buyerTokenIdentifier: principal.tokenIdentifier, buyerWalletAddress, title, status: "awaiting_funding",
       ...(diversity !== undefined ? { diversity } : {}),
       quantityRequested, pricePerSampleAtomic, contributorRateAtomic, budgetAtomic, acceptedCount: 0n, deadlineAt: args.deadlineAt, termsHash, updatedAt: now });
@@ -55,6 +59,8 @@ export const createOrder = mutation({
     await audit(ctx, { organizationId: principal.organizationId, eventKey: `order_created:${orderId}`, actor: actorFor(principal),
       action: "order_created", entityType: "orders", entityId: orderId,
       reason: "Buyer froze the rubric and exact terms; funding is still required.", evidenceReferences: [taskVersionId, termsHash] });
+    await audit(ctx, { organizationId: principal.organizationId, eventKey: `auto_pay_set:${orderId}`, actor: actorFor(principal),
+      action: "auto_pay_policy_set", entityType: "orders", entityId: orderId, reason: JSON.stringify({ ...policyTerms, maxPerClipAtomic: policyTerms.maxPerClipAtomic.toString() }), evidenceReferences: [termsHash] });
     return { orderId, taskVersionId, publicId, status: "awaiting_funding" as const, budgetAtomic: budgetAtomic.toString(), replayed: false };
   },
 });
@@ -101,7 +107,8 @@ export const listOrders = query({
       ? q.eq("organizationId", principal.organizationId)
       : q.eq("organizationId", principal.organizationId).eq("buyerTokenIdentifier", principal.tokenIdentifier))
       .order("desc").paginate({ ...args.paginationOpts, numItems: Math.min(100, args.paginationOpts.numItems) });
-    return { ...rows, page: rows.page.map(order => ({ ...order, quantityRequested: order.quantityRequested.toString(),
+    return { ...rows, page: rows.page.map(order => ({ ...order,
+      autoPay: order.autoPay ? { ...order.autoPay, maxPerClipAtomic: order.autoPay.maxPerClipAtomic.toString() } : undefined, quantityRequested: order.quantityRequested.toString(),
       acceptedCount: order.acceptedCount.toString(), pricePerSampleAtomic: order.pricePerSampleAtomic.toString(),
       contributorRateAtomic: order.contributorRateAtomic.toString(), budgetAtomic: order.budgetAtomic.toString(),
       remainingQuantity: (order.quantityRequested - order.acceptedCount).toString() })) };
@@ -168,5 +175,38 @@ export const cancelRemainder = mutation({
       evidenceReferences: [funding._id, paymentCommandId, journalEntryId] });
     return { ok: true, paymentCommandId, fundingIntentId: funding._id, journalEntryId, amountAtomic: amountAtomic.toString(),
       controllerApprovalRequired: true, executionAvailable: false, replayed: false };
+  },
+});
+
+/** Authenticated buyer consent; legacy orders remain manual until explicitly set. */
+export const setAutoPay = mutation({
+  args: { demoIdentity: v.string(), orderId: v.id("orders"), enabled: v.boolean(), maxPerClipAtomic: v.string() },
+  handler: async (ctx, args) => {
+    const principal = await requireRole(ctx, args.demoIdentity, "buyer");
+    if (principal.roles.includes("finance-agent")) throw new Error("human_buyer_required");
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.organizationId !== principal.organizationId || order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_found");
+    const maxPerClipAtomic = parseAtomicUsdc(args.maxPerClipAtomic);
+    if (maxPerClipAtomic <= 0n) throw new Error("invalid_auto_pay_cap");
+    if (order.autoPay?.enabled === args.enabled && order.autoPay.maxPerClipAtomic === maxPerClipAtomic) return { ok: true, replayed: true };
+    const autoPay = { enabled: args.enabled, maxPerClipAtomic, requireAllChecks: true as const, setBy: principal.tokenIdentifier, setAt: Math.max(Date.now(), (order.autoPay?.setAt ?? 0) + 1) };
+    await ctx.db.patch(order._id, { autoPay, updatedAt: autoPay.setAt });
+    await audit(ctx, { organizationId: order.organizationId, eventKey: `auto_pay_changed:${order._id}:${digest(autoPay)}`, actor: actorFor(principal),
+      action: "auto_pay_policy_changed", entityType: "orders", entityId: order._id,
+      reason: JSON.stringify({ ...autoPay, maxPerClipAtomic: maxPerClipAtomic.toString() }), evidenceReferences: [order.termsHash] });
+    // Re-evaluate pending work when the buyer changes the rule; existing approvals stay bound.
+    const pending = await ctx.db.query("submissions").withIndex("by_order_status", q => q.eq("orderId", order._id)).collect();
+    for (const submission of pending) {
+      if (submission.currentAnalysisId && !submission.verificationOnly && ["needs_review", "needs_correction"].includes(submission.status)) {
+        await ctx.scheduler.runAfter(0, makeFunctionReference<"mutation", { submissionId: Id<"submissions"> }>("policy:evaluateSubmission"), { submissionId: submission._id });
+      }
+    }
+    const intents = await ctx.db.query("paymentIntents").withIndex("by_order", q => q.eq("orderId", order._id)).collect();
+    for (const intent of intents) {
+      if (intent.kind === "contributor_payout" && intent.status === "proposed") {
+        await ctx.scheduler.runAfter(0, makeFunctionReference<"mutation", { intentId: Id<"paymentIntents"> }>("policy:policyApproval"), { intentId: intent._id });
+      }
+    }
+    return { ok: true, replayed: false };
   },
 });

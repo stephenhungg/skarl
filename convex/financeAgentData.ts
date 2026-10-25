@@ -17,7 +17,7 @@ async function running(ctx: MutationCtx, runId: Id<"financeAgentRuns">) {
   // ctx.runMutation keeps a human session. It may only operate its own run;
   // scheduled internal recovery has no user session and no public entrypoint.
   if (await ctx.auth.getUserIdentity()) {
-    const caller = await requireRole(ctx, "", "controller");
+    const caller = await requireRole(ctx, "", ["buyer", "controller"]);
     if (caller.tokenIdentifier !== run.requesterTokenIdentifier) throw new Error("agent_run_not_owned");
     requireTenant(caller, run);
   }
@@ -27,11 +27,12 @@ async function running(ctx: MutationCtx, runId: Id<"financeAgentRuns">) {
 export const begin = internalMutation({
   args: { demoIdentity: v.string(), orderId: v.id("orders"), requestId: v.string(), prompt: v.string(), provider: v.optional(v.union(v.literal("gemini"), v.literal("claude"))), model: v.string(), maxToolCalls: v.number(), maxBatchAtomic: v.string() },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]);
     const service = await requireFinanceService(ctx);
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
     requireTenant(principal, order);
+    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
     requireTenant(service, order);
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(args.requestId) || !args.prompt.trim() || args.prompt.length > 2000 ||
       !Number.isSafeInteger(args.maxToolCalls) || args.maxToolCalls < 1 || args.maxToolCalls > 24) throw new Error("invalid_agent_request");
@@ -104,9 +105,10 @@ export const refuseApproval = internalMutation({
 export const runs = query({
   args: { demoIdentity: v.string(), orderId: v.id("orders") },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]), order = await ctx.db.get(args.orderId);
+    const principal = await requireRole(ctx, args.demoIdentity, ["buyer", "controller", "finance-agent"]), order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
     requireTenant(principal, order);
+    if (principal.roles.includes("buyer") && !principal.roles.includes("controller") && order.buyerTokenIdentifier !== principal.tokenIdentifier) throw new Error("order_not_owned");
     const rows = await ctx.db.query("financeAgentRuns").withIndex("by_order", q => q.eq("orderId", order._id)).order("desc").take(20);
     return rows.map(row => ({ ...row, provider: row.provider ?? "gemini", maxBatchAtomic: row.maxBatchAtomic.toString(), proposedAtomic: row.proposedAtomic.toString(),
       transcript: JSON.parse(row.transcriptJson), transcriptJson: undefined }));

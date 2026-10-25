@@ -6,7 +6,7 @@ import { requireTenant } from "./lib/finance";
 import { alignFrameHashes } from "./lib/copyDetection";
 
 async function principal(ctx: QueryCtx, identity: string) {
-  const member = await requireRole(ctx, identity, ["controller", "contributor"]);
+  const member = await requireRole(ctx, identity, ["buyer", "controller", "contributor"]);
   if (identity === "finance-agent" || member.roles.includes("finance-agent")) throw new Error("forbidden");
   return member;
 }
@@ -15,7 +15,8 @@ async function accessible(ctx: QueryCtx, member: DemoPrincipal, id: Id<"submissi
   const submission = await ctx.db.get(id);
   if (!submission) throw new Error("submission_not_found");
   requireTenant(member, submission);
-  if (!member.roles.includes("controller") && submission.contributorTokenIdentifier !== member.tokenIdentifier) {
+  const order = member.roles.includes("buyer") ? await ctx.db.get(submission.orderId) : null;
+  if (!member.roles.includes("controller") && order?.buyerTokenIdentifier !== member.tokenIdentifier && submission.contributorTokenIdentifier !== member.tokenIdentifier) {
     throw new Error("submission_not_owned");
   }
   return submission;

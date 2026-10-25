@@ -10,6 +10,8 @@ export type DemoPrincipal = Doc<"memberships">;
 export const demoToken = (identity: DemoIdentity) => `demo:skarl:${identity}`;
 // Service identity survives bad role provisioning; a caller-supplied selector
 // never determines whether an authenticated human is an agent.
+export const POLICY_TOKEN = "service:skarl:policy-engine";
+export const isPolicyEngine = (member: DemoPrincipal) => member.tokenIdentifier === POLICY_TOKEN || member.roles.includes("policy-engine");
 export const isFinanceAgent = (member: DemoPrincipal) =>
   member.tokenIdentifier === demoToken("finance-agent") || member.roles.includes("finance-agent");
 
@@ -37,6 +39,7 @@ export async function requireRole(
   const organization = await ctx.db.get(member.organizationId);
   if (!organization || organization.status !== "active") throw new DemoRoleError("inactive_organization");
   const roles = typeof role === "string" ? [role] : role;
+  if (isPolicyEngine(member)) throw new DemoRoleError("internal_service_only", member);
   const isAgent = isFinanceAgent(member);
   if (roles.includes("controller") && roles.length === 1 && isAgent) {
     throw new DemoRoleError("agent_approval_refused", member);

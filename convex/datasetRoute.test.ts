@@ -2,17 +2,18 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 
-const mocks = vi.hoisted(() => ({ query: vi.fn(), client: vi.fn() }));
+const mocks = vi.hoisted(() => ({ query: vi.fn(), action: vi.fn(), client: vi.fn() }));
 vi.mock("convex/browser", () => ({
   ConvexHttpClient: class {
     constructor(url: string) { mocks.client(url); }
     query = mocks.query;
+    action = mocks.action;
   },
 }));
 import { GET } from "../apps/web/app/api/orders/[id]/dataset/route";
 
 const orderId = "order123";
-const sample = { submissionId: "submission123", license: { version: "demo-consent-v1", scope: "training" } };
+const sample = { submissionId: "submission123", license: { version: "demo-consent-v1", scope: "training" }, media: { url: "https://private.example/video", binding: "fixture-binding" } };
 const manifest = { schema: "skarl.dataset.v1", orderId, task: { id: "task123", version: 1, criterionIds: [] },
   generatedAt: 1792918771043, samples: [sample] };
 const context = (id = orderId) => ({ params: Promise.resolve({ id }) });
@@ -27,6 +28,7 @@ beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", "https://example.convex.cloud");
   vi.stubEnv("SKARL_PAYMENTS_SERVICE_SECRET", "");
   mocks.query.mockResolvedValue(manifest);
+  mocks.action.mockResolvedValue({ trace: null, hands: null, status: "unavailable" });
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -100,7 +102,7 @@ it.each(["lerobot", "rlds-json"])("serves %s only after the same licensed buyer 
   const accepted = { ...sample, durationMs: 12000, task: { id: "task123", languageInstruction: "Place the cup." },
     usableStartMs: 500, usableEndMs: 2500, qualityScore: 70,
     components: { duplicateClear: { score: 20, maxScore: 20, status: "supported", evidence: "Synthetic clear duplicate check" } },
-    media: { url: "https://private.example/video", fps: null }, sensorTrace: null };
+    media: { url: "https://private.example/video", binding: "fixture-binding", fps: null }, sensorTrace: null };
   mocks.query.mockResolvedValue({ ...manifest, samples: [accepted] });
   const response = await GET(request("buyer", `?format=${format}`), context());
   expect(response.status).toBe(200);
@@ -157,4 +159,20 @@ it("reports missing configuration without constructing a client", async () => {
   expect(response.status).toBe(503);
   expect(await response.json()).toEqual({ error: "dataset_not_configured" });
   expect(mocks.client).not.toHaveBeenCalled();
+});
+
+it("hydrates training evidence only through the licensed bound action, and keeps raw inputs out of output", async () => {
+  const response = await GET(request("buyer", "?format=lerobot"), context());
+  expect(response.status).toBe(200);
+  const [reference, args] = mocks.action.mock.calls[0]!;
+  expect(getFunctionName(reference)).toBe("datasets:trainingInputs");
+  expect(args).toEqual({ demoIdentity: "buyer", orderId, submissionId: sample.submissionId, binding: "fixture-binding" });
+  expect((await response.json()).episodes[0]).not.toHaveProperty("trainingInputs");
+});
+
+it("does not return a training export if consent/binding changes during hydration", async () => {
+  mocks.action.mockRejectedValue(new Error("sample_not_available"));
+  const response = await GET(request("buyer", "?format=rlds-json"), context());
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ error: "dataset_unavailable" });
 });
