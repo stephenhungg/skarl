@@ -90,13 +90,6 @@ export const PaymentReceiptPrinter: React.FC<PaymentReceiptPrinterProps> = ({
         >
           <div className="mb-2.5 flex items-center justify-between">
             <span className="mono text-[12px] leading-none text-slate-700">{deviceLabel}</span>
-            <span className="flex items-center gap-1.5 rounded-[6px] bg-mist px-1.5 py-[3px]">
-              <motion.span
-                animate={printing ? { opacity: [0.4, 1, 0.4] } : { opacity: 1 }}
-                transition={{ repeat: printing ? Infinity : 0, duration: 0.8 }}
-                className={cn('size-1.5 rounded-full', state === 'idle' ? 'bg-fog' : 'bg-accent')}
-              />
-            </span>
           </div>
           {/* Feed slot */}
           <div className="h-2.5 w-full rounded-full bg-slate-300/45" />
