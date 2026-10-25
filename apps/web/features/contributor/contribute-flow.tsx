@@ -1,18 +1,13 @@
 "use client";
 import { useConvexConnectionState, useQuery } from "convex/react";
-import { motion } from "motion/react";
 import { Component, useEffect, useState, type ReactNode } from "react";
 import { useConvexConfig } from "@/components/convex-provider";
 import { DEMO_IDENTITY, refs, type OrderSummary, type Payable, type Submission } from "./api";
-import { CONSENT_ITEMS, Consent, type ConsentId } from "./consent";
-import { RecorderStage } from "./recorder-stage";
-import { SubmissionPanel } from "./submission-panel";
-import { TaskBrief } from "./task-brief";
-import { Eyebrow, Pill } from "./ui";
+import { CONSENT_ITEMS, type ConsentId } from "./consent";
+import { Studio } from "./studio";
 import { useRecorder, type Clip } from "./use-recorder";
 import { useSubmit, type SubmitState } from "./use-submit";
 
-const SETTLE = [0.43, 0.42, 0.37, 0.97] as const;
 const UNREACHABLE_AFTER_MS = 8000;
 
 type Backend =
@@ -41,16 +36,6 @@ function unavailableCopy(backend: Backend): { title: string; body: ReactNode } |
   }
 }
 
-function unavailableReason(backend: Backend) {
-  return backend.kind === "ready" ? undefined : unavailableCopy(backend)?.title.concat(".");
-}
-
-function BackendBadge({ backend }: { backend: Backend }) {
-  if (backend.kind === "ready") return <span className="flex items-center gap-2"><Pill tone="accent">LIVE</Pill><span className="mono text-[12px] text-slate-500">{host(backend.url)}</span></span>;
-  if (backend.kind === "connecting") return <Pill tone="muted">CONNECTING</Pill>;
-  return <Pill tone="strong">BACKEND UNAVAILABLE</Pill>;
-}
-
 const NO_CONSENT = Object.fromEntries(CONSENT_ITEMS.map(item => [item.id, false])) as Record<ConsentId, boolean>;
 
 type ShellProps = {
@@ -61,78 +46,20 @@ type ShellProps = {
   submitter?: { state: SubmitState; submit: (clip: Clip) => void; reset: () => void };
 };
 
-function clipOf(recorder: ReturnType<typeof useRecorder>) {
-  return recorder.state.phase === "recorded" ? recorder.state.clip : null;
-}
-
-/** Layout and local recording. Works without a backend; uploading needs `submitter`. */
+/** Local recording works without a backend; uploading needs `submitter`. */
 function Shell({ backend, summary, history, payables, submitter }: ShellProps) {
   const recorder = useRecorder();
   const [consent, setConsent] = useState(NO_CONSENT);
-  const consented = CONSENT_ITEMS.every(item => consent[item.id]);
-  const clip = clipOf(recorder);
+  const clip = recorder.state.phase === "recorded" ? recorder.state.clip : null;
   const submitState: SubmitState = submitter?.state ?? { phase: "idle" };
-  const busy = ["hashing", "uploading", "finalizing"].includes(submitState.phase);
-  const done = submitState.phase === "queued";
-
   const current = clip && history
     ? history.find(item => item.clientRequestId === clip.clientRequestId || (submitState.phase === "queued" && item._id === submitState.submissionId)) ?? null
     : null;
-
   const retake = () => { submitter?.reset(); void recorder.retake(); };
-  const canUpload = backend.kind === "ready" && submitter;
-
   return (
-    <main className="pb-[108px] pt-[112px] max-md:pb-[72px] max-md:pt-[96px]">
-      <div className="frame">
-        <motion.header initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: SETTLE }} className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="max-w-[640px]">
-            <Eyebrow>Contribute</Eyebrow>
-            <h1 className="cut-regular mt-1.5 text-[32px] leading-[1.2] tracking-[-0.015em] text-ink md:text-[42px] xl:text-[48px]">Record a task</h1>
-            <p className="mt-3 text-[14px] leading-[1.35] tracking-[0.01em] text-slate-500 md:text-[18px]">
-              Read the brief, agree to the terms, then film one 10 to 30 second take while you narrate. You can follow the clip from upload to review on this page.
-            </p>
-          </div>
-          <div className="flex flex-col items-start gap-1.5 md:items-end">
-            <BackendBadge backend={backend} />
-            <span className="text-[12px] leading-[1.2] text-fog">Signed in as the demo contributor account.</span>
-          </div>
-        </motion.header>
-
-        <motion.div
-          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.6, ease: SETTLE }}
-          className="mt-8 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start"
-        >
-          <div className="flex flex-col gap-3 lg:col-start-1 lg:row-span-2 lg:row-start-1">
-            <TaskBrief summary={summary} />
-            <Consent value={consent} onChange={setConsent} locked={busy || done} />
-          </div>
-          <div className="lg:col-start-2 lg:row-start-1">
-            <RecorderStage
-              recorder={recorder}
-              consented={consented}
-              onRetake={retake}
-              unavailableReason={unavailableReason(backend)}
-              submit={canUpload && clip ? {
-                onSubmit: () => submitter.submit(clip),
-                busy, done,
-                label: submitState.phase === "hashing" ? "Hashing" : submitState.phase === "uploading" ? "Uploading" : submitState.phase === "finalizing" ? "Creating submission" : done ? "Submitted" : submitState.phase === "error" ? "Submit again" : "Submit clip",
-              } : null}
-            />
-          </div>
-          <div className="lg:col-start-2 lg:row-start-2">
-            <SubmissionPanel
-              submitState={submitState}
-              onRetry={() => clip && submitter?.submit(clip)}
-              current={current}
-              history={history}
-              payables={payables}
-              unavailable={backend.kind === "ready" ? undefined : unavailableCopy(backend)}
-            />
-          </div>
-        </motion.div>
-      </div>
-    </main>
+    <Studio live={backend.kind === "ready"} unavailable={backend.kind === "ready" ? undefined : unavailableCopy(backend)}
+      summary={summary} history={history} payables={payables} recorder={recorder} consent={consent} onConsent={setConsent}
+      submitState={submitState} onSubmit={submitter ? clip => submitter.submit(clip) : null} onRetake={retake} current={current} />
   );
 }
 
