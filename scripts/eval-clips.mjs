@@ -100,6 +100,35 @@ const nearestRank = (values, percentile) => {
   const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
   return sorted.length ? sorted[Math.max(0, Math.ceil(percentile * sorted.length) - 1)] : null;
 };
+/** Two-sided Wilson score interval, 95%; no estimate without observations. */
+export function wilson(k, n) {
+  if (!Number.isSafeInteger(k) || !Number.isSafeInteger(n) || k < 0 || n < k) throw new Error("Wilson counts must be integers with 0 <= k <= n");
+  if (n === 0) return null;
+  const z = 1.959963984540054, p = k / n, denominator = 1 + z * z / n;
+  const center = (p + z * z / (2 * n)) / denominator;
+  const radius = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denominator;
+  return [k === 0 ? 0 : Math.max(0, center - radius), k === n ? 1 : Math.min(1, center + radius)];
+}
+
+export function criterionAgreement(pairs) {
+  const labels = ["contradicted", "supported", "unobservable"];
+  const matrix = Object.fromEntries(labels.map(label => [label, Object.fromEntries(labels.map(actual => [actual, 0]))]));
+  for (const [expected, actual] of pairs) matrix[expected][actual]++;
+  const n = pairs.length;
+  const observed = n ? labels.reduce((sum, label) => sum + matrix[label][label], 0) / n : null;
+  const chance = n ? labels.reduce((sum, label) => sum +
+    Object.values(matrix[label]).reduce((a, b) => a + b, 0) * labels.reduce((total, row) => total + matrix[row][label], 0), 0) / (n * n) : null;
+  return { labels, count: n, confusionMatrix: matrix, matrixOrientation: "rows=human/expected, columns=predicted",
+    observedAgreement: observed, expectedAgreement: chance, cohenKappa: chance !== null && chance < 1 ? (observed - chance) / (1 - chance) : null };
+}
+
+export function riskCoverage(pairs, total) {
+  const decided = pairs.filter(([, actual]) => ["accept", "request_correction"].includes(actual));
+  const errors = decided.filter(([expected, actual]) => expected !== actual).length;
+  return { autoDecidedCount: decided.length, errorCount: errors, coverage: total ? decided.length / total : null,
+    risk: decided.length ? errors / decided.length : null };
+}
+
 export function computeMetrics(cases) {
   const successful = cases.filter(item => item.successfulAnalysis === true);
   const correct = successful.filter(item => item.qualityReport.recommendation === item.expected.recommendation).length;
@@ -110,11 +139,16 @@ export function computeMetrics(cases) {
   const backend = cases.filter(item => item.qualityReport).map(item => item.processingElapsedMs);
   const visual = cases.flatMap(item => item.qualityReport?.pipeline?.modelRuns ?? [])
     .filter(model => model.promptVersion === "timestamped-frames-visible-events-v1").map(model => model.elapsedMs);
+  const pairs = successful.flatMap(item => (item.qualityReport.criteria ?? []).map(criterion => [item.expected.criteria[criterion.criterionId], criterion.status]));
   return { caseCount: cases.length, successfulAnalysisCount: successful.length, failedOrIncompleteCount: cases.length - successful.length,
     correctSuccessfulDecisions: correct, failureAdjustedDecisionAccuracy: cases.length ? correct / cases.length : null,
+    failureAdjustedDecisionAccuracyCi95: wilson(correct, cases.length),
     conditionalDecisionAccuracy: successful.length ? correct / successful.length : null,
+    conditionalDecisionAccuracyCi95: wilson(correct, successful.length),
+    criterionAgreement: criterionAgreement(pairs),
+    riskCoverage: riskCoverage(successful.map(item => [item.expected.recommendation, item.qualityReport.recommendation]), cases.length),
     successfulAnalysisCoverage: cases.length ? successful.length / cases.length : null,
-    falseAcceptance: { count: falseAccepts, negativeCaseCount: negative.length, rate: negative.length ? falseAccepts / negative.length : null },
+    falseAcceptance: { count: falseAccepts, negativeCaseCount: negative.length, rate: negative.length ? falseAccepts / negative.length : null, ci95: wilson(falseAccepts, negative.length) },
     reviewRate: cases.length ? cases.filter(item => item.qualityReport?.recommendation === "needs_review").length / cases.length : null,
     successfulReviewRate: cases.length ? reviews / cases.length : null, conditionalReviewRate: successful.length ? reviews / successful.length : null,
     storedReportReviewCount: cases.filter(item => item.qualityReport?.recommendation === "needs_review").length,
@@ -165,10 +199,15 @@ async function atomicJson(path, value) {
 function markdown(run) {
   const m = run.metrics;
   const percent = value => value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
+  const ci = value => value ? `[${value.map(percent).join(", ")}]` : "n/a";
   return `# Clip evaluation ${run.evalRunId}\n\nPrivate verification-only evaluation; advisory quality before licensing. No acceptance, dataset sale or payment requested.\n\n` +
     `Requested video model: ${run.videoModel ?? "deployment default (see stored modelRuns)"}. Status: ${run.status}. Manifest SHA-256: \`${run.manifestSha256}\`. Split: ${run.split}.\n\n` +
-    `Successful analyses: ${m.successfulAnalysisCount}/${m.caseCount}. Failure-adjusted decision accuracy: ${percent(m.failureAdjustedDecisionAccuracy)}. Conditional accuracy: ${percent(m.conditionalDecisionAccuracy)}. Coverage: ${percent(m.successfulAnalysisCoverage)}.\n\n` +
-    `False accepts: ${m.falseAcceptance.count}/${m.falseAcceptance.negativeCaseCount} negative cases (${percent(m.falseAcceptance.rate)}). Stored-report review rate over all cases: ${percent(m.reviewRate)}. Review rate among successful analyses: ${percent(m.conditionalReviewRate)}. Provider fallback reviews do not earn correct decisions.\n\n` +
+    `Successful analyses: ${m.successfulAnalysisCount}/${m.caseCount}. Failure-adjusted decision accuracy: ${percent(m.failureAdjustedDecisionAccuracy)} (Wilson 95% CI ${ci(m.failureAdjustedDecisionAccuracyCi95)}). Conditional accuracy: ${percent(m.conditionalDecisionAccuracy)} (Wilson 95% CI ${ci(m.conditionalDecisionAccuracyCi95)}). Inference coverage: ${percent(m.successfulAnalysisCoverage)}.\n\n` +
+    `False accepts: ${m.falseAcceptance.count}/${m.falseAcceptance.negativeCaseCount} negative cases (${percent(m.falseAcceptance.rate)}; Wilson 95% CI ${ci(m.falseAcceptance.ci95)}). Stored-report review rate over all cases: ${percent(m.reviewRate)}. Review rate among successful analyses: ${percent(m.conditionalReviewRate)}. Provider fallback reviews do not earn correct decisions.\n\n` +
+    `Risk-coverage operating point: ${m.riskCoverage.autoDecidedCount}/${m.caseCount} auto-decided (${percent(m.riskCoverage.coverage)} coverage); ${m.riskCoverage.errorCount} errors (${percent(m.riskCoverage.risk)} risk). Auto-decided means successful accept/request_correction recommendations, not financial authorization. Failed/incomplete analyses and needs_review abstain.\n\n` +
+    `Criterion Cohen's kappa vs supplied human labels: ${m.criterionAgreement.cohenKappa ?? "n/a"} (${m.criterionAgreement.count} successful-analysis criterion pairs). Confusion matrix: rows=human/expected, columns=predicted.\n\n` +
+    `| Human / predicted | ${m.criterionAgreement.labels.join(" | ")} |\n| --- | --- | --- | --- |\n` +
+    m.criterionAgreement.labels.map(label => `| ${label} | ${m.criterionAgreement.labels.map(actual => m.criterionAgreement.confusionMatrix[label][actual]).join(" | ")} |`).join("\n") + "\n\n" +
     `Client terminal report p50/p95: ${m.latency.clientTerminalReportMs.p50 ?? "n/a"}/${m.latency.clientTerminalReportMs.p95 ?? "n/a"} ms. Backend processing p50/p95: ${m.latency.backendProcessingMs.p50 ?? "n/a"}/${m.latency.backendProcessingMs.p95 ?? "n/a"} ms. Right-censored client timeouts: ${m.latency.rightCensored.length}.\n\n` +
     `Video request p50/p95: ${m.latency.videoRequestMs.p50 ?? "n/a"}/${m.latency.videoRequestMs.p95 ?? "n/a"} ms (${m.latency.videoRequestMs.count} timed visual responses).\n\n` +
     `Client latency is wall time from the first create attempt, including downtime before resume. Percentiles use nearest rank on terminal reports; timeout censoring is listed separately.\n\n` +
@@ -304,7 +343,7 @@ export async function runEvaluation(options, injected = {}) {
       }
     }
     await scope();
-    const predictions = run.cases.filter(item => item.qualityReport).map(item => ({ sampleId: item.sampleId,
+    const predictions = run.cases.filter(item => item.qualityReport).map(item => ({ sampleId: item.sampleId, successfulAnalysis: item.successfulAnalysis === true,
       recommendation: item.qualityReport.recommendation, duplicateStatus: item.qualityReport.duplicate.status,
       criteria: Object.fromEntries(item.qualityReport.criteria.map(criterion => [criterion.criterionId, criterion.status])) }));
     await atomicJson(predictionsFile, predictions);
@@ -345,16 +384,17 @@ export async function runModelComparison(options, injected = {}) {
     run.updatedAt = new Date(now()).toISOString();
     await atomicJson(resultPath, run);
     const percent = value => value == null ? "n/a" : `${(value * 100).toFixed(1)}%`;
+    const ci = value => value ? `[${value.map(percent).join(", ")}]` : "n/a";
     const latency = value => `${value?.p50 ?? "n/a"}/${value?.p95 ?? "n/a"}`;
     const rows = run.models.map(item => {
       const m = item.metrics;
-      return `| ${item.videoModel} | ${item.status} | ${m?.caseCount ?? "—"} | ${percent(m?.successfulAnalysisCoverage)} | ${percent(m?.failureAdjustedDecisionAccuracy)} | ${m ? `${m.falseAcceptance.count}/${m.falseAcceptance.negativeCaseCount}` : "—"} | ${percent(m?.falseAcceptance.rate)} | ${percent(m?.reviewRate)} | ${latency(m?.latency.videoRequestMs)} | ${latency(m?.latency.backendProcessingMs)} | ${latency(m?.latency.clientTerminalReportMs)} |`;
+      return `| ${item.videoModel} | ${item.status} | ${m?.caseCount ?? "—"} | ${percent(m?.successfulAnalysisCoverage)} | ${percent(m?.failureAdjustedDecisionAccuracy)} ${ci(m?.failureAdjustedDecisionAccuracyCi95)} | ${m ? `${m.falseAcceptance.count}/${m.falseAcceptance.negativeCaseCount}` : "—"} | ${percent(m?.falseAcceptance.rate)} ${ci(m?.falseAcceptance.ci95)} | ${percent(m?.reviewRate)} | ${percent(m?.riskCoverage.coverage)} / ${percent(m?.riskCoverage.risk)} | ${m?.criterionAgreement.cohenKappa ?? "n/a"} | ${latency(m?.latency.videoRequestMs)} | ${latency(m?.latency.backendProcessingMs)} | ${latency(m?.latency.clientTerminalReportMs)} |`;
     });
     await writeFile(resultPath.replace(/\.json$/, ".md"),
       `# Paired video-model evaluation\n\nStatus: ${run.status}. Frozen manifest SHA-256: \`${run.manifestSha256}\`. Split: ${run.split}.\n\n` +
       "Same frozen source bytes and labels in both arms; distinct evaluation scopes prevent cross-model copies from contaminating results. Labels are never sent to models. Both arms are verification-only. No global model environment is changed.\n\n" +
-      "| Video model | Status | Cases | Inference coverage | Decision accuracy (failures incorrect) | False accepts / negatives | False-accept rate | Review rate | Video p50/p95 ms | Backend p50/p95 ms | Client p50/p95 ms |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-      rows.join("\n") + "\n\nPercentiles use nearest rank. Failed or incomplete analysis earns no correct-decision credit. Provider fallback reviews remain in review rate; timeouts are censored in child results. Video latency counts timed visual responses, including responses that later fail another stage. Models run sequentially (Argon, then Flash); this is a paired clip comparison, not a randomized latency experiment. Child JSON preserves actual modelRuns, reports, scorer output and provenance.\n",
+      "| Video model | Status | Cases | Inference coverage | Decision accuracy [Wilson 95% CI] (failures incorrect) | False accepts / negatives | False-accept rate [Wilson 95% CI] | Review rate | Auto-decided coverage / risk | Criterion kappa | Video p50/p95 ms | Backend p50/p95 ms | Client p50/p95 ms |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+      rows.join("\n") + "\n\nPercentiles use nearest rank. Failed or incomplete analysis earns no correct-decision credit. Provider fallback reviews remain in review rate; timeouts are censored in child results. Video latency counts timed visual responses, including responses that later fail another stage. Models run sequentially (Argon, then Flash); this is a paired clip comparison, not a randomized latency experiment. Child reports include criterion confusion matrices (human rows, predicted columns). Kappa is undefined for empty or single-class perfect agreement. Auto-decided coverage excludes failures and reviews; risk is error among successful accept/request_correction recommendations. Intervals are descriptive binomial Wilson intervals, not independence or conformal guarantees. Child JSON preserves actual modelRuns, reports, scorer output and provenance.\n",
       { mode: 0o600 });
   };
   run.status = "running";
