@@ -55,6 +55,19 @@ flowchart LR
 
 The agent can read, explain and propose; it can never approve, sign or move funds. Testnet and test USDC only.
 
+## Why each sponsor technology is load-bearing
+
+- **Coinbase (x402, CDP, Wallet MCP):** the money layer. x402 lets any buyer agent fund an order with one HTTP payment and no account. The CDP agent wallet executes contributor payouts with no signing key in the app or the model, and its wallet cap is a second guard behind the buyer's policy. Wallet MCP plus [`/skill.md`](convex/lib/onboardingSteps.ts) takes a personal agent from zero to funded wallet to paid order.
+- **Convex:** the system of record. Orders, ledger, evidence and approvals change in single transactions, so a payable and its journal entry cannot drift apart. Durable Workflow approvals survive retries and timeouts; crons run reconciliation, attestation backfill and analyst notes; reactive queries keep the dashboard live.
+- **Gemini:** the verifier. A two-model silent-video jury plus separate audio, with prompts generated from each task's rubric, turns a recording into timestamped evidence against that rubric. That evidence is what makes automatic payment defensible.
+- **Anthropic (Claude):** the finance agent. It answers "why was this paid or held" with cited tool calls over 24 schema-validated tools, proposes payouts and writes exception notes. It is boxed in: strict schemas on mutating tools, tool output treated as untrusted data, and no ability to approve or sign.
+- **Capital One Nessie:** the bank witness. A four-way match of order, ledger, chain and bank shows how settlement reconciles against fiat books. Nessie is a mock bank and is labeled as one.
+- **Atlassian (Forge, Jira):** the ops queue. Skarl Guard turns finance exceptions (duplicates, over-cap requests, refusals) into Jira issues with constrained, audited triage. Jira can never grant payment authority.
+- **Solana:** the license record. Each accepted clip gets a one-of-one Token-2022 license token whose on-chain metadata hashes the license, consent and manifest; it cannot be minted twice. Solana devnet is also an optional x402 funding rail.
+- **EAS on Base Sepolia:** a public attestation of each verification result, checkable after the fact.
+
+Gemini produces the evidence, Convex keeps the books, Claude explains and proposes, the buyer's policy approves, Coinbase pays, and Solana, EAS, Nessie and Jira each give an independent outside record to check against.
+
 ## Review the controls
 
 | Surface | What to inspect |
