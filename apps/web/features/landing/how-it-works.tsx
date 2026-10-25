@@ -2,7 +2,7 @@
 import { SectionHeader } from "@/components/section-header";
 import { CAROUSEL_CSS } from "./catch-carousel";
 import { StoryCarousel } from "./catch/carousel";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Step = { id: string; title: string; body: string };
 
@@ -13,25 +13,36 @@ const STEPS: Step[] = [
   { id: "pay", title: "Pay", body: "Test USDC moves on Base Sepolia and the books balance." },
 ];
 
-// A short silent clip for each step; only the centre card plays.
+// Silent clips for each step, played back to back on a loop; only the centre card plays.
+const CLIPS: Record<string, string[]> = {
+  record: ["/steps/record.mp4"],
+  check: ["/steps/check.mp4"],
+  approve: ["/steps/approve.mp4"],
+  pay: ["/steps/pay-card.mp4", "/steps/pay.mp4"],
+};
+
 function StepClip({ id, active }: { id: string; active: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const [part, setPart] = useState(0);
+  const sources = CLIPS[id] ?? [];
+  const single = sources.length < 2;
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
     if (active && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) void v.play().catch(() => {});
     else v.pause();
-  }, [active]);
+  }, [active, part]);
   return (
     <video
       ref={ref}
-      src={`/steps/${id}.mp4`}
+      src={sources[part]}
       poster={`/steps/${id}.jpg`}
       muted
-      loop
+      loop={single}
       playsInline
       preload="metadata"
       aria-hidden="true"
+      onEnded={single ? undefined : () => setPart(p => (p + 1) % sources.length)}
       className="absolute inset-0 h-full w-full object-cover"
     />
   );
