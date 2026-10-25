@@ -45,7 +45,7 @@ export const run = action({
             case "approve": case "approvePayment": {
               const rows = await ctx.runQuery(api.dashboard.payables, scope);
               if (!rows.some(row => row.intent?._id === call.arguments.intentId)) return { ok: false, code: "not_found" };
-              return ctx.runMutation(api.finance.approve, { demoIdentity: "finance-agent", intentId: call.arguments.intentId as Id<"paymentIntents"> });
+              return ctx.runMutation(internal.financeAgentData.refuseApproval, { runId: started.runId, intentId: call.arguments.intentId as Id<"paymentIntents"> });
             }
             default: throw new Error("tool_not_allowed");
           }

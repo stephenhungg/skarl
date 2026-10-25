@@ -2,6 +2,6 @@
 export const CONSENT = [
   "Only I am seen or heard in this clip",
   'License to buyer for training (demo-consent-v1), original kept private',
-  'Paid in test USDC on Base Sepolia after a person approves',
+  'Paid in USDC after a person approves',
   'Share motion sensor data with this clip, no location',
 ];

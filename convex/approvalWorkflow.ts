@@ -4,7 +4,8 @@ import { makeFunctionReference } from "convex/server";
 import { MAX_ATOMIC_USDC, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
 import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
-import { demoToken, requireRole } from "./lib/demoAuth";
+import { demoToken } from "./lib/demoAuth";
+import { requireFinanceService } from "./lib/serviceAuth";
 import { actorFor, audit, normalizeAddress, paymentBinding, sourceVersion } from "./lib/finance";
 
 export const workflow = new WorkflowManager(components.workflow);
@@ -31,7 +32,7 @@ export const awaitController = workflow.define({
 export const queueApprovedDispatch = internalMutation({
   args: { intentId: v.id("paymentIntents"), bindingHash: v.string(), approvalId: v.id("approvals"), workflowId: vWorkflowId },
   handler: async (ctx, args) => {
-    const agent = await requireRole(ctx, "finance-agent", "finance-agent");
+    const agent = await requireFinanceService(ctx);
     const intent = await ctx.db.get(args.intentId);
     if (!intent || intent.kind !== "contributor_payout" || intent.organizationId !== agent.organizationId) {
       throw new Error("payout_intent_not_found");

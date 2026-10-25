@@ -59,6 +59,30 @@ type Fixture = Awaited<ReturnType<typeof setup>>;
 const read = (f: Fixture, demoIdentity = "controller"): Promise<Receipt> =>
   f.t.query(receipt, { demoIdentity, submissionId: f.submissionId });
 
+async function detectorFixture(times: number[] | null, intervals = [[1000, 3000], [1500, 3500]]) {
+  const f = await setup();
+  await f.t.run(async ctx => {
+    const judges = intervals.map(([startMs, endMs], index) => ({ model: `synthetic-visual-${index + 1}`, report: {
+      ...f.report, criteria: [{ criterionId: "red-cup-pickup", status: "supported", reason: "Synthetic pickup interval.",
+        evidence: [{ modality: "video", startMs, endMs, claim: "Synthetic red-cup pickup." }] }],
+    } }));
+    await ctx.db.patch(f.analysisId, { observationsJson: canonical({ jury: { advisoryOnly: true, agreementFraction: 1,
+      disagreedCriteria: [], judges } }) });
+  });
+  if (times) await storeDetectorRun(f, times);
+  return f;
+}
+
+async function storeDetectorRun(f: Fixture, times: number[], createdAt = Date.now(), cupInHandFrames = times.length) {
+  return f.t.run(async ctx => {
+    const storageId = await ctx.storage.store(new Blob([canonical({ synthetic: true })], { type: "application/json" }));
+    return ctx.db.insert("derivedAnnotations", { submissionId: f.submissionId, organizationId: f.organizationId,
+      kind: "objects", model: { name: "Synthetic object detector", version: "fixture-v1", runtime: "browser-wasm" },
+      storageId, summary: { kind: "objects", frames: 10, durationMs: 5000, cupInHandFrames },
+      cupInHandTimestampsMs: times, createdBy: "demo:skarl:contributor", createdAt, advisory: true });
+  });
+}
+
 async function financialFixture() {
   const f = await setup();
   const uid = `0x${"c".repeat(64)}`, txHash = `0x${"d".repeat(64)}`;
@@ -118,6 +142,74 @@ async function livenessFixture(audio: unknown, words = ["amber", "cedar", "river
 }
 
 describe("witness receipt: every claim preserves its independent evidence", () => {
+  it("reports a missing advisory detector witness when no objects run exists", async () => {
+    const f = await detectorFixture(null);
+    expect(witness(await read(f), "detector")).toMatchObject({ kind: "work", status: "missing", live: false, evidenceUrl: null });
+  });
+
+  it("agrees only when a detector frame overlaps all supported jury pickup intervals, with model provenance", async () => {
+    const f = await detectorFixture([2000]);
+    const result = await read(f), detector = witness(result, "detector");
+    expect(detector).toMatchObject({ kind: "work", status: "agree", live: false });
+    expect(detector.evidenceUrl).toBeTruthy();
+    expect(detector.detail).toContain("Synthetic object detector fixture-v1 (browser-wasm)");
+    expect(detector.detail).toMatch(/advisory and client-computed/);
+    expect(detector.detail).toMatch(/does not establish cup color or grasp/);
+    expect(result.verdict).toBe("needs_review");
+    expect(result.recommendation).toBe("accept");
+  });
+
+  it.each([{ times: [] }, { times: [4000] }, { times: [1200] }])("disagrees for no cup in hand or detector frames outside common jury support: $times", async ({ times }) => {
+    const f = await detectorFixture(times);
+    expect(witness(await read(f), "detector")).toMatchObject({ status: "disagree", live: false });
+  });
+
+  it("uses the latest objects run rather than an older positive detector result", async () => {
+    const f = await detectorFixture([2000]);
+    expect(witness(await read(f), "detector").status).toBe("agree");
+    await storeDetectorRun(f, [], Date.now() + 100);
+    expect(witness(await read(f), "detector").status).toBe("disagree");
+  });
+
+  it("cannot replace timestamp overlap with a positive clip-wide summary", async () => {
+    const f = await detectorFixture(null);
+    await storeDetectorRun(f, [4000], Date.now(), 999);
+    expect(witness(await read(f), "detector").status).toBe("disagree");
+  });
+
+  it("does not borrow support from an unavailable, dissenting, or differently bound jury report", async () => {
+    const f = await detectorFixture([2000]);
+    const original = await f.t.run(async ctx => JSON.parse((await ctx.db.get(f.analysisId))!.observationsJson!));
+    for (const change of ["source", "dissent", "failure", "single-model"] as const) {
+      const observations = structuredClone(original);
+      const judge = observations.jury.judges[1];
+      if (change === "source") judge.report.source.sha256 = "b".repeat(64);
+      if (change === "dissent") judge.report.criteria[0].status = "contradicted";
+      if (change === "failure") judge.failureCode = "synthetic-unavailable";
+      if (change === "single-model") observations.jury.judges.pop();
+      await f.t.run(ctx => ctx.db.patch(f.analysisId, { observationsJson: canonical(observations) }));
+      expect(witness(await read(f), "detector").status, change).toBe("disagree");
+    }
+    await f.t.run(ctx => ctx.db.patch(f.analysisId, { implementation: "scaffold", pipelineStatus: "ml_unavailable",
+      recommendation: "needs_review", observationsJson: canonical(original) }));
+    expect(witness(await read(f), "detector").status).toBe("disagree");
+  });
+
+  it("adds detector evidence without changing existing witnesses or financial state", async () => {
+    const f = await detectorFixture(null);
+    const before = await read(f);
+    const state = () => f.t.run(async ctx => ({ submission: await ctx.db.get(f.submissionId),
+      payables: await ctx.db.query("payables").collect(), decisions: await ctx.db.query("reviewDecisions").collect(),
+      intents: await ctx.db.query("paymentIntents").collect(), journals: await ctx.db.query("journalEntries").collect() }));
+    const beforeState = await state();
+    await storeDetectorRun(f, [2000]);
+    const after = await read(f);
+    expect(after.witnesses.filter(row => row.key !== "detector")).toEqual(before.witnesses.filter(row => row.key !== "detector"));
+    expect(after.verdict).toBe(before.verdict);
+    expect(after.recommendation).toBe(before.recommendation);
+    expect(await state()).toEqual(beforeState);
+  });
+
   it("does not turn a disagreeing visual jury into agreement just because the primary recommendation accepts", async () => {
     const f = await setup();
     await f.t.run(ctx => ctx.db.patch(f.analysisId, { observationsJson: canonical({ jury: {

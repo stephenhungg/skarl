@@ -6,7 +6,7 @@ import { requireRole, demoToken } from "./lib/demoAuth";
 import { actorFor, audit, canonical, digest, requireTenant } from "./lib/finance";
 import { confirmFundingFor } from "./payments";
 import { receiveWebhookFor, finishWebhookFor } from "./chainWitness";
-import { acceptAndPublishFor, approveFor } from "./finance";
+import { acceptAndPublishFor, refuseAgentApprovalFor } from "./finance";
 import { completeFor } from "./submissions";
 import { audioFromTranscriptSegments, buildVerificationReport, PIPELINE_VERSION } from "./lib/verificationReport";
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/chain";
@@ -173,7 +173,7 @@ export const inject = internalMutation({ args: {...idArgs, reportStorageId: v.op
   } else if (state.scenario === "duplicate_submission") {
     controlResult = await acceptAndPublishFor(ctx, { demoIdentity: "controller", submissionId: state.submissionId! });
   } else if (state.scenario === "agent_self_approval") {
-    controlResult = await approveFor(ctx, { demoIdentity: "finance-agent", intentId: state.intentId! });
+    controlResult = await refuseAgentApprovalFor(ctx, state.intentId!);
   } else if (state.scenario === "prompt_injection_narration") {
     if (!args.reportStorageId) throw new Error("scenario_report_storage_required");
     artifacts.push(await completeFor(ctx, {...await narrationReport(ctx, state), reportStorageId: args.reportStorageId}, state.scenarioId), args.reportStorageId);

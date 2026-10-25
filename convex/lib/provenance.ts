@@ -60,6 +60,8 @@ export async function buildProvenance(ctx: Pick<QueryCtx, "db">, submission: Doc
   const attested = row?.submissionId === submission._id && row.status === "confirmed" && !!row.attestationUid && !!row.txHash &&
     row.fields?.reportHash.replace(/^0x/, "") === analysis?.reportHash && row.fields?.sourceSha256.replace(/^0x/, "") === submission.sourceHash;
   const liveness = boundAnalysis ? checkSpokenLiveness(submission.liveness, audio, durationMs) : null;
+  const annotationRuns = await ctx.db.query("derivedAnnotations")
+    .withIndex("by_submission", q => q.eq("submissionId", submission._id)).order("desc").collect();
   return {
     schemaVersion: "skarl.provenance.v1" as const,
     consentRecordId: consent?._id ?? null,
@@ -71,6 +73,10 @@ export async function buildProvenance(ctx: Pick<QueryCtx, "db">, submission: Doc
       contributorTokenIdentifier: submission.contributorTokenIdentifier }),
     sourceSha256: verifiedSource ? original!.contentHash : null,
     sourceHashBasis: verifiedSource ? "verified_original" as const : "unavailable" as const,
+    derivedAnnotations: annotationRuns
+      .filter(run => run.organizationId === submission.organizationId && run.advisory === true)
+      .map(run => ({ kind: run.kind, model: run.model, summary: run.summary, createdAt: run.createdAt,
+        derived: true as const, advisory: true as const, basis: "client_computed" as const })),
     eas: attested ? { status: "confirmed" as const, uid: row.attestationUid!, ...attestationLinks(row.attestationUid!, row.txHash!) } :
       { status: "unavailable" as const, uid: null, easscanUrl: null, basescanUrl: null },
     liveness: { status: liveness?.status ?? "not_checked", basis: "derived_spoken_word_match" as const,

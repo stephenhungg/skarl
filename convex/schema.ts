@@ -1,9 +1,11 @@
 import { defineSchema, defineTable } from "convex/server";
+import { authTables } from "@convex-dev/auth/server";
 import { bankWitnessTables } from "./bankWitnessSchema";
 import { coachTables } from "./coachSchema";
 import { attestationTables } from "./attestationsSchema";
 import { v } from "convex/values";
 import { sensorTrace } from "./sensorTraceValidators";
+import { annotationKind, annotationModel, annotationSummary } from "./annotationValidators";
 import { diversityValidator } from "./lib/diversity";
 import { vWorkflowId } from "@convex-dev/workflow";
 import {
@@ -60,6 +62,7 @@ const analysisContext = {
   perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))),
 };
 export default defineSchema({
+  ...authTables,
   ...coachTables,
   ...attestationTables,
   ...bankWitnessTables,
@@ -110,8 +113,8 @@ export default defineSchema({
     issuer: v.string(),
     subject: v.string(),
     tokenIdentifier,
-    // Roles are granted by an existing controller (or seeded by an operator),
-    // never self-assigned. Provisioning must reject contributor + controller
+    // Auth onboarding permits buyer/contributor claims and verified allowlisted
+    // controllers. Provisioning must reject contributor + controller
     // on one membership so payout requester and approver stay separate.
     roles: v.array(membershipRole),
     grantedByTokenIdentifier: tokenIdentifier,
@@ -234,6 +237,15 @@ export default defineSchema({
     ])
     .index("by_source_hash", ["organizationId", "sourceHash"])
     .index("by_perceptual_hash", ["organizationId", "perceptualHash"]),
+
+  // Browser-derived evidence only; no acceptance, verdict or financial authority.
+  derivedAnnotations: defineTable({
+    ...tenant, submissionId: v.id("submissions"), kind: annotationKind, model: annotationModel,
+    storageId: v.id("_storage"), summary: annotationSummary, createdBy: tokenIdentifier,
+    createdAt: v.number(), advisory: v.literal(true),
+    // Bounded, server-recomputed overlap witnesses; queries cannot read blob bytes.
+    cupInHandTimestampsMs: v.optional(v.array(v.number())),
+  }).index("by_submission", ["submissionId"]).index("by_storage", ["storageId"]),
 
   consentRecords: defineTable({
     ...tenant,

@@ -1,3 +1,4 @@
+import { authenticateConvexRequest } from "../../../../lib/auth/server";
 import { makeFunctionReference } from "convex/server";
 import { type NextRequest } from "next/server";
 import { api, paymentError, paymentJson, paymentService, treasuryAddress, type Id } from "../../../../lib/payments/server";
@@ -17,6 +18,7 @@ export async function POST(request: NextRequest) {
     // intentId is the browser transfer client's opaque identifier; refunds bind a paymentCommands ID.
     const commandId = body.intentId as Id<"paymentCommands">;
     const { db, serviceSecret } = paymentService();
+    await authenticateConvexRequest(db, request);
     if (body.action === "claim") {
       if (typeof body.senderAddress !== "string") return paymentJson({ error: "sender_required" }, 400);
       return paymentJson(await db.mutation(refunds.claim, { serviceSecret, commandId, demoIdentity: body.demoIdentity,

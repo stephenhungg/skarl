@@ -1,3 +1,4 @@
+import { authenticateConvexRequest } from "../../../../../lib/auth/server";
 import { ConvexHttpClient } from "convex/browser";
 import type { NextRequest } from "next/server";
 import { api, paymentJson, type Id } from "../../../../../lib/payments/server";
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   if (!url) return paymentJson({ error: "witness_receipt_not_configured" }, 503);
   try {
     const db = new ConvexHttpClient(url);
+    await authenticateConvexRequest(db, request);
     return paymentJson(await db.query(api.witnessReceipt.forSubmission, {
       demoIdentity, submissionId: id as Id<"submissions">,
     }));

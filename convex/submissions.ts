@@ -1,8 +1,8 @@
 import { v, type Infer } from "convex/values";
 import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
-import { requireRole } from "./lib/demoAuth";
+import type { Doc, Id } from "./_generated/dataModel";
+import { isFinanceAgent, requireRole } from "./lib/demoAuth";
 import { audit, actorFor, digest, requireTenant } from "./lib/finance";
 import { validateFrameHashes, compareFrameHashes } from "./lib/copyDetection";
 import { PIPELINE_VERSION, validateEvaluationScope, applyVerificationOnlyGuard, EVALUATION_PROJECTION_VERSION } from "./lib/verificationReport";
@@ -13,6 +13,23 @@ import { normalizeDiversityTag } from "./lib/diversity";
 const frame = v.object({ timestampMs: v.number(), hash: v.string() });
 const evidenceFrame = v.object({ storageId: v.id("_storage"), timestampMs: v.number(), contentHash: v.string(), sizeBytes: v.number(),
   kind: v.union(v.literal("visual"), v.literal("dhash")), sampleIndex: v.number(), decodedFrameIndex: v.optional(v.number()) });
+
+/** Internal verifier jobs act on the stored submission, not a demo selector.
+ * Scheduling drops user auth; public submission APIs still use requireRole.
+ */
+async function jobContributor(ctx: Pick<MutationCtx, "db">, job: Doc<"jobs">) {
+  const submission = await ctx.db.get(job.submissionId);
+  if (!submission || submission.organizationId !== job.organizationId) throw new Error("job_reference_mismatch");
+  const principal = await ctx.db.query("memberships").withIndex("by_token_identifier", q =>
+    q.eq("tokenIdentifier", submission.contributorTokenIdentifier)).unique();
+  if (!principal || principal.status !== "active" || principal.organizationId !== job.organizationId ||
+    !principal.roles.includes("contributor") || principal.roles.includes("controller") || isFinanceAgent(principal)) {
+    throw new Error("job_reference_mismatch");
+  }
+  const organization = await ctx.db.get(job.organizationId);
+  if (!organization || organization.status !== "active") throw new Error("inactive_organization");
+  return { principal, submission };
+}
 export const generateUploadUrl = mutation({
   args: { demoIdentity: v.string() },
   handler: async (ctx, args) => { await requireRole(ctx, args.demoIdentity, "contributor"); return ctx.storage.generateUploadUrl(); },
@@ -100,10 +117,9 @@ export const create = mutation({
 export const claim = internalMutation({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, "contributor", "contributor");
     const job = await ctx.db.get(args.jobId);
-    if (!job || job.organizationId !== principal.organizationId || job.status !== "pending") return null;
-    const submission = await ctx.db.get(job.submissionId);
+    if (!job || job.status !== "pending") return null;
+    const { principal, submission } = await jobContributor(ctx, job);
     const rubric = await ctx.db.get(job.taskVersionId);
     const asset = submission?.originalAssetId ? await ctx.db.get(submission.originalAssetId) : null;
     if (!submission || !rubric || !asset || submission.contributorTokenIdentifier !== principal.tokenIdentifier ||
@@ -124,12 +140,11 @@ export const facts = internalMutation({
     frameDHashes: v.optional(v.array(frame)), perceptualHash: v.optional(v.string()),
     perceptualHashSource: v.optional(v.union(v.literal("serverComputed"), v.literal("clientReported"))), mediaVerified: v.boolean() },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, "contributor", "contributor");
     const job = await ctx.db.get(args.jobId);
-    if (!job || job.organizationId !== principal.organizationId || job.status !== "leased" || job.leaseGeneration !== args.generation || (job.leaseExpiresAt ?? 0) <= Date.now()) throw new Error("stale_analysis_attempt");
+    if (!job || job.status !== "leased" || job.leaseGeneration !== args.generation || (job.leaseExpiresAt ?? 0) <= Date.now()) throw new Error("stale_analysis_attempt");
+    const { submission } = await jobContributor(ctx, job);
     if (!/^[a-f0-9]{64}$/.test(args.sourceHash) || !Number.isSafeInteger(args.durationMs) || args.durationMs < 0 || args.durationMs > 30_000) throw new Error("invalid_source_facts");
     if (args.frameDHashes) validateFrameHashes(args.frameDHashes, args.durationMs || undefined);
-    const submission = await ctx.db.get(job.submissionId);
     if (!submission?.originalAssetId) throw new Error("original_missing");
     const hashFacts = { ...(args.frameDHashes ? { frameDHashes: args.frameDHashes } : {}),
       ...(args.perceptualHash ? { perceptualHash: args.perceptualHash } : {}),
@@ -174,9 +189,9 @@ export const copies = internalQuery({
 const completeArgs = v.object({ jobId: v.id("jobs"), generation: v.number(), reportJson: v.string(), observationsJson: v.string(),
     reportStorageId: v.id("_storage"), reportHash: v.string(), processingElapsedMs: v.number(), evidenceFrames: v.optional(v.array(evidenceFrame)), failureCode: v.optional(v.string()) });
 export async function completeFor(ctx: MutationCtx, args: Infer<typeof completeArgs>, simulatedScenarioId?: string) {
-    const principal = await requireRole(ctx, "contributor", "contributor");
     const job = await ctx.db.get(args.jobId);
-    if (!job || job.organizationId !== principal.organizationId) throw new Error("job_not_found");
+    if (!job) throw new Error("job_not_found");
+    const { submission } = await jobContributor(ctx, job);
     const existing = await ctx.db.query("analysisResults").withIndex("by_job_generation", q => q.eq("jobId", job._id).eq("leaseGeneration", args.generation)).unique();
     if (existing) {
       if (existing.reportHash !== args.reportHash) throw new Error("analysis_replay_conflict");
@@ -190,7 +205,6 @@ export async function completeFor(ctx: MutationCtx, args: Infer<typeof completeA
     if (report.submissionId !== job.submissionId || report.taskVersionId !== job.taskVersionId || report.source.sha256 !== job.sourceHash ||
       digest(report) !== args.reportHash || report.pipeline.version !== job.pipelineVersion || report.pipeline.implementation !== (simulatedScenarioId ? "scaffold" : "inference")) throw new Error("report_source_mismatch");
     if (interruptedFailure && (report.pipeline.status !== "failed" || report.recommendation !== "needs_review")) throw new Error("timeout_report_must_fail_closed");
-    const submission = await ctx.db.get(job.submissionId);
     if (!submission || submission.status === "accepted" || submission.taskVersionId !== job.taskVersionId || submission.sourceHash !== job.sourceHash) throw new Error("submission_changed");
     validateEvaluationScope(submission.verificationOnly, submission.evalRunId);
     if (simulatedScenarioId) {
@@ -263,9 +277,9 @@ export const complete = internalMutation({args: completeArgs.fields, handler: (c
 export const expire = internalMutation({
   args: { jobId: v.id("jobs"), generation: v.number() },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "contributor", "contributor");
     const job = await ctx.db.get(args.jobId);
     if (!job || job.status !== "leased" || job.leaseGeneration !== args.generation || (job.leaseExpiresAt ?? 0) > Date.now()) return;
+    await jobContributor(ctx, job);
     await ctx.db.patch(job._id, { status:"failed", lastErrorCode:"verification_interrupted" });
     await ctx.db.patch(job.submissionId, { status:"needs_review", updatedAt:Date.now() });
     await ctx.scheduler.runAfter(0, internal.verify.interrupted, {jobId:job._id,generation:args.generation});

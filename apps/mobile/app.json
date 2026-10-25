@@ -24,7 +24,20 @@
           "motionPermission": "Capture synchronized device motion during your consented task recording."
         }
       ],
-      "expo-font"
-    ]
+      "expo-font",
+      "expo-secure-store"
+    ],
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#fdfdfa"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#10120e"
+      }
+    }
   }
 }

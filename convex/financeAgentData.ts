@@ -6,13 +6,21 @@ import type { Id } from "./_generated/dataModel";
 import { requireRole } from "./lib/demoAuth";
 import { actorFor, audit, requireTenant } from "./lib/finance";
 import { positiveAtomic } from "./lib/financeAgentLoop";
-import { proposePaymentFor } from "./finance";
+import { proposeAgentPaymentFor, refuseAgentApprovalFor } from "./finance";
+import { requireFinanceService } from "./lib/serviceAuth";
 
 async function running(ctx: MutationCtx, runId: Id<"financeAgentRuns">) {
-  const principal = await requireRole(ctx, "finance-agent", "finance-agent");
+  const principal = await requireFinanceService(ctx);
   const run = await ctx.db.get(runId);
   if (!run) throw new Error("run_not_found");
   requireTenant(principal, run);
+  // ctx.runMutation keeps a human session. It may only operate its own run;
+  // scheduled internal recovery has no user session and no public entrypoint.
+  if (await ctx.auth.getUserIdentity()) {
+    const caller = await requireRole(ctx, "", "controller");
+    if (caller.tokenIdentifier !== run.requesterTokenIdentifier) throw new Error("agent_run_not_owned");
+    requireTenant(caller, run);
+  }
   if (run.status !== "running" || Date.now() - run.startedAt > 180_000) throw new Error("run_not_active");
   return { run, principal };
 }
@@ -20,10 +28,11 @@ export const begin = internalMutation({
   args: { demoIdentity: v.string(), orderId: v.id("orders"), requestId: v.string(), prompt: v.string(), provider: v.optional(v.union(v.literal("gemini"), v.literal("claude"))), model: v.string(), maxToolCalls: v.number(), maxBatchAtomic: v.string() },
   handler: async (ctx, args) => {
     const principal = await requireRole(ctx, args.demoIdentity, ["controller", "finance-agent"]);
-    await requireRole(ctx, "finance-agent", "finance-agent");
+    const service = await requireFinanceService(ctx);
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("order_not_found");
     requireTenant(principal, order);
+    requireTenant(service, order);
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(args.requestId) || !args.prompt.trim() || args.prompt.length > 2000 ||
       !Number.isSafeInteger(args.maxToolCalls) || args.maxToolCalls < 1 || args.maxToolCalls > 24) throw new Error("invalid_agent_request");
     const existing = await ctx.db.query("financeAgentRuns").withIndex("by_request", q => q.eq("organizationId", order.organizationId).eq("requestId", args.requestId)).unique();
@@ -63,7 +72,7 @@ export const proposeBatch = internalMutation({
     // Same transaction: recomputation, policy and existing proposal writes cannot race.
     const results = [];
     for (const row of rows) {
-      const result = await proposePaymentFor(ctx, { demoIdentity: "finance-agent", payableId: row!._id });
+      const result = await proposeAgentPaymentFor(ctx, { payableId: row!._id });
       if (!result.ok) throw new Error("batch_proposal_refused");
       results.push({ payableId: row!._id, amountAtomic: row!.amountAtomic.toString(), ...result });
     }
@@ -82,6 +91,16 @@ export const requestApproval = internalMutation({
     return { ok: true, status: "approval_required", intentId: intent._id };
   },
 });
+export const refuseApproval = internalMutation({
+  args: { runId: v.id("financeAgentRuns"), intentId: v.id("paymentIntents") },
+  handler: async (ctx, args) => {
+    const { run } = await running(ctx, args.runId);
+    const intent = await ctx.db.get(args.intentId);
+    if (!intent || intent.orderId !== run.orderId || intent.organizationId !== run.organizationId) return { ok: false as const, code: "not_found" };
+    return refuseAgentApprovalFor(ctx, args.intentId);
+  },
+});
+
 export const runs = query({
   args: { demoIdentity: v.string(), orderId: v.id("orders") },
   handler: async (ctx, args) => {
@@ -98,7 +117,7 @@ export const runs = query({
 export const expire = internalMutation({
   args: { runId: v.id("financeAgentRuns") },
   handler: async (ctx, args) => {
-    const principal = await requireRole(ctx, "finance-agent", "finance-agent"), run = await ctx.db.get(args.runId);
+    const principal = await requireFinanceService(ctx), run = await ctx.db.get(args.runId);
     if (!run) return;
     requireTenant(principal, run);
     if (run.status === "running" && Date.now() - run.startedAt >= 180_000) await ctx.db.patch(run._id, {

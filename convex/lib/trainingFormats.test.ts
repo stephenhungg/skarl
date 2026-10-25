@@ -9,6 +9,10 @@ const sample = { submissionId: "accepted123", durationMs: 12000,
   usableStartMs: 500, usableEndMs: 3500, qualityScore: 70,
   components: { duplicateClear: { score: 20, maxScore: 20, status: "supported", evidence: "Synthetic clear duplicate check" } },
   sensorTrace: null,
+  annotations: [{ kind: "hands" as const,
+    model: { name: "Synthetic hand pose", version: "fixture-v1", runtime: "browser-wasm" as const },
+    summary: { kind: "hands", frames: 2, durationMs: 1000 }, url: "https://private.example/derived-labels",
+    derived: true as const, advisory: true as const }],
 };
 const manifest = { orderId: "order123", generatedAt: 123, task: sample.task, samples: [sample] };
 
@@ -16,6 +20,7 @@ it("uses the frozen task and acceptance witness while preserving the license and
   for (const exported of [lerobotManifest(manifest), rldsJsonManifest(manifest)]) {
     expect(exported.episodes[0]).toMatchObject({ ...sample, episode_index: 0, task_index: 0,
       language_instruction: sample.task.languageInstruction, success: true, success_source: "stored_acceptance_decision" });
+    expect(exported.episodes[0].annotations).toEqual(sample.annotations);
   }
   const result = lerobotManifest(manifest);
   expect(result.info.features["observation.images.video"]).toMatchObject({ dtype: "video" });

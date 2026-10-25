@@ -6,7 +6,7 @@ inference, sensor synchronization, downloads, or chain transactions.
 
 Skarl collects task-targeted human demonstration video. The output is licensed
 video plus evidence and conversion metadata. It is **not robot teleoperation**:
-no robot actions, joint states, hand poses, depth, camera poses, rewards, or
+no robot actions, joint states, depth, camera poses, rewards, or
 discounts are recorded. A supported task criterion is a verification finding,
 not a robot control label. No action fields are inferred from narration.
 
@@ -36,6 +36,29 @@ strings. Environment and variant labels are explicitly contributor self-reports.
 Each sample also includes `provenance: skarl.provenance.v1`, using the delivered
 analysis snapshot for liveness, privacy heuristics and EAS references. Consent
 and revocation status remain current; see [Consent and sample provenance](provenance.md).
+
+### Derived annotations
+
+Each sample includes an `annotations` array (empty when no runs are stored).
+Every entry carries `kind` (`hands`, `objects`, or `masks`), `model` with its
+name, version and browser runtime, a server-recomputed `summary`, a private
+annotation JSON `url`, and explicit `derived: true` and `advisory: true` flags.
+The JSON file uses `skarl.annotations.v1`; hand pose keypoints, object boxes and
+mask outlines are browser-derived model estimates, not recorded robot states or
+human-verified labels. These outputs cannot change verdicts, acceptance,
+payables or quality scores. Model names and versions are client-declared
+provenance, not server-attested inference. All four export formats retain the
+same annotation metadata; LeRobot and RLDS exports do not materialize it into
+frame-aligned training columns.
+
+`provenance.derivedAnnotations` lists the runs with model, summary, timestamp and
+`basis: "client_computed"`, without creator identities or download grants.
+Annotation URLs are private storage grants; refresh the authorized export for a
+current URL and do not publish these bearer credentials. Already issued storage
+URLs and downloaded annotation files cannot be recalled by consent revocation.
+Server-side batch annotation is a roadmap item, not an implemented processing
+path. See [Derived annotations](dashboard-api.md#derived-annotations-hands-objects-masks)
+for upload limits and access checks.
 
 ### LeRobot metadata
 
@@ -129,7 +152,8 @@ does not establish that the video improves a buyer's robot model.
 to the witness receipt. The owning contributor, order buyer, or controller can
 read it. Accepted published samples use the delivery's analysis snapshot;
 otherwise it uses the current bound analysis. `evidenceBasis` and `analysisId`
-identify that choice. The witness receipt implementation is unchanged.
+identify that choice. Advisory detector annotations do not contribute to this
+quality score.
 
 ## Diversity quotas
 

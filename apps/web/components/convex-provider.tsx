@@ -1,5 +1,6 @@
 "use client";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexAuthNextjsProvider } from "@convex-dev/auth/nextjs";
+import { ConvexReactClient } from "convex/react";
 import { createContext, useContext, useState, type ReactNode } from "react";
 
 // Next inlines NEXT_PUBLIC_* at build time, so this must be a direct property read.
@@ -28,15 +29,15 @@ function createClient(): { client: ConvexReactClient | null; config: ConvexConfi
 }
 
 /**
- * Convex client for routes that need live data. Without NEXT_PUBLIC_CONVEX_URL it renders children
+ * One authenticated Convex client for the app. Without NEXT_PUBLIC_CONVEX_URL it renders children
  * with no client, so pages can show an honest unavailable state instead of crashing or pretending.
  */
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
   const [{ client, config }] = useState(createClient);
   if (!client) return <ConvexConfigContext.Provider value={config}>{children}</ConvexConfigContext.Provider>;
   return (
-    <ConvexProvider client={client}>
+    <ConvexAuthNextjsProvider client={client}>
       <ConvexConfigContext.Provider value={config}>{children}</ConvexConfigContext.Provider>
-    </ConvexProvider>
+    </ConvexAuthNextjsProvider>
   );
 }

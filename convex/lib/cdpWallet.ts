@@ -1,14 +1,14 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
 import { PAYMENT_CHAIN_ID } from "../../packages/contracts/src/chain";
-import { requireRole } from "./demoAuth";
+import { requireFinanceService } from "./serviceAuth";
 import { normalizeAddress, requireTenant } from "./finance";
 
 /** Operator-only policy inputs, never supplied by model output or the browser. */
 export const allowlist = internalQuery({
   args: {},
   handler: async (ctx): Promise<string[]> => {
-    const agent = await requireRole(ctx, "finance-agent", "finance-agent");
+    const agent = await requireFinanceService(ctx);
     const members = await ctx.db.query("memberships").withIndex("by_org_identity", q =>
       q.eq("organizationId", agent.organizationId)).collect();
     return [...new Set(members.filter(member => member.status === "active" &&
@@ -23,7 +23,7 @@ export const allowlist = internalQuery({
 export const context = internalQuery({
   args: { intentId: v.id("paymentIntents") },
   handler: async (ctx, args) => {
-    const agent = await requireRole(ctx, "finance-agent", "finance-agent");
+    const agent = await requireFinanceService(ctx);
     const intent = await ctx.db.get(args.intentId);
     if (!intent || intent.kind !== "contributor_payout") throw new Error("payout_not_found");
     requireTenant(agent, intent);

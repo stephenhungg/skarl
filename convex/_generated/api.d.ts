@@ -8,11 +8,14 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
+import type * as auth_memberships from "../auth/memberships.js";
 import type * as activity from "../activity.js";
 import type * as agentChat from "../agentChat.js";
 import type * as agentChatData from "../agentChatData.js";
 import type * as agentWallet from "../agentWallet.js";
 import type * as analytics from "../analytics.js";
+import type * as annotations from "../annotations.js";
 import type * as approvalWorkflow from "../approvalWorkflow.js";
 import type * as attestations from "../attestations.js";
 import type * as attestationsNode from "../attestationsNode.js";
@@ -83,11 +86,14 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
+  "auth/memberships": typeof auth_memberships;
   activity: typeof activity;
   agentChat: typeof agentChat;
   agentChatData: typeof agentChatData;
   agentWallet: typeof agentWallet;
   analytics: typeof analytics;
+  annotations: typeof annotations;
   approvalWorkflow: typeof approvalWorkflow;
   attestations: typeof attestations;
   attestationsNode: typeof attestationsNode;

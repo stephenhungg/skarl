@@ -137,7 +137,7 @@ describe("scenario lab invokes real controls and reads persisted evidence", () =
     expect((await f.t.run(ctx => ctx.db.get(originalId)))?.status).toBe("accepted");
   });
 
-  it("calls finance.approve's self-approval refusal and records no approval, dispatch, or payout attempt", async () => {
+  it("calls the finance service's self-approval refusal and records no approval, dispatch, or payout attempt", async () => {
     const f = await setup(), proposal = await agentProposal(f), result = await run(f, "agent_self_approval");
     const state = await expectRecorded(f, result);
     expect(state.audits).toContainEqual(expect.objectContaining({ entityId: proposal.intentId,
@@ -196,7 +196,7 @@ describe("scenario passes require actual control records", () => {
   });
   it("fails agent_self_approval when approve does not record the refusal audit", async () => {
     const f = await setup(); await agentProposal(f);
-    const spy = vi.spyOn(finance, "approveFor").mockResolvedValue({ ok: false, code: "bypassed" });
+    const spy = vi.spyOn(finance, "refuseAgentApprovalFor").mockResolvedValue({ ok: false, code: "bypassed" });
     expect((await run(f, "agent_self_approval")).passed).toBe(false);
     expect(spy).toHaveBeenCalled();
   });
@@ -204,7 +204,7 @@ describe("scenario passes require actual control records", () => {
     const f = await setup(); await agentProposal(f);
     const first = await run(f, "agent_self_approval");
     await expectRecorded(f, first);
-    const spy = vi.spyOn(finance, "approveFor").mockResolvedValue({ ok: false, code: "bypassed" });
+    const spy = vi.spyOn(finance, "refuseAgentApprovalFor").mockResolvedValue({ ok: false, code: "bypassed" });
     const bypassed = await run(f, "agent_self_approval");
     expect(bypassed.passed).toBe(false);
     expect(bypassed.runId).not.toBe(first.runId);

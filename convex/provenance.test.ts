@@ -58,6 +58,24 @@ async function setup() {
 }
 
 describe("sample provenance witnesses (synthetic)", () => {
+  it("lists advisory client-derived runs without leaking storage grants or creator identities", async () => {
+    const f = await setup();
+    await f.t.run(async ctx => {
+      const storageId = await ctx.storage.store(new Blob(["synthetic browser labels"]));
+      await ctx.db.insert("derivedAnnotations", { submissionId: f.submissionId, organizationId: f.organizationId,
+        kind: "objects", model: { name: "Synthetic detector", version: "fixture-v1", runtime: "browser-webgpu" }, storageId,
+        summary: { kind: "objects", frames: 2, objectLabels: { cup: 2 }, cupInHandFrames: 1, durationMs: 1000 },
+        createdBy: CONTRIBUTOR, createdAt: f.now, advisory: true });
+    });
+    const result = await f.t.query(forSubmission, { demoIdentity: "buyer", submissionId: f.submissionId });
+    expect(result.derivedAnnotations).toEqual([{ kind: "objects",
+      model: { name: "Synthetic detector", version: "fixture-v1", runtime: "browser-webgpu" },
+      summary: { kind: "objects", frames: 2, objectLabels: { cup: 2 }, cupInHandFrames: 1, durationMs: 1000 },
+      createdAt: f.now, derived: true, advisory: true, basis: "client_computed" }]);
+    const serialized = JSON.stringify(result.derivedAnnotations);
+    for (const privateValue of ["storageId", "url", "createdBy", CONTRIBUTOR]) expect(serialized).not.toContain(privateValue);
+  });
+
   it("returns stored consent and derived evidence without exposing the contributor identity or narrative", async () => {
     const f = await setup();
     const result = await f.t.query(forSubmission, { demoIdentity: "buyer", submissionId: f.submissionId });

@@ -59,7 +59,7 @@ export function Orbit({ onPress, size }: { onPress(): void; size: number }) {
     </Animated.View>
     <Animated.View style={button}>
       <PressableScale accessibilityRole="button" accessibilityLabel="Continue as demo contributor" onPress={onPress} style={s.button} scale={0.96}>
-        <ArrowUp />
+        <SkarlMark width={44} color={c.paper} />
       </PressableScale>
     </Animated.View>
   </View>;

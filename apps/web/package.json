@@ -11,9 +11,13 @@
     "dev:https": "next dev --experimental-https"
   },
   "dependencies": {
+    "@auth/core": "0.41.1",
     "@base-ui/react": "^1.9.0",
     "@coinbase/x402": "2.1.0",
+    "@convex-dev/auth": "0.0.96",
+    "@huggingface/transformers": "4.3.1",
     "@lordicon/element": "^3.0.2",
+    "@mediapipe/tasks-vision": "1.1.1",
     "@phosphor-icons/react": "^2.1.10",
     "@react-three/fiber": "^9.8.2",
     "@skarl/contracts": "workspace:*",
@@ -42,7 +46,6 @@
     "viem": "2.57.11"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "4.3.3",
     "@tailwindcss/postcss": "4.1.14",
     "@types/d3-geo": "^3.1.1",
     "@types/react": "^19.0.0",

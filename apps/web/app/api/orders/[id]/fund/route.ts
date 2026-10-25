@@ -1,3 +1,4 @@
+import { authenticateConvexRequest } from "../../../../../lib/auth/server";
 import { type NextRequest, NextResponse } from "next/server";
 import { withX402 } from "@x402/next";
 import { FundingResourceServer } from "../../../../../../../packages/payments/src/funding-server";
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest, context: Context) {
     const treasury = treasuryAddress();
     const solanaTreasury = solanaTreasuryAddress();
     const { db, serviceSecret } = paymentService();
+    await authenticateConvexRequest(db, request);
     const result = await db.query(api.payments.fundingStatus, { serviceSecret, orderId: (await context.params).id,
       demoIdentity: request.headers.get("x-skarl-demo-identity") || "buyer" });
     return paymentJson({ recipientAddress: result.intent?.recipientAddress ?? treasury, orderId: result.order._id, status: result.order.status, amountAtomic: result.order.budgetAtomic,
@@ -34,6 +36,7 @@ export async function POST(request: NextRequest, context: Context) {
     const treasury = treasuryAddress();
     const solanaTreasury = solanaTreasuryAddress();
     const { db, serviceSecret } = paymentService();
+    await authenticateConvexRequest(db, request);
     const orderId = (await context.params).id;
     const demoIdentity = request.headers.get("x-skarl-demo-identity") || "buyer";
     const { order, intent, attempt } = await db.query(api.payments.fundingStatus, { serviceSecret, orderId, demoIdentity });

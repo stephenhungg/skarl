@@ -10,6 +10,7 @@ import { compareFrameHashes } from "./lib/copyDetection";
 import { createFulfillmentJournal } from "../packages/ledger/src/index";
 import { MAX_ATOMIC_USDC, PAYMENT_CHAIN_ID, PAYMENT_NETWORK, USDC_ADDRESS } from "../packages/contracts/src/index";
 import { diversityRefusal } from "./lib/diversity";
+import { requireFinanceService } from "./lib/serviceAuth";
 
 export async function authorize(ctx: MutationCtx, identity: string, roles: DemoRole | readonly DemoRole[]) {
   try { return { principal: await requireRole(ctx, identity, roles), denied: undefined }; }
@@ -161,7 +162,15 @@ export const acceptAndPublish = mutation({
 });
 
 export async function proposePaymentFor(ctx: MutationCtx, args: { demoIdentity: string; payableId: Id<"payables"> }) {
-    const auth = await authorize(ctx, args.demoIdentity, ["finance-agent", "controller"]);
+    return proposeAuthorizedPayment(ctx, args, await authorize(ctx, args.demoIdentity, ["finance-agent", "controller"]));
+}
+
+/** Internal finance-run dispatcher only; public args never supply a principal. */
+export async function proposeAgentPaymentFor(ctx: MutationCtx, args: { payableId: Id<"payables"> }) {
+    return proposeAuthorizedPayment(ctx, args, { principal: await requireFinanceService(ctx), denied: undefined });
+}
+
+async function proposeAuthorizedPayment(ctx: MutationCtx, args: { payableId: Id<"payables"> }, auth: Awaited<ReturnType<typeof authorize>>) {
     if (!auth.principal) return { ok: false as const, code: auth.denied! };
     const principal = auth.principal;
     const payable = await ctx.db.get(args.payableId);
@@ -200,6 +209,16 @@ export const proposePayment = mutation({
   args: { demoIdentity: v.string(), payableId: v.id("payables") },
   handler: proposePaymentFor,
 });
+
+/** A model-selected approval tool always refuses under the service actor. */
+export async function refuseAgentApprovalFor(ctx: MutationCtx, intentId: Id<"paymentIntents">) {
+    const principal = await requireFinanceService(ctx);
+    const intent = await ctx.db.get(intentId);
+    if (!intent || intent.organizationId !== principal.organizationId) return { ok: false as const, code: "not_found" };
+    if (intent.kind !== "contributor_payout") return refuse(ctx, principal, intent, "payment_approval", "not_a_payout_intent");
+    return refuse(ctx, principal, intent, "payment_approval",
+      intent.requesterTokenIdentifier === principal.tokenIdentifier ? "self_approval_refused" : "agent_approval_refused", [intent.paymentCommandId]);
+}
 
 export async function approveFor(ctx: MutationCtx, args: {demoIdentity: string; intentId: Id<"paymentIntents">}) {
     const auth = await authorize(ctx, args.demoIdentity, "controller");

@@ -15,9 +15,34 @@ Handoff for MatthewKim323. Snapshot queried with `pnpm exec convex run` on Octob
 - Funding is reconciled at [BaseScan](https://sepolia.basescan.org/tx/0x28b3f88d593c02a669cb95f4bdc6a23ab3d24bb5d1260e6c4ae54554155cd757), Transfer log `18`. One funding journal, no reconciliation exceptions.
 - One stored submission, `mn7fw2rqwx4dbd2gcnfd8ekw3h8gzs3j`, is a **synthetic verification-only upload**, not a licensed contributor sample. Real inference ran; all three criteria are `unobservable`, recommendation/pipeline `needs_review`. No accept-eligible submission exists. Never turn its evaluation projection into payment authority.
 - Payables, deliveries and payment approvals are empty. Four finance-agent runs exist: one completed read-only trial-balance call, two `gemini_timeout`, one `gemini_incomplete`; no money proposed. No live payout or approval-refusal example exists yet.
-- Pass `demoIdentity: "controller"` for dashboard reads, acceptance and approval; `"finance-agent"` for proposal and refusal demo. These are impersonable demo selectors, not production authentication. Exceptions below: funding service uses `"buyer"`; evaluation-run lookup uses `"contributor"`.
+- Pass `demoIdentity: "controller"` for dashboard reads, acceptance and approval; `"finance-agent"` for proposal and refusal demo. For unsigned calls with demo mode enabled, these remain impersonable demo selectors. Signed-in calls use their own membership and ignore this argument; see [authentication](#authentication). Exceptions below: funding service uses `"buyer"`; evaluation-run lookup uses `"contributor"`.
 
 Source: [dashboard](../convex/dashboard.ts), [finance](../convex/finance.ts), [payments](../convex/payments.ts), [agent](../convex/financeAgent.ts), [agent runs](../convex/financeAgentData.ts), [statements](../convex/statements.ts), [submissions](../convex/submissions.ts).
+
+## Authentication
+
+**Source implementation; operator configuration and deployment required.** See
+[authentication setup](auth.md) for keys, environment variables and GitHub OAuth.
+The existing `demoIdentity` arguments below stay required for compatibility.
+When a Convex caller is signed in, the shared role check resolves only that
+user's `auth:<userId>` membership and ignores `demoIdentity`; passing a controller
+selector cannot elevate a signed-in contributor. Action calls preserve this
+identity through `ctx.runQuery` and `ctx.runMutation`.
+
+`auth/memberships:me({})` returns `userId`, `email`, `roles`, `demoMode`,
+`githubEnabled` and `canClaimController`. Signed-in users can call
+`auth/memberships:claimRole({role})` to claim buyer/contributor in the demo
+organization. A controller claim requires a verified email on the
+`SKARL_CONTROLLER_EMAILS` allowlist. Humans cannot claim finance-agent, and a
+contributor cannot also become controller. Role checks still enforce independent
+review and refuse self-approval.
+
+Unsigned callers retain labeled demo identities by default. Setting
+`SKARL_DEMO_IDENTITIES=off` rejects anonymous role-gated calls, including existing
+unsigned scripts/mobile/MCP demo calls. With demo mode on, `/dashboard` visibly
+labels anonymous access “Demo identity”. Signed-in users without controller
+membership see “controller access required”. Real sign-in does not remove the
+impersonable anonymous demo path while demo mode remains enabled.
 
 ## Exact arguments
 
@@ -57,8 +82,9 @@ Additional runtime constraints: `requestId` matches `[a-zA-Z0-9_-]{1,100}`, prom
 
 **Source handoff; deployment required.** Both endpoints require the persisted
 controller role and the selected order's organization. The existing
-`demoIdentity` selector is impersonable demo authentication. Buyer, contributor
-and finance-agent selectors cannot run scenarios or read the controller's lab
+`demoIdentity` selector remains impersonable for unsigned callers while demo
+mode is enabled; signed-in callers use their own membership. Buyer, contributor
+and finance-agent principals cannot run scenarios or read the controller's lab
 history. Scenario artifacts are **SIMULATED CONTROL TEST — NO TRANSFER**; never
 render their synthetic chain hashes as evidence of a real transfer.
 
@@ -152,7 +178,7 @@ scenario success is claimed here.
 three distinct common words and an expiry exactly two minutes after issuance.
 The mobile camera requests a fresh challenge per take and asks the contributor
 to say the words in order while recording. These are public challenge words,
-not authentication credentials; the existing demo identity limitations apply.
+not authentication credentials; [authentication rules](#authentication) still apply.
 
 `submissions:create` adds optional
 `livenessChallengeId: Id<"livenessChallenges">`. The same transaction binds the
@@ -232,8 +258,9 @@ pnpm exec convex run submissions:evaluationRun '{"demoIdentity":"contributor","o
 projection of the stored witnesses behind a submission. It neither runs new
 inference nor creates an attestation, decision, proposal, journal or payment.
 Controllers in the organization, the order's buyer and the owning contributor
-can read it. A finance-agent identity cannot read this endpoint. Demo selectors
-remain impersonable demo credentials, not production authentication.
+can read it. A finance-agent identity cannot read this endpoint. The
+[authentication rules](#authentication) apply; unsigned demo selectors remain
+impersonable while demo mode is enabled.
 
 For Matthew's dashboard, subscribe with
 `useQuery(api.witnessReceipt.forSubmission, {demoIdentity: "controller", submissionId})`.
@@ -494,7 +521,8 @@ The functions below are implemented in source and validated with isolated
 deployed or exercised against live Gemini/chain state by this API extension.
 Use the generated API types. All money and quantity values returned by these
 new endpoints are exact decimal integer strings; times and durations use
-milliseconds. The existing impersonable demo identity limitations still apply.
+milliseconds. The [authentication rules](#authentication) apply; unsigned demo
+selectors remain impersonable while demo mode is enabled.
 
 ### Human review
 
@@ -979,8 +1007,9 @@ request ID returns its original run; switching providers does not rerun it.
 
 Both endpoints require the stored contributor role, active organization and
 ownership of the submission. Controller, buyer and finance-agent selectors do
-not gain access to the contributor's coach response. The existing demo selector
-is impersonable; these role checks are not production authentication.
+not gain access to the contributor's coach response. The
+[authentication rules](#authentication) apply; unsigned demo selectors remain
+impersonable while demo mode is enabled.
 
 | Function | Kind | Arguments and result |
 | --- | --- | --- |
@@ -1047,8 +1076,9 @@ an unavailable coach as successful inference.
 **Source implementation; deployment required.** `datasets.forOrder({demoIdentity,
 orderId})` returns the buyer's versioned dataset, rather than the review queue.
 The order's buyer and an active controller in its organization may export it.
-Other buyers, contributors, and finance agents are refused. Demo identities
-remain impersonable selectors, not production authentication.
+Other buyers, contributors, and finance agents are refused. The
+[authentication rules](#authentication) apply; unsigned demo selectors remain
+impersonable while demo mode is enabled.
 
 ```sh
 curl -H 'x-skarl-demo-identity: buyer' \
@@ -1353,3 +1383,98 @@ credential validation or proof of an empty account. Startup requires a
 successful customer POST probe or verification of a known account ID before
 accepting activity reads. Hosted-provider success must be recorded separately
 from mocked test results and must retain the simulated-bank label.
+
+## Derived annotations (hands, objects, masks)
+
+**Implementation requires deployment by the backend owner.** Browser models
+produce advisory hand keypoints, object boxes, and mask outlines. These runs
+cannot change verdicts, acceptance, payables, payment destinations or quality
+scores. Model name/version/runtime are client-declared provenance; server JSON
+validation and summary recomputation do not attest that inference occurred.
+
+| Function | Arguments in addition to `demoIdentity` | Result / permission |
+| --- | --- | --- |
+| `annotations.generateUploadUrl` (mutation) | `submissionId` | Native upload URL; controller or owning contributor |
+| `annotations.saveDerived` (mutation) | `submissionId`, `storageId`, `summary` | Stored annotation ID; controller or owning contributor; replaying the same upload returns the existing ID |
+| `annotations.forSubmission` (query) | `submissionId` | Newest-first `[{_id, kind, model, createdAt, createdBy, url, summary}]`; controller, order's buyer, or owning contributor |
+
+All calls check active roles and the submission's organization. An authenticated
+session supplies the principal; `demoIdentity` does not override it. Finance agents,
+other contributors, and buyers of another order are refused. Upload the JSON
+with `Content-Type: application/json` to the URL, then pass the returned
+`storageId` to `saveDerived`. The upload request contains the same advisory
+`summary` shape below for compatibility, but the server ignores its values and
+recomputes the stored summary from the uploaded bytes inside the mutation.
+Read URLs are private Convex storage bearer URLs issued after authorization;
+do not publish or cache them publicly. They are not the five-minute original
+video proxy grants, and a previously issued URL cannot be recalled by revocation.
+
+The uploaded file contract is `skarl.annotations.v1`:
+
+```ts
+{
+  schema: "skarl.annotations.v1",
+  submissionId: string,
+  sourceSha256: string, // lowercase SHA-256, bound to the stored original
+  kind: "hands" | "objects" | "masks",
+  model: {name: string, version: string, runtime: "browser-wasm" | "browser-webgpu"},
+  sampleFps: number,
+  videoWidth: number,
+  videoHeight: number,
+  advisory: true,
+  frames: Array<{
+    tMs: number,
+    hands?: Array<{handedness: "Left" | "Right", score: number,
+      keypoints: Array<[number, number, number]>}>,
+    objects?: Array<{label: string, score: number, box: [number, number, number, number]}>,
+    masks?: Array<{label?: string, prompt: {x: number, y: number}, score: number,
+      bbox: [number, number, number, number], areaFrac: number, polygon?: Array<[number, number]>}>
+  }>
+}
+```
+
+Files are capped at 5 MiB and 2,000 frames. Unknown fields are rejected at every
+level. The array named by `kind` must exist on every frame; empty arrays record
+no detections. Other declared annotation arrays may accompany that kind.
+Timestamps must increase strictly, lie in 0–30,000 ms, and not exceed the known
+original duration. `sampleFps` is positive and at most 60; dimensions are whole
+numbers from 1–8,192. Scores, all keypoint coordinates (including z), prompts,
+polygon coordinates and area fractions must be finite and normalized to 0–1.
+Boxes are `[x,y,width,height]` within the normalized image, not pixel coordinates.
+Each hand has exactly 21 three-coordinate keypoints. Per frame there are at
+most two hands, 100 objects and 20 masks; polygons contain 3–256 points.
+Model strings are nonempty and at most 160 characters; labels are printable
+ASCII, at most 80 characters, with unsafe object keys rejected. At most 100
+unique object labels may occur in a file to keep the inline summary bounded.
+
+The stored summary is `{kind, frames, durationMs}` plus `handsDetectedFrames`
+and `maxHands` for hands, `objectLabels` (detection counts by label) and
+`cupInHandFrames` for objects, or total `masks` for masks. `durationMs` is the
+last sampled timestamp (zero for an empty run), not an inferred full video
+length. A cup-in-hand frame requires a positive-score `cup`/`red cup` box and
+a positive-score overlapping hand box, or an accompanying hand keypoint inside
+that cup box. Left/right hand and red-cup label variants with spaces, hyphens
+or underscores are recognized. This spatial heuristic does not establish cup
+color, a grasp or task completion; a person box alone is insufficient.
+
+The additive `derivedAnnotations` table stores the model, server summary,
+creator, creation time and `advisory: true`. For objects it also stores bounded,
+server-recomputed `cupInHandTimestampsMs` so receipt queries can compare actual
+sample times without fetching blob bytes. No original media is duplicated.
+
+The witness receipt adds `key: "detector"`, `kind: "work"`, `live: false`.
+It is `missing` without an objects run; otherwise it compares the latest
+objects run with the source-bound independent jury's supported
+`red-cup-pickup` video intervals. `agree` requires a positive cup-in-hand count
+and a sampled timestamp inside every available jury model's supported interval;
+`disagree` means that corroboration was not established, including when no
+valid independent jury interval exists. Its detail includes model name, version,
+runtime and the advisory/client-computed limitation. Existing witnesses and
+financial state retain their existing behavior.
+
+Every dataset sample includes `annotations: [{kind, model, summary, url,
+derived: true, advisory: true}]` across JSON, JSONL, LeRobot and RLDS JSON.
+`provenance.derivedAnnotations` lists metadata-only runs with
+`basis: "client_computed"`. Export still requires the existing licensed,
+accepted delivery and consent gates. Server-side batch annotation is roadmap
+work; no live model inference is established by synthetic contract tests.

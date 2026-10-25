@@ -4,7 +4,7 @@ import { assertBalanced, postJournal, type Journal, type LedgerState } from "../
 import { PAYMENT_NETWORK, USDC_ADDRESS } from "../../packages/contracts/src/chain";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import type { DemoPrincipal } from "./demoAuth";
+import { isFinanceAgent, type DemoPrincipal } from "./demoAuth";
 
 export function canonical(value: unknown): string {
   if (typeof value === "bigint") return JSON.stringify(value.toString());
@@ -21,7 +21,7 @@ export function requireTenant(principal: DemoPrincipal, resource: { organization
   if (principal.organizationId !== resource.organizationId) throw new Error("cross_organization_access");
 }
 export const actorFor = (member: DemoPrincipal) => ({
-  kind: member.roles.includes("finance-agent") ? "service" as const : "human" as const,
+  kind: isFinanceAgent(member) ? "service" as const : "human" as const,
   identity: member.tokenIdentifier,
 });
 

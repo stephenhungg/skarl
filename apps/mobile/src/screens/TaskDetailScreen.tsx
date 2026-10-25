@@ -52,8 +52,6 @@ export function TaskDetailScreen({ navigation }: RootProps<'TaskDetail'>) {
       {task && <View style={{ paddingHorizontal: gutter }}>
         <Animated.View entering={enter(0, 420)} style={{ marginTop: 20, gap: 10 }}>
           <View style={{ flexDirection: 'row', gap: 6 }}>
-            {task.isNew && !task.closed && <Pill tone="accent">New</Pill>}
-            <Pill>{task.category}</Pill>
             {task.closed && <Pill tone="danger">Closed</Pill>}
           </View>
           <Text accessibilityRole="header" style={s.title}>{task.title}</Text>

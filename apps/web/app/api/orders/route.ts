@@ -1,3 +1,4 @@
+import { authenticateConvexRequest } from "../../../lib/auth/server";
 import { createHmac, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import { PAYMENT_NETWORK, PAYMENT_RAILS } from "@skarl/contracts/chain";
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
   try {
     const payTo = treasuryAddress();
     const { db, serviceSecret } = paymentService();
+    await authenticateConvexRequest(db, request);
     // Vercel overwrites this header at ingress. Outside Vercel, callers share a bucket;
     // never trust a client-supplied forwarded header on a directly exposed local server.
     // https://vercel.com/docs/headers/request-headers#x-forwarded-for

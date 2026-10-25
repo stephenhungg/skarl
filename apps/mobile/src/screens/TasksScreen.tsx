@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { enter } from '../components/motion';
+import { Wordmark } from '../components/Mark';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { colors as c, fonts as f, gutter, radius } from '../../theme';
 import { money } from '../api';
@@ -23,7 +24,6 @@ function TaskCard({ task, onPress, index }: { task: LiveTask; onPress(): void; i
       <View style={{ flex: 1, gap: 6 }}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
           <Text style={s.taskCategory}>{task.category}</Text>
-          {task.isNew && !task.closed && <Pill tone="accent" style={s.newPill}>New</Pill>}
           {task.closed && <Pill tone="muted" style={s.newPill}>Closed</Pill>}
         </View>
         <Text numberOfLines={2} style={s.taskTitle}>{task.title}</Text>
@@ -59,10 +59,10 @@ export function TasksScreen({ navigation }: TabProps<'Tasks'>) {
 
   return <ScrollView style={s.screen} contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 120, paddingHorizontal: gutter }}>
     <Animated.View entering={FadeIn.duration(400)} style={s.header}>
-      <View style={{ flex: 1, gap: 4 }}>
+      <View style={{ flex: 1, gap: 14 }}>
+        <Wordmark size={18} />
         <H1>Tasks</H1>
       </View>
-      <Pill tone={live ? 'positive' : 'muted'} dot>{live ? 'Live' : 'Connecting'}</Pill>
     </Animated.View>
 
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -gutter, marginTop: 18 }} contentContainerStyle={{ paddingHorizontal: gutter, gap: 8 }}>
