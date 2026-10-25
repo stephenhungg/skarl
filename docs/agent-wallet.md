@@ -92,6 +92,9 @@ project's impersonable demo controller selectors; they are not production auth.
 Local tests use real disposable-key signatures but do not establish a live
 registration or onchain transaction. The deployment operator must deploy these
 functions and the optional membership challenge field before live use.
+The mutation statically imports the pinned `@noble/curves` recovery primitive
+and uses viem's EIP-191 hashing/address derivation: viem's `verifyMessage` utility
+lazily imports the curve, which the [Convex default runtime does not support](https://docs.convex.dev/functions/bundling#dynamic-dependencies).
 
 ```sh
 CDP_PAYOUT_CAP_ATOMIC=2000000 pnpm cdp:policy:apply

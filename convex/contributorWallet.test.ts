@@ -76,6 +76,15 @@ describe("contributor wallet registration with real local signatures (no chain t
     await expect(t.mutation(verify, { ...common, nonce: second.nonce, signature: await account.signMessage({ message: second.message }) })).rejects.toThrow("wallet_challenge_expired");
   });
 
+  it("accepts parity-form signatures and refuses invalid recovery bits", async () => {
+    const t = await setup();
+    const issued = await t.mutation(challenge, { ...common, walletAddress: account.address });
+    const signature = await account.signMessage({ message: issued.message });
+    await expect(t.mutation(verify, { ...common, nonce: issued.nonce, signature: `${signature.slice(0, 130)}02` })).rejects.toThrow("invalid_wallet_signature");
+    const parity = (Number.parseInt(signature.slice(130), 16) - 27).toString(16).padStart(2, "0");
+    expect(await t.mutation(verify, { ...common, nonce: issued.nonce, signature: `${signature.slice(0, 130)}${parity}` })).toMatchObject({ verified: true });
+  });
+
   it("refuses cross-tenant registration and inactive or non-contributor memberships", async () => {
     const t = await setup();
     await expect(t.mutation(challenge, { ...common, contributorTokenIdentifier: "demo:skarl:buyer", walletAddress: account.address })).rejects.toThrow("active_contributor_required");

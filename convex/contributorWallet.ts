@@ -1,5 +1,7 @@
 import { v } from "convex/values";
-import { getAddress, hashMessage, verifyMessage, type Hex } from "viem";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { getAddress, hashMessage, type Hex } from "viem";
+import { publicKeyToAddress } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 import { mutation, type MutationCtx } from "./_generated/server";
 import { PAYMENT_CHAIN_ID } from "../packages/contracts/src/chain";
@@ -62,7 +64,15 @@ export const verify = mutation({
     if (!/^0x[0-9a-fA-F]{130}$/.test(args.signature)) throw new Error("invalid_wallet_signature");
     let valid = false;
     try {
-      valid = await verifyMessage({ address: getAddress(challenge.walletAddress), message: challenge.message, signature: args.signature as Hex });
+      // viem's recoverPublicKey lazily imports this same curve implementation.
+      // Convex mutations cannot execute that dynamic import. Keep the curve
+      // statically bundled while preserving Ethereum's EIP-191 hash/recovery.
+      const v = Number.parseInt(args.signature.slice(130), 16);
+      const recoveryBit = v === 27 || v === 28 ? v - 27 : v;
+      if (recoveryBit !== 0 && recoveryBit !== 1) throw new Error("invalid_signature_recovery_bit");
+      const publicKey = secp256k1.Signature.fromCompact(args.signature.slice(2, 130))
+        .addRecoveryBit(recoveryBit).recoverPublicKey(hashMessage(challenge.message).slice(2)).toHex(false);
+      valid = normalizeAddress(publicKeyToAddress(`0x${publicKey}` as Hex)) === challenge.walletAddress;
     } catch { /* Malformed signatures are refused without provider/network calls. */ }
     if (!valid) throw new Error("invalid_wallet_signature");
     const verifiedAt = Date.now();
