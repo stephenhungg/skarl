@@ -22,14 +22,18 @@
     "verify:sample": "node scripts/verify-sample.mjs",
     "demo:e2e": "node scripts/demo-e2e.mjs",
     "eval:clips": "node scripts/eval-clips.mjs",
-    "test:eval": "node --test scripts/eval-clips.test.mjs"
+    "test:eval": "node --test scripts/eval-clips.test.mjs",
+    "cdp:policy:apply": "node scripts/cdp-policy-apply.ts",
+    "demo:policy": "node scripts/cdp-policy-demo.ts"
   },
   "dependencies": {
+    "@coinbase/cdp-sdk": "1.60.0",
     "@convex-dev/workflow": "0.4.10",
     "@noble/hashes": "2.4.0",
     "@skarl/contracts": "workspace:*",
     "convex": "1.48.0",
-    "ffmpeg-static": "5.3.0"
+    "ffmpeg-static": "5.3.0",
+    "viem": "2.57.11"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",

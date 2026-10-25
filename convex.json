@@ -7,7 +7,8 @@
   "node": {
     "nodeVersion": "22",
     "externalPackages": [
-      "ffmpeg-static"
+      "ffmpeg-static",
+      "@coinbase/cdp-sdk"
     ]
   }
 }
