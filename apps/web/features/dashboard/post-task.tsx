@@ -16,9 +16,9 @@ import { formatUsdc, humanize, shortHash } from "./format";
 import { Amount, PageHeader } from "./ui";
 
 const EXAMPLE = {
-  title: "Pick up a red cup and place it on the coaster",
-  prompt: "Film with the back camera, phone held steady. Pick up the red cup with one hand, place it on the coaster, and say out loud what you are doing as you do it.",
-  checks: ["A red cup is picked up by hand", "The cup ends up on the coaster", "The narration matches what the hands do"],
+  title: "Pick up a mug and place it in the dish rack",
+  prompt: "Film with the back camera, phone held steady. Pick up the mug with one hand, place it in the dish rack, and say out loud what you are doing as you do it.",
+  checks: ["A mug is picked up by hand", "The mug ends up in the dish rack", "The narration matches what the hands do"],
 };
 const DAYS = [1, 3, 7] as const;
 const STEP_LABEL: Record<FundingStep, string> = {
@@ -53,9 +53,13 @@ export function PostTask() {
   const [prompt, setPrompt] = useState("");
   const [checks, setChecks] = useState<string[]>(["", ""]);
   const [clips, setClips] = useState("4");
-  const [price, setPrice] = useState("2.50");
+  const [price, setPrice] = useState("1.50");
   const [days, setDays] = useState<(typeof DAYS)[number]>(3);
   const [autoPay, setAutoPay] = useState(true);
+  const [refund, setRefund] = useState("");
+  // Read after mount so server and client render the same form.
+  const [hasWallet, setHasWallet] = useState(true);
+  useEffect(() => { setHasWallet(!!injected()); }, []);
   const [busy, setBusy] = useState(false);
   const [orderId, setOrderId] = useState<Id<"orders"> | null>(null);
   const [requestId] = useState(() => `post-${crypto.randomUUID()}`);
@@ -75,12 +79,16 @@ export function PostTask() {
   async function post() {
     if (problem || !each) return;
     const provider = injected();
-    if (!provider) { toast.fail("Connect a wallet", { description: "Install Coinbase Wallet or MetaMask. The task is funded from it." }); return; }
+    // Funding binds to whoever pays, so a browser wallet is optional; without one the address only receives refunds.
+    if (!provider && !/^0x[0-9a-fA-F]{40}$/.test(refund.trim())) { toast.fail("Add a refund address", { description: "Paste the wallet address refunds should go to, or connect a browser wallet." }); return; }
     setBusy(true);
     try {
-      const wallet = createWalletClient({ chain: baseSepolia, transport: custom(provider, { retryCount: 0 }) });
-      const [address] = await wallet.requestAddresses();
-      if (!address) throw new Error("No wallet account selected.");
+      let address = refund.trim();
+      if (provider) {
+        const wallet = createWalletClient({ chain: baseSepolia, transport: custom(provider, { retryCount: 0 }) });
+        [address = ""] = await wallet.requestAddresses();
+        if (!address) throw new Error("No wallet account selected.");
+      }
       const result = await createOrder({ demoIdentity: BUYER, requestId, title: title.trim(), buyerWalletAddress: address,
         quantityRequested: count.toString(), pricePerSampleAtomic: each.toString(), contributorRateAtomic: each.toString(),
         deadlineAt: Date.now() + days * 86_400_000, taskPrompt: prompt.trim(),
@@ -101,7 +109,7 @@ export function PostTask() {
       <div className="flex flex-col gap-8">
         <section className="flex flex-col gap-4">
           <h2 className="type-heading-sm">What should people record?</h2>
-          <Field label="Task name"><input className={input} value={title} maxLength={200} onChange={e => setTitle(e.target.value)} placeholder="Pick up a red cup and place it on the coaster" /></Field>
+          <Field label="Task name"><input className={input} value={title} maxLength={200} onChange={e => setTitle(e.target.value)} placeholder={EXAMPLE.title} /></Field>
           <Field label="Instructions" hint="Contributors read this on their phone before recording.">
             <textarea className={cn(input, "min-h-28 resize-y")} value={prompt} maxLength={10_000} onChange={e => setPrompt(e.target.value)} />
           </Field>
@@ -144,6 +152,9 @@ export function PostTask() {
             </span>
             <Switch checked={autoPay} onCheckedChange={setAutoPay} aria-label="Auto-pay" />
           </div>
+          {!hasWallet && <Field label="Refund address" hint="No browser wallet found. You can fund from any x402 wallet or a terminal on the next step.">
+            <input className={cn(input, "mono")} value={refund} onChange={e => setRefund(e.target.value)} placeholder="0x…" spellCheck={false} />
+          </Field>}
         </section>
 
         <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-3 border-t border-line-faint bg-page px-4 py-4 md:-mx-6 md:px-6">
@@ -204,7 +215,7 @@ function Fund({ orderId }: { orderId: Id<"orders"> }) {
           <Button disabled={!!step || !order} onClick={() => void fund()}>{step ? STEP_LABEL[step] : `Fund ${order ? formatUsdc(order.budgetAtomic) : ""} USDC`}</Button>
         )}
         {!funded && <p className="type-body-sm text-text-3">No test USDC? Get some at <a href="https://faucet.circle.com" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">faucet.circle.com</a> (Base Sepolia).
-          {" "}Or fund from a terminal: <code className="rounded-tag bg-field px-1.5 py-0.5">pnpm agent:fund {orderId}</code></p>}
+          {" "}Or fund from a terminal: <code className="rounded-tag bg-field px-1.5 py-0.5">SKARL_APP_URL={typeof window === "undefined" ? "" : window.location.origin} pnpm agent:fund {orderId}</code></p>}
       </div>
       <Link href="/dashboard" className="mt-4 inline-block type-label-sm text-text-2 underline underline-offset-4">Back to overview</Link>
     </div>
