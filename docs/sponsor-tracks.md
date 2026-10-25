@@ -108,3 +108,9 @@ Current configurable defaults are `gemini-4-argon` for visual evidence, `gemini-
 5. Coinbase builder feedback based on observed SDK/MCP/facilitator behavior; mark doc-only findings as research.
 
 Do not contact sponsors or send feedback through messaging tools without the user's authorization.
+
+## Live CDP builder feedback — SQL API, October 25
+
+At approximately 02:54 PDT, the SQL witness retry and both minimal `SELECT 1` authentication variants returned HTTP 500 at `/platform/v2/data/query/run`. CDP returned `internal_server_error`: “An internal server error occurred. Please try again later.” Correlation IDs: client-key Bearer `a50055b9eb2f354e-IAD`, API-secret JWT `a50055baacf2354e-SJC`, and the scoped Base Sepolia Transfer query `a50055bbcc0b7851-IAD`. These are live provider errors, not simulated tests.
+
+The workaround is to retain the existing RPC-confirmed reconciliation and display `witness_unavailable`; SQL cannot authorize payouts or substitute for receipt validation. Desired capability: actionable query-service health/error diagnostics tied to the returned correlation ID. No feedback was sent externally.

@@ -105,6 +105,9 @@ export default defineSchema({
     // an EIP-191 (SIWE) signature over a server-issued nonce. Payables copy the
     // address from a verified record.
     walletAddress: v.optional(evmAddress),
+    walletChallenge: v.optional(v.object({
+      message: v.string(), nonce: v.string(), walletAddress: evmAddress, expiresAt: v.number(),
+    })),
     walletVerification: v.optional(
       v.object({
         siweMessageHash: v.string(),

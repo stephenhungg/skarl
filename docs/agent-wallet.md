@@ -78,6 +78,21 @@ addresses or accept a command-line allowlist. This is a snapshot: rerun policy
 setup after approved contributor changes. The executor also checks the current
 Convex allowlist before claiming each payout.
 
+Contributor registration uses the controller-gated `contributorWallet:challenge`
+mutation with `{demoIdentity:"controller",contributorTokenIdentifier:"demo:skarl:contributor",walletAddress}`.
+Sign its returned `message` with that contributor's wallet using EIP-191
+`signMessage`, then call `contributorWallet:verify` with the same identity fields,
+returned `nonce`, and `signature`. The server-issued SIWE message binds the
+`skarl.vercel.app` domain, HTTPS URI, Base Sepolia chain, membership and organization;
+it expires after five minutes. Only the exact stored message is verified. A new
+challenge supersedes the previous nonce, successful verification consumes it,
+and exact success retries are idempotent. Existing verified addresses cannot be
+changed through this initial-registration path. These functions retain the
+project's impersonable demo controller selectors; they are not production auth.
+Local tests use real disposable-key signatures but do not establish a live
+registration or onchain transaction. The deployment operator must deploy these
+functions and the optional membership challenge field before live use.
+
 ```sh
 CDP_PAYOUT_CAP_ATOMIC=2000000 pnpm cdp:policy:apply
 # Equivalent direct command:
