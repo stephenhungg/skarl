@@ -4,8 +4,8 @@ import { BANK_WITNESS_LABEL, compareBankWitness, createNessieClient, nessieAmoun
 
 // All provider responses are synthetic fixtures. No live credentials or bank calls.
 const accountId = "treasury";
-const expected: BankExpectation = { intentId: "funding-intent", amountAtomic: "1875000", accountId, kind: "deposit" };
-const row: BankActivity = { id: "deposit-1", kind: "deposit", accountId, amountAtomic: "1875000",
+const expected: BankExpectation = { intentId: "funding-intent", amountAtomic: "1870000", accountId, kind: "deposit" };
+const row: BankActivity = { id: "deposit-1", kind: "deposit", accountId, amountAtomic: "1870000",
   description: "funding-intent", status: "completed" };
 const customer = { first_name: "Simulated", last_name: "Treasury",
   address: { street_number: "1", street_name: "Test Street", city: "Test", state: "CA", zip: "00000" } };
@@ -32,16 +32,16 @@ describe("Nessie bank witness (simulated provider responses)", () => {
     expect(compareBankWitness(expected, [{ ...row, status: "cancelled" }])).toMatchObject({ status: "mismatch" });
     expect(compareBankWitness(expected, [{ ...row, status: "unknown" }])).toMatchObject({ status: "mismatch" });
   });
-  it("keeps six decimal places exact including values exceeding Number precision", () => {
-    for (const [amount, token] of [["1", "0.000001"], ["1875000", "1.875000"], ["9007199254740993", "9007199254.740993"],
-      ["9223372036854775807", "9223372036854.775807"]]) {
+  // Live Nessie truncates decimal amounts (1.5 -> 1, 0.01 -> 0), so the bank carries exact integer cents.
+  it("maps micro-USDC to integer cents exactly and refuses sub-cent amounts instead of rounding", () => {
+    for (const [amount, token] of [["10000", "1"], ["750000", "75"], ["10000000", "1000"], ["9007199254740000", "900719925474"]]) {
       expect(nessieAmountToken(amount!)).toBe(token);
       expect(nessieAmountAtomic(token!)).toBe(amount);
     }
-    expect(nessieAmountAtomic("1e-6")).toBe("1");
-    expect(nessieAmountAtomic("1.8750000")).toBe("1875000");
+    expect(() => nessieAmountToken("1875000")).toThrow("nessie_subcent_amount"); // 1.875 USDC is 187.5 cents
+    expect(() => nessieAmountToken("1")).toThrow("nessie_subcent_amount");
     for (const invalid of ["0", "-1", "01", "1.5", "9223372036854775808"]) expect(() => nessieAmountToken(invalid)).toThrow();
-    for (const invalid of ["0", "-1", "1.0000001", "1e-7", "1e999", "1e-999"]) expect(() => nessieAmountAtomic(invalid)).toThrow();
+    for (const invalid of ["0", "-1", "1.5", "1e2", "01", "100000000000000000"]) expect(() => nessieAmountAtomic(invalid)).toThrow();
   });
   it("rejects silent HTTP 200 [] keys rather than treating empty GET as authenticated", async () => {
     const fetchImpl = mock().mockImplementation(async () => response("[]"));
@@ -85,37 +85,38 @@ describe("Nessie bank witness (simulated provider responses)", () => {
     const resumed = createNessieClient({ apiKey: "test-key", fetchImpl });
     expect(await resumed.createAccount("created", { nickname: "Simulated Treasury", type: "Checking", rewards: 0, balance: 0 }))
       .toEqual({ id: "created" });
-    expect(await resumed.deposit(accountId, { amountAtomic: "1", description: "intent", transactionDate: "2026-10-25" }))
+    expect(await resumed.deposit(accountId, { amountAtomic: "10000", description: "intent", transactionDate: "2026-10-25" }))
       .toEqual({ id: "created" });
   });
-  it("sends exact unquoted JSON decimal amount tokens and a bounded account path", async () => {
+  it("sends exact integer-cent amount tokens, the required status and a bounded account path", async () => {
     const fetchImpl = mock().mockResolvedValueOnce(response('{"_id":"treasury"}'))
       .mockImplementation(async () => response('{"objectCreated":{"_id":"created"}}', 201));
     const client = createNessieClient({ apiKey: "test&key", fetchImpl });
     await client.verifyAccount(accountId);
-    await client.transfer(accountId, { payeeId: "contributor", amountAtomic: "9007199254740993",
+    await client.transfer(accountId, { payeeId: "contributor", amountAtomic: "9007199254740000",
       description: 'intent-"amount":null', transactionDate: "2026-10-25" });
     const [url, init] = fetchImpl.mock.calls[1]!;
     expect(url).toBe("https://prod-api.nessieisreal.com/accounts/treasury/transfers?key=test%26key");
-    expect(init?.body).toContain('"amount":9007199254.740993');
+    expect(init?.body).toContain('"amount":900719925474}');
+    expect(init?.body).toContain('"status":"completed"');
     expect(init?.body).toContain('"medium":"balance"');
     expect(JSON.parse(String(init?.body))).toMatchObject({ description: 'intent-"amount":null', payee_id: "contributor" });
     await expect(client.activity("../../customers")).rejects.toThrow("nessie_invalid_id");
   });
   it("parses provider amount numeric tokens losslessly and preserves incoming transfer direction", async () => {
     const fetchImpl = mock().mockResolvedValueOnce(response('{"_id":"treasury"}'))
-      .mockResolvedValueOnce(response('[{"_id":"deposit-1","payee_id":"treasury","amount":9007199254.740993,"description":"funding-intent","status":"completed"}]'))
-      .mockResolvedValueOnce(response('[{"_id":"transfer-1","payer_id":"external","payee_id":"treasury","amount":1e-6,"description":"incoming","status":"completed"}]'));
+      .mockResolvedValueOnce(response('[{"_id":"deposit-1","medium":"balance","amount":900719925474,"description":"funding-intent","status":"completed"}]'))
+      .mockResolvedValueOnce(response('[{"_id":"transfer-1","payer_id":"external","payee_id":"treasury","amount":1,"description":"incoming","status":"completed"}]'));
     const client = createNessieClient({ apiKey: "test-key", fetchImpl });
     await client.verifyAccount(accountId);
     expect(await client.activity(accountId)).toEqual([
-      { ...row, amountAtomic: "9007199254740993" },
-      { id: "transfer-1", kind: "transfer", accountId: "external", payeeId: "treasury", amountAtomic: "1", description: "incoming", status: "completed" },
+      { ...row, amountAtomic: "9007199254740000" },
+      { id: "transfer-1", kind: "transfer", accountId: "external", payeeId: "treasury", amountAtomic: "10000", description: "incoming", status: "completed" },
     ]);
   });
   it("fails closed on malformed, foreign-account or submicro bank activity", async () => {
-    for (const change of [{ payee_id: "foreign" }, { amount: "1.0000001" }, { status: undefined }, { _id: "../../invalid" }]) {
-      const raw = { _id: "deposit-1", payee_id: accountId, amount: "1.875", status: "completed", ...change };
+    for (const change of [{ payee_id: "foreign" }, { amount: "1.5" }, { status: undefined }, { _id: "../../invalid" }]) {
+      const raw = { _id: "deposit-1", payee_id: accountId, amount: "187", status: "completed", ...change };
       const fetchImpl = mock().mockResolvedValueOnce(response('{"_id":"treasury"}'))
         .mockResolvedValueOnce(response(JSON.stringify([raw]))).mockResolvedValueOnce(response("[]"));
       const client = createNessieClient({ apiKey: "test-key", fetchImpl });

@@ -377,7 +377,7 @@ describe("Nessie action guards and timeout recovery", () => {
       if (init?.method === "POST") {
         posts++;
         expect(path).toBe(`/accounts/${BANK_ACCOUNT}/deposits`);
-        expect(String(init.body)).toContain('"amount":100.000000');
+        expect(String(init.body)).toContain('"amount":10000'); // 100 USDC as integer cents
         expect(String(init.body)).toContain(f.intent.intentId);
         // The server committed, but the response was lost. This is not a failed payment.
         deposited = true;
@@ -385,8 +385,8 @@ describe("Nessie action guards and timeout recovery", () => {
       }
       if (path === `/accounts/${BANK_ACCOUNT}`) return response({_id: BANK_ACCOUNT});
       if (path.endsWith("/transfers")) return response([]);
-      if (path.endsWith("/deposits")) return response(deposited ? [{_id: "synthetic-deposit", payee_id: BANK_ACCOUNT,
-        amount: 100, description: f.intent.intentId, status: "completed"}] : []);
+      if (path.endsWith("/deposits")) return response(deposited ? [{_id: "synthetic-deposit", medium: "balance",
+        amount: 10000, description: f.intent.intentId, status: "completed"}] : []);
       throw new Error("unexpected_synthetic_request");
     });
     vi.stubGlobal("fetch", fetchMock);

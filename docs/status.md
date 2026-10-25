@@ -1064,7 +1064,13 @@ The bank-witness slice adds a fourth reconciliation source beside the order,
 ledger and chain: **simulated bank (Capital One Nessie mock)**. It models a
 Treasury deposit after confirmed x402 funding and a contributor off-ramp
 transfer after an observed payout, using the original intent ID as the bank
-description. Exact micro-USDC amounts and account direction bind the match;
+description. Exact amounts and account direction bind the match. The live
+Nessie API truncates `amount` to an integer (1.5 becomes 1, 0.01 becomes 0)
+and requires `status`, so the bank carries exact integer US cents: 1 cent is
+10,000 micro-USDC. Sub-cent amounts (for example a 1.875 USDC payout) are
+refused with `nessie_subcent_amount`, never rounded, and stay visible as
+missing bank evidence. Live empty transfer lists return HTTP 404 and are read
+as no transfers only after the key is bound to the known account;
 missing evidence stays visible and disagreements enter the exception queue. No bank record
 posts a journal or grants payment authority.
 

@@ -39,22 +39,18 @@ function atomic(value: string): bigint {
   if (amount <= 0n || amount > MAX_ATOMIC) throw new Error("nessie_invalid_amount");
   return amount;
 }
-/** Exact decimal JSON token, without converting money through Number. */
+// Live Nessie truncates `amount` to an integer (1.5 -> 1, 0.01 -> 0). The simulated bank therefore
+// carries integer US cents; amounts that are not cent-exact are refused, never rounded.
+const ATOMIC_PER_CENT = 10_000n;
+/** Integer-cent JSON token, without converting money through Number. */
 export function nessieAmountToken(value: string): string {
   const amount = atomic(value);
-  return `${amount / 1_000_000n}.${(amount % 1_000_000n).toString().padStart(6, "0")}`;
+  if (amount % ATOMIC_PER_CENT !== 0n) throw new Error("nessie_subcent_amount");
+  return (amount / ATOMIC_PER_CENT).toString();
 }
 export function nessieAmountAtomic(value: string): string {
-  const match = /^(0|[1-9]\d{0,30})(?:\.(\d{1,30}))?(?:[eE]([+-]?\d{1,3}))?$/.exec(value);
-  if (!match) throw new Error("nessie_invalid_amount");
-  const fraction = match[2] ?? "";
-  const shift = 6n + BigInt(match[3] ?? "0") - BigInt(fraction.length);
-  if (shift > 30n || shift < -60n) throw new Error("nessie_invalid_amount");
-  const digits = BigInt(match[1]! + fraction);
-  const denominator = shift < 0n ? 10n ** -shift : 1n;
-  if (digits % denominator !== 0n) throw new Error("nessie_submicro_amount");
-  const amount = shift < 0n ? digits / denominator : digits * 10n ** shift;
-  return atomic(amount.toString()).toString();
+  if (!/^(0|[1-9]\d{0,16})$/.test(value)) throw new Error("nessie_invalid_amount");
+  return atomic((BigInt(value) * ATOMIC_PER_CENT).toString()).toString();
 }
 /** Quote JSON numeric tokens before parsing: six-decimal money never becomes a float. */
 function parseExactJson(text: string): unknown {
@@ -84,7 +80,8 @@ function paymentBody(input: NessiePayment, extra: Record<string, string> = {}): 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.transactionDate) || !input.description || input.description.length > 200) {
     throw new Error("nessie_invalid_payment");
   }
-  const body = JSON.stringify({ medium: "balance", transaction_date: input.transactionDate,
+  // Live Nessie rejects deposits/transfers without `status` (HTTP 400).
+  const body = JSON.stringify({ medium: "balance", transaction_date: input.transactionDate, status: "completed",
     description: input.description, ...extra });
   return `${body.slice(0, -1)},"amount":${nessieAmountToken(input.amountAtomic)}}`;
 }
@@ -92,7 +89,8 @@ function activityRows(payload: unknown, accountId: string, kind: BankActivity["k
   if (!Array.isArray(payload) || payload.length > MAX_ROWS) throw new Error("nessie_incomplete_activity");
   return payload.map(value => {
     const row = object(value);
-    const source = kind === "deposit" ? id(row.payee_id) : id(row.payer_id);
+    // Live deposit rows carry no payee_id; the account is bound by the request path.
+    const source = kind === "deposit" ? (row.payee_id === undefined ? accountId : id(row.payee_id)) : id(row.payer_id);
     const payeeId = kind === "transfer" ? id(row.payee_id) : undefined;
     // Incoming transfers are returned by some Nessie implementations. Preserve
     // their real sender so they cannot masquerade as an outgoing off-ramp.
