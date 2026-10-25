@@ -6,7 +6,7 @@ Agents propose, a rule the buyer signed approves, the AI never approves itself. 
 
 [The thesis and live/simulated witness table](docs/thesis.md) map work evidence, money evidence, judgment and the Convex nervous system. The complete duplicate-to-payout moment remains pending in [build status](docs/status.md).
 
-**[Open the live demo](https://skarl.vercel.app)** · [Coinbase submission](docs/coinbase-submission.md) · [Devpost text](docs/devpost.md) · [Two-minute demo and judging runbook](docs/demo-script.md) · [Architecture SVG](docs/architecture.svg)
+**[Open the live demo](https://skarl.devshardat.work)** · [Coinbase submission](docs/coinbase-submission.md) · [Devpost text](docs/devpost.md) · [Two-minute demo and judging runbook](docs/demo-script.md) · [Architecture SVG](docs/architecture.svg)
 
 **Testnet · test USDC · demo identities.** Demonstrated funding uses Base Sepolia and optional Solana Devnet; payouts remain Base-only; operator-owned test assets, no real customer funds. The hosted demo uses impersonable identities, not production authentication.
 

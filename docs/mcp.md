@@ -329,7 +329,7 @@ IDs, server-initiated messages, or SSE streams. A GET returns
 HTTP `405`; use POST for discovery and tools.
 
 An absent `Origin` is allowed for native clients. A supplied `Origin` must match
-the Convex HTTP site's origin or `https://skarl.vercel.app`; other origins receive
+the Convex HTTP site's origin, `https://skarl.devshardat.work`, or `https://skarl.vercel.app`; other origins receive
 HTTP `403`. Guest reads do not need key configuration. A supplied credential
 fails closed if invalid; missing service/seed configuration makes public order
 creation unavailable rather than bypassing the existing mutation.

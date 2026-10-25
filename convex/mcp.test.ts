@@ -67,6 +67,7 @@ describe("keyless guest MCP", () => {
     const about = toolValue(await guestCall(t, "skarl_about"));
     expect(about).toMatchObject({ guestAccess: expect.stringContaining("No key required"),
       demoOrder: { amountAtomic: "1000000", network: "eip155:84532" } });
+    expect(about.links.contribute).toBe("https://skarl.devshardat.work/contribute");
     expect(about.safety.join(" ")).toContain("never approve, accept submissions or sign payouts");
   });
 
@@ -222,12 +223,16 @@ describe("MCP transport and bearer boundary", () => {
     }
   });
 
-  it("rejects untrusted browser origins so bearer access cannot be widened through DNS rebinding", async () => {
+  it.each(["https://skarl.devshardat.work", "https://skarl.vercel.app"])("accepts MCP requests from %s", async origin => {
     const t = convexTest(schema, modules);
-    const response = await t.fetch("/mcp", { method: "POST", headers: { ...headers(), Origin: "https://attacker.example" }, body: JSON.stringify(rpc("tools/list")) });
-    expect(response.status).toBe(403);
-    const allowed = await t.fetch("/mcp", { method: "POST", headers: { ...headers(), Origin: "https://skarl.vercel.app" }, body: JSON.stringify(rpc("tools/list")) });
+    const allowed = await t.fetch("/mcp", { method: "POST", headers: { ...headers(), Origin: origin }, body: JSON.stringify(rpc("tools/list")) });
     expect(allowed.status).toBe(200);
+  });
+
+  it.each(["https://attacker.example", "https://skarl.devshardat.work.attacker.example", "http://skarl.devshardat.work", "null"])("rejects untrusted MCP origin %s", async origin => {
+    const t = convexTest(schema, modules);
+    const response = await t.fetch("/mcp", { method: "POST", headers: { ...headers(), Origin: origin }, body: JSON.stringify(rpc("tools/list")) });
+    expect(response.status).toBe(403);
   });
 
   it("offers JSON Streamable HTTP and explicitly declines an authenticated standalone SSE stream", async () => {

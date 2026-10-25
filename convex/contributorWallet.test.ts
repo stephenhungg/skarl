@@ -27,7 +27,7 @@ describe("contributor wallet registration with real local signatures (no chain t
     const t = await setup();
     const issued = await t.mutation(challenge, { ...common, walletAddress: account.address });
     const parsed = parseSiweMessage(issued.message);
-    expect(parsed).toMatchObject({ address: account.address, domain: "skarl.vercel.app", uri: "https://skarl.vercel.app", chainId: PAYMENT_CHAIN_ID });
+    expect(parsed).toMatchObject({ address: account.address, domain: "skarl.devshardat.work", uri: "https://skarl.devshardat.work", chainId: PAYMENT_CHAIN_ID });
     expect(parsed.statement).toContain(common.contributorTokenIdentifier);
     expect(parsed.resources).toHaveLength(2);
     const signature = await account.signMessage({ message: issued.message });
@@ -44,6 +44,28 @@ describe("contributor wallet registration with real local signatures (no chain t
     });
     await expect(t.mutation(challenge, { ...common, walletAddress: wrongAccount.address })).rejects.toThrow("wallet_already_verified");
     await expect(t.mutation(verify, { ...args, nonce: "different" })).rejects.toThrow("wallet_already_verified");
+  });
+
+  it.each(["https://skarl.devshardat.work", "https://skarl.vercel.app"])("binds the challenge to the allowed requesting origin %s", async origin => {
+    const t = await setup();
+    const issued = await t.mutation(challenge, { ...common, walletAddress: account.address, origin });
+    expect(parseSiweMessage(issued.message)).toMatchObject({ domain: new URL(origin).host, uri: origin });
+    const otherHost = origin.endsWith("vercel.app") ? "skarl.devshardat.work" : "skarl.vercel.app";
+    const changedHost = issued.message.replaceAll(new URL(origin).host, otherHost);
+    await expect(t.mutation(verify, { ...common, nonce: issued.nonce,
+      signature: await account.signMessage({ message: changedHost }) })).rejects.toThrow("invalid_wallet_signature");
+    const signature = await account.signMessage({ message: issued.message });
+    expect(await t.mutation(verify, { ...common, nonce: issued.nonce, signature })).toMatchObject({ verified: true });
+  });
+
+  it.each(["https://attacker.example", "https://skarl.devshardat.work.attacker.example", "http://skarl.devshardat.work",
+    "https://skarl.vercel.app@attacker.example", "https://skarl.devshardat.work:444", "null", ""])("rejects untrusted wallet origin %s before storing a challenge", async origin => {
+    const t = await setup();
+    await expect(t.mutation(challenge, { ...common, walletAddress: account.address, origin })).rejects.toThrow("untrusted_wallet_origin");
+    await t.run(async ctx => {
+      const member = await ctx.db.query("memberships").withIndex("by_token_identifier", q => q.eq("tokenIdentifier", common.contributorTokenIdentifier)).unique();
+      expect(member?.walletChallenge).toBeUndefined();
+    });
   });
 
   it("lets a contributor verify their own wallet without a separate operator", async () => {
@@ -72,7 +94,7 @@ describe("contributor wallet registration with real local signatures (no chain t
     const issued = await t.mutation(challenge, { ...common, walletAddress: account.address });
     let message = issued.message;
     if (scenario === "wrong chain") message = message.replace(`Chain ID: ${PAYMENT_CHAIN_ID}`, "Chain ID: 1");
-    if (scenario === "wrong domain") message = message.replaceAll("skarl.vercel.app", "attacker.example");
+    if (scenario === "wrong domain") message = message.replaceAll("skarl.devshardat.work", "attacker.example");
     if (scenario === "wrong membership") message = message.replace(common.contributorTokenIdentifier, "demo:skarl:someone-else");
     const signature = scenario === "malformed signature" ? "0x00" : await (scenario === "wrong signer" ? wrongAccount : account).signMessage({ message });
     await expect(t.mutation(verify, { ...common, nonce: issued.nonce, signature })).rejects.toThrow("invalid_wallet_signature");

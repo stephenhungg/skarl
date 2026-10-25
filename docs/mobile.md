@@ -241,7 +241,7 @@ page. The native stepper and evidence lanes use that same visual language.
 Motion uses `Easing.bezier(.43, .42, .37, .97)` and respects Reduce Motion.
 
 These screenshots compare the **real web-exported Expo UI** against
-[the deployed contributor page](https://skarl.vercel.app/contribute), both at
+[the deployed contributor page](https://skarl.devshardat.work/contribute), both at
 390 × 844 CSS pixels. Both loaded the live demo rubric; no submission or camera
 capture was fabricated for the screenshots. The app adds explicit testnet and
 sensor labels, and displays the exact 1.875 test-USDC rate in mono (the web rounds

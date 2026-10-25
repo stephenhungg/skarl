@@ -31,7 +31,7 @@ export function feedCode(value: unknown): string {
 
 export function receiptUrl(submissionId: string | undefined): string | undefined {
   if (!submissionId) return undefined;
-  const origin = process.env.SKARL_JIRA_PUBLIC_URL ?? "https://skarl.vercel.app";
+  const origin = process.env.SKARL_JIRA_PUBLIC_URL ?? "https://skarl.devshardat.work";
   try {
     const url = new URL(origin);
     if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return undefined;

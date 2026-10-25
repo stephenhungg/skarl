@@ -25,7 +25,7 @@ settings, set `SKARL_JIRA_FEED_SECRET` to a random secret of 32–512 characters
 value for Forge's `SKARL_FEED_SECRET` below. The endpoint is on the deployment's
 `https://<deployment>.convex.site` origin, not its `.convex.cloud` URL.
 Optionally set Convex's `SKARL_JIRA_PUBLIC_URL` to your Skarl web origin (for
-example, `https://skarl.vercel.app`) to generate witness-receipt links. The
+example, `https://skarl.devshardat.work`) to generate witness-receipt links. The
 receipt endpoint retains Skarl's authentication; the current demo API requires
 `x-skarl-demo-identity: controller`, so a plain browser link does not itself
 grant access. The Jira panel displays the authenticated feed's safe summary.

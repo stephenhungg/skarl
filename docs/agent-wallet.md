@@ -81,7 +81,9 @@ mutation with `{demoIdentity:"controller",contributorTokenIdentifier:"demo:skarl
 Sign its returned `message` with that contributor's wallet using EIP-191
 `signMessage`, then call `contributorWallet:verify` with the same identity fields,
 returned `nonce`, and `signature`. The server-issued SIWE message binds the
-`skarl.vercel.app` domain, HTTPS URI, Base Sepolia chain, membership and organization;
+`skarl.devshardat.work` domain by default, HTTPS URI, Base Sepolia chain, membership and organization.
+Clients may pass optional `origin` on the challenge: only `https://skarl.devshardat.work`
+and `https://skarl.vercel.app` are accepted, and the message binds that origin’s host and URI;
 it expires after five minutes. Only the exact stored message is verified. A new
 challenge supersedes the previous nonce, successful verification consumes it,
 and exact success retries are idempotent. Existing verified addresses cannot be

@@ -8,8 +8,14 @@ import { PAYMENT_CHAIN_ID } from "../packages/contracts/src/chain";
 import { requireRole } from "./lib/demoAuth";
 import { actorFor, audit, digest, normalizeAddress, requireTenant } from "./lib/finance";
 
-const DOMAIN = "skarl.vercel.app";
-const URI = `https://${DOMAIN}`;
+const DEFAULT_ORIGIN = "https://skarl.devshardat.work";
+const WALLET_ORIGINS = [DEFAULT_ORIGIN, "https://skarl.vercel.app"];
+
+function walletOrigin(origin: string = DEFAULT_ORIGIN) {
+  // Exact HTTPS origins only: never echo arbitrary hosts into a signing request.
+  if (!WALLET_ORIGINS.includes(origin)) throw new Error("untrusted_wallet_origin");
+  return { domain: new URL(origin).host, uri: origin };
+}
 const CHALLENGE_TTL_MS = 5 * 60_000;
 
 async function contributorFor(ctx: MutationCtx, demoIdentity: string, tokenIdentifier: string) {
@@ -38,10 +44,11 @@ export const mine = query({
 
 /** Contributors verify their own wallet; the legacy operator selector remains compatible. */
 export const challenge = mutation({
-  args: { demoIdentity: v.string(), contributorTokenIdentifier: v.string(), walletAddress: v.string() },
+  args: { demoIdentity: v.string(), contributorTokenIdentifier: v.string(), walletAddress: v.string(), origin: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const { contributor } = await contributorFor(ctx, args.demoIdentity, args.contributorTokenIdentifier);
     if (contributor.walletVerification) throw new Error("wallet_already_verified");
+    const { domain, uri } = walletOrigin(args.origin);
     const walletAddress = normalizeAddress(args.walletAddress);
     if (walletAddress === "0x0000000000000000000000000000000000000000") throw new Error("invalid_evm_address");
     const now = Date.now(), expiresAt = now + CHALLENGE_TTL_MS;
@@ -49,7 +56,7 @@ export const challenge = mutation({
     // distinguishes challenges; the persisted exact message and consumption prevent replay.
     const nonce = digest({ membership: contributor._id, now, random: Math.random() });
     const message = createSiweMessage({
-      domain: DOMAIN, uri: URI, version: "1", chainId: PAYMENT_CHAIN_ID,
+      domain, uri, version: "1", chainId: PAYMENT_CHAIN_ID,
       address: getAddress(walletAddress), nonce,
       statement: `Register this Base Sepolia payout wallet for Skarl contributor ${contributor.tokenIdentifier}.`,
       requestId: contributor._id, issuedAt: new Date(now), expirationTime: new Date(expiresAt),

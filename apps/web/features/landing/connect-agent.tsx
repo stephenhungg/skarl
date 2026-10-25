@@ -7,7 +7,7 @@ const MCP_URL = "https://keen-marmot-986.convex.site/mcp";
 // Cursor's install link takes the base64-encoded server config, without the mcpServers wrapper.
 const CURSOR_INSTALL_URL = "cursor://anysphere.cursor-deeplink/mcp/install?name=skarl&config=eyJ1cmwiOiJodHRwczovL2tlZW4tbWFybW90LTk4Ni5jb252ZXguc2l0ZS9tY3AifQ%3D%3D";
 // One prompt for any MCP-capable agent: agents that can install MCP servers do it; chat apps print setup steps.
-const UNIVERSAL_PROMPT = `Connect yourself to Skarl, a marketplace for verified robot-training demonstrations.
+const UNIVERSAL_PROMPT = `Connect yourself to Skarl, a marketplace for verified robot-training demonstrations at https://skarl.devshardat.work.
 
 1. Add this remote MCP server named "skarl" (Streamable HTTP, no API key needed):
    ${MCP_URL}

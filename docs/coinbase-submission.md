@@ -4,7 +4,7 @@
 
 [The thesis and witness table](thesis.md) separate live work/money evidence from simulated controls and pending integrations. The intended moment is a duplicate blocked before a second payable, refused agent self-approval, then buyer-policy approval within cap, independent CDP execution constraints and chain/ledger agreement. The complete live sequence remains pending; the receipts below prove funding.
 
-[Hosted demo](https://skarl.vercel.app) · [Repository](https://github.com/stephenhungg/skarl) · [Two-minute demo and judging runbook](demo-script.md) · [Evidence log](status.md) · [Architecture SVG](architecture.svg)
+[Hosted demo](https://skarl.devshardat.work) · [Repository](https://github.com/stephenhungg/skarl) · [Two-minute demo and judging runbook](demo-script.md) · [Evidence log](status.md) · [Architecture SVG](architecture.svg)
 
 **Testnet only: Base Sepolia and optional Solana Devnet funding, test USDC, demo identities, and the operator's own test float. No custody or management of anyone else's real funds.** Live below means an actual testnet/provider operation, not mainnet or production readiness. Evidence cutoff: [status](status.md), including October 25, 2026, 03:05 PDT policy verification, 03:29 PDT Solana funding, and the [04:40 evidence refresh](status.md#submission-evidence-refresh--october-25-2026-0440-pdt).
 

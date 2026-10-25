@@ -152,7 +152,7 @@ async function executeGuest(ctx: ActionCtx, request: Request, name: string, args
       demoOrder: { amountAtomic: DEMO_ORDER_BUDGET.toString(), currency: "USDC", network: PAYMENT_NETWORK,
         limits: { perIpPerHour: DEMO_ORDER_IP_LIMIT, globalPerHour: DEMO_ORDER_GLOBAL_LIMIT } },
       links: { llms: "https://keen-marmot-986.convex.site/llms.txt", agentCard: "https://keen-marmot-986.convex.site/.well-known/agent-card.json",
-        docs: "https://github.com/stephenhungg/skarl/blob/main/docs/agents.md", contribute: "https://skarl.vercel.app/contribute" },
+        docs: "https://github.com/stephenhungg/skarl/blob/main/docs/agents.md", contribute: "https://skarl.devshardat.work/contribute" },
       demoOnly: true,
     };
     case "skarl_list_tasks_public": return ctx.runQuery(catalogRef, {});
@@ -280,7 +280,7 @@ async function readBody(request: Request): Promise<string | null> {
 
 export const handle = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin");
-  if (origin !== null && ![new URL(request.url).origin, "https://keen-marmot-986.convex.site", "https://skarl.vercel.app"].includes(origin)) {
+  if (origin !== null && ![new URL(request.url).origin, "https://keen-marmot-986.convex.site", "https://skarl.vercel.app", "https://skarl.devshardat.work"].includes(origin)) {
     return json({ error: "origin_not_allowed" }, 403);
   }
   const principal = await authenticate(request);

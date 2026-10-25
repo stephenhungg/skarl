@@ -3,6 +3,7 @@
 **Every claim has a witness.** A buyer's personal agent can find robot-demonstration data, inspect evidence, fund collection, and buy an eligible sample's verification evidence. A contributor's agent can explain the rubric, help prepare an original recording, submit through authorized tools when available, and explain progress and earnings. Agents may read, propose, pay for authorized purchases, and explain; they **never approve, accept work, or sign payouts**. Existing Convex mutations and role checks remain authoritative.
 
 All agent discovery and MCP traffic uses the Convex HTTP site, independently of the frozen Vercel frontend. Existing x402 purchase routes remain on `skarl.vercel.app`.
+Human-facing links use `https://skarl.devshardat.work`; externally registered payment resources (x402 funding/evidence, Bazaar and CDP webhook) stay on `https://skarl.vercel.app` to preserve demo compatibility.
 
 ## Discovery and transport
 
@@ -156,7 +157,7 @@ Then complete the same request with `{"requestId":"REQUEST_ID_RETURNED_BY_INITIA
 >
 > **Contributor:** I reviewed and consent to the displayed terms for my original recording.
 >
-> **Agent:** Record and submit through <https://skarl.vercel.app/contribute>, or use the deployed contributor upload/submission tools if available. I will preserve the original request and submission IDs so retries do not create another submission.
+> **Agent:** Record and submit through <https://skarl.devshardat.work/contribute>, or use the deployed contributor upload/submission tools if available. I will preserve the original request and submission IDs so retries do not create another submission.
 >
 > **Contributor:** The submission returned `SUBMISSION_ID`. What happened?
 >

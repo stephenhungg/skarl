@@ -2,7 +2,7 @@
 
 **Skarl is the autonomous settlement desk for human-data companies. Independent witnesses must agree before anything moves.** Agents propose, a rule the buyer signed approves, the AI never approves itself. The buyer reviews exceptions.
 
-[Live testnet demo](https://skarl.vercel.app) · [Repository](https://github.com/stephenhungg/skarl) · [One-page thesis and witness table](thesis.md) · [Coinbase submission](coinbase-submission.md) · [Demo script](demo-script.md) · [Setup](setup.md)
+[Live testnet demo](https://skarl.devshardat.work) · [Repository](https://github.com/stephenhungg/skarl) · [One-page thesis and witness table](thesis.md) · [Coinbase submission](coinbase-submission.md) · [Demo script](demo-script.md) · [Setup](setup.md)
 
 **Testnet · test USDC · demo identities · operator-owned funds.** Demo video: **pending recording and upload**. Evidence cutoff: **October 25, 2026, 04:40 PDT**; [status](status.md) is the dated source of truth. Implemented, simulated and live are different claims.
 
