@@ -46,6 +46,8 @@ export const generate = internalAction({
 export const generateMissing = internalAction({
   args: {},
   handler: async (ctx): Promise<Result[]> => {
+    // Same off switches as the other background AI jobs; each run is a paid Gemini image call.
+    if (process.env.SKARL_SCHEDULED_JOBS_DISABLED === "true" || process.env.TASK_THUMBNAILS_ENABLED === "false") return [];
     const orderIds = await ctx.runQuery(internal.taskThumbnailsData.missing, {});
     const results: Result[] = [];
     for (const orderId of orderIds) results.push(await ctx.runAction(internal.taskThumbnails.generate, { orderId }));
